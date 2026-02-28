@@ -29,20 +29,29 @@ function isValidEmail(s) {
   return typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 }
 
+const PLACEHOLDER_PASSWORD = '$2a$10$placeholder';
+
 export async function register(username, email, password, displayName) {
   if (!validateUsername(username)) return { error: 'Username must be lowercase letters and numbers only' };
   if (!isValidEmail(email)) return { error: 'Valid email required' };
-  const existingUser = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)').get(username);
-  if (existingUser) return { error: 'Username taken' };
+  const existingUser = db.prepare('SELECT id, password_hash, email FROM users WHERE LOWER(username) = LOWER(?)').get(username);
+  const isJimmyqrg = username.toLowerCase() === 'jimmyqrg';
+  const isPlaceholder = existingUser?.password_hash === PLACEHOLDER_PASSWORD && existingUser?.email == null;
+  if (existingUser && !(isJimmyqrg && isPlaceholder)) return { error: 'Username taken' };
   const existingEmail = db.prepare('SELECT id FROM users WHERE email IS NOT NULL AND LOWER(email) = LOWER(?)').get(email.trim());
   if (existingEmail) return { error: 'Email already registered' };
-  const id = uuidv4();
   const hash = bcrypt.hashSync(password, 10);
   const name = (displayName || username).slice(0, 64);
   const emailVal = email.trim().toLowerCase().slice(0, 255);
-  db.prepare('INSERT INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at) VALUES (?, ?, ?, NULL, ?, ?, 0, ?)')
-    .run(id, username.toLowerCase(), name, emailVal, hash, Date.now());
-  return { user: { id, username: username.toLowerCase(), display_name: name, avatar_url: null, email: emailVal, is_allowed: false } };
+  if (isJimmyqrg && isPlaceholder) {
+    db.prepare('UPDATE users SET display_name = ?, email = ?, password_hash = ?, created_at = ? WHERE id = ?')
+      .run(name, emailVal, hash, Date.now(), existingUser.id);
+    return { user: { id: existingUser.id, username: 'jimmyqrg', display_name: name, avatar_url: null, email: emailVal, is_allowed: true } };
+  }
+  const id = isJimmyqrg ? 'jimmyqrg' : uuidv4();
+  db.prepare('INSERT INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at) VALUES (?, ?, ?, NULL, ?, ?, ?, ?)')
+    .run(id, username.toLowerCase(), name, emailVal, hash, isJimmyqrg ? 1 : 0, Date.now());
+  return { user: { id, username: username.toLowerCase(), display_name: name, avatar_url: null, email: emailVal, is_allowed: !!isJimmyqrg } };
 }
 
 export async function login(usernameOrEmail, password) {

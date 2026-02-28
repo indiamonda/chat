@@ -23,10 +23,20 @@
 
 body {
   font-family: 'Segoe UI', system-ui, sans-serif;
-  background: var(--bg-deep) url('https://jimmyqrg.github.io/background.png') center/cover no-repeat fixed;
+  background: var(--bg-deep);
   color: var(--text);
   min-height: 100vh;
   overflow: hidden;
+}
+
+body.auth-page {
+  background: var(--bg-deep) url('https://jimmyqrg.github.io/background.png') center/cover no-repeat fixed;
+}
+
+body.auth-page::before {
+  background:
+    linear-gradient(180deg, rgba(10, 6, 18, 0.7) 0%, rgba(10, 6, 18, 0.65) 100%),
+    radial-gradient(ellipse 80% 50% at 50% -20%, var(--glow), transparent);
 }
 
 /* Overlay so text stays readable */
@@ -71,13 +81,223 @@ body::after {
   flex-direction: column;
 }
 
-/* Auth screen */
+/* Auth screen – background only on login/signup */
 .auth-screen {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
   padding: 1rem;
+}
+
+/* 28 transition animations (keyframes) */
+@keyframes authFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes authFadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes authFadeInDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes authSlideInLeft {
+  from { opacity: 0; transform: translateX(-40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes authSlideInRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes authScaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes authZoomIn {
+  from { opacity: 0; transform: scale(0.5); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes authRotateIn {
+  from { opacity: 0; transform: rotate(-12deg) scale(0.95); }
+  to { opacity: 1; transform: rotate(0) scale(1); }
+}
+@keyframes authBounceIn {
+  from { opacity: 0; transform: scale(0.3); }
+  50% { transform: scale(1.05); }
+  70% { transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes authFlipInX {
+  from { opacity: 0; transform: perspective(400px) rotateX(90deg); }
+  to { opacity: 1; transform: perspective(400px) rotateX(0); }
+}
+@keyframes authFlipInY {
+  from { opacity: 0; transform: perspective(400px) rotateY(-90deg); }
+  to { opacity: 1; transform: perspective(400px) rotateY(0); }
+}
+@keyframes authRollIn {
+  from { opacity: 0; transform: translateX(-100%) rotate(-120deg); }
+  to { opacity: 1; transform: translateX(0) rotate(0); }
+}
+@keyframes authSwingIn {
+  from { opacity: 0; transform: rotate(-15deg); }
+  60% { transform: rotate(8deg); }
+  80% { transform: rotate(-4deg); }
+  to { opacity: 1; transform: rotate(0); }
+}
+@keyframes authLightSpeedIn {
+  from { opacity: 0; transform: translateX(100%) skewX(-25deg); }
+  60% { transform: skewX(10deg); }
+  80% { transform: skewX(-5deg); }
+  to { opacity: 1; transform: translateX(0) skewX(0); }
+}
+@keyframes authPulseIn {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.02); }
+}
+@keyframes authShakeIn {
+  from { opacity: 0; }
+  20%, 60%, 100% { transform: translateX(0); opacity: 1; }
+  40% { transform: translateX(-8px); }
+  80% { transform: translateX(8px); }
+}
+@keyframes authGlowIn {
+  from { opacity: 0; box-shadow: 0 0 0 0 var(--glow); }
+  to { opacity: 1; box-shadow: 0 0 24px var(--glow); }
+}
+@keyframes authBlurIn {
+  from { opacity: 0; filter: blur(8px); }
+  to { opacity: 1; filter: blur(0); }
+}
+@keyframes authExpandIn {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes authSlideUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes authSlideDown {
+  from { opacity: 0; transform: translateY(-30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes authFlipIn {
+  from { opacity: 0; transform: perspective(400px) rotateY(90deg); }
+  to { opacity: 1; transform: perspective(400px) rotateY(0); }
+}
+@keyframes authJackInTheBox {
+  from { opacity: 0; transform: scale(0.1) rotate(30deg); }
+  50% { transform: rotate(-10deg); }
+  70% { transform: rotate(3deg); }
+  to { opacity: 1; transform: scale(1) rotate(0); }
+}
+@keyframes authRubberBand {
+  from { transform: scale(1); }
+  30% { transform: scaleX(1.25) scaleY(0.75); }
+  40% { transform: scaleX(0.75) scaleY(1.25); }
+  50% { transform: scaleX(1.15) scaleY(0.85); }
+  65% { transform: scaleX(0.95) scaleY(1.05); }
+  75% { transform: scaleX(1.05) scaleY(0.95); }
+  to { transform: scale(1); }
+}
+@keyframes authWobbleIn {
+  from { opacity: 0; transform: translateX(0) rotate(0); }
+  15% { transform: translateX(-10px) rotate(-5deg); }
+  30% { transform: translateX(8px) rotate(4deg); }
+  45% { transform: translateX(-6px) rotate(-3deg); }
+  60% { transform: translateX(4px) rotate(2deg); }
+  75% { transform: translateX(-2px) rotate(-1deg); }
+  to { opacity: 1; transform: translateX(0) rotate(0); }
+}
+@keyframes authTadaIn {
+  from { transform: scale(1) rotate(0); }
+  10%, 20% { transform: scale(0.9) rotate(-3deg); }
+  30%, 50%, 70% { transform: scale(1.05) rotate(3deg); }
+  40%, 60% { transform: scale(1.05) rotate(-3deg); }
+  to { transform: scale(1) rotate(0); }
+}
+@keyframes authJelloIn {
+  from { transform: skew(0); }
+  30% { transform: skewX(12deg) skewY(12deg); }
+  40% { transform: skewX(-6deg) skewY(-6deg); }
+  50% { transform: skewX(4deg) skewY(4deg); }
+  65% { transform: skewX(-2deg) skewY(-2deg); }
+  75% { transform: skewX(1deg) skewY(1deg); }
+  to { transform: skew(0); }
+}
+@keyframes authHeartBeatIn {
+  from { opacity: 0; transform: scale(0); }
+  14% { transform: scale(1.15); }
+  28% { transform: scale(0.95); }
+  42% { transform: scale(1.05); }
+  70% { transform: scale(1); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Apply 28 animations to auth elements (25 in markup + 3 pseudo) */
+.auth-ani-1 { animation: authFadeIn 0.4s ease-out both; }
+.auth-ani-2 { animation: authScaleIn 0.5s ease-out 0.05s both; position: relative; }
+.auth-ani-3 { animation: authFadeInDown 0.45s ease-out 0.1s both; }
+.auth-ani-4 { animation: authSlideInLeft 0.4s ease-out 0.15s both; }
+.auth-ani-5 { animation: authSlideInRight 0.4s ease-out 0.18s both; }
+.auth-ani-6 { animation: authSlideInRight 0.4s ease-out 0.21s both; }
+.auth-ani-7 { animation: authFadeInUp 0.45s ease-out 0.2s both; }
+.auth-ani-8 { animation: authBlurIn 0.35s ease-out 0.25s both; }
+.auth-ani-9 { animation: authExpandIn 0.4s ease-out 0.28s both; }
+.auth-ani-10 { animation: authFadeIn 0.3s ease-out 0.3s both; }
+.auth-ani-11 { animation: authSlideUp 0.35s ease-out 0.32s both; }
+.auth-ani-12 { animation: authFadeIn 0.3s ease-out 0.34s both; }
+.auth-ani-13 { animation: authSlideUp 0.35s ease-out 0.36s both; }
+.auth-ani-14 { animation: authExpandIn 0.4s ease-out 0.28s both; }
+.auth-ani-15 { animation: authFadeIn 0.3s ease-out 0.3s both; }
+.auth-ani-16 { animation: authSlideUp 0.35s ease-out 0.32s both; }
+.auth-ani-17 { animation: authFadeIn 0.3s ease-out 0.34s both; }
+.auth-ani-18 { animation: authSlideUp 0.35s ease-out 0.36s both; }
+.auth-ani-19 { animation: authFadeIn 0.3s ease-out 0.38s both; }
+.auth-ani-20 { animation: authSlideUp 0.35s ease-out 0.4s both; }
+.auth-ani-21 { animation: authFadeIn 0.3s ease-out 0.42s both; }
+.auth-ani-22 { animation: authSlideUp 0.35s ease-out 0.44s both; }
+.auth-ani-23 { animation: authFadeIn 0.3s ease-out 0.46s both; }
+.auth-ani-24 { animation: authSlideUp 0.35s ease-out 0.48s both; }
+.auth-ani-25 { animation: authBounceIn 0.6s ease-out 0.5s both; }
+.auth-box::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 18px;
+  border: 1px solid transparent;
+  pointer-events: none;
+  animation: authGlowIn 0.8s ease-out 0.6s both;
+}
+.auth-box::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 60%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--purple), transparent);
+  border-radius: 0 0 4px 4px;
+  pointer-events: none;
+  animation: authLightSpeedIn 0.5s ease-out 0.4s both;
+  transform: translateX(-50%);
+}
+.auth-screen::after {
+  content: '';
+  position: fixed;
+  width: 80px;
+  height: 80px;
+  border: 2px solid var(--purple);
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  margin: -40px 0 0 -40px;
+  pointer-events: none;
+  z-index: 0;
+  animation: authHeartBeatIn 1s ease-out 0.2s both;
+  opacity: 0.2;
 }
 
 .auth-box {
@@ -88,8 +308,41 @@ body::after {
   width: 100%;
   max-width: 380px;
   box-shadow: 0 0 40px rgba(139, 92, 246, 0.15);
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 
+/* 6 hover effects */
+.auth-box:hover {
+  box-shadow: 0 0 56px rgba(139, 92, 246, 0.25);
+  transform: translateY(-2px);
+}
+.auth-box .tabs .tab-link:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--purple);
+  transform: scale(1.02);
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.2s ease;
+}
+.auth-box .tabs .tab-link.active:hover {
+  background: var(--purple);
+  color: white;
+  transform: scale(1.02);
+}
+.auth-box input:hover {
+  border-color: var(--purple-dim);
+  background: var(--bg-hover);
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.auth-box button[type="submit"]:hover {
+  background: var(--purple-bright);
+  transform: scale(1.02);
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s ease;
+}
+.auth-box label:hover {
+  color: var(--purple-bright);
+  transition: color 0.2s ease;
+}
 .auth-box h1 {
   font-size: 1.5rem;
   margin-bottom: 1.5rem;
@@ -115,6 +368,7 @@ body::after {
   text-align: center;
   text-decoration: none;
   display: block;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.2s ease;
 }
 
 .auth-box .tabs .tab-link.active,
@@ -140,6 +394,7 @@ body::after {
   background: var(--bg-main);
   color: var(--text);
   font-size: 1rem;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
 }
 
 .auth-box input:focus {
@@ -159,10 +414,7 @@ body::after {
   font-weight: 600;
   cursor: pointer;
   margin-top: 0.5rem;
-}
-
-.auth-box button[type="submit"]:hover {
-  background: var(--purple-bright);
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s ease;
 }
 
 .auth-box .error {

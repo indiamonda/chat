@@ -209,12 +209,14 @@ function render() {
   const route = parseRoute();
 
   if (!state.user) {
+    document.body.classList.add('auth-page');
     const isSignup = route.page === 'signup';
     app.innerHTML = renderAuth(isSignup);
     bindAuth(isSignup);
     return;
   }
 
+  document.body.classList.remove('auth-page');
   app.innerHTML = renderMain();
   bindMain();
   interceptLinks(app);
@@ -222,34 +224,34 @@ function render() {
 
 function renderAuth(isSignup = false) {
   return `
-    <div class="auth-screen">
-      <div class="auth-box">
-        <h1>JimmyQrg Chat</h1>
-        <div class="tabs">
-          <a href="/login" class="tab-link ${!isSignup ? 'active' : ''}" data-tab="login">Login</a>
-          <a href="/signup" class="tab-link ${isSignup ? 'active' : ''}" data-tab="register">Sign up</a>
+    <div class="auth-screen auth-ani-1">
+      <div class="auth-box auth-ani-2">
+        <h1 class="auth-ani-3">JimmyQrg Chat</h1>
+        <div class="tabs auth-ani-4">
+          <a href="/login" class="tab-link auth-ani-5 ${!isSignup ? 'active' : ''}" data-tab="login">Login</a>
+          <a href="/signup" class="tab-link auth-ani-6 ${isSignup ? 'active' : ''}" data-tab="register">Sign up</a>
         </div>
-        <form id="auth-form" novalidate>
-          <div id="auth-error" class="error"></div>
-          <div id="auth-fields-login" style="display:${isSignup ? 'none' : 'block'}">
-            <label>Username or email</label>
-            <input name="login_identifier" type="text" autocomplete="username" placeholder="Username or email" />
-            <label>Password</label>
-            <input name="login_password" type="password" autocomplete="current-password" />
+        <form id="auth-form" class="auth-ani-7" novalidate>
+          <div id="auth-error" class="error auth-ani-8"></div>
+          <div id="auth-fields-login" class="auth-ani-9" style="display:${isSignup ? 'none' : 'block'}">
+            <label class="auth-ani-10">Username or email</label>
+            <input class="auth-ani-11" name="login_identifier" type="text" autocomplete="username" placeholder="Username or email" />
+            <label class="auth-ani-12">Password</label>
+            <input class="auth-ani-13" name="login_password" type="password" autocomplete="current-password" />
           </div>
-          <div id="auth-fields-register" style="display:${isSignup ? 'block' : 'none'}">
-            <label>Display name</label>
-            <input name="display_name" type="text" autocomplete="name" placeholder="Display name" />
-            <label>Username (lowercase letters and numbers only)</label>
-            <input name="reg_username" type="text" autocomplete="username" placeholder="Username" />
-            <label>Email</label>
-            <input name="email" type="email" autocomplete="email" placeholder="Email" />
-            <label>Password</label>
-            <input name="reg_password" type="password" autocomplete="new-password" placeholder="Password" />
-            <label>Confirm password</label>
-            <input name="confirm_password" type="password" autocomplete="new-password" placeholder="Confirm password" />
+          <div id="auth-fields-register" class="auth-ani-14" style="display:${isSignup ? 'block' : 'none'}">
+            <label class="auth-ani-15">Display name</label>
+            <input class="auth-ani-16" name="display_name" type="text" autocomplete="name" placeholder="Display name" />
+            <label class="auth-ani-17">Username (lowercase letters and numbers only)</label>
+            <input class="auth-ani-18" name="reg_username" type="text" autocomplete="username" placeholder="Username" />
+            <label class="auth-ani-19">Email</label>
+            <input class="auth-ani-20" name="email" type="email" autocomplete="email" placeholder="Email" />
+            <label class="auth-ani-21">Password</label>
+            <input class="auth-ani-22" name="reg_password" type="password" autocomplete="new-password" placeholder="Password" />
+            <label class="auth-ani-23">Confirm password</label>
+            <input class="auth-ani-24" name="confirm_password" type="password" autocomplete="new-password" placeholder="Confirm password" />
           </div>
-          <button type="submit" id="auth-submit">${isSignup ? 'Sign up' : 'Login'}</button>
+          <button type="submit" id="auth-submit" class="auth-ani-25">${isSignup ? 'Sign up' : 'Login'}</button>
         </form>
       </div>
     </div>

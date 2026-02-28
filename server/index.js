@@ -58,7 +58,15 @@ const session = sessionMiddleware();
 app.use(session);
 
 app.use('/uploads', express.static(uploadsDir));
-app.use(express.static(publicDir));
+app.use(express.static(publicDir, {
+  setHeaders: (res, filePath) => {
+    // Force revalidate so content updates without hard refresh
+    if (filePath.replace(/\\/g, '/').includes('/assets/')) {
+      res.set('Cache-Control', 'no-cache, must-revalidate');
+      res.set('Pragma', 'no-cache');
+    }
+  },
+}));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -236,6 +244,8 @@ app.get('*', (req, res) => {
   const p = join(publicDir, 'index.html');
   if (existsSync(p)) {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
     return res.sendFile(p);
   }
   res.status(404).send('Not found');
@@ -418,14 +428,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Replace placeholder password for default admin (set by init-db.js)
-try {
-  const row = db.prepare('SELECT id FROM users WHERE password_hash = ?').get('$2a$10$placeholder');
-  if (row) {
-    const hash = bcrypt.hashSync('changeme', 10);
-    db.prepare('UPDATE users SET password_hash = ? WHERE password_hash = ?').run(hash, '$2a$10$placeholder');
-  }
-} catch (_) {}
+// Do not replace placeholder password: lets first signup with username jimmyqrg "claim" that account
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
