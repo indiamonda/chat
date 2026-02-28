@@ -415,4 +415,5 @@ io.on('connection', (socket) => {
 });
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
-httpServer.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+const HOST = process.env.HOST || '0.0.0.0';
+httpServer.listen(PORT, HOST, () => console.log(`Server listening on ${HOST}:${PORT}`));
