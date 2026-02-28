@@ -56,4 +56,20 @@ export async function uploadFile(path, file, extra = {}) {
   return data;
 }
 
-export const DEFAULT_AVATAR = '/assets/default-avatar.svg';
+const DEFAULT_AVATAR_COUNT = 8;
+
+function simpleHash(str) {
+  if (!str) return 0;
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+/** Returns a default avatar URL by index 0–7 so the same user always gets the same color. */
+export function getDefaultAvatarUrl(userIdOrUsername) {
+  const i = userIdOrUsername != null ? simpleHash(String(userIdOrUsername)) % DEFAULT_AVATAR_COUNT : 0;
+  return `/assets/default-avatar-${i}.svg`;
+}
+
+/** Fallback when no user id/username is available. */
+export const DEFAULT_AVATAR = '/assets/default-avatar-0.svg';

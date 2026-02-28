@@ -62,6 +62,10 @@ npm run dev
 
 6. Change the default `jimmyqrg` password after first login (e.g. via profile/settings if you add a “change password” flow, or by updating the DB).
 
+If deploy fails with **"invalid config.guest.memory_mb, cannot exceed 2048 MiB"**, Fly limits VMs to 2048 MB. Scale down first:  
+`fly scale vm shared-cpu-1x --vm-memory 512 -a jchat`  
+then run `fly deploy` again.
+
 ## Username rules
 
 - Only lowercase letters and numbers.

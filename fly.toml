@@ -18,6 +18,7 @@ app = "jimmyqrg-chat"
   min_machines_running = 0
   processes = ["app"]
 
+# Keep memory ≤ 2048 MiB (Fly.io limit per VM)
 [[vm]]
   memory = "512mb"
   cpu_kind = "shared"

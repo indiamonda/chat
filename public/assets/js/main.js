@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiPut, apiDelete, uploadFile, DEFAULT_AVATAR } from './api.js';
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, uploadFile, getDefaultAvatarUrl } from './api.js';
 
 let state = {
   user: null,
@@ -304,7 +304,7 @@ function renderMain() {
           ${state.user?.is_allowed ? '<button type="button" id="admin-btn">Admin</button>' : ''}
           <button type="button" id="logout">Logout</button>
           <div class="header-user">
-            <img src="${state.user?.avatar_url || DEFAULT_AVATAR}" alt="" />
+            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
             <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
           </div>
         </div>
@@ -325,7 +325,7 @@ function renderMain() {
             ${(state.users || []).filter(u => u.id !== state.user?.id).map(u => `
               <li class="${state.dmUserId === u.id ? 'active' : ''}">
                 <a href="/chat/${encodeURIComponent(u.id)}">
-                  <img src="${u.avatar_url || DEFAULT_AVATAR}" alt="" />
+                  <img src="${u.avatar_url || getDefaultAvatarUrl(u.id)}" alt="" />
                   <span>${escapeHtml(u.display_name || u.username)}</span>
                 </a>
               </li>
@@ -428,7 +428,7 @@ function renderMessage(m, roomType, roomId) {
 
   return `
     <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
-      <img class="message-avatar" src="${m.avatar_url || DEFAULT_AVATAR}" alt="" />
+      <img class="message-avatar" src="${m.avatar_url || getDefaultAvatarUrl(m.sender_id)}" alt="" />
       <div class="message-body">
         <div class="message-header">
           <span class="message-sender">${escapeHtml(m.display_name || m.username)}</span>
@@ -719,6 +719,75 @@ function showAdminModal() {
   document.body.appendChild(overlay);
 }
 
+function renderSettingsPage() {
+  const tab = new URLSearchParams(window.location.search || '').get('tab') || 'profile';
+  return `
+    <div class="main-layout">
+      <header class="header">
+        <h1>JimmyQrg</h1>
+        <div class="header-actions">
+          <a href="/inbox">Inbox</a>
+          <a href="/chat/jimmyqrg">Chat</a>
+          <button type="button" id="logout">Logout</button>
+          <div class="header-user">
+            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
+            <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
+          </div>
+        </div>
+      </header>
+      <div class="content" style="justify-content:center">
+        <div class="settings-page">
+          <h2>Settings</h2>
+          <div class="settings-tabs">
+            <a href="/settings?tab=profile" class="tab-link ${tab === 'profile' ? 'active' : ''}">Profile</a>
+          </div>
+          <form id="profile-form" class="settings-form">
+            <label>Avatar</label>
+            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" class="avatar-preview" id="avatar-preview" />
+            <input type="file" name="avatar" accept="image/*" />
+            <label>Display name</label>
+            <input type="text" name="display_name" value="${escapeHtml(state.user?.display_name || '')}" />
+            <button type="submit">Save</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderInboxPage() {
+  return `
+    <div class="main-layout">
+      <header class="header">
+        <h1>JimmyQrg</h1>
+        <div class="header-actions">
+          <a href="/settings?tab=profile">Settings</a>
+          <a href="/chat/jimmyqrg">Chat</a>
+          <button type="button" id="logout">Logout</button>
+          <div class="header-user">
+            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
+            <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
+          </div>
+        </div>
+      </header>
+      <div class="content" style="justify-content:center">
+        <div class="inbox-page">
+          <h2>Inbox</h2>
+          <div id="inbox-list">
+            ${(state.inbox || []).map(item => `
+              <div class="inbox-item ${item.read_at ? '' : 'unread'}" data-id="${item.id}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(item.related_extra || '')}">
+                <div class="type">${escapeHtml(item.type)}</div>
+                <div class="title">${escapeHtml(item.title || '')}</div>
+                <div class="body">${escapeHtml(item.body || '')}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function applyRoute(route) {
   if (route.page === 'settings') {
     setState({ panel: '', dmUserId: null });
@@ -806,7 +875,7 @@ function bindSettings() {
       if (!res.ok) throw new Error(data.error);
       state.user = data.user;
       const preview = document.getElementById('avatar-preview');
-      if (preview) preview.src = data.user?.avatar_url || DEFAULT_AVATAR;
+      if (preview) preview.src = data.user?.avatar_url || getDefaultAvatarUrl(data.user?.id);
     } catch (err) {
       alert(err.message);
     }
