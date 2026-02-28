@@ -1,12 +1,8 @@
-import { createRequire } from 'node:module';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { mkdirSync, existsSync } from 'fs';
-
-const require = createRequire(import.meta.url);
-const bcrypt = require('bcryptjs');
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.DATA_DIR || join(__dirname, '../../data');
@@ -107,10 +103,7 @@ db.exec(`
 db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, password_hash, is_allowed, created_at)
   VALUES ('jimmyqrg', 'jimmyqrg', 'jimmyqrg', NULL, '$2a$10$placeholder', 1, ?)`).run(Date.now());
 
-// Set a default password for jimmyqrg on first run (change in production)
-const hash = bcrypt.hashSync('changeme', 10);
-const upd = db.prepare('UPDATE users SET password_hash = ? WHERE username = ? AND password_hash = ?');
-upd.run(hash, 'jimmyqrg', '$2a$10$placeholder');
+// Initial password is set at server startup (see server/index.js) so we don't need bcrypt here.
 
 // Initial doc content for problem_solving and rules
 const docs = [

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
+import bcrypt from 'bcryptjs';
 import { sessionMiddleware, getCurrentUser, requireAuth, canRecallOrEdit, isAllowed } from './auth.js';
 import { db, GROUP_ID, PANELS } from './db.js';
 import { upload } from './upload.js';
@@ -413,6 +414,15 @@ io.on('connection', (socket) => {
     ack?.({ ok: true, support_message_id });
   });
 });
+
+// Replace placeholder password for default admin (set by init-db.js)
+try {
+  const row = db.prepare('SELECT id FROM users WHERE password_hash = ?').get('$2a$10$placeholder');
+  if (row) {
+    const hash = bcrypt.hashSync('changeme', 10);
+    db.prepare('UPDATE users SET password_hash = ? WHERE password_hash = ?').run(hash, '$2a$10$placeholder');
+  }
+} catch (_) {}
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
