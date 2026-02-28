@@ -18,11 +18,13 @@ db.exec(`
     username TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL,
     avatar_url TEXT,
+    email TEXT,
     password_hash TEXT NOT NULL,
     is_allowed INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(LOWER(username));
+  CREATE INDEX IF NOT EXISTS idx_users_email ON users(LOWER(email));
 
   CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
@@ -100,8 +102,9 @@ db.exec(`
 
 `);
 
-db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, password_hash, is_allowed, created_at)
-  VALUES ('jimmyqrg', 'jimmyqrg', 'jimmyqrg', NULL, '$2a$10$placeholder', 1, ?)`).run(Date.now());
+try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch (_) {}
+db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at)
+  VALUES ('jimmyqrg', 'jimmyqrg', 'jimmyqrg', NULL, NULL, '$2a$10$placeholder', 1, ?)`).run(Date.now());
 
 // Initial password is set at server startup (see server/index.js) so we don't need bcrypt here.
 

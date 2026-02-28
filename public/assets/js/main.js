@@ -229,21 +229,25 @@ function renderAuth(isSignup = false) {
           <a href="/login" class="tab-link ${!isSignup ? 'active' : ''}" data-tab="login">Login</a>
           <a href="/signup" class="tab-link ${isSignup ? 'active' : ''}" data-tab="register">Sign up</a>
         </div>
-        <form id="auth-form">
+        <form id="auth-form" novalidate>
           <div id="auth-error" class="error"></div>
           <div id="auth-fields-login" style="display:${isSignup ? 'none' : 'block'}">
-            <label>Username</label>
-            <input name="username" type="text" autocomplete="username" />
+            <label>Username or email</label>
+            <input name="login_identifier" type="text" autocomplete="username" placeholder="Username or email" />
             <label>Password</label>
-            <input name="password" type="password" autocomplete="current-password" />
+            <input name="login_password" type="password" autocomplete="current-password" />
           </div>
           <div id="auth-fields-register" style="display:${isSignup ? 'block' : 'none'}">
-            <label>Username (lowercase letters and numbers only)</label>
-            <input name="username" type="text" autocomplete="username" />
             <label>Display name</label>
-            <input name="display_name" placeholder="Optional" autocomplete="name" />
+            <input name="display_name" type="text" autocomplete="name" placeholder="Display name" />
+            <label>Username (lowercase letters and numbers only)</label>
+            <input name="reg_username" type="text" autocomplete="username" placeholder="Username" />
+            <label>Email</label>
+            <input name="email" type="email" autocomplete="email" placeholder="Email" />
             <label>Password</label>
-            <input name="password" type="password" autocomplete="new-password" />
+            <input name="reg_password" type="password" autocomplete="new-password" placeholder="Password" />
+            <label>Confirm password</label>
+            <input name="confirm_password" type="password" autocomplete="new-password" placeholder="Confirm password" />
           </div>
           <button type="submit" id="auth-submit">${isSignup ? 'Sign up' : 'Login'}</button>
         </form>
@@ -261,23 +265,35 @@ function bindAuth(isSignup) {
     e.preventDefault();
     const errEl = document.getElementById('auth-error');
     const form = e.target;
-    const visiblePanel = document.getElementById('auth-fields-register').style.display !== 'none'
-      ? document.getElementById('auth-fields-register')
-      : document.getElementById('auth-fields-login');
-    const username = (visiblePanel.querySelector('input[name="username"]').value || '').trim().toLowerCase();
-    const password = visiblePanel.querySelector('input[name="password"]').value || '';
-    const display_name = form.display_name?.value?.trim();
     errEl.textContent = '';
-    if (!username) {
-      errEl.textContent = 'Username is required';
+    if (isRegister) {
+      const display_name = (form.display_name?.value || '').trim();
+      const username = (form.reg_username?.value || '').trim().toLowerCase();
+      const email = (form.email?.value || '').trim();
+      const password = form.reg_password?.value || '';
+      const confirm = form.confirm_password?.value || '';
+      if (!display_name) { errEl.textContent = 'Display name is required'; return; }
+      if (!username) { errEl.textContent = 'Username is required'; return; }
+      if (!email) { errEl.textContent = 'Email is required'; return; }
+      if (!password) { errEl.textContent = 'Password is required'; return; }
+      if (password !== confirm) { errEl.textContent = 'Passwords do not match'; return; }
+      try {
+        const data = await doLogin(true, { username, email, password, display_name });
+        if (data.user) state.user = data.user;
+        await loadMe();
+        if (!state.user) throw new Error('Session not set');
+        navigateTo('/chat/jimmyqrg');
+      } catch (err) {
+        errEl.textContent = err.message || 'Failed';
+      }
       return;
     }
-    if (!password) {
-      errEl.textContent = 'Password is required';
-      return;
-    }
+    const usernameOrEmail = (form.login_identifier?.value || '').trim();
+    const password = form.login_password?.value || '';
+    if (!usernameOrEmail) { errEl.textContent = 'Username or email is required'; return; }
+    if (!password) { errEl.textContent = 'Password is required'; return; }
     try {
-      const data = await doLogin(isRegister, isRegister ? { username, password, display_name: display_name || username } : { username, password });
+      const data = await doLogin(false, { username: usernameOrEmail, password });
       if (data.user) state.user = data.user;
       await loadMe();
       if (!state.user) throw new Error('Session not set');

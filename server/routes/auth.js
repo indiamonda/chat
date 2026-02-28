@@ -4,9 +4,9 @@ import { register, login, getCurrentUser, sessionMiddleware, requireAuth } from 
 const router = Router();
 
 router.post('/register', async (req, res) => {
-  const { username, password, display_name } = req.body || {};
-  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
-  const result = await register(username, password, display_name);
+  const { username, email, password, display_name } = req.body || {};
+  if (!username || !email || !password) return res.status(400).json({ error: 'Username, email and password required' });
+  const result = await register(username, email, password, display_name);
   if (result.error) return res.status(400).json({ error: result.error });
   req.session.userId = result.user.id;
   req.session.save(() => res.json({ user: result.user }));
@@ -14,8 +14,9 @@ router.post('/register', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   const { username, password } = req.body || {};
-  if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
-  const result = await login(username, password);
+  const usernameOrEmail = username; // can be either
+  if (!usernameOrEmail || !password) return res.status(400).json({ error: 'Username or email and password required' });
+  const result = await login(usernameOrEmail, password);
   if (result.error) return res.status(401).json({ error: result.error });
   req.session.userId = result.user.id;
   req.session.save(() => res.json({ user: result.user }));

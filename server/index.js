@@ -231,10 +231,13 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   res.status(201).json({ message: msg });
 });
 
-// SPA fallback
+// SPA fallback (no-cache so app updates show without hard refresh)
 app.get('*', (req, res) => {
   const p = join(publicDir, 'index.html');
-  if (existsSync(p)) return res.sendFile(p);
+  if (existsSync(p)) {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return res.sendFile(p);
+  }
   res.status(404).send('Not found');
 });
 

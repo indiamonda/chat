@@ -21,26 +21,37 @@ export function requireAuth(req, res, next) {
 
 export function getCurrentUser(req) {
   if (!req.session?.userId) return null;
-  const u = db.prepare('SELECT id, username, display_name, avatar_url, is_allowed FROM users WHERE id = ?').get(req.session.userId);
+  const u = db.prepare('SELECT id, username, display_name, avatar_url, email, is_allowed FROM users WHERE id = ?').get(req.session.userId);
   return u ? { ...u, is_allowed: !!u.is_allowed } : null;
 }
 
-export async function register(username, password, displayName) {
+function isValidEmail(s) {
+  return typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+}
+
+export async function register(username, email, password, displayName) {
   if (!validateUsername(username)) return { error: 'Username must be lowercase letters and numbers only' };
-  const existing = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)').get(username);
-  if (existing) return { error: 'Username taken' };
+  if (!isValidEmail(email)) return { error: 'Valid email required' };
+  const existingUser = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)').get(username);
+  if (existingUser) return { error: 'Username taken' };
+  const existingEmail = db.prepare('SELECT id FROM users WHERE email IS NOT NULL AND LOWER(email) = LOWER(?)').get(email.trim());
+  if (existingEmail) return { error: 'Email already registered' };
   const id = uuidv4();
   const hash = bcrypt.hashSync(password, 10);
   const name = (displayName || username).slice(0, 64);
-  db.prepare('INSERT INTO users (id, username, display_name, avatar_url, password_hash, is_allowed, created_at) VALUES (?, ?, ?, NULL, ?, 0, ?)')
-    .run(id, username.toLowerCase(), name, hash, Date.now());
-  return { user: { id, username: username.toLowerCase(), display_name: name, avatar_url: null, is_allowed: false } };
+  const emailVal = email.trim().toLowerCase().slice(0, 255);
+  db.prepare('INSERT INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at) VALUES (?, ?, ?, NULL, ?, ?, 0, ?)')
+    .run(id, username.toLowerCase(), name, emailVal, hash, Date.now());
+  return { user: { id, username: username.toLowerCase(), display_name: name, avatar_url: null, email: emailVal, is_allowed: false } };
 }
 
-export async function login(username, password) {
-  const u = db.prepare('SELECT id, username, display_name, avatar_url, password_hash, is_allowed FROM users WHERE LOWER(username) = LOWER(?)').get(username);
+export async function login(usernameOrEmail, password) {
+  const input = (usernameOrEmail || '').trim().toLowerCase();
+  const u = db.prepare(
+    'SELECT id, username, display_name, avatar_url, email, password_hash, is_allowed FROM users WHERE LOWER(username) = ? OR (email IS NOT NULL AND LOWER(email) = ?)'
+  ).get(input, input);
   if (!u || !bcrypt.compareSync(password, u.password_hash)) return { error: 'Invalid credentials' };
-  return { user: { id: u.id, username: u.username, display_name: u.display_name, avatar_url: u.avatar_url, is_allowed: !!u.is_allowed } };
+  return { user: { id: u.id, username: u.username, display_name: u.display_name, avatar_url: u.avatar_url, email: u.email, is_allowed: !!u.is_allowed } };
 }
 
 export function canRecallOrEdit(msg) {

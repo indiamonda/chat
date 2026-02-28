@@ -23,21 +23,21 @@
 
 body {
   font-family: 'Segoe UI', system-ui, sans-serif;
-  background: var(--bg-deep);
+  background: var(--bg-deep) url('https://jimmyqrg.github.io/background.png') center/cover no-repeat fixed;
   color: var(--text);
   min-height: 100vh;
   overflow: hidden;
 }
 
-/* Starfield background */
+/* Overlay so text stays readable */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   background:
+    linear-gradient(180deg, rgba(10, 6, 18, 0.85) 0%, rgba(10, 6, 18, 0.75) 100%),
     radial-gradient(ellipse 80% 50% at 50% -20%, var(--glow), transparent),
-    radial-gradient(ellipse 60% 40% at 80% 60%, rgba(109, 40, 217, 0.15), transparent),
-    radial-gradient(ellipse 40% 30% at 20% 80%, rgba(139, 92, 246, 0.1), transparent);
+    radial-gradient(ellipse 60% 40% at 80% 60%, rgba(109, 40, 217, 0.12), transparent);
   pointer-events: none;
   z-index: 0;
 }
