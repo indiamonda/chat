@@ -88,9 +88,15 @@ export function setState(updates) {
 
 export async function loadMe() {
   try {
-    const { user } = await apiGet('/api/auth/me');
-    state.user = user;
-    return user;
+    const res = await fetch('/api/auth/me', { credentials: 'include' });
+    if (res.status === 401) {
+      state.user = null;
+      return null;
+    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.error || res.statusText);
+    state.user = data.user;
+    return data.user;
   } catch {
     state.user = null;
     return null;
@@ -227,17 +233,17 @@ function renderAuth(isSignup = false) {
           <div id="auth-error" class="error"></div>
           <div id="auth-fields-login" style="display:${isSignup ? 'none' : 'block'}">
             <label>Username</label>
-            <input name="username" required />
+            <input name="username" type="text" autocomplete="username" />
             <label>Password</label>
-            <input name="password" type="password" required />
+            <input name="password" type="password" autocomplete="current-password" />
           </div>
           <div id="auth-fields-register" style="display:${isSignup ? 'block' : 'none'}">
             <label>Username (lowercase letters and numbers only)</label>
-            <input name="username" required />
+            <input name="username" type="text" autocomplete="username" />
             <label>Display name</label>
-            <input name="display_name" placeholder="Optional" />
+            <input name="display_name" placeholder="Optional" autocomplete="name" />
             <label>Password</label>
-            <input name="password" type="password" required />
+            <input name="password" type="password" autocomplete="new-password" />
           </div>
           <button type="submit" id="auth-submit">${isSignup ? 'Sign up' : 'Login'}</button>
         </form>
@@ -255,10 +261,21 @@ function bindAuth(isSignup) {
     e.preventDefault();
     const errEl = document.getElementById('auth-error');
     const form = e.target;
-    const username = form.username.value.trim().toLowerCase();
-    const password = form.password.value;
+    const visiblePanel = document.getElementById('auth-fields-register').style.display !== 'none'
+      ? document.getElementById('auth-fields-register')
+      : document.getElementById('auth-fields-login');
+    const username = (visiblePanel.querySelector('input[name="username"]').value || '').trim().toLowerCase();
+    const password = visiblePanel.querySelector('input[name="password"]').value || '';
     const display_name = form.display_name?.value?.trim();
     errEl.textContent = '';
+    if (!username) {
+      errEl.textContent = 'Username is required';
+      return;
+    }
+    if (!password) {
+      errEl.textContent = 'Password is required';
+      return;
+    }
     try {
       const data = await doLogin(isRegister, isRegister ? { username, password, display_name: display_name || username } : { username, password });
       if (data.user) state.user = data.user;
