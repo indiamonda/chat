@@ -104,7 +104,7 @@ db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, avatar_url,
   VALUES ('jimmyqrg', 'jimmyqrg', 'jimmyqrg', NULL, '$2a$10$placeholder', 1, ?)`).run(Date.now());
 
 // Set a default password for jimmyqrg on first run (change in production)
-const bcrypt = await import('bcryptjs');
+const { default: bcrypt } = await import('bcryptjs');
 const hash = bcrypt.hashSync('changeme', 10);
 const upd = db.prepare('UPDATE users SET password_hash = ? WHERE username = ? AND password_hash = ?');
 upd.run(hash, 'jimmyqrg', '$2a$10$placeholder');
