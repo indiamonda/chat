@@ -13,6 +13,10 @@
   --text-dim: #a78bb8;
   --star: rgba(196, 181, 255, 0.15);
   --glow: rgba(139, 92, 246, 0.3);
+  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --transition-fast: 0.15s var(--ease);
+  --transition-normal: 0.25s var(--ease);
+  --transition-slow: 0.35s var(--ease);
 }
 
 * {
@@ -105,11 +109,13 @@ body::after {
   font-size: 0.9rem;
   cursor: pointer;
   margin-bottom: 1rem;
+  transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
 }
 
 .file-label:hover {
   border-color: var(--purple);
   color: var(--text);
+  background: var(--bg-hover);
 }
 
 .file-input {
@@ -132,6 +138,7 @@ select {
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 select:hover {
@@ -141,6 +148,7 @@ select:hover {
 select:focus {
   outline: none;
   border-color: var(--purple);
+  box-shadow: 0 0 0 2px var(--glow);
 }
 
 /* Loading screen (before app hydrates) */
@@ -531,9 +539,20 @@ select:focus {
   border-bottom: 1px solid var(--border);
 }
 
-.header h1 {
+.header h1,
+.header-logo {
   font-size: 1.25rem;
   color: var(--purple-bright);
+}
+
+.header-logo {
+  text-decoration: none;
+  font-weight: inherit;
+  transition: color var(--transition-fast);
+}
+
+.header-logo:hover {
+  color: var(--accent);
 }
 
 .header-actions {
@@ -547,10 +566,33 @@ select:focus {
   font-size: 0.9rem;
   text-decoration: none;
   padding: 0.25rem 0;
+  transition: color var(--transition-fast);
 }
 
 .header-link:hover {
   color: var(--purple-bright);
+}
+
+.header-link-inbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.header-inbox-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: white;
+  background: #ef4444;
+  border-radius: 999px;
+  line-height: 1;
 }
 
 .header-link-btn {
@@ -561,6 +603,7 @@ select:focus {
   cursor: pointer;
   padding: 0.25rem 0;
   font-family: inherit;
+  transition: color var(--transition-fast);
 }
 
 .header-link-btn:hover {
@@ -576,11 +619,17 @@ select:focus {
   padding: 0.25rem 0.5rem;
   border-radius: 999px;
   margin-left: 0.25rem;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .header-user:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+
+.header-user:active {
+  transform: scale(0.98);
+  transition: transform var(--transition-fast);
 }
 
 .header-user img {
@@ -611,6 +660,7 @@ select:focus {
   margin-bottom: -1px;
   text-decoration: none;
   display: inline-block;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .panels-tabs a:hover,
@@ -652,6 +702,7 @@ select:focus {
 .sidebar li {
   border-radius: 6px;
   margin: 0 0.25rem;
+  transition: background var(--transition-fast), transform var(--transition-fast);
 }
 
 .sidebar li a {
@@ -662,10 +713,15 @@ select:focus {
   gap: 0.5rem;
   color: inherit;
   text-decoration: none;
+  transition: color var(--transition-fast);
 }
 
 .sidebar li:hover {
   background: var(--bg-hover);
+}
+
+.sidebar li:hover a {
+  color: var(--text);
 }
 
 .sidebar li.active a {
@@ -701,6 +757,12 @@ select:focus {
   padding: 2rem;
   color: var(--text-dim);
   font-size: 0.95rem;
+  animation: fadeIn 0.4s var(--ease) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .message {
@@ -721,6 +783,11 @@ select:focus {
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
+  transition: transform var(--transition-fast);
+}
+
+.message:hover .message-avatar {
+  transform: scale(1.05);
 }
 
 .message-body {
@@ -729,11 +796,20 @@ select:focus {
   border-radius: 12px;
   padding: 0.6rem 0.9rem;
   position: relative;
+  transition: box-shadow var(--transition-normal), border-color var(--transition-normal), transform var(--transition-fast);
+}
+
+.message:hover .message-body {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
 }
 
 .message.own .message-body {
   background: var(--purple-dim);
   border-color: var(--purple);
+}
+
+.message.own:hover .message-body {
+  box-shadow: 0 2px 12px var(--glow);
 }
 
 .message-header {
@@ -807,10 +883,12 @@ select:focus {
   color: var(--text-dim);
   font-size: 0.85rem;
   cursor: pointer;
+  transition: color var(--transition-fast), transform var(--transition-fast);
 }
 
 .message-actions button:hover {
   color: var(--accent);
+  transform: scale(1.08);
 }
 
 .message-likes {
@@ -823,6 +901,39 @@ select:focus {
   padding: 1rem;
   background: var(--bg-panel);
   border-top: 1px solid var(--border);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.composer.composer-drag-over {
+  background: var(--bg-hover);
+  box-shadow: inset 0 0 0 2px var(--purple);
+}
+
+.composer-pending-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.5rem;
+  margin-bottom: 0.5rem;
+  background: var(--bg-main);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.composer-pending-file button {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 0 0.25rem;
+  transition: color var(--transition-fast);
+}
+
+.composer-pending-file button:hover {
+  color: var(--purple-bright);
 }
 
 .composer-reply {
@@ -846,6 +957,7 @@ select:focus {
   font-size: inherit;
   font-family: inherit;
   text-decoration: underline;
+  transition: color var(--transition-fast);
 }
 
 .composer-reply .cancel-reply-link:hover {
@@ -865,6 +977,7 @@ select:focus {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-main);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .composer-input-wrap:focus-within {
@@ -902,6 +1015,7 @@ select:focus {
   color: var(--text-dim);
   cursor: pointer;
   border-radius: 6px;
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 
 .composer-actions button:hover {
@@ -916,10 +1030,16 @@ select:focus {
   border-radius: 8px;
   cursor: pointer;
   font-weight: 600;
+  transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .composer-send:hover {
   background: var(--purple-bright);
+  box-shadow: 0 2px 12px var(--glow);
+}
+
+.composer-send:active {
+  transform: scale(0.98);
 }
 
 /* Doc panels (Problem Solving, Rules) */
@@ -946,11 +1066,13 @@ select:focus {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
+  transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .doc-toolbar .doc-save:hover {
   background: var(--purple);
   color: white;
+  box-shadow: 0 2px 10px var(--glow);
 }
 
 .doc-toolbar .doc-save:disabled {
@@ -975,6 +1097,13 @@ select:focus {
   font-size: 0.95rem;
   font-family: inherit;
   resize: vertical;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.doc-editor textarea:focus {
+  outline: none;
+  border-color: var(--purple);
+  box-shadow: 0 0 0 2px var(--glow);
 }
 
 .doc-view {
@@ -1086,6 +1215,7 @@ select:focus {
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
   display: inline-block;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .settings-tabs a:hover,
@@ -1113,6 +1243,13 @@ select:focus {
   border-radius: 8px;
   background: var(--bg-main);
   color: var(--text);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.settings-form input:focus {
+  outline: none;
+  border-color: var(--purple);
+  box-shadow: 0 0 0 2px var(--glow);
 }
 
 .settings-form .avatar-preview {
@@ -1131,6 +1268,36 @@ select:focus {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.95rem;
+  transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.settings-form button[type="submit"]:hover {
+  background: var(--purple-bright);
+  box-shadow: 0 2px 12px var(--glow);
+}
+
+.settings-form button[type="submit"]:active {
+  transform: scale(0.98);
+}
+
+.settings-section-title {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.75rem;
+  color: var(--text);
+}
+
+.settings-form-message {
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  min-height: 1.25em;
+}
+
+.settings-form-message[data-type="error"] {
+  color: #f87171;
+}
+
+.settings-form-message[data-type="success"] {
+  color: var(--purple-bright);
 }
 
 /* Inbox */
@@ -1145,6 +1312,14 @@ select:focus {
   color: var(--purple-bright);
 }
 
+.inbox-empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  animation: fadeIn 0.4s var(--ease) forwards;
+}
+
 .inbox-item {
   padding: 1rem;
   background: var(--bg-panel);
@@ -1152,10 +1327,13 @@ select:focus {
   border-radius: 12px;
   margin-bottom: 0.75rem;
   cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
 .inbox-item:hover {
   border-color: var(--purple);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  transform: translateX(2px);
 }
 
 .inbox-item.unread {
@@ -1189,6 +1367,18 @@ select:focus {
   z-index: 1000;
   box-shadow: 0 4px 20px rgba(0,0,0,0.4);
   list-style: none;
+  animation: menuIn 0.2s var(--ease) forwards;
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .context-menu button {
@@ -1202,6 +1392,7 @@ select:focus {
   cursor: pointer;
   font-size: 0.9rem;
   font-family: inherit;
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .context-menu button:hover {
@@ -1221,6 +1412,12 @@ select:focus {
   align-items: center;
   justify-content: center;
   z-index: 1001;
+  animation: overlayIn 0.25s var(--ease) forwards;
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .modal {
@@ -1231,6 +1428,18 @@ select:focus {
   max-width: 90vw;
   max-height: 90vh;
   overflow: auto;
+  animation: modalIn 0.3s var(--ease) forwards;
+}
+
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .modal h3,
@@ -1295,6 +1504,7 @@ select:focus {
   cursor: pointer;
   margin-left: 0.5rem;
   text-decoration: underline;
+  transition: color var(--transition-fast);
 }
 
 .admin-panel li button:hover {
@@ -1310,11 +1520,13 @@ select:focus {
   cursor: pointer;
   font-size: 0.9rem;
   margin-top: 0.5rem;
+  transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .admin-panel .admin-send:hover {
   background: var(--purple);
   color: white;
+  box-shadow: 0 2px 10px var(--glow);
 }
 
 .modal-actions .modal-close {
@@ -1325,11 +1537,13 @@ select:focus {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
+  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
 }
 
 .modal-actions .modal-close:hover {
   color: var(--text);
   border-color: var(--purple);
+  background: var(--bg-hover);
 }
 
 /* Edit history */

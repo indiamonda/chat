@@ -6,7 +6,7 @@ import express from 'express';
 import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
-import { sessionMiddleware, getCurrentUser, requireAuth, canRecallOrEdit, isAllowed } from './auth.js';
+import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, isAllowed } from './auth.js';
 import { db, GROUP_ID, PANELS } from './db.js';
 import { upload } from './upload.js';
 import { getUploadUrl } from './upload.js';
@@ -58,6 +58,7 @@ app.use(express.json());
 app.use(cookieParser());
 const session = sessionMiddleware();
 app.use(session);
+app.use(touchSession);
 
 app.use('/uploads', express.static(uploadsDir));
 

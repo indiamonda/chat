@@ -2,21 +2,31 @@ import session from 'express-session';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { db, validateUsername } from './db.js';
+import { createSessionStore } from './session-store.js';
 
 const TWO_MINUTES_MS = 2 * 60 * 1000;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function sessionMiddleware() {
   return session({
     secret: process.env.SESSION_SECRET || 'jimmyqrg-chat-secret-change-in-production',
+    store: createSessionStore(),
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     cookie: {
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: SEVEN_DAYS_MS,
       sameSite: 'lax',
       httpOnly: true,
     },
   });
+}
+
+/** Call from a route or middleware to touch the session so the cookie and store TTL are extended (use with rolling: true). */
+export function touchSession(req, res, next) {
+  if (req.session?.userId != null) req.session.lastActivity = Date.now();
+  next();
 }
 
 export function requireAuth(req, res, next) {
@@ -81,6 +91,29 @@ export async function login(usernameOrEmail, password) {
   }
   if (!validPassword) return { error: 'Invalid credentials' };
   return { user: { id: u.id, username: u.username, display_name: u.display_name, avatar_url: u.avatar_url, email: u.email, is_allowed: !!u.is_allowed } };
+}
+
+export async function changePassword(userId, currentPassword, newPassword) {
+  const u = db.prepare('SELECT id, password_hash FROM users WHERE id = ?').get(userId);
+  if (!u) return { error: 'User not found' };
+  const current = (currentPassword || '').trim();
+  const newPass = (newPassword || '').trim();
+  if (!newPass || newPass.length < 6) return { error: 'New password must be at least 6 characters' };
+  const isPlaceholder = u.password_hash === PLACEHOLDER_PASSWORD || (String(u.password_hash || '').includes('placeholder'));
+  let valid = false;
+  if (isPlaceholder) {
+    valid = current.toLowerCase() === DEFAULT_PLACEHOLDER_PASSWORD;
+  } else {
+    try {
+      valid = !!current && bcrypt.compareSync(current, u.password_hash);
+    } catch {
+      valid = false;
+    }
+  }
+  if (!valid) return { error: 'Current password is wrong' };
+  const hash = bcrypt.hashSync(newPass, 10);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, userId);
+  return { ok: true };
 }
 
 export function canRecallOrEdit(msg) {

@@ -354,9 +354,9 @@ function renderMain() {
   return `
     <div class="main-layout">
       <header class="header">
-        <h1>JimmyQrg</h1>
+        <a href="/chat/jimmyqrg" class="header-logo">JimmyQrg</a>
         <div class="header-actions">
-          <a href="/inbox" class="header-link">Inbox</a>
+          <a href="/inbox" class="header-link header-link-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${((n) => n > 99 ? '99+' : n)((state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
           <a href="/settings?tab=profile" class="header-link">Settings</a>
           ${state.user?.is_allowed ? '<button type="button" id="admin-btn" class="header-link-btn">Admin</button>' : ''}
           <button type="button" id="logout" class="header-link-btn">Logout</button>
@@ -413,11 +413,17 @@ function renderChatArea() {
       ${list.length === 0 ? '<div class="messages-empty">No messages yet.</div>' : list.map(m => renderMessage(m, roomType, roomId)).join('')}
     </div>
     ${(roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm' ? `
-    <div class="composer">
+    <div class="composer" id="composer-drop-zone">
       ${replyPreview ? `
         <div class="composer-reply">
           Replying to ${escapeHtml(replyPreview.sender)}: ${escapeHtml(replyPreview.content?.slice(0, 50) || '')}…
           <button type="button" id="cancel-reply" class="cancel-reply-link">Cancel</button>
+        </div>
+      ` : ''}
+      ${state._pendingFile ? `
+        <div class="composer-pending-file" id="pending-file-indicator">
+          <span>Attached: ${escapeHtml(state._pendingFile.name)}</span>
+          <button type="button" id="clear-pending-file" title="Remove">×</button>
         </div>
       ` : ''}
       <div class="composer-row">
@@ -731,9 +737,41 @@ function bindMain() {
   document.getElementById('attach-file')?.addEventListener('click', () => document.getElementById('file-input')?.click());
   document.getElementById('file-input')?.addEventListener('change', (e) => {
     const file = e.target.files?.[0];
-    if (file) state._pendingFile = file;
+    if (file) {
+      state._pendingFile = file;
+      render();
+    }
     e.target.value = '';
   });
+  document.getElementById('clear-pending-file')?.addEventListener('click', () => {
+    state._pendingFile = null;
+    render();
+  });
+
+  const dropZone = document.getElementById('composer-drop-zone');
+  if (dropZone) {
+    ['dragenter', 'dragover'].forEach((ev) => {
+      dropZone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer.types.includes('Files')) dropZone.classList.add('composer-drag-over');
+      });
+    });
+    dropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('composer-drag-over');
+    });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.remove('composer-drag-over');
+      const file = e.dataTransfer.files?.[0];
+      if (file) {
+        state._pendingFile = file;
+        render();
+      }
+    });
+  }
 
   const saveDocBtn = document.getElementById('save-doc');
   const docContent = document.getElementById('doc-content');
@@ -878,9 +916,9 @@ function renderSettingsPage() {
   return `
     <div class="main-layout">
       <header class="header">
-        <h1>JimmyQrg</h1>
+        <a href="/chat/jimmyqrg" class="header-logo">JimmyQrg</a>
         <div class="header-actions">
-          <a href="/inbox" class="header-link">Inbox</a>
+          <a href="/inbox" class="header-link header-link-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${((n) => n > 99 ? '99+' : n)((state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
           <a href="/chat/jimmyqrg" class="header-link">Chat</a>
           <button type="button" id="logout" class="header-link-btn">Logout</button>
           <a href="/settings?tab=profile" class="header-user" title="Profile">
@@ -906,6 +944,17 @@ function renderSettingsPage() {
             <input type="text" name="display_name" value="${escapeHtml(state.user?.display_name || '')}" />
             <button type="submit">Save</button>
           </form>
+          <h3 class="settings-section-title">Change password</h3>
+          <form id="password-form" class="settings-form">
+            <label>Current password</label>
+            <input type="password" name="current_password" autocomplete="current-password" placeholder="Current password" />
+            <label>New password</label>
+            <input type="password" name="new_password" autocomplete="new-password" placeholder="At least 6 characters" />
+            <label>Confirm new password</label>
+            <input type="password" name="new_password_confirm" autocomplete="new-password" placeholder="Confirm new password" />
+            <p id="password-form-message" class="settings-form-message" aria-live="polite"></p>
+            <button type="submit">Change password</button>
+          </form>
         </div>
       </div>
     </div>
@@ -916,7 +965,7 @@ function renderInboxPage() {
   return `
     <div class="main-layout">
       <header class="header">
-        <h1>JimmyQrg</h1>
+        <a href="/chat/jimmyqrg" class="header-logo">JimmyQrg</a>
         <div class="header-actions">
           <a href="/settings?tab=profile" class="header-link">Settings</a>
           <a href="/chat/jimmyqrg" class="header-link">Chat</a>
@@ -931,7 +980,9 @@ function renderInboxPage() {
         <div class="inbox-page">
           <h2>Inbox</h2>
           <div id="inbox-list">
-            ${(state.inbox || []).map(item => `
+            ${(state.inbox || []).length === 0
+              ? '<div class="inbox-empty">No mail yet.</div>'
+              : (state.inbox || []).map(item => `
               <div class="inbox-item ${item.read_at ? '' : 'unread'}" data-id="${item.id}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(item.related_extra || '')}">
                 <div class="type">${escapeHtml(item.type)}</div>
                 <div class="title">${escapeHtml(item.title || '')}</div>
@@ -1011,6 +1062,7 @@ async function init() {
 
   await loadGroup();
   await loadUsers();
+  await loadInbox();
   connectSocket();
 
   const path = getPath();
@@ -1041,6 +1093,35 @@ function bindSettings() {
       alert(err.message);
     }
   });
+
+  document.getElementById('password-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const msgEl = document.getElementById('password-form-message');
+    const current = form.current_password?.value?.trim() || '';
+    const newPass = form.new_password?.value?.trim() || '';
+    const confirm = form.new_password_confirm?.value?.trim() || '';
+    if (!current || !newPass) {
+      if (msgEl) { msgEl.textContent = 'Please fill in current and new password.'; msgEl.dataset.type = 'error'; }
+      return;
+    }
+    if (newPass.length < 6) {
+      if (msgEl) { msgEl.textContent = 'New password must be at least 6 characters.'; msgEl.dataset.type = 'error'; }
+      return;
+    }
+    if (newPass !== confirm) {
+      if (msgEl) { msgEl.textContent = 'New password and confirmation do not match.'; msgEl.dataset.type = 'error'; }
+      return;
+    }
+    if (msgEl) msgEl.textContent = '';
+    try {
+      await apiPatch('/api/users/password', { current_password: current, new_password: newPass });
+      if (msgEl) { msgEl.textContent = 'Password changed.'; msgEl.dataset.type = 'success'; }
+      form.reset();
+    } catch (err) {
+      if (msgEl) { msgEl.textContent = err.message || 'Failed to change password.'; msgEl.dataset.type = 'error'; }
+    }
+  });
 }
 
 function bindInbox() {
@@ -1051,6 +1132,9 @@ function bindInbox() {
     const relatedId = item.dataset.related;
     const extraStr = item.dataset.extra;
     await fetch(`/api/inbox/${id}/read`, { method: 'POST', credentials: 'include' });
+    await loadInbox();
+    render();
+    bindInbox();
     try {
       const extra = extraStr ? JSON.parse(extraStr) : {};
       if (extra.panel === 'problem_solving') navigateTo('/chat/jimmyqrg?panel=problem');

@@ -100,6 +100,13 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_kicked_user_room ON kicked(user_id, room_type, room_id);
 
+  CREATE TABLE IF NOT EXISTS sessions (
+    sid TEXT PRIMARY KEY,
+    session TEXT NOT NULL,
+    expires INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires);
+
 `);
 
 try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch (_) {}
