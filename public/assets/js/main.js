@@ -12,6 +12,8 @@ let state = {
   replyTo: null,
   inbox: [],
   supportMessageIdForSolve: null,
+  leftBarExpanded: typeof localStorage !== 'undefined' && localStorage.getItem('leftBarExpanded') === '1',
+  panelSearchOpen: false,
 };
 
 const GROUP_ID = 'JimmyQrg';
@@ -46,6 +48,7 @@ function parseRoute() {
   if (path === '/settings') return { page: 'settings', tab: params.get('tab') || 'profile' };
   if (path === '/inbox') return { page: 'inbox' };
   if (path === '/manage' || path === '/manage/') return { page: 'admin', adminTab: params.get('tab') || 'action' };
+  if (path === '/chat') return { page: 'chat', section: 'dms' }; // DM user list, no conversation selected
   const chatMatch = path.match(/^\/chat\/([^/]+)$/);
   if (chatMatch) {
     const id = chatMatch[1];
@@ -57,6 +60,14 @@ function parseRoute() {
     return { page: 'chat', dmUserId: id };
   }
   return { page: 'chat', group: true, panel: 'free_chat' };
+}
+
+/** Primary nav for app shell: home (group), chat (DMs), admin, settings */
+function getPrimaryNav(route) {
+  if (route.page === 'admin') return 'admin';
+  if (route.page === 'settings') return 'settings';
+  if (route.page === 'chat') return route.group ? 'home' : 'chat';
+  return 'home';
 }
 
 function getPage() {
@@ -344,62 +355,120 @@ async function doLogin(isRegister, body) {
 
 function renderMain() {
   const page = getPage();
+  if (page === 'inbox') return renderInboxPage();
+
+  const route = parseRoute();
+  const primaryNav = getPrimaryNav(route);
   const panels = state.group?.panels || ['free_chat', 'support', 'problem_solving', 'rules'];
   const panelLabels = { free_chat: 'Free Chat', support: 'Support', problem_solving: 'Problem Solving', rules: 'Rules' };
   const isDocPanel = state.panel === 'problem_solving' || state.panel === 'rules';
-  const isGroup = !state.dmUserId;
-  if (page === 'settings') return renderSettingsPage();
-  if (page === 'inbox') return renderInboxPage();
-  if (page === 'admin') return renderAdminPage();
+  const isGroup = !!route.group;
+  const expanded = state.leftBarExpanded;
 
   return `
-    <div class="main-layout">
-      <header class="header">
-        <a href="/chat/jimmyqrg" class="header-logo">JimmyQrg</a>
-        <div class="header-actions">
-          <a href="/inbox" class="header-link header-link-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${((n) => n > 99 ? '99+' : n)((state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
-          <a href="/settings?tab=profile" class="header-link">Settings</a>
-          ${state.user?.is_allowed ? '<a href="/manage" class="header-link">Admin</a>' : ''}
-          <a href="/settings?tab=profile" class="header-user" title="Profile">
+    <div class="app-shell">
+      <aside class="left-bar ${expanded ? 'left-bar-expanded' : ''}" id="left-bar">
+        <div class="left-bar-avatar">
+          <a href="/settings?tab=profile" class="left-bar-avatar-link" title="Profile">
             <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
-            <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
           </a>
         </div>
-      </header>
-
-      ${isGroup ? `
-        <div class="panels-tabs">
-          ${panels.map(p => `
-            <a href="/chat/jimmyqrg?panel=${PANEL_TO_URL[p] || p}" data-panel="${p}" class="${state.panel === p ? 'active' : ''}">${panelLabels[p] || p}</a>
-          `).join('')}
+        <nav class="left-bar-nav" aria-label="Main">
+          <a href="/chat/jimmyqrg" class="left-bar-item ${primaryNav === 'home' ? 'active' : ''}" title="Home (JimmyQrg group chat)">
+            <span class="left-bar-icon" aria-hidden="true">${ICON_HOME}</span>
+            <span class="left-bar-label">Home</span>
+          </a>
+          <a href="/chat" class="left-bar-item ${primaryNav === 'chat' ? 'active' : ''}" title="Chat (private messages)">
+            <span class="left-bar-icon" aria-hidden="true">${ICON_CHAT}</span>
+            <span class="left-bar-label">Chat</span>
+          </a>
+          ${state.user?.is_allowed ? `
+          <a href="/manage" class="left-bar-item ${primaryNav === 'admin' ? 'active' : ''}" title="Admin">
+            <span class="left-bar-icon" aria-hidden="true">${ICON_ADMIN}</span>
+            <span class="left-bar-label">Admin</span>
+          </a>
+          ` : ''}
+          <a href="/settings?tab=profile" class="left-bar-item ${primaryNav === 'settings' ? 'active' : ''}" title="Settings">
+            <span class="left-bar-icon" aria-hidden="true">${ICON_SETTINGS}</span>
+            <span class="left-bar-label">Settings</span>
+          </a>
+        </nav>
+        <div class="left-bar-bottom">
+          <button type="button" class="left-bar-expand" id="left-bar-expand" title="${expanded ? 'Collapse' : 'Expand'}">
+            <span class="left-bar-icon" aria-hidden="true">${expanded ? ICON_CHEVRON_LEFT : ICON_CHEVRON_RIGHT}</span>
+            <span class="left-bar-label">${expanded ? 'Collapse' : 'Expand'}</span>
+          </button>
         </div>
-      ` : ''}
+      </aside>
 
-      <div class="content">
-        <aside class="sidebar">
-          <h3>Direct messages</h3>
-          <ul>
-            ${(state.users || []).filter(u => u.id !== state.user?.id).map(u => `
-              <li class="${state.dmUserId === u.id ? 'active' : ''}">
-                <a href="/chat/${encodeURIComponent(u.id)}">
-                  <img src="${u.avatar_url || getDefaultAvatarUrl(u.id)}" alt="" />
-                  <span>${escapeHtml(u.display_name || u.username)}</span>
-                </a>
-              </li>
+      <div class="panel-column" id="panel-column">
+        ${primaryNav === 'home' ? `
+        <div class="panel-list">
+          <h3 class="panel-list-title">JimmyQrg</h3>
+          <ul class="panel-list-ul">
+            ${panels.map(p => `
+              <li><a href="/chat/jimmyqrg?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}">${escapeHtml(panelLabels[p] || p)}</a></li>
             `).join('')}
           </ul>
-        </aside>
+        </div>
+        ` : ''}
+        ${primaryNav === 'chat' ? `
+        <div class="panel-list panel-list-users">
+          <div class="panel-list-header">
+            <h3 class="panel-list-title">Chat</h3>
+            <button type="button" class="panel-search-btn" id="panel-search-btn" title="Search users">${ICON_SEARCH}</button>
+          </div>
+          <div class="panel-search-bar ${state.panelSearchOpen ? 'open' : ''}" id="panel-search-bar">
+            <input type="search" id="panel-user-search" placeholder="Search users…" />
+          </div>
+          <ul class="panel-list-ul" id="panel-user-list">
+            ${(state.users || []).filter(u => u.id !== state.user?.id).map(u => `
+              <li><a href="/chat/${encodeURIComponent(u.id)}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml((u.display_name || u.username || '').toLowerCase())}">
+                <img src="${u.avatar_url || getDefaultAvatarUrl(u.id)}" alt="" class="panel-user-avatar" />
+                <span>${escapeHtml(u.display_name || u.username)}</span>
+              </a></li>
+            `).join('')}
+          </ul>
+        </div>
+        ` : ''}
+        ${primaryNav === 'admin' ? `
+        <div class="panel-tabs">
+          <h3 class="panel-list-title">Admin</h3>
+          <a href="/manage?tab=action" class="panel-tab ${(route.adminTab || 'action') === 'action' ? 'active' : ''}">Action</a>
+          <a href="/manage?tab=users" class="panel-tab ${route.adminTab === 'users' ? 'active' : ''}">Users</a>
+        </div>
+        ` : ''}
+        ${primaryNav === 'settings' ? `
+        <div class="panel-tabs">
+          <h3 class="panel-list-title">Settings</h3>
+          <a href="/settings?tab=profile" class="panel-tab ${(route.tab || 'profile') === 'profile' ? 'active' : ''}">Profile</a>
+          <a href="/settings?tab=account" class="panel-tab ${route.tab === 'account' ? 'active' : ''}">Account</a>
+        </div>
+        ` : ''}
+      </div>
 
-        <main class="chat-area">
-          ${isGroup && (state.panel === 'free_chat' || state.panel === 'support') ? renderChatArea() : ''}
-          ${isGroup && isDocPanel ? renderDocArea() : ''}
-          ${state.dmUserId ? renderChatArea() : ''}
-          ${!isGroup && !state.dmUserId && !isDocPanel ? '<div class="empty-state">Select a panel or a user.</div>' : ''}
-        </main>
+      <div class="main-content">
+        <header class="main-content-header">
+          <a href="/inbox" class="main-header-link main-header-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${Math.min(99, (state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
+        </header>
+        <div class="main-content-body">
+          ${primaryNav === 'home' ? (isGroup && (state.panel === 'free_chat' || state.panel === 'support') ? renderChatArea() : isGroup && isDocPanel ? renderDocArea() : '<div class="empty-state">Select a panel.</div>') : ''}
+          ${primaryNav === 'chat' ? (state.dmUserId ? renderChatArea() : '<div class="empty-state">Select a conversation.</div>') : ''}
+          ${primaryNav === 'admin' ? renderAdminContent() : ''}
+          ${primaryNav === 'settings' ? renderSettingsContent() : ''}
+        </div>
       </div>
     </div>
   `;
 }
+
+const ICON_HOME = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>';
+const ICON_CHAT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+const ICON_ADMIN = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+const ICON_SETTINGS = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+const ICON_CHEVRON_RIGHT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
+const ICON_CHEVRON_LEFT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
+const ICON_SEARCH = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
 
 function renderChatArea() {
   const roomType = state.dmUserId ? 'dm' : 'group';
@@ -638,6 +707,29 @@ function formatTime(ts) {
 }
 
 function bindMain() {
+  document.getElementById('left-bar-expand')?.addEventListener('click', () => {
+    state.leftBarExpanded = !state.leftBarExpanded;
+    try { localStorage.setItem('leftBarExpanded', state.leftBarExpanded ? '1' : '0'); } catch (_) {}
+    setState({});
+  });
+
+  document.getElementById('panel-search-btn')?.addEventListener('click', () => {
+    state.panelSearchOpen = !state.panelSearchOpen;
+    render();
+    bindMain();
+  });
+
+  const panelSearchInput = document.getElementById('panel-user-search');
+  const panelUserList = document.getElementById('panel-user-list');
+  if (panelSearchInput && panelUserList) {
+    panelSearchInput.addEventListener('input', () => {
+      const q = (panelSearchInput.value || '').trim().toLowerCase();
+      panelUserList.querySelectorAll('a.panel-list-link').forEach((a) => {
+        const match = !q || (a.dataset.username || '').includes(q) || (a.dataset.display || '').includes(q);
+        a.closest('li').style.display = match ? '' : 'none';
+      });
+    });
+  }
 
   document.getElementById('cancel-reply')?.addEventListener('click', () => setState({ replyTo: null }));
 
@@ -820,30 +912,12 @@ function kickUser(userId) {
   }).then(r => r.json()).then(() => {}).catch(console.error);
 }
 
-function renderAdminPage() {
+function renderAdminContent() {
   const adminTab = new URLSearchParams(window.location.search || '').get('tab') || 'action';
   const users = state.users || [];
   const otherUsers = users.filter(u => u.id !== state.user?.id);
   return `
-    <div class="main-layout">
-      <header class="header">
-        <a href="/chat/jimmyqrg" class="header-logo">JimmyQrg</a>
-        <div class="header-actions">
-          <a href="/inbox" class="header-link header-link-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${((n) => n > 99 ? '99+' : n)((state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
-          <a href="/settings?tab=profile" class="header-link">Settings</a>
-          <a href="/manage" class="header-link">Admin</a>
-          <a href="/settings?tab=profile" class="header-user" title="Profile">
-            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
-            <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
-          </a>
-        </div>
-      </header>
-      <div class="admin-layout">
-        <nav class="admin-nav">
-          <a href="/manage?tab=action" class="admin-nav-item ${adminTab === 'action' ? 'active' : ''}">Action</a>
-          <a href="/manage?tab=users" class="admin-nav-item ${adminTab === 'users' ? 'active' : ''}">Users</a>
-        </nav>
-        <main class="admin-main">
+        <div class="admin-main">
           ${adminTab === 'action' ? `
           ${state.user?.can_send_inbox ? `
           <div class="admin-section">
@@ -912,9 +986,7 @@ function renderAdminPage() {
             </div>
           </div>
           ` : ''}
-        </main>
-      </div>
-    </div>
+        </div>
   `;
 }
 
@@ -969,56 +1041,40 @@ function bindAdmin() {
 }
 
 function renderSettingsPage() {
+  return `<div class="settings-page-wrap">${renderSettingsContent()}</div>`;
+}
+
+function renderSettingsContent() {
   const tab = new URLSearchParams(window.location.search || '').get('tab') || 'profile';
   return `
-    <div class="main-layout">
-      <header class="header">
-        <a href="/chat/jimmyqrg" class="header-logo">JimmyQrg</a>
-        <div class="header-actions">
-          <a href="/inbox" class="header-link header-link-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${((n) => n > 99 ? '99+' : n)((state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
-          <a href="/chat/jimmyqrg" class="header-link">Chat</a>
-          <a href="/settings?tab=profile" class="header-user" title="Profile">
-            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
-            <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
-          </a>
+    <div class="settings-page">
+      ${tab === 'profile' ? `
+      <form id="profile-form" class="settings-form">
+        <label>Avatar</label>
+        <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" class="avatar-preview" id="avatar-preview" />
+        <label class="file-label">
+          <span class="file-label-text">Choose image</span>
+          <input type="file" name="avatar" accept="image/*" class="file-input" />
+        </label>
+        <label>Display name</label>
+        <input type="text" name="display_name" value="${escapeHtml(state.user?.display_name || '')}" />
+        <button type="submit">Save</button>
+      </form>
+      ` : ''}
+      ${tab === 'account' ? `
+      <div class="settings-account">
+        <div class="settings-account-block">
+          <h3 class="settings-section-title">Password</h3>
+          <p class="settings-account-desc">Change your password. Your current password is required.</p>
+          <button type="button" id="open-password-modal" class="btn-secondary">Change password</button>
         </div>
-      </header>
-      <div class="content" style="justify-content:center">
-        <div class="settings-page">
-          <h2>Settings</h2>
-          <div class="settings-tabs">
-            <a href="/settings?tab=profile" class="tab-link ${tab === 'profile' ? 'active' : ''}">Profile</a>
-            <a href="/settings?tab=account" class="tab-link ${tab === 'account' ? 'active' : ''}">Account</a>
-          </div>
-          ${tab === 'profile' ? `
-          <form id="profile-form" class="settings-form">
-            <label>Avatar</label>
-            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" class="avatar-preview" id="avatar-preview" />
-            <label class="file-label">
-              <span class="file-label-text">Choose image</span>
-              <input type="file" name="avatar" accept="image/*" class="file-input" />
-            </label>
-            <label>Display name</label>
-            <input type="text" name="display_name" value="${escapeHtml(state.user?.display_name || '')}" />
-            <button type="submit">Save</button>
-          </form>
-          ` : ''}
-          ${tab === 'account' ? `
-          <div class="settings-account">
-            <div class="settings-account-block">
-              <h3 class="settings-section-title">Password</h3>
-              <p class="settings-account-desc">Change your password. Your current password is required.</p>
-              <button type="button" id="open-password-modal" class="btn-secondary">Change password</button>
-            </div>
-            <div class="settings-account-block">
-              <h3 class="settings-section-title">Sign out</h3>
-              <p class="settings-account-desc">Sign out of your account on this device.</p>
-              <button type="button" id="sign-out-btn" class="btn-danger">Sign out</button>
-            </div>
-          </div>
-          ` : ''}
+        <div class="settings-account-block">
+          <h3 class="settings-section-title">Sign out</h3>
+          <p class="settings-account-desc">Sign out of your account on this device.</p>
+          <button type="button" id="sign-out-btn" class="btn-danger">Sign out</button>
         </div>
       </div>
+      ` : ''}
     </div>
   `;
 }
@@ -1091,6 +1147,12 @@ function applyRoute(route) {
     state.panel = route.panel || 'free_chat';
     state.dmUserId = route.dmUserId || null;
     state.convId = null;
+    if (route.section === 'dms') {
+      setState({});
+      render();
+      bindMain();
+      return;
+    }
     if (route.dmUserId) {
       apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
         state.convId = conversation_id;

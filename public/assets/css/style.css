@@ -523,7 +523,357 @@ select:focus {
   margin-bottom: 1rem;
 }
 
-/* Main layout */
+/* App shell: left bar + panel column + main content */
+.app-shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.left-bar {
+  width: 56px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  transition: width var(--transition-normal);
+  overflow: hidden;
+}
+
+.left-bar-expanded {
+  width: 180px;
+}
+
+.left-bar-avatar {
+  padding: 0.75rem;
+  flex-shrink: 0;
+}
+
+.left-bar-avatar-link {
+  display: block;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+.left-bar-avatar-link img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.left-bar-nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0;
+}
+
+.left-bar-expanded .left-bar-nav {
+  align-items: stretch;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.left-bar-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem;
+  color: var(--text-dim);
+  text-decoration: none;
+  border-radius: 8px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  width: 40px;
+  justify-content: center;
+}
+
+.left-bar-expanded .left-bar-item {
+  width: auto;
+  justify-content: flex-start;
+}
+
+.left-bar-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.left-bar-item.active {
+  background: var(--bg-hover);
+  color: var(--purple-bright);
+}
+
+.left-bar-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.left-bar-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.left-bar-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.9rem;
+}
+
+.left-bar:not(.left-bar-expanded) .left-bar-label {
+  display: none;
+}
+
+.left-bar-bottom {
+  padding: 0.5rem;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.left-bar-expanded .left-bar-bottom {
+  justify-content: stretch;
+}
+
+.left-bar-expand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem;
+  width: 40px;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.left-bar-expanded .left-bar-expand {
+  width: auto;
+  justify-content: flex-start;
+}
+
+.left-bar-expand:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.panel-column {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-list-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 0.75rem 1rem;
+  margin: 0;
+}
+
+.panel-list-ul {
+  list-style: none;
+  padding: 0 0.5rem 1rem;
+  margin: 0;
+}
+
+.panel-list-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+  transition: background var(--transition-fast);
+}
+
+.panel-list-link:hover {
+  background: var(--bg-hover);
+}
+
+.panel-list-link.active {
+  background: var(--bg-hover);
+  color: var(--purple-bright);
+}
+
+.panel-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.panel-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 0.5rem;
+}
+
+.panel-search-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.panel-search-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.panel-search-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.panel-search-bar {
+  padding: 0 1rem 0.5rem;
+  display: none;
+}
+
+.panel-search-bar.open {
+  display: block;
+}
+
+.panel-search-bar input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-main);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.panel-tabs {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 1rem;
+}
+
+.panel-tabs .panel-list-title {
+  margin-bottom: 0.25rem;
+}
+
+.panel-tab {
+  padding: 0.5rem 1rem;
+  color: var(--text-dim);
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: color var(--transition-fast);
+}
+
+.panel-tab:hover {
+  color: var(--text);
+}
+
+.panel-tab.active {
+  color: var(--purple-bright);
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.main-content-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0.5rem 1rem;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.main-header-link {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  transition: color var(--transition-fast);
+}
+
+.main-header-link:hover {
+  color: var(--purple-bright);
+}
+
+.main-header-inbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.main-content-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-main);
+}
+
+.main-content-body .messages-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.main-content-body .composer {
+  flex-shrink: 0;
+}
+
+.main-content-body .doc-panel,
+.main-content-body .admin-main,
+.main-content-body .settings-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+}
+
+.main-content-body .empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  padding: 2rem;
+}
+
+/* Main layout (legacy / inbox full page) */
 .main-layout {
   display: flex;
   flex-direction: column;

@@ -1,4 +1,5 @@
 import session from 'express-session';
+import { EventEmitter } from 'events';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { db, validateUsername } from './db.js';
@@ -7,10 +8,17 @@ import { createSessionStore } from './session-store.js';
 const TWO_MINUTES_MS = 2 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Ensure store has .on (express-session requires it). Use as-is if present, else wrap in EventEmitter. */
+function ensureStoreWithOn(store) {
+  if (store && typeof store.on === 'function') return store;
+  const base = new EventEmitter();
+  return Object.assign(base, store);
+}
+
 export function sessionMiddleware() {
   return session({
     secret: process.env.SESSION_SECRET || 'jimmyqrg-chat-secret-change-in-production',
-    store: createSessionStore(),
+    store: ensureStoreWithOn(createSessionStore()),
     resave: false,
     saveUninitialized: false,
     rolling: true,

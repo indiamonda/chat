@@ -1,14 +1,23 @@
 import { EventEmitter } from 'events';
 import { db } from './db.js';
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS sessions (
-    sid TEXT PRIMARY KEY,
-    session TEXT NOT NULL,
-    expires INTEGER NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires);
-`);
+let tableReady = false;
+function ensureTable() {
+  if (tableReady) return;
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        sid TEXT PRIMARY KEY,
+        session TEXT NOT NULL,
+        expires INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires);
+    `);
+    tableReady = true;
+  } catch (err) {
+    console.error('Session store ensureTable error:', err);
+  }
+}
 
 function getExpires(session) {
   try {
@@ -24,6 +33,7 @@ function getExpires(session) {
 class SqliteSessionStore extends EventEmitter {
   get(sid, callback) {
     try {
+      ensureTable();
       const row = db.prepare('SELECT session, expires FROM sessions WHERE sid = ? AND expires > ?').get(sid, Date.now());
       if (!row) return callback();
       const session = JSON.parse(row.session);
@@ -35,6 +45,7 @@ class SqliteSessionStore extends EventEmitter {
 
   set(sid, session, callback) {
     try {
+      ensureTable();
       const expires = getExpires(session);
       const json = JSON.stringify(session);
       db.prepare('INSERT OR REPLACE INTO sessions (sid, session, expires) VALUES (?, ?, ?)').run(sid, json, expires);
@@ -46,6 +57,7 @@ class SqliteSessionStore extends EventEmitter {
 
   destroy(sid, callback) {
     try {
+      ensureTable();
       db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid);
     } catch (err) {
       console.error('Session store destroy error:', err);
@@ -55,6 +67,7 @@ class SqliteSessionStore extends EventEmitter {
 
   touch(sid, session, callback) {
     try {
+      ensureTable();
       const expires = getExpires(session);
       db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?').run(expires, sid);
     } catch (err) {

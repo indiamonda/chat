@@ -71,7 +71,10 @@ app.use((req, res, next) => {
   session(req, res, (err) => {
     if (err) {
       console.error('Session middleware error:', err);
-      return next(err);
+      // Continue without session so we never 500 on session/store errors (user appears logged out for this request)
+      req.session = {};
+      touchSession(req, res, next);
+      return;
     }
     touchSession(req, res, next);
   });
@@ -314,11 +317,19 @@ io.use((socket, next) => {
     end: (fn) => { if (typeof fn === 'function') fn(); }
   };
   session(socket.request, fakeRes, (err) => {
-    if (err) return next(err);
+    if (err) {
+      console.error('Socket session error:', err);
+      return next(err);
+    }
     const userId = socket.request.session?.userId;
     if (!userId) return next(new Error('Not authenticated'));
     socket.userId = userId;
-    socket.user = db.prepare('SELECT id, username, display_name, avatar_url, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages FROM users WHERE id = ?').get(userId);
+    try {
+      socket.user = db.prepare('SELECT id, username, display_name, avatar_url, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages FROM users WHERE id = ?').get(userId);
+    } catch (e) {
+      console.error('Socket user lookup error:', e);
+      return next(new Error('User not found'));
+    }
     if (!socket.user) return next(new Error('User not found'));
     socket.user.is_allowed = !!socket.user.is_allowed;
     socket.user.can_send_inbox = !!socket.user.can_send_inbox;
