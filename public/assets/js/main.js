@@ -45,7 +45,7 @@ function parseRoute() {
   if (path === '/signup') return { page: 'signup' };
   if (path === '/settings') return { page: 'settings', tab: params.get('tab') || 'profile' };
   if (path === '/inbox') return { page: 'inbox' };
-  if (path === '/admin') return { page: 'admin', adminTab: params.get('tab') || 'action' };
+  if (path === '/manage' || path === '/manage/') return { page: 'admin', adminTab: params.get('tab') || 'action' };
   const chatMatch = path.match(/^\/chat\/([^/]+)$/);
   if (chatMatch) {
     const id = chatMatch[1];
@@ -217,12 +217,14 @@ function render() {
     const authError = state.authError || '';
     state.authError = null;
     app.innerHTML = renderAuth(isSignup, authError);
+    if (typeof lucide !== 'undefined') lucide.createIcons();
     bindAuth(isSignup);
     return;
   }
 
   document.body.classList.remove('auth-page');
   app.innerHTML = renderMain();
+  if (typeof lucide !== 'undefined') lucide.createIcons();
   bindMain();
   interceptLinks(app);
 }
@@ -360,7 +362,7 @@ function renderMain() {
         <div class="header-actions">
           <a href="/inbox" class="header-link header-link-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${((n) => n > 99 ? '99+' : n)((state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
           <a href="/settings?tab=profile" class="header-link">Settings</a>
-          ${state.user?.is_allowed ? '<a href="/admin" class="header-link">Admin</a>' : ''}
+          ${state.user?.is_allowed ? '<a href="/manage" class="header-link">Admin</a>' : ''}
           <a href="/settings?tab=profile" class="header-user" title="Profile">
             <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
             <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
@@ -424,14 +426,14 @@ function renderChatArea() {
       ${state._pendingFile ? `
         <div class="composer-pending-file" id="pending-file-indicator">
           <span>Attached: ${escapeHtml(state._pendingFile.name)}</span>
-          <button type="button" id="clear-pending-file" title="Remove">×</button>
+          <button type="button" id="clear-pending-file" title="Remove"><i data-lucide="x" class="icon icon-sm"></i></button>
         </div>
       ` : ''}
       <div class="composer-row">
         <div class="composer-input-wrap">
           <textarea id="composer-input" placeholder="Message…" rows="1"></textarea>
           <div class="composer-actions">
-            <button type="button" id="attach-file" title="Attach file">📎</button>
+            <button type="button" id="attach-file" title="Attach file"><i data-lucide="paperclip" class="icon"></i></button>
             <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
           </div>
         </div>
@@ -488,7 +490,7 @@ function renderMessage(m, roomType, roomId) {
     </details>
   ` : '';
 
-  const likeBtn = `<button type="button" class="like-btn" data-msg-id="${m.id}">❤️ ${m.likes > 0 ? m.likes : ''}</button>`;
+  const likeBtn = `<button type="button" class="like-btn" data-msg-id="${m.id}"><i data-lucide="heart" class="icon icon-sm"></i>${m.likes > 0 ? ` ${m.likes}` : ''}</button>`;
 
   return `
     <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
@@ -832,7 +834,7 @@ function renderAdminPage() {
         <div class="header-actions">
           <a href="/inbox" class="header-link header-link-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${((n) => n > 99 ? '99+' : n)((state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
           <a href="/settings?tab=profile" class="header-link">Settings</a>
-          <a href="/admin" class="header-link">Admin</a>
+          <a href="/manage" class="header-link">Admin</a>
           <a href="/settings?tab=profile" class="header-user" title="Profile">
             <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
             <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
@@ -841,8 +843,8 @@ function renderAdminPage() {
       </header>
       <div class="admin-layout">
         <nav class="admin-nav">
-          <a href="/admin?tab=action" class="admin-nav-item ${adminTab === 'action' ? 'active' : ''}">Action</a>
-          <a href="/admin?tab=users" class="admin-nav-item ${adminTab === 'users' ? 'active' : ''}">Users</a>
+          <a href="/manage?tab=action" class="admin-nav-item ${adminTab === 'action' ? 'active' : ''}">Action</a>
+          <a href="/manage?tab=users" class="admin-nav-item ${adminTab === 'users' ? 'active' : ''}">Users</a>
         </nav>
         <main class="admin-main">
           ${adminTab === 'action' ? `
