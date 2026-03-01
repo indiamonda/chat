@@ -217,14 +217,12 @@ function render() {
     const authError = state.authError || '';
     state.authError = null;
     app.innerHTML = renderAuth(isSignup, authError);
-    if (typeof lucide !== 'undefined') lucide.createIcons();
     bindAuth(isSignup);
     return;
   }
 
   document.body.classList.remove('auth-page');
   app.innerHTML = renderMain();
-  if (typeof lucide !== 'undefined') lucide.createIcons();
   bindMain();
   interceptLinks(app);
 }
@@ -426,14 +424,14 @@ function renderChatArea() {
       ${state._pendingFile ? `
         <div class="composer-pending-file" id="pending-file-indicator">
           <span>Attached: ${escapeHtml(state._pendingFile.name)}</span>
-          <button type="button" id="clear-pending-file" title="Remove"><i data-lucide="x" class="icon icon-sm"></i></button>
+          <button type="button" id="clear-pending-file" title="Remove"><span class="icon icon-sm" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></button>
         </div>
       ` : ''}
       <div class="composer-row">
         <div class="composer-input-wrap">
           <textarea id="composer-input" placeholder="Message…" rows="1"></textarea>
           <div class="composer-actions">
-            <button type="button" id="attach-file" title="Attach file"><i data-lucide="paperclip" class="icon"></i></button>
+            <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
             <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
           </div>
         </div>
@@ -490,7 +488,7 @@ function renderMessage(m, roomType, roomId) {
     </details>
   ` : '';
 
-  const likeBtn = `<button type="button" class="like-btn" data-msg-id="${m.id}"><i data-lucide="heart" class="icon icon-sm"></i>${m.likes > 0 ? ` ${m.likes}` : ''}</button>`;
+  const likeBtn = `<button type="button" class="like-btn" data-msg-id="${m.id}"><span class="icon icon-sm" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span>${m.likes > 0 ? ` ${m.likes}` : ''}</button>`;
 
   return `
     <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
