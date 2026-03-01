@@ -8,9 +8,8 @@ const TWO_MINUTES_MS = 2 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function sessionMiddleware() {
-  return session({
+  const opts = {
     secret: process.env.SESSION_SECRET || 'jimmyqrg-chat-secret-change-in-production',
-    store: createSessionStore(),
     resave: false,
     saveUninitialized: false,
     rolling: true,
@@ -20,7 +19,11 @@ export function sessionMiddleware() {
       sameSite: 'lax',
       httpOnly: true,
     },
-  });
+  };
+  if (process.env.USE_SQLITE_SESSION === '1') {
+    opts.store = createSessionStore();
+  }
+  return session(opts);
 }
 
 /** Call from a route or middleware to touch the session so the cookie and store TTL are extended (use with rolling: true). */
