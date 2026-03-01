@@ -24,9 +24,11 @@ export function createSessionStore() {
     try {
       const row = db.prepare('SELECT session, expires FROM sessions WHERE sid = ? AND expires > ?').get(sid, Date.now());
       if (!row) return callback();
-      callback(null, JSON.parse(row.session));
-    } catch (err) {
-      callback(err);
+      const session = JSON.parse(row.session);
+      callback(null, session);
+    } catch {
+      // Corrupt or missing session: treat as no session so we never 500 on asset/API requests
+      callback();
     }
   };
   store.set = function set(sid, session, callback) {

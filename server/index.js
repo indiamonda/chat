@@ -56,34 +56,41 @@ app.set('trust proxy', 1);
 
 app.use(express.json());
 app.use(cookieParser());
+
+// Serve assets and uploads before session so static requests never trigger session/DB errors or 500
+app.use('/assets', express.static(join(publicDir, 'assets'), {
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'no-cache, must-revalidate');
+    res.set('Pragma', 'no-cache');
+  },
+}));
+app.use('/uploads', express.static(uploadsDir));
+
 const session = sessionMiddleware();
 app.use(session);
 app.use(touchSession);
-
-app.use('/uploads', express.static(uploadsDir));
 
 // Serve SPA HTML with cache-busting for all document routes (before static so "/" gets it too)
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   if (req.path.startsWith('/api') || req.path.startsWith('/assets') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
-  const p = join(publicDir, 'index.html');
-  if (!existsSync(p)) return next();
-  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  const version = process.env.ASSET_VERSION || Date.now();
-  const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
-  return res.type('html').send(html);
+  try {
+    const p = join(publicDir, 'index.html');
+    if (!existsSync(p)) return next();
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    res.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' wss: https:;");
+    const version = process.env.ASSET_VERSION || Date.now();
+    const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
+    return res.type('html').send(html);
+  } catch (err) {
+    console.error('SPA serve error:', err);
+    next(err);
+  }
 });
 
-app.use(express.static(publicDir, {
-  setHeaders: (res, filePath) => {
-    if (filePath.replace(/\\/g, '/').includes('/assets/')) {
-      res.set('Cache-Control', 'no-cache, must-revalidate');
-      res.set('Pragma', 'no-cache');
-    }
-  },
-}));
+app.use(express.static(publicDir));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
@@ -268,6 +275,16 @@ app.get('*', (req, res) => {
     return res.type('html').send(html);
   }
   res.status(404).send('Not found');
+});
+
+// Global error handler – prevents 500 from crashing; returns proper response
+app.use((err, req, res, next) => {
+  console.error('Request error:', req.method, req.path, err);
+  if (req.path.startsWith('/api')) {
+    res.status(500).json({ error: 'Internal server error' });
+  } else {
+    res.status(500).type('html').send('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Error</title></head><body><h1>Something went wrong</h1><p>Please try again later.</p></body></html>');
+  }
 });
 
 const io = new Server(httpServer, { cors: { origin: true } });
