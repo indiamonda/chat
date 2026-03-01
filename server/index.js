@@ -48,7 +48,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.DATA_DIR || join(__dirname, '../data');
 const uploadsDir = join(dataDir, 'uploads');
 const publicDir = join(__dirname, '../public');
-const ASSET_VERSION = process.env.ASSET_VERSION || Date.now();
 
 const app = express();
 const httpServer = createServer(app);
@@ -61,9 +60,23 @@ const session = sessionMiddleware();
 app.use(session);
 
 app.use('/uploads', express.static(uploadsDir));
+
+// Serve SPA HTML with cache-busting for all document routes (before static so "/" gets it too)
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (req.path.startsWith('/api') || req.path.startsWith('/assets') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
+  const p = join(publicDir, 'index.html');
+  if (!existsSync(p)) return next();
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  const version = process.env.ASSET_VERSION || Date.now();
+  const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
+  return res.type('html').send(html);
+});
+
 app.use(express.static(publicDir, {
   setHeaders: (res, filePath) => {
-    // Force revalidate so content updates without hard refresh
     if (filePath.replace(/\\/g, '/').includes('/assets/')) {
       res.set('Cache-Control', 'no-cache, must-revalidate');
       res.set('Pragma', 'no-cache');
@@ -242,14 +255,15 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   res.status(201).json({ message: msg });
 });
 
-// SPA fallback: inject cache-busting version so content updates without hard refresh
+// SPA fallback for any unhandled GET (e.g. /api/unknown)
 app.get('*', (req, res) => {
   const p = join(publicDir, 'index.html');
   if (existsSync(p)) {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
-    const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${ASSET_VERSION}`);
+    const version = process.env.ASSET_VERSION || Date.now();
+    const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
     return res.type('html').send(html);
   }
   res.status(404).send('Not found');

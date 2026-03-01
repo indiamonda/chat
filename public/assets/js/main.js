@@ -506,14 +506,23 @@ function renderDocArea() {
   const docKey = state.panel;
   const canEdit = state.user?.is_allowed;
   const supportId = state.supportMessageIdForSolve || '';
-  return `
+  const content = state._docContent ?? '';
+  if (canEdit) {
+    return `
     <div class="doc-panel" data-doc-key="${docKey}">
-      <div class="doc-toolbar" style="display:${canEdit ? 'flex' : 'none'}">
+      <div class="doc-toolbar">
         <button type="button" id="save-doc">Save</button>
       </div>
       <div class="doc-editor">
-        <textarea id="doc-content" ${canEdit ? '' : 'readonly'} placeholder="Loading…"></textarea>
+        <textarea id="doc-content" placeholder="Loading…"></textarea>
       </div>
+      <input type="hidden" id="doc-support-msg-id" value="${escapeHtml(supportId)}" />
+    </div>
+  `;
+  }
+  return `
+    <div class="doc-panel" data-doc-key="${docKey}">
+      <div class="doc-view doc-markdown">${markdownToHtml(content)}</div>
       <input type="hidden" id="doc-support-msg-id" value="${escapeHtml(supportId)}" />
     </div>
   `;
@@ -524,6 +533,94 @@ function escapeHtml(s) {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+/** Render Markdown to safe HTML (no raw HTML execution). */
+function markdownToHtml(md) {
+  if (md == null || md === '') return '';
+  const lines = String(md).replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const out = [];
+  let inBlock = false;
+  let blockContent = [];
+  let listItems = [];
+  let listOrdered = false;
+
+  function flushBlock() {
+    if (blockContent.length) {
+      const code = escapeHtml(blockContent.join('\n'));
+      out.push(`<pre><code>${code}</code></pre>`);
+      blockContent = [];
+    }
+    inBlock = false;
+  }
+  function flushList() {
+    if (listItems.length) {
+      const tag = listOrdered ? 'ol' : 'ul';
+      out.push(`<${tag}><li>${listItems.join(`</li><li>`)}</li></${tag}>`);
+      listItems = [];
+    }
+  }
+  function inlineMarkdown(s) {
+    return escapeHtml(s)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/_(.+?)_/g, '<em>$1</em>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trimEnd();
+    if (trimmed.startsWith('```')) {
+      flushList();
+      if (inBlock) {
+        flushBlock();
+      } else {
+        inBlock = true;
+      }
+      continue;
+    }
+    if (inBlock) {
+      blockContent.push(line);
+      continue;
+    }
+    const olMatch = trimmed.match(/^(\d+)\.\s+(.+)$/);
+    const ulMatch = trimmed.match(/^[-*]\s+(.+)$/);
+    if (olMatch) {
+      if (listItems.length && !listOrdered) flushList();
+      listOrdered = true;
+      listItems.push(inlineMarkdown(olMatch[2]));
+      continue;
+    }
+    if (ulMatch) {
+      if (listItems.length && listOrdered) flushList();
+      listOrdered = false;
+      listItems.push(inlineMarkdown(ulMatch[1]));
+      continue;
+    }
+    flushList();
+    if (trimmed.startsWith('### ')) {
+      out.push(`<h3>${inlineMarkdown(trimmed.slice(4))}</h3>`);
+      continue;
+    }
+    if (trimmed.startsWith('## ')) {
+      out.push(`<h2>${inlineMarkdown(trimmed.slice(3))}</h2>`);
+      continue;
+    }
+    if (trimmed.startsWith('# ')) {
+      out.push(`<h1>${inlineMarkdown(trimmed.slice(2))}</h1>`);
+      continue;
+    }
+    if (trimmed === '') {
+      out.push('<p></p>');
+      continue;
+    }
+    out.push(`<p>${inlineMarkdown(trimmed)}</p>`);
+  }
+  flushBlock();
+  flushList();
+  return out.join('\n');
 }
 
 function formatTime(ts) {

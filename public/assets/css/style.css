@@ -911,6 +911,76 @@ body::after {
   font-family: inherit;
 }
 
+.doc-markdown {
+  line-height: 1.6;
+}
+
+.doc-markdown h1 {
+  font-size: 1.5rem;
+  margin: 1rem 0 0.5rem;
+  color: var(--purple-bright);
+}
+
+.doc-markdown h1:first-child {
+  margin-top: 0;
+}
+
+.doc-markdown h2 {
+  font-size: 1.25rem;
+  margin: 1rem 0 0.5rem;
+  color: var(--purple-bright);
+}
+
+.doc-markdown h3 {
+  font-size: 1.1rem;
+  margin: 0.75rem 0 0.35rem;
+  color: var(--text);
+}
+
+.doc-markdown p {
+  margin: 0.5rem 0;
+}
+
+.doc-markdown ul,
+.doc-markdown ol {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.doc-markdown li {
+  margin: 0.25rem 0;
+}
+
+.doc-markdown code {
+  background: var(--bg-main);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.doc-markdown pre {
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 0.75rem 0;
+  overflow-x: auto;
+}
+
+.doc-markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.doc-markdown a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.doc-markdown a:hover {
+  text-decoration: underline;
+}
+
 /* Settings */
 .settings-page {
   max-width: 560px;
