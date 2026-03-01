@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events';
 import { db } from './db.js';
 
 db.exec(`
@@ -18,41 +19,41 @@ function getExpires(session) {
 }
 
 export function createSessionStore() {
-  return {
-    get(sid, callback) {
-      try {
-        const row = db.prepare('SELECT session, expires FROM sessions WHERE sid = ? AND expires > ?').get(sid, Date.now());
-        if (!row) return callback();
-        callback(null, JSON.parse(row.session));
-      } catch (err) {
-        callback(err);
-      }
-    },
-    set(sid, session, callback) {
-      const expires = getExpires(session);
-      try {
-        db.prepare('INSERT OR REPLACE INTO sessions (sid, session, expires) VALUES (?, ?, ?)').run(sid, JSON.stringify(session), expires);
-        callback();
-      } catch (err) {
-        callback(err);
-      }
-    },
-    destroy(sid, callback) {
-      try {
-        db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid);
-        callback();
-      } catch (err) {
-        callback(err);
-      }
-    },
-    touch(sid, session, callback) {
-      const expires = getExpires(session);
-      try {
-        db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?').run(expires, sid);
-        callback();
-      } catch (err) {
-        callback(err);
-      }
-    },
+  const store = new EventEmitter();
+  store.get = function get(sid, callback) {
+    try {
+      const row = db.prepare('SELECT session, expires FROM sessions WHERE sid = ? AND expires > ?').get(sid, Date.now());
+      if (!row) return callback();
+      callback(null, JSON.parse(row.session));
+    } catch (err) {
+      callback(err);
+    }
   };
+  store.set = function set(sid, session, callback) {
+    const expires = getExpires(session);
+    try {
+      db.prepare('INSERT OR REPLACE INTO sessions (sid, session, expires) VALUES (?, ?, ?)').run(sid, JSON.stringify(session), expires);
+      callback();
+    } catch (err) {
+      callback(err);
+    }
+  };
+  store.destroy = function destroy(sid, callback) {
+    try {
+      db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid);
+      callback();
+    } catch (err) {
+      callback(err);
+    }
+  };
+  store.touch = function touch(sid, session, callback) {
+    const expires = getExpires(session);
+    try {
+      db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?').run(expires, sid);
+      callback();
+    } catch (err) {
+      callback(err);
+    }
+  };
+  return store;
 }
