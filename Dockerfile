@@ -1,4 +1,5 @@
-FROM node:20-alpine AS base
+# Use Debian-based image so better-sqlite3 prebuilt binaries work (Alpine/musl has no prebuilds)
+FROM node:20-slim AS base
 WORKDIR /app
 
 FROM base AS deps
@@ -8,8 +9,7 @@ RUN npm install --omit=dev
 FROM base AS runner
 ENV NODE_ENV=production
 ENV PORT=8080
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nodejs
+RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs nodejs
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p /data && chown -R nodejs:nodejs /data

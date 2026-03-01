@@ -449,6 +449,21 @@ io.on('connection', (socket) => {
 
 // Do not replace placeholder password: lets first signup with username jimmyqrg "claim" that account
 
-const PORT = parseInt(process.env.PORT, 10) || 3000;
-const HOST = process.env.HOST || '0.0.0.0';
-httpServer.listen(PORT, HOST, () => console.log(`Server listening on ${HOST}:${PORT}`));
+function start() {
+  const PORT = parseInt(process.env.PORT, 10) || 3000;
+  const HOST = process.env.HOST || '0.0.0.0';
+  httpServer.listen(PORT, HOST, () => console.log(`Server listening on ${HOST}:${PORT}`));
+}
+httpServer.on('error', (err) => {
+  console.error('Server listen error:', err);
+  process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled rejection at', promise, 'reason:', reason);
+  process.exit(1);
+});
+start();

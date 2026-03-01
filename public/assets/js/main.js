@@ -45,6 +45,7 @@ function parseRoute() {
   if (path === '/signup') return { page: 'signup' };
   if (path === '/settings') return { page: 'settings', tab: params.get('tab') || 'profile' };
   if (path === '/inbox') return { page: 'inbox' };
+  if (path === '/admin') return { page: 'admin', adminTab: params.get('tab') || 'action' };
   const chatMatch = path.match(/^\/chat\/([^/]+)$/);
   if (chatMatch) {
     const id = chatMatch[1];
@@ -350,6 +351,7 @@ function renderMain() {
   const isGroup = !state.dmUserId;
   if (page === 'settings') return renderSettingsPage();
   if (page === 'inbox') return renderInboxPage();
+  if (page === 'admin') return renderAdminPage();
 
   return `
     <div class="main-layout">
@@ -358,8 +360,7 @@ function renderMain() {
         <div class="header-actions">
           <a href="/inbox" class="header-link header-link-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${((n) => n > 99 ? '99+' : n)((state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
           <a href="/settings?tab=profile" class="header-link">Settings</a>
-          ${state.user?.is_allowed ? '<button type="button" id="admin-btn" class="header-link-btn">Admin</button>' : ''}
-          <button type="button" id="logout" class="header-link-btn">Logout</button>
+          ${state.user?.is_allowed ? '<a href="/admin" class="header-link">Admin</a>' : ''}
           <a href="/settings?tab=profile" class="header-user" title="Profile">
             <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
             <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
@@ -638,15 +639,6 @@ function formatTime(ts) {
 }
 
 function bindMain() {
-  document.getElementById('logout')?.addEventListener('click', async () => {
-    await apiPost('/api/auth/logout');
-    state.user = null;
-    state.socket?.disconnect();
-    state.socket = null;
-    navigateTo('/login');
-  });
-
-  document.getElementById('admin-btn')?.addEventListener('click', () => showAdminModal());
 
   document.getElementById('cancel-reply')?.addEventListener('click', () => setState({ replyTo: null }));
 
@@ -829,52 +821,89 @@ function kickUser(userId) {
   }).then(r => r.json()).then(() => {}).catch(console.error);
 }
 
-function showAdminModal() {
-  const users = (state.users || []).filter(u => u.id !== state.user?.id);
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  overlay.innerHTML = `
-    <div class="modal" style="max-width: 480px;">
-      <h3>Admin</h3>
-      <div class="admin-panel">
-        <h4>Users</h4>
-        <ul id="admin-user-list">
-          ${users.map(u => `
-            <li>
-              <span>${escapeHtml(u.display_name || u.username)} ${u.id === 'jimmyqrg' ? '(admin)' : ''}</span>
-              <span>
-                ${u.id !== 'jimmyqrg' ? `
-                  <button type="button" data-action="kick" data-user-id="${u.id}">Kick</button>
-                  <button type="button" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}">${u.is_allowed ? 'Revoke' : 'Grant'} allowed</button>
-                ` : ''}
-              </span>
-            </li>
-          `).join('')}
-        </ul>
-      </div>
-      <div class="admin-panel" style="margin-top: 1rem;">
-        <h4>Send to inbox</h4>
-        <select id="admin-inbox-user">
-          <option value="">Select user</option>
-          ${users.map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
-        </select>
-        <input type="text" id="admin-inbox-title" placeholder="Title" style="width:100%; margin-top:0.5rem;" />
-        <textarea id="admin-inbox-body" placeholder="Body" style="width:100%; margin-top:0.5rem; min-height: 60px;"></textarea>
-        <button type="button" id="admin-inbox-send" class="admin-send">Send</button>
-      </div>
-      <div class="admin-panel" style="margin-top: 1rem;">
-        <h4>Broadcast to all</h4>
-        <input type="text" id="admin-broadcast-title" placeholder="Title" style="width:100%; margin-top:0.5rem;" />
-        <textarea id="admin-broadcast-body" placeholder="Body" style="width:100%; margin-top:0.5rem; min-height: 60px;"></textarea>
-        <button type="button" id="admin-broadcast-send" class="admin-send">Broadcast</button>
-      </div>
-      <div class="modal-actions">
-        <button type="button" id="admin-close" class="modal-close">Close</button>
+function renderAdminPage() {
+  const adminTab = new URLSearchParams(window.location.search || '').get('tab') || 'action';
+  const users = state.users || [];
+  const otherUsers = users.filter(u => u.id !== state.user?.id);
+  return `
+    <div class="main-layout">
+      <header class="header">
+        <a href="/chat/jimmyqrg" class="header-logo">JimmyQrg</a>
+        <div class="header-actions">
+          <a href="/inbox" class="header-link header-link-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${((n) => n > 99 ? '99+' : n)((state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
+          <a href="/settings?tab=profile" class="header-link">Settings</a>
+          <a href="/admin" class="header-link">Admin</a>
+          <a href="/settings?tab=profile" class="header-user" title="Profile">
+            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
+            <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
+          </a>
+        </div>
+      </header>
+      <div class="admin-layout">
+        <nav class="admin-nav">
+          <a href="/admin?tab=action" class="admin-nav-item ${adminTab === 'action' ? 'active' : ''}">Action</a>
+          <a href="/admin?tab=users" class="admin-nav-item ${adminTab === 'users' ? 'active' : ''}">Users</a>
+        </nav>
+        <main class="admin-main">
+          ${adminTab === 'action' ? `
+          <div class="admin-section">
+            <h2 class="admin-section-title">Send to inbox</h2>
+            <p class="admin-section-desc">Send a message to a specific user's inbox.</p>
+            <div class="admin-form">
+              <label>User</label>
+              <select id="admin-inbox-user">
+                <option value="">Select user</option>
+                ${otherUsers.map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
+              </select>
+              <label>Title</label>
+              <input type="text" id="admin-inbox-title" placeholder="Title" />
+              <label>Body</label>
+              <textarea id="admin-inbox-body" placeholder="Message body" rows="4"></textarea>
+              <button type="button" id="admin-inbox-send" class="btn-primary">Send</button>
+            </div>
+          </div>
+          <div class="admin-section">
+            <h2 class="admin-section-title">Broadcast to all</h2>
+            <p class="admin-section-desc">Send a message to every user's inbox.</p>
+            <div class="admin-form">
+              <label>Title</label>
+              <input type="text" id="admin-broadcast-title" placeholder="Title" />
+              <label>Body</label>
+              <textarea id="admin-broadcast-body" placeholder="Message body" rows="4"></textarea>
+              <button type="button" id="admin-broadcast-send" class="btn-primary">Broadcast</button>
+            </div>
+          </div>
+          ` : ''}
+          ${adminTab === 'users' ? `
+          <div class="admin-section">
+            <h2 class="admin-section-title">Users</h2>
+            <p class="admin-section-desc">Manage user access. Grant or revoke allowed status; kick users from the group.</p>
+            <div class="admin-users-list" id="admin-user-list">
+              ${users.map(u => `
+                <div class="admin-user-card" data-user-id="${u.id}">
+                  <img src="${u.avatar_url || getDefaultAvatarUrl(u.id)}" alt="" class="admin-user-avatar" />
+                  <div class="admin-user-info">
+                    <span class="admin-user-name">${escapeHtml(u.display_name || u.username)}</span>
+                    <span class="admin-user-meta">${u.id === 'jimmyqrg' ? 'Admin' : (u.is_allowed ? 'Allowed' : 'Member')}</span>
+                  </div>
+                  ${u.id !== 'jimmyqrg' ? `
+                  <div class="admin-user-actions">
+                    <button type="button" class="btn-small" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}">${u.is_allowed ? 'Revoke' : 'Grant'}</button>
+                    <button type="button" class="btn-small btn-danger" data-action="kick" data-user-id="${u.id}">Kick</button>
+                  </div>
+                  ` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
+        </main>
       </div>
     </div>
   `;
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-  document.getElementById('admin-close')?.addEventListener('click', () => overlay.remove());
+}
+
+function bindAdmin() {
   document.getElementById('admin-user-list')?.addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
@@ -885,30 +914,29 @@ function showAdminModal() {
       try {
         await apiPost('/api/admin/users/' + userId + '/allowed', { allowed });
         await loadUsers();
-        overlay.remove();
-        showAdminModal();
+        render();
+        bindAdmin();
       } catch (err) { alert(err.message); }
     }
   });
   document.getElementById('admin-inbox-send')?.addEventListener('click', async () => {
-    const to = document.getElementById('admin-inbox-user').value;
-    const title = document.getElementById('admin-inbox-title').value;
-    const body = document.getElementById('admin-inbox-body').value;
-    if (!to) return;
+    const to = document.getElementById('admin-inbox-user')?.value;
+    const title = document.getElementById('admin-inbox-title')?.value ?? '';
+    const body = document.getElementById('admin-inbox-body')?.value ?? '';
+    if (!to) { alert('Select a user'); return; }
     try {
       await apiPost('/api/inbox/send', { to_user_id: to, title, body });
-      overlay.remove();
+      alert('Sent.');
     } catch (e) { alert(e.message); }
   });
   document.getElementById('admin-broadcast-send')?.addEventListener('click', async () => {
-    const title = document.getElementById('admin-broadcast-title').value;
-    const body = document.getElementById('admin-broadcast-body').value;
+    const title = document.getElementById('admin-broadcast-title')?.value ?? '';
+    const body = document.getElementById('admin-broadcast-body')?.value ?? '';
     try {
       await apiPost('/api/inbox/broadcast', { title, body });
-      overlay.remove();
+      alert('Broadcast sent.');
     } catch (e) { alert(e.message); }
   });
-  document.body.appendChild(overlay);
 }
 
 function renderSettingsPage() {
@@ -920,7 +948,6 @@ function renderSettingsPage() {
         <div class="header-actions">
           <a href="/inbox" class="header-link header-link-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${((n) => n > 99 ? '99+' : n)((state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
           <a href="/chat/jimmyqrg" class="header-link">Chat</a>
-          <button type="button" id="logout" class="header-link-btn">Logout</button>
           <a href="/settings?tab=profile" class="header-user" title="Profile">
             <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
             <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
@@ -932,7 +959,9 @@ function renderSettingsPage() {
           <h2>Settings</h2>
           <div class="settings-tabs">
             <a href="/settings?tab=profile" class="tab-link ${tab === 'profile' ? 'active' : ''}">Profile</a>
+            <a href="/settings?tab=account" class="tab-link ${tab === 'account' ? 'active' : ''}">Account</a>
           </div>
+          ${tab === 'profile' ? `
           <form id="profile-form" class="settings-form">
             <label>Avatar</label>
             <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" class="avatar-preview" id="avatar-preview" />
@@ -944,17 +973,21 @@ function renderSettingsPage() {
             <input type="text" name="display_name" value="${escapeHtml(state.user?.display_name || '')}" />
             <button type="submit">Save</button>
           </form>
-          <h3 class="settings-section-title">Change password</h3>
-          <form id="password-form" class="settings-form">
-            <label>Current password</label>
-            <input type="password" name="current_password" autocomplete="current-password" placeholder="Current password" />
-            <label>New password</label>
-            <input type="password" name="new_password" autocomplete="new-password" placeholder="At least 6 characters" />
-            <label>Confirm new password</label>
-            <input type="password" name="new_password_confirm" autocomplete="new-password" placeholder="Confirm new password" />
-            <p id="password-form-message" class="settings-form-message" aria-live="polite"></p>
-            <button type="submit">Change password</button>
-          </form>
+          ` : ''}
+          ${tab === 'account' ? `
+          <div class="settings-account">
+            <div class="settings-account-block">
+              <h3 class="settings-section-title">Password</h3>
+              <p class="settings-account-desc">Change your password. Your current password is required.</p>
+              <button type="button" id="open-password-modal" class="btn-secondary">Change password</button>
+            </div>
+            <div class="settings-account-block">
+              <h3 class="settings-section-title">Sign out</h3>
+              <p class="settings-account-desc">Sign out of your account on this device.</p>
+              <button type="button" id="sign-out-btn" class="btn-danger">Sign out</button>
+            </div>
+          </div>
+          ` : ''}
         </div>
       </div>
     </div>
@@ -969,7 +1002,6 @@ function renderInboxPage() {
         <div class="header-actions">
           <a href="/settings?tab=profile" class="header-link">Settings</a>
           <a href="/chat/jimmyqrg" class="header-link">Chat</a>
-          <button type="button" id="logout" class="header-link-btn">Logout</button>
           <a href="/settings?tab=profile" class="header-user" title="Profile">
             <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
             <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
@@ -1010,6 +1042,16 @@ function applyRoute(route) {
   if (route.page === 'inbox') {
     setState({ panel: '', dmUserId: null });
     loadInbox().then(() => { render(); bindInbox(); });
+    return;
+  }
+  if (route.page === 'admin') {
+    if (!state.user?.is_allowed) {
+      navigateTo('/chat/jimmyqrg');
+      return;
+    }
+    setState({ panel: '', dmUserId: null });
+    render();
+    bindAdmin();
     return;
   }
   if (route.page === 'chat') {
@@ -1073,31 +1115,35 @@ async function init() {
   applyRoute(route);
 }
 
-function bindSettings() {
-  document.getElementById('profile-form')?.addEventListener('submit', async (e) => {
+function showPasswordModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width: 400px;">
+      <h3>Change password</h3>
+      <p class="modal-hint">Your current password is required.</p>
+      <form id="password-modal-form">
+        <label>Current password</label>
+        <input type="password" name="current_password" autocomplete="current-password" placeholder="Current password" />
+        <label>New password</label>
+        <input type="password" name="new_password" autocomplete="new-password" placeholder="At least 6 characters" />
+        <label>Confirm new password</label>
+        <input type="password" name="new_password_confirm" autocomplete="new-password" placeholder="Confirm new password" />
+        <p id="password-modal-message" class="settings-form-message" aria-live="polite"></p>
+        <div class="modal-actions">
+          <button type="button" id="password-modal-cancel" class="modal-close">Cancel</button>
+          <button type="submit" class="btn-primary">Change password</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#password-modal-cancel')?.addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#password-modal-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
-    const formData = new FormData(form);
-    try {
-      const res = await fetch('/api/users/profile', {
-        method: 'PATCH',
-        credentials: 'include',
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      state.user = data.user;
-      const preview = document.getElementById('avatar-preview');
-      if (preview) preview.src = data.user?.avatar_url || getDefaultAvatarUrl(data.user?.id);
-    } catch (err) {
-      alert(err.message);
-    }
-  });
-
-  document.getElementById('password-form')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const msgEl = document.getElementById('password-form-message');
+    const msgEl = overlay.querySelector('#password-modal-message');
     const current = form.current_password?.value?.trim() || '';
     const newPass = form.new_password?.value?.trim() || '';
     const confirm = form.new_password_confirm?.value?.trim() || '';
@@ -1118,10 +1164,42 @@ function bindSettings() {
       await apiPatch('/api/users/password', { current_password: current, new_password: newPass });
       if (msgEl) { msgEl.textContent = 'Password changed.'; msgEl.dataset.type = 'success'; }
       form.reset();
+      setTimeout(() => overlay.remove(), 800);
     } catch (err) {
       if (msgEl) { msgEl.textContent = err.message || 'Failed to change password.'; msgEl.dataset.type = 'error'; }
     }
   });
+}
+
+function bindSettings() {
+  document.getElementById('open-password-modal')?.addEventListener('click', showPasswordModal);
+  document.getElementById('sign-out-btn')?.addEventListener('click', async () => {
+    await apiPost('/api/auth/logout');
+    state.user = null;
+    state.socket?.disconnect();
+    state.socket = null;
+    navigateTo('/login');
+  });
+  document.getElementById('profile-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+    try {
+      const res = await fetch('/api/users/profile', {
+        method: 'PATCH',
+        credentials: 'include',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      state.user = data.user;
+      const preview = document.getElementById('avatar-preview');
+      if (preview) preview.src = data.user?.avatar_url || getDefaultAvatarUrl(data.user?.id);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+
 }
 
 function bindInbox() {
