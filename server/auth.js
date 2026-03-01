@@ -63,14 +63,22 @@ const DEFAULT_PLACEHOLDER_PASSWORD = 'changeme';
 
 export async function login(usernameOrEmail, password) {
   const input = (usernameOrEmail || '').trim().toLowerCase();
+  const pass = (password || '').trim();
   const u = db.prepare(
     'SELECT id, username, display_name, avatar_url, email, password_hash, is_allowed FROM users WHERE LOWER(username) = ? OR (email IS NOT NULL AND LOWER(email) = ?)'
   ).get(input, input);
   if (!u) return { error: 'Invalid credentials' };
-  const isPlaceholder = u.password_hash === PLACEHOLDER_PASSWORD;
-  const validPassword = isPlaceholder
-    ? (password === DEFAULT_PLACEHOLDER_PASSWORD)
-    : bcrypt.compareSync(password, u.password_hash);
+  const isPlaceholder = u.password_hash === PLACEHOLDER_PASSWORD || (String(u.password_hash || '').includes('placeholder'));
+  let validPassword = false;
+  if (isPlaceholder) {
+    validPassword = pass.toLowerCase() === DEFAULT_PLACEHOLDER_PASSWORD;
+  } else {
+    try {
+      validPassword = !!pass && bcrypt.compareSync(pass, u.password_hash);
+    } catch {
+      validPassword = false;
+    }
+  }
   if (!validPassword) return { error: 'Invalid credentials' };
   return { user: { id: u.id, username: u.username, display_name: u.display_name, avatar_url: u.avatar_url, email: u.email, is_allowed: !!u.is_allowed } };
 }
