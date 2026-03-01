@@ -284,14 +284,25 @@ app.get('*', (req, res) => {
   res.status(404).send('Not found');
 });
 
-// Global error handler – prevents 500 from crashing; returns proper response
+// Global error handler – log and respond; for document requests still try to serve the app
 app.use((err, req, res, next) => {
   console.error('Request error:', req.method, req.path, err);
+  if (res.headersSent) return next(err);
   if (req.path.startsWith('/api')) {
-    res.status(500).json({ error: 'Internal server error' });
-  } else {
-    res.status(500).type('html').send('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Error</title></head><body><h1>Something went wrong</h1><p>Please try again later.</p></body></html>');
+    return res.status(500).json({ error: 'Internal server error' });
   }
+  // For page requests, serve the SPA so the app loads (user can still try login, etc.)
+  try {
+    const p = join(publicDir, 'index.html');
+    if (existsSync(p)) {
+      res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' wss: https:;");
+      const version = process.env.ASSET_VERSION || Date.now();
+      const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
+      return res.status(200).type('html').send(html);
+    }
+  } catch (_) {}
+  res.status(500).type('html').send('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Error</title></head><body><h1>Something went wrong</h1><p>Please try again later.</p></body></html>');
 });
 
 const io = new Server(httpServer, { cors: { origin: true } });
