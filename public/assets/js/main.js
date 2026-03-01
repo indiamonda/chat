@@ -356,14 +356,14 @@ function renderMain() {
       <header class="header">
         <h1>JimmyQrg</h1>
         <div class="header-actions">
-          <a href="/inbox">Inbox</a>
-          <a href="/settings?tab=profile">Settings</a>
-          ${state.user?.is_allowed ? '<button type="button" id="admin-btn">Admin</button>' : ''}
-          <button type="button" id="logout">Logout</button>
-          <div class="header-user">
+          <a href="/inbox" class="header-link">Inbox</a>
+          <a href="/settings?tab=profile" class="header-link">Settings</a>
+          ${state.user?.is_allowed ? '<button type="button" id="admin-btn" class="header-link-btn">Admin</button>' : ''}
+          <button type="button" id="logout" class="header-link-btn">Logout</button>
+          <a href="/settings?tab=profile" class="header-user" title="Profile">
             <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
             <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
-          </div>
+          </a>
         </div>
       </header>
 
@@ -417,7 +417,7 @@ function renderChatArea() {
       ${replyPreview ? `
         <div class="composer-reply">
           Replying to ${escapeHtml(replyPreview.sender)}: ${escapeHtml(replyPreview.content?.slice(0, 50) || '')}…
-          <button type="button" id="cancel-reply">Cancel</button>
+          <button type="button" id="cancel-reply" class="cancel-reply-link">Cancel</button>
         </div>
       ` : ''}
       <div class="composer-row">
@@ -511,7 +511,7 @@ function renderDocArea() {
     return `
     <div class="doc-panel" data-doc-key="${docKey}">
       <div class="doc-toolbar">
-        <button type="button" id="save-doc">Save</button>
+        <button type="button" id="save-doc" class="doc-save">Save</button>
       </div>
       <div class="doc-editor">
         <textarea id="doc-content" placeholder="Loading…"></textarea>
@@ -822,16 +822,16 @@ function showAdminModal() {
         </select>
         <input type="text" id="admin-inbox-title" placeholder="Title" style="width:100%; margin-top:0.5rem;" />
         <textarea id="admin-inbox-body" placeholder="Body" style="width:100%; margin-top:0.5rem; min-height: 60px;"></textarea>
-        <button type="button" id="admin-inbox-send" style="margin-top:0.5rem;">Send</button>
+        <button type="button" id="admin-inbox-send" class="admin-send">Send</button>
       </div>
       <div class="admin-panel" style="margin-top: 1rem;">
         <h4>Broadcast to all</h4>
         <input type="text" id="admin-broadcast-title" placeholder="Title" style="width:100%; margin-top:0.5rem;" />
         <textarea id="admin-broadcast-body" placeholder="Body" style="width:100%; margin-top:0.5rem; min-height: 60px;"></textarea>
-        <button type="button" id="admin-broadcast-send" style="margin-top:0.5rem;">Broadcast</button>
+        <button type="button" id="admin-broadcast-send" class="admin-send">Broadcast</button>
       </div>
       <div class="modal-actions">
-        <button type="button" id="admin-close">Close</button>
+        <button type="button" id="admin-close" class="modal-close">Close</button>
       </div>
     </div>
   `;
@@ -880,13 +880,13 @@ function renderSettingsPage() {
       <header class="header">
         <h1>JimmyQrg</h1>
         <div class="header-actions">
-          <a href="/inbox">Inbox</a>
-          <a href="/chat/jimmyqrg">Chat</a>
-          <button type="button" id="logout">Logout</button>
-          <div class="header-user">
+          <a href="/inbox" class="header-link">Inbox</a>
+          <a href="/chat/jimmyqrg" class="header-link">Chat</a>
+          <button type="button" id="logout" class="header-link-btn">Logout</button>
+          <a href="/settings?tab=profile" class="header-user" title="Profile">
             <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
             <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
-          </div>
+          </a>
         </div>
       </header>
       <div class="content" style="justify-content:center">
@@ -898,7 +898,10 @@ function renderSettingsPage() {
           <form id="profile-form" class="settings-form">
             <label>Avatar</label>
             <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" class="avatar-preview" id="avatar-preview" />
-            <input type="file" name="avatar" accept="image/*" />
+            <label class="file-label">
+              <span class="file-label-text">Choose image</span>
+              <input type="file" name="avatar" accept="image/*" class="file-input" />
+            </label>
             <label>Display name</label>
             <input type="text" name="display_name" value="${escapeHtml(state.user?.display_name || '')}" />
             <button type="submit">Save</button>
@@ -915,13 +918,13 @@ function renderInboxPage() {
       <header class="header">
         <h1>JimmyQrg</h1>
         <div class="header-actions">
-          <a href="/settings?tab=profile">Settings</a>
-          <a href="/chat/jimmyqrg">Chat</a>
-          <button type="button" id="logout">Logout</button>
-          <div class="header-user">
+          <a href="/settings?tab=profile" class="header-link">Settings</a>
+          <a href="/chat/jimmyqrg" class="header-link">Chat</a>
+          <button type="button" id="logout" class="header-link-btn">Logout</button>
+          <a href="/settings?tab=profile" class="header-user" title="Profile">
             <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
             <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
-          </div>
+          </a>
         </div>
       </header>
       <div class="content" style="justify-content:center">

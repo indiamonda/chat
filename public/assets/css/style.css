@@ -93,6 +93,56 @@ body::after {
   z-index: 1;
 }
 
+/* Custom file input (Choose file) */
+.file-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-main);
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  cursor: pointer;
+  margin-bottom: 1rem;
+}
+
+.file-label:hover {
+  border-color: var(--purple);
+  color: var(--text);
+}
+
+.file-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Custom select / dropdown */
+select {
+  padding: 0.6rem 2rem 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-main) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a78bb8' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 0.6rem center;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+select:hover {
+  border-color: var(--purple-dim);
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--purple);
+}
+
 /* Loading screen (before app hydrates) */
 #app.app-loading {
   align-items: center;
@@ -489,31 +539,48 @@ body::after {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
-.header-actions button,
-.header-actions a {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
-  background: var(--bg-main);
-  color: var(--text);
-  border-radius: 8px;
-  cursor: pointer;
+.header-link {
+  color: var(--text-dim);
   font-size: 0.9rem;
   text-decoration: none;
+  padding: 0.25rem 0;
 }
 
-.header-actions button:hover,
-.header-actions a:hover {
-  background: var(--bg-hover);
-  border-color: var(--purple);
+.header-link:hover {
+  color: var(--purple-bright);
+}
+
+.header-link-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  font-family: inherit;
+}
+
+.header-link-btn:hover {
+  color: var(--purple-bright);
 }
 
 .header-user {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  color: var(--text);
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  margin-left: 0.25rem;
+}
+
+.header-user:hover {
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
 .header-user img {
@@ -734,11 +801,11 @@ body::after {
 }
 
 .message-actions button {
-  padding: 0.2rem 0.4rem;
-  background: transparent;
+  padding: 0;
+  background: none;
   border: none;
   color: var(--text-dim);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   cursor: pointer;
 }
 
@@ -770,12 +837,19 @@ body::after {
   color: var(--text-dim);
 }
 
-.composer-reply button {
+.composer-reply .cancel-reply-link {
   background: none;
   border: none;
   color: var(--text-dim);
   cursor: pointer;
-  padding: 0.2rem;
+  padding: 0;
+  font-size: inherit;
+  font-family: inherit;
+  text-decoration: underline;
+}
+
+.composer-reply .cancel-reply-link:hover {
+  color: var(--purple-bright);
 }
 
 .composer-row {
@@ -822,8 +896,8 @@ body::after {
 }
 
 .composer-actions button {
-  padding: 0.4rem;
-  background: transparent;
+  padding: 0.35rem;
+  background: none;
   border: none;
   color: var(--text-dim);
   cursor: pointer;
@@ -831,7 +905,6 @@ body::after {
 }
 
 .composer-actions button:hover {
-  background: var(--bg-hover);
   color: var(--accent);
 }
 
@@ -865,17 +938,22 @@ body::after {
   justify-content: flex-end;
 }
 
-.doc-toolbar button {
+.doc-toolbar .doc-save {
   padding: 0.5rem 1rem;
-  background: var(--purple);
-  color: white;
-  border: none;
+  background: var(--purple-dim);
+  color: var(--text);
+  border: 1px solid var(--purple);
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
 }
 
-.doc-toolbar button:disabled {
+.doc-toolbar .doc-save:hover {
+  background: var(--purple);
+  color: white;
+}
+
+.doc-toolbar .doc-save:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -999,18 +1077,26 @@ body::after {
   margin-bottom: 1.5rem;
 }
 
+.settings-tabs a,
 .settings-tabs button {
-  padding: 0.6rem 1rem;
-  border: 1px solid var(--border);
-  background: var(--bg-main);
+  padding: 0.5rem 1rem;
   color: var(--text-dim);
-  border-radius: 8px;
-  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  display: inline-block;
 }
 
-.settings-tabs button.active {
-  background: var(--purple-dim);
+.settings-tabs a:hover,
+.settings-tabs button:hover {
   color: var(--text);
+}
+
+.settings-tabs a.active,
+.settings-tabs button.active {
+  color: var(--purple-bright);
+  border-bottom-color: var(--purple);
 }
 
 .settings-form label {
@@ -1038,12 +1124,13 @@ body::after {
 }
 
 .settings-form button[type="submit"] {
-  padding: 0.75rem 1.5rem;
+  padding: 0.6rem 1.25rem;
   background: var(--purple);
   color: white;
   border: none;
   border-radius: 8px;
   cursor: pointer;
+  font-size: 0.95rem;
 }
 
 /* Inbox */
@@ -1091,16 +1178,17 @@ body::after {
   color: var(--text-dim);
 }
 
-/* Context menu */
+/* Context menu (dropdown list style) */
 .context-menu {
   position: fixed;
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 0.35rem 0;
-  min-width: 160px;
+  padding: 0.25rem 0;
+  min-width: 180px;
   z-index: 1000;
   box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  list-style: none;
 }
 
 .context-menu button {
@@ -1113,6 +1201,7 @@ body::after {
   color: var(--text);
   cursor: pointer;
   font-size: 0.9rem;
+  font-family: inherit;
 }
 
 .context-menu button:hover {
@@ -1144,9 +1233,28 @@ body::after {
   overflow: auto;
 }
 
-.modal h3 {
-  margin-bottom: 1rem;
+.modal h3,
+.modal h4 {
+  margin-bottom: 0.75rem;
   color: var(--purple-bright);
+}
+
+.modal input[type="text"],
+.modal textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-main);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  margin-top: 0.5rem;
+}
+
+.modal textarea {
+  min-height: 60px;
+  resize: vertical;
 }
 
 .modal-actions {
@@ -1179,16 +1287,48 @@ body::after {
 }
 
 .admin-panel li button {
-  padding: 0.35rem 0.75rem;
+  padding: 0.25rem 0.5rem;
   font-size: 0.85rem;
-  background: var(--bg-hover);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 6px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
   cursor: pointer;
+  margin-left: 0.5rem;
+  text-decoration: underline;
 }
 
 .admin-panel li button:hover {
+  color: var(--purple-bright);
+}
+
+.admin-panel .admin-send {
+  padding: 0.5rem 1rem;
+  background: var(--purple-dim);
+  color: var(--text);
+  border: 1px solid var(--purple);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.admin-panel .admin-send:hover {
+  background: var(--purple);
+  color: white;
+}
+
+.modal-actions .modal-close {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.modal-actions .modal-close:hover {
+  color: var(--text);
   border-color: var(--purple);
 }
 
