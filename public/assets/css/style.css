@@ -37,25 +37,27 @@ body.auth-page::before {
   background:
     linear-gradient(180deg, rgba(10, 6, 18, 0.5) 0%, rgba(10, 6, 18, 0.45) 100%),
     radial-gradient(ellipse 80% 50% at 50% -20%, var(--glow), transparent);
+  pointer-events: none;
 }
 
-/* Overlay so text stays readable */
+/* Overlay so text stays readable – behind all content so clicks always hit buttons */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
+  z-index: -1;
   background:
     linear-gradient(180deg, rgba(10, 6, 18, 0.85) 0%, rgba(10, 6, 18, 0.75) 100%),
     radial-gradient(ellipse 80% 50% at 50% -20%, var(--glow), transparent),
     radial-gradient(ellipse 60% 40% at 80% 60%, rgba(109, 40, 217, 0.12), transparent);
   pointer-events: none;
-  z-index: 0;
 }
 
 body::after {
   content: '';
   position: fixed;
   inset: 0;
+  z-index: -1;
   background-image:
     radial-gradient(1.5px 1.5px at 20px 30px, var(--star), transparent),
     radial-gradient(1.5px 1.5px at 40px 70px, var(--star), transparent),
@@ -64,7 +66,6 @@ body::after {
     radial-gradient(1px 1px at 160px 120px, var(--star), transparent);
   background-size: 200px 200px;
   pointer-events: none;
-  z-index: 0;
   animation: twinkle 8s ease-in-out infinite;
 }
 
@@ -79,6 +80,17 @@ body::after {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  isolation: isolate;
+}
+
+#app button,
+#app a[href],
+#app input,
+#app textarea,
+#app select,
+#app [role="button"] {
+  position: relative;
+  z-index: 1;
 }
 
 /* Loading screen (before app hydrates) */
@@ -304,6 +316,7 @@ body::after {
   border-radius: 18px;
   border: 1px solid transparent;
   pointer-events: none;
+  z-index: -1;
   animation: authGlowIn 0.8s ease-out 0.6s both;
 }
 .auth-box::after {
@@ -316,14 +329,20 @@ body::after {
   background: linear-gradient(90deg, transparent, var(--purple), transparent);
   border-radius: 0 0 4px 4px;
   pointer-events: none;
+  z-index: -1;
   transform: translateX(-50%);
   animation: authLineIn 0.5s ease-out 0.4s both;
+}
+.auth-box > * {
+  position: relative;
+  z-index: 0;
 }
 @keyframes authLineIn {
   from { opacity: 0; transform: translateX(-50%) scaleX(0); }
   to { opacity: 1; transform: translateX(-50%) scaleX(1); }
 }
 .auth-box {
+  position: relative;
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -608,6 +627,13 @@ body::after {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.messages-empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-dim);
+  font-size: 0.95rem;
 }
 
 .message {

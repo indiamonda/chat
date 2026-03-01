@@ -410,7 +410,7 @@ function renderChatArea() {
 
   return `
     <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
-      ${list.map(m => renderMessage(m, roomType, roomId)).join('')}
+      ${list.length === 0 ? '<div class="messages-empty">No messages yet.</div>' : list.map(m => renderMessage(m, roomType, roomId)).join('')}
     </div>
     ${(roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm' ? `
     <div class="composer">
