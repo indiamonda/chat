@@ -832,6 +832,10 @@ function renderInboxPage() {
 }
 
 function applyRoute(route) {
+  if (!state.user && (route.page === 'login' || route.page === 'signup')) {
+    render();
+    return;
+  }
   if (route.page === 'settings') {
     setState({ panel: '', dmUserId: null });
     render();
