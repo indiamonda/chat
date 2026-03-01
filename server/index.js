@@ -67,8 +67,15 @@ app.use('/assets', express.static(join(publicDir, 'assets'), {
 app.use('/uploads', express.static(uploadsDir));
 
 const session = sessionMiddleware();
-app.use(session);
-app.use(touchSession);
+app.use((req, res, next) => {
+  session(req, res, (err) => {
+    if (err) {
+      console.error('Session middleware error:', err);
+      return next(err);
+    }
+    touchSession(req, res, next);
+  });
+});
 
 // Serve SPA HTML with cache-busting for all document routes (before static so "/" gets it too)
 app.use((req, res, next) => {

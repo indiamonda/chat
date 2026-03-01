@@ -11,10 +11,12 @@ db.exec(`
 `);
 
 function getExpires(session) {
-  const c = session?.cookie;
-  if (c?.expires && typeof c.expires.getTime === 'function') return c.expires.getTime();
-  const maxAge = c?.maxAge;
-  if (typeof maxAge === 'number') return Date.now() + maxAge;
+  try {
+    const c = session?.cookie;
+    if (c?.expires && typeof c.expires.getTime === 'function') return c.expires.getTime();
+    const maxAge = c?.maxAge;
+    if (typeof maxAge === 'number') return Date.now() + maxAge;
+  } catch (_) {}
   return Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days default
 }
 
@@ -32,30 +34,31 @@ export function createSessionStore() {
     }
   };
   store.set = function set(sid, session, callback) {
-    const expires = getExpires(session);
     try {
-      db.prepare('INSERT OR REPLACE INTO sessions (sid, session, expires) VALUES (?, ?, ?)').run(sid, JSON.stringify(session), expires);
-      callback();
+      const expires = getExpires(session);
+      const json = JSON.stringify(session);
+      db.prepare('INSERT OR REPLACE INTO sessions (sid, session, expires) VALUES (?, ?, ?)').run(sid, json, expires);
     } catch (err) {
-      callback(err);
+      console.error('Session store set error:', err);
     }
+    callback();
   };
   store.destroy = function destroy(sid, callback) {
     try {
       db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid);
-      callback();
     } catch (err) {
-      callback(err);
+      console.error('Session store destroy error:', err);
     }
+    callback();
   };
   store.touch = function touch(sid, session, callback) {
-    const expires = getExpires(session);
     try {
+      const expires = getExpires(session);
       db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?').run(expires, sid);
-      callback();
     } catch (err) {
-      callback(err);
+      console.error('Session store touch error:', err);
     }
+    callback();
   };
   return store;
 }
