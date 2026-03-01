@@ -48,6 +48,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.DATA_DIR || join(__dirname, '../data');
 const uploadsDir = join(dataDir, 'uploads');
 const publicDir = join(__dirname, '../public');
+const ASSET_VERSION = process.env.ASSET_VERSION || Date.now();
 
 const app = express();
 const httpServer = createServer(app);
@@ -239,14 +240,15 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   res.status(201).json({ message: msg });
 });
 
-// SPA fallback (no-cache so app updates show without hard refresh)
+// SPA fallback: inject cache-busting version so content updates without hard refresh
 app.get('*', (req, res) => {
   const p = join(publicDir, 'index.html');
   if (existsSync(p)) {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
-    return res.sendFile(p);
+    const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${ASSET_VERSION}`);
+    return res.type('html').send(html);
   }
   res.status(404).send('Not found');
 });

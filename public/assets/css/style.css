@@ -35,7 +35,7 @@ body.auth-page {
 
 body.auth-page::before {
   background:
-    linear-gradient(180deg, rgba(10, 6, 18, 0.7) 0%, rgba(10, 6, 18, 0.65) 100%),
+    linear-gradient(180deg, rgba(10, 6, 18, 0.5) 0%, rgba(10, 6, 18, 0.45) 100%),
     radial-gradient(ellipse 80% 50% at 50% -20%, var(--glow), transparent);
 }
 
@@ -88,6 +88,8 @@ body::after {
   justify-content: center;
   min-height: 100vh;
   padding: 1rem;
+  position: relative;
+  background: url('https://jimmyqrg.github.io/background.png') center/cover no-repeat fixed;
 }
 
 /* 28 transition animations (keyframes) */
@@ -284,22 +286,6 @@ body::after {
   animation: authLightSpeedIn 0.5s ease-out 0.4s both;
   transform: translateX(-50%);
 }
-.auth-screen::after {
-  content: '';
-  position: fixed;
-  width: 80px;
-  height: 80px;
-  border: 2px solid var(--purple);
-  border-radius: 50%;
-  top: 50%;
-  left: 50%;
-  margin: -40px 0 0 -40px;
-  pointer-events: none;
-  z-index: 0;
-  animation: authHeartBeatIn 1s ease-out 0.2s both;
-  opacity: 0.2;
-}
-
 .auth-box {
   background: var(--bg-panel);
   border: 1px solid var(--border);

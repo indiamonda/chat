@@ -86,6 +86,7 @@ export function setState(updates) {
   render();
 }
 
+/** Load current user from session. 401 here is expected when not logged in (e.g. on login/signup page). */
 export async function loadMe() {
   try {
     const res = await fetch('/api/auth/me', { credentials: 'include' });
@@ -281,10 +282,13 @@ function bindAuth(isSignup) {
       if (password !== confirm) { errEl.textContent = 'Passwords do not match'; return; }
       try {
         const data = await doLogin(true, { username, email, password, display_name });
-        if (data.user) state.user = data.user;
-        await loadMe();
-        if (!state.user) throw new Error('Session not set');
-        navigateTo('/chat/jimmyqrg');
+        if (data.user) {
+          state.user = data.user;
+          await loadGroup();
+          await loadUsers();
+          connectSocket();
+          navigateTo('/chat/jimmyqrg');
+        } else throw new Error(data.error || 'Sign up failed');
       } catch (err) {
         errEl.textContent = err.message || 'Failed';
       }
@@ -296,10 +300,13 @@ function bindAuth(isSignup) {
     if (!password) { errEl.textContent = 'Password is required'; return; }
     try {
       const data = await doLogin(false, { username: usernameOrEmail, password });
-      if (data.user) state.user = data.user;
-      await loadMe();
-      if (!state.user) throw new Error('Session not set');
-      navigateTo('/chat/jimmyqrg');
+      if (data.user) {
+        state.user = data.user;
+        await loadGroup();
+        await loadUsers();
+        connectSocket();
+        navigateTo('/chat/jimmyqrg');
+      } else throw new Error(data.error || 'Login failed');
     } catch (err) {
       errEl.textContent = err.message || 'Failed';
     }
