@@ -213,7 +213,9 @@ function render() {
   if (!state.user) {
     document.body.classList.add('auth-page');
     const isSignup = route.page === 'signup';
-    app.innerHTML = renderAuth(isSignup);
+    const authError = state.authError || '';
+    state.authError = null;
+    app.innerHTML = renderAuth(isSignup, authError);
     bindAuth(isSignup);
     return;
   }
@@ -224,7 +226,7 @@ function render() {
   interceptLinks(app);
 }
 
-function renderAuth(isSignup = false) {
+function renderAuth(isSignup = false, initialError = '') {
   return `
     <div class="auth-screen auth-ani-1">
       <div class="auth-box auth-ani-2">
@@ -234,7 +236,7 @@ function renderAuth(isSignup = false) {
           <a href="/signup" class="tab-link auth-ani-6 ${isSignup ? 'active' : ''}" data-tab="register">Sign up</a>
         </div>
         <form id="auth-form" class="auth-ani-7" novalidate>
-          <div id="auth-error" class="error auth-ani-8"></div>
+          <div id="auth-error" class="error auth-ani-8">${initialError ? escapeHtml(initialError) : ''}</div>
           <div id="auth-fields-login" class="auth-ani-9" style="display:${isSignup ? 'none' : 'block'}">
             <label class="auth-ani-10">Username or email</label>
             <input class="auth-ani-11" name="login_identifier" type="text" autocomplete="username" placeholder="Username or email" />
@@ -285,10 +287,16 @@ function bindAuth(isSignup) {
         const data = await doLogin(true, { username, email, password, display_name });
         if (data.user) {
           state.user = data.user;
-          await loadGroup();
-          await loadUsers();
-          connectSocket();
-          navigateTo('/chat/jimmyqrg');
+          try {
+            await loadGroup();
+            await loadUsers();
+            connectSocket();
+            navigateTo('/chat/jimmyqrg');
+          } catch (e) {
+            state.user = null;
+            state.authError = e.message || 'Session could not be established. Please try again.';
+            navigateTo('/login');
+          }
         } else throw new Error(data.error || 'Sign up failed');
       } catch (err) {
         errEl.textContent = err.message || 'Failed';
@@ -303,10 +311,16 @@ function bindAuth(isSignup) {
       const data = await doLogin(false, { username: usernameOrEmail, password });
       if (data.user) {
         state.user = data.user;
-        await loadGroup();
-        await loadUsers();
-        connectSocket();
-        navigateTo('/chat/jimmyqrg');
+        try {
+          await loadGroup();
+          await loadUsers();
+          connectSocket();
+          navigateTo('/chat/jimmyqrg');
+        } catch (e) {
+          state.user = null;
+          state.authError = e.message || 'Session could not be established. Please try again.';
+          navigateTo('/login');
+        }
       } else throw new Error(data.error || 'Login failed');
     } catch (err) {
       errEl.textContent = err.message || 'Failed';

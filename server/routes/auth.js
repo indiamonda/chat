@@ -26,9 +26,9 @@ router.post('/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
-router.get('/me', requireAuth, (req, res) => {
+router.get('/me', (req, res) => {
   const user = getCurrentUser(req);
-  res.json({ user });
+  res.json({ user: user || null });
 });
 
 export default router;

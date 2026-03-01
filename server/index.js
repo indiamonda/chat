@@ -53,6 +53,8 @@ const ASSET_VERSION = process.env.ASSET_VERSION || Date.now();
 const app = express();
 const httpServer = createServer(app);
 
+app.set('trust proxy', 1);
+
 app.use(express.json());
 app.use(cookieParser());
 const session = sessionMiddleware();
