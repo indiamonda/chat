@@ -207,6 +207,7 @@ function connectSocket() {
 function render() {
   const app = document.getElementById('app');
   if (!app) return;
+  app.classList.remove('app-loading');
   const route = parseRoute();
 
   if (!state.user) {
