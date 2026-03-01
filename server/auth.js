@@ -59,12 +59,19 @@ export async function register(username, email, password, displayName) {
   return { user: { id, username: username.toLowerCase(), display_name: name, avatar_url: null, email: emailVal, is_allowed: !!isJimmyqrg } };
 }
 
+const DEFAULT_PLACEHOLDER_PASSWORD = 'changeme';
+
 export async function login(usernameOrEmail, password) {
   const input = (usernameOrEmail || '').trim().toLowerCase();
   const u = db.prepare(
     'SELECT id, username, display_name, avatar_url, email, password_hash, is_allowed FROM users WHERE LOWER(username) = ? OR (email IS NOT NULL AND LOWER(email) = ?)'
   ).get(input, input);
-  if (!u || !bcrypt.compareSync(password, u.password_hash)) return { error: 'Invalid credentials' };
+  if (!u) return { error: 'Invalid credentials' };
+  const isPlaceholder = u.password_hash === PLACEHOLDER_PASSWORD;
+  const validPassword = isPlaceholder
+    ? (password === DEFAULT_PLACEHOLDER_PASSWORD)
+    : bcrypt.compareSync(password, u.password_hash);
+  if (!validPassword) return { error: 'Invalid credentials' };
   return { user: { id: u.id, username: u.username, display_name: u.display_name, avatar_url: u.avatar_url, email: u.email, is_allowed: !!u.is_allowed } };
 }
 
