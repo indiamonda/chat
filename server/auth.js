@@ -8,8 +8,9 @@ const TWO_MINUTES_MS = 2 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function sessionMiddleware() {
-  const opts = {
+  return session({
     secret: process.env.SESSION_SECRET || 'jimmyqrg-chat-secret-change-in-production',
+    store: createSessionStore(),
     resave: false,
     saveUninitialized: false,
     rolling: true,
@@ -19,11 +20,7 @@ export function sessionMiddleware() {
       sameSite: 'lax',
       httpOnly: true,
     },
-  };
-  if (process.env.USE_SQLITE_SESSION === '1') {
-    opts.store = createSessionStore();
-  }
-  return session(opts);
+  });
 }
 
 /** Call from a route or middleware to touch the session so the cookie and store TTL are extended (use with rolling: true). */
@@ -37,11 +34,27 @@ export function requireAuth(req, res, next) {
   res.status(401).json({ error: 'Not authenticated' });
 }
 
+const PERM_COLS = 'can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_manage_users';
+
+function normalizeUser(u) {
+  if (!u) return null;
+  return {
+    ...u,
+    is_allowed: !!u.is_allowed,
+    can_send_inbox: !!u.can_send_inbox,
+    can_broadcast: !!u.can_broadcast,
+    can_edit_docs: !!u.can_edit_docs,
+    can_kick: !!u.can_kick,
+    can_delete_messages: !!u.can_delete_messages,
+    can_manage_users: !!u.can_manage_users,
+  };
+}
+
 export function getCurrentUser(req) {
   if (!req.session?.userId) return null;
   try {
-    const u = db.prepare('SELECT id, username, display_name, avatar_url, email, is_allowed FROM users WHERE id = ?').get(req.session.userId);
-    return u ? { ...u, is_allowed: !!u.is_allowed } : null;
+    const u = db.prepare(`SELECT id, username, display_name, avatar_url, email, is_allowed, ${PERM_COLS} FROM users WHERE id = ?`).get(req.session.userId);
+    return normalizeUser(u);
   } catch {
     return null;
   }
@@ -68,12 +81,12 @@ export async function register(username, email, password, displayName) {
   if (isJimmyqrg && isPlaceholder) {
     db.prepare('UPDATE users SET display_name = ?, email = ?, password_hash = ?, created_at = ? WHERE id = ?')
       .run(name, emailVal, hash, Date.now(), existingUser.id);
-    return { user: { id: existingUser.id, username: 'jimmyqrg', display_name: name, avatar_url: null, email: emailVal, is_allowed: true } };
+    return { user: getNormalizedUserById(existingUser.id) };
   }
   const id = isJimmyqrg ? 'jimmyqrg' : uuidv4();
   db.prepare('INSERT INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at) VALUES (?, ?, ?, NULL, ?, ?, ?, ?)')
     .run(id, username.toLowerCase(), name, emailVal, hash, isJimmyqrg ? 1 : 0, Date.now());
-  return { user: { id, username: username.toLowerCase(), display_name: name, avatar_url: null, email: emailVal, is_allowed: !!isJimmyqrg } };
+  return { user: getNormalizedUserById(id) };
 }
 
 const DEFAULT_PLACEHOLDER_PASSWORD = 'changeme';
@@ -97,7 +110,7 @@ export async function login(usernameOrEmail, password) {
     }
   }
   if (!validPassword) return { error: 'Invalid credentials' };
-  return { user: { id: u.id, username: u.username, display_name: u.display_name, avatar_url: u.avatar_url, email: u.email, is_allowed: !!u.is_allowed } };
+  return { user: getNormalizedUserById(u.id) };
 }
 
 export async function changePassword(userId, currentPassword, newPassword) {
@@ -129,6 +142,42 @@ export function canRecallOrEdit(msg) {
   return age <= TWO_MINUTES_MS;
 }
 
+/** Can access Manage page (on admin list). */
 export function isAllowed(user) {
   return user && !!user.is_allowed;
+}
+
+/** Can add/remove users from admin list and set their permissions. */
+export function canManageUsers(user) {
+  return user && !!user.can_manage_users;
+}
+
+export function canSendInbox(user) {
+  return user && !!user.can_send_inbox;
+}
+
+export function canBroadcast(user) {
+  return user && !!user.can_broadcast;
+}
+
+export function canEditDocs(user) {
+  return user && !!user.can_edit_docs;
+}
+
+export function canKick(user) {
+  return user && !!user.can_kick;
+}
+
+export function canDeleteMessages(user) {
+  return user && !!user.can_delete_messages;
+}
+
+/** Return normalized user by id (for login/register response). */
+export function getNormalizedUserById(id) {
+  try {
+    const u = db.prepare(`SELECT id, username, display_name, avatar_url, email, is_allowed, ${PERM_COLS} FROM users WHERE id = ?`).get(id);
+    return normalizeUser(u);
+  } catch {
+    return null;
+  }
 }

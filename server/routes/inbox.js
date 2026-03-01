@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
-import { requireAuth, getCurrentUser, isAllowed } from '../auth.js';
+import { requireAuth, getCurrentUser, canSendInbox, canBroadcast } from '../auth.js';
 import { db, GROUP_ID } from '../db.js';
 
 const router = Router();
@@ -26,7 +26,7 @@ router.post('/:id/read', requireAuth, (req, res) => {
 // Authorized only: send to one user's inbox
 router.post('/send', requireAuth, (req, res) => {
   const from = getCurrentUser(req);
-  if (!isAllowed(from)) return res.status(403).json({ error: 'Not allowed' });
+  if (!canSendInbox(from)) return res.status(403).json({ error: 'Not allowed' });
   const { to_user_id, title, body, type, related_id, related_extra } = req.body || {};
   if (!to_user_id) return res.status(400).json({ error: 'to_user_id required' });
   const id = randomUUID();
@@ -40,7 +40,7 @@ router.post('/send', requireAuth, (req, res) => {
 // Authorized only: send to all users' inbox
 router.post('/broadcast', requireAuth, (req, res) => {
   const from = getCurrentUser(req);
-  if (!isAllowed(from)) return res.status(403).json({ error: 'Not allowed' });
+  if (!canBroadcast(from)) return res.status(403).json({ error: 'Not allowed' });
   const { title, body } = req.body || {};
   const users = db.prepare('SELECT id FROM users').all();
   const id = randomUUID();

@@ -110,8 +110,17 @@ db.exec(`
 `);
 
 try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch (_) {}
+const permCols = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users'];
+for (const col of permCols) {
+  try { db.exec(`ALTER TABLE users ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
+}
 db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at)
   VALUES ('jimmyqrg', 'jimmyqrg', 'jimmyqrg', NULL, NULL, '$2a$10$placeholder', 1, ?)`).run(Date.now());
+db.prepare(`UPDATE users SET can_send_inbox=1, can_broadcast=1, can_edit_docs=1, can_kick=1, can_delete_messages=1, can_manage_users=1 WHERE id='jimmyqrg'`).run();
+// Backfill: existing is_allowed users get all permissions (except can_manage_users) so they keep working
+try {
+  db.prepare(`UPDATE users SET can_send_inbox=1, can_broadcast=1, can_edit_docs=1, can_kick=1, can_delete_messages=1 WHERE is_allowed=1 AND id!='jimmyqrg'`).run();
+} catch (_) {}
 
 // Initial password is set at server startup (see server/index.js) so we don't need bcrypt here.
 

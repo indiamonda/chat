@@ -6,7 +6,7 @@ import express from 'express';
 import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
-import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, isAllowed } from './auth.js';
+import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages } from './auth.js';
 import { db, GROUP_ID, PANELS } from './db.js';
 import { upload } from './upload.js';
 import { getUploadUrl } from './upload.js';
@@ -318,9 +318,14 @@ io.use((socket, next) => {
     const userId = socket.request.session?.userId;
     if (!userId) return next(new Error('Not authenticated'));
     socket.userId = userId;
-    socket.user = db.prepare('SELECT id, username, display_name, avatar_url, is_allowed FROM users WHERE id = ?').get(userId);
+    socket.user = db.prepare('SELECT id, username, display_name, avatar_url, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages FROM users WHERE id = ?').get(userId);
     if (!socket.user) return next(new Error('User not found'));
     socket.user.is_allowed = !!socket.user.is_allowed;
+    socket.user.can_send_inbox = !!socket.user.can_send_inbox;
+    socket.user.can_broadcast = !!socket.user.can_broadcast;
+    socket.user.can_edit_docs = !!socket.user.can_edit_docs;
+    socket.user.can_kick = !!socket.user.can_kick;
+    socket.user.can_delete_messages = !!socket.user.can_delete_messages;
     next();
   });
 });
@@ -430,7 +435,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('message:delete', (msgId, ack) => {
-    if (!socket.user.is_allowed) return ack?.({ error: 'Not allowed' });
+    if (!canDeleteMessages(socket.user)) return ack?.({ error: 'Not allowed' });
     const msg = db.prepare('SELECT id, room_type, room_id FROM messages WHERE id = ?').get(msgId);
     if (!msg) return ack?.({ error: 'Not found' });
     db.prepare('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE id = ?').run('deleted', msgId);
@@ -440,7 +445,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('kick', (userId, ack) => {
-    if (!socket.user.is_allowed) return ack?.({ error: 'Not allowed' });
+    if (!canKick(socket.user)) return ack?.({ error: 'Not allowed' });
     if (userId === 'jimmyqrg') return ack?.({ error: 'Cannot kick jimmyqrg' });
     db.prepare(`
       INSERT INTO kicked (id, user_id, room_type, room_id, kicked_by, created_at) VALUES (?, ?, 'group', ?, ?, ?)
@@ -450,7 +455,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('inbox:send', (payload, ack) => {
-    if (!socket.user.is_allowed) return ack?.({ error: 'Not allowed' });
+    if (!canSendInbox(socket.user)) return ack?.({ error: 'Not allowed' });
     const { to_user_id, title, body, type, related_id, related_extra } = payload || {};
     if (!to_user_id) return ack?.({ error: 'to_user_id required' });
     const id = randomUUID();
@@ -463,7 +468,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('inbox:broadcast', (payload, ack) => {
-    if (!socket.user.is_allowed) return ack?.({ error: 'Not allowed' });
+    if (!canBroadcast(socket.user)) return ack?.({ error: 'Not allowed' });
     const { title, body } = payload || {};
     const users = db.prepare('SELECT id FROM users').all();
     const insert = db.prepare('INSERT INTO inbox (id, user_id, type, title, body, created_at) VALUES (?, ?, ?, ?, ?, ?)');
@@ -476,7 +481,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('solve:start', (payload, ack) => {
-    if (!socket.user.is_allowed) return ack?.({ error: 'Not allowed' });
+    if (!canEditDocs(socket.user)) return ack?.({ error: 'Not allowed' });
     const { support_message_id } = payload || {};
     ack?.({ ok: true, support_message_id });
   });

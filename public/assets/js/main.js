@@ -224,7 +224,6 @@ function render() {
   document.body.classList.remove('auth-page');
   app.innerHTML = renderMain();
   bindMain();
-  interceptLinks(app);
 }
 
 function renderAuth(isSignup = false, initialError = '') {
@@ -451,7 +450,7 @@ function renderMessage(m, roomType, roomId) {
   const isOwn = m.sender_id === state.user?.id;
   const canRecallEdit = isOwn && m.created_at && (Date.now() - m.created_at) <= 2 * 60 * 1000;
   const isSupport = roomType === 'group' && roomId === 'support';
-  const canSolve = state.user?.is_allowed && isSupport;
+  const canSolve = state.user?.can_edit_docs && isSupport;
 
   if (m.deleted_by_admin) {
     return `
@@ -511,7 +510,7 @@ function renderMessage(m, roomType, roomId) {
 
 function renderDocArea() {
   const docKey = state.panel;
-  const canEdit = state.user?.is_allowed;
+  const canEdit = state.user?.can_edit_docs;
   const supportId = state.supportMessageIdForSolve || '';
   const content = state._docContent ?? '';
   if (canEdit) {
@@ -658,15 +657,15 @@ function bindMain() {
       const isOwn = msg.sender_id === state.user?.id;
       const canRecallEdit = isOwn && msg.created_at && (Date.now() - msg.created_at) <= 2 * 60 * 1000;
       const isSupport = roomType === 'group' && roomId === 'support';
-      const canSolve = state.user?.is_allowed && isSupport;
+      const canSolve = state.user?.can_edit_docs && isSupport;
 
       const items = [];
       if (isOwn && canRecallEdit) {
         items.push({ label: 'Recall', action: 'recall' });
         items.push({ label: 'Edit', action: 'edit' });
       }
-      if (state.user?.is_allowed && !isOwn) items.push({ label: 'Delete (admin)', action: 'delete', danger: true });
-      if (state.user?.is_allowed) items.push({ label: 'Kick user', action: 'kick' });
+      if (state.user?.can_delete_messages && !isOwn) items.push({ label: 'Delete (admin)', action: 'delete', danger: true });
+      if (state.user?.can_kick) items.push({ label: 'Kick user', action: 'kick' });
       if (canSolve) items.push({ label: 'Solve', action: 'solve' });
       items.push({ label: 'Reply', action: 'reply' });
 
@@ -846,6 +845,7 @@ function renderAdminPage() {
         </nav>
         <main class="admin-main">
           ${adminTab === 'action' ? `
+          ${state.user?.can_send_inbox ? `
           <div class="admin-section">
             <h2 class="admin-section-title">Send to inbox</h2>
             <p class="admin-section-desc">Send a message to a specific user's inbox.</p>
@@ -862,6 +862,8 @@ function renderAdminPage() {
               <button type="button" id="admin-inbox-send" class="btn-primary">Send</button>
             </div>
           </div>
+          ` : ''}
+          ${state.user?.can_broadcast ? `
           <div class="admin-section">
             <h2 class="admin-section-title">Broadcast to all</h2>
             <p class="admin-section-desc">Send a message to every user's inbox.</p>
@@ -874,26 +876,39 @@ function renderAdminPage() {
             </div>
           </div>
           ` : ''}
+          ${!state.user?.can_send_inbox && !state.user?.can_broadcast ? '<p class="admin-section-desc">You have no action permissions. Ask an admin to grant Send mail or Broadcast.</p>' : ''}
+          ` : ''}
           ${adminTab === 'users' ? `
           <div class="admin-section">
             <h2 class="admin-section-title">Users</h2>
-            <p class="admin-section-desc">Manage user access. Grant or revoke allowed status; kick users from the group.</p>
+            <p class="admin-section-desc">Add users to the admin list here. After adding someone, set what they are allowed to do (e.g. send mail, broadcast, edit docs).</p>
             <div class="admin-users-list" id="admin-user-list">
-              ${users.map(u => `
+              ${users.map(u => {
+                const canManage = state.user?.can_manage_users;
+                const permLabels = { can_send_inbox: 'Send mail', can_broadcast: 'Broadcast', can_edit_docs: 'Edit docs', can_kick: 'Kick users', can_delete_messages: 'Delete messages', can_manage_users: 'Manage users' };
+                const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users'];
+                const isAdmin = u.id === 'jimmyqrg';
+                const showPerms = canManage && !isAdmin && u.is_allowed;
+                return `
                 <div class="admin-user-card" data-user-id="${u.id}">
                   <img src="${u.avatar_url || getDefaultAvatarUrl(u.id)}" alt="" class="admin-user-avatar" />
                   <div class="admin-user-info">
                     <span class="admin-user-name">${escapeHtml(u.display_name || u.username)}</span>
-                    <span class="admin-user-meta">${u.id === 'jimmyqrg' ? 'Admin' : (u.is_allowed ? 'Allowed' : 'Member')}</span>
+                    <span class="admin-user-meta">${isAdmin ? 'Admin' : (u.is_allowed ? 'On admin list' : 'Member')}</span>
                   </div>
-                  ${u.id !== 'jimmyqrg' ? `
+                  ${!isAdmin ? `
                   <div class="admin-user-actions">
-                    <button type="button" class="btn-small" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}">${u.is_allowed ? 'Revoke' : 'Grant'}</button>
-                    <button type="button" class="btn-small btn-danger" data-action="kick" data-user-id="${u.id}">Kick</button>
+                    ${canManage ? `<button type="button" class="btn-small" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}">${u.is_allowed ? 'Remove from list' : 'Add to list'}</button>` : ''}
+                    ${state.user?.can_kick ? `<button type="button" class="btn-small btn-danger" data-action="kick" data-user-id="${u.id}">Kick</button>` : ''}
+                  </div>
+                  ${showPerms ? `
+                  <div class="admin-user-perms">
+                    ${permKeys.map(k => `<label class="admin-perm-check"><input type="checkbox" data-action="perm" data-user-id="${u.id}" data-perm="${k}" ${u[k] ? 'checked' : ''} /> ${escapeHtml(permLabels[k])}</label>`).join('')}
                   </div>
                   ` : ''}
+                  ` : ''}
                 </div>
-              `).join('')}
+              `}).join('')}
             </div>
           </div>
           ` : ''}
@@ -906,18 +921,32 @@ function renderAdminPage() {
 function bindAdmin() {
   document.getElementById('admin-user-list')?.addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-action]');
-    if (!btn) return;
-    const userId = btn.dataset.userId;
-    if (btn.dataset.action === 'kick') kickUser(userId);
-    if (btn.dataset.action === 'allowed') {
-      const allowed = btn.dataset.allowed !== '1';
-      try {
-        await apiPost('/api/admin/users/' + userId + '/allowed', { allowed });
-        await loadUsers();
-        render();
-        bindAdmin();
-      } catch (err) { alert(err.message); }
+    if (btn) {
+      const userId = btn.dataset.userId;
+      if (btn.dataset.action === 'kick') kickUser(userId);
+      if (btn.dataset.action === 'allowed') {
+        const allowed = btn.dataset.allowed !== '1';
+        try {
+          await apiPost('/api/admin/users/' + userId + '/allowed', { allowed });
+          await loadUsers();
+          render();
+          bindAdmin();
+        } catch (err) { alert(err.message); }
+      }
     }
+  });
+  document.getElementById('admin-user-list')?.addEventListener('change', async (e) => {
+    const cb = e.target.closest('input[data-action="perm"]');
+    if (!cb) return;
+    const userId = cb.dataset.userId;
+    const perm = cb.dataset.perm;
+    const value = !!cb.checked;
+    try {
+      await apiPatch('/api/admin/users/' + userId + '/permissions', { [perm]: value });
+      await loadUsers();
+      render();
+      bindAdmin();
+    } catch (err) { alert(err.message); }
   });
   document.getElementById('admin-inbox-send')?.addEventListener('click', async () => {
     const to = document.getElementById('admin-inbox-user')?.value;
@@ -1041,7 +1070,11 @@ function applyRoute(route) {
   }
   if (route.page === 'inbox') {
     setState({ panel: '', dmUserId: null });
-    loadInbox().then(() => { render(); bindInbox(); });
+    loadInbox().then(() => { render(); bindInbox(); }).catch((err) => {
+      console.warn('Load inbox failed', err);
+      render();
+      bindInbox();
+    });
     return;
   }
   if (route.page === 'admin') {
@@ -1061,17 +1094,25 @@ function applyRoute(route) {
     if (route.dmUserId) {
       apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
         state.convId = conversation_id;
-        loadMessages('dm', conversation_id).then(() => {
+        return loadMessages('dm', conversation_id).then(() => {
           state.socket?.emit('dm:join', conversation_id, () => {});
           render();
           bindMain();
         });
-      }).catch(() => { render(); bindMain(); });
+      }).catch((err) => {
+        console.warn('Load conversation/messages failed', err);
+        render();
+        bindMain();
+      });
       return;
     }
     state.convId = null;
     if (state.panel === 'free_chat' || state.panel === 'support') {
-      loadMessages('group', state.panel).then(() => { render(); bindMain(); });
+      loadMessages('group', state.panel).then(() => { render(); bindMain(); }).catch((err) => {
+        console.warn('Load messages failed', err);
+        render();
+        bindMain();
+      });
     } else if (state.panel === 'problem_solving' || state.panel === 'rules') {
       loadDoc(state.panel).then(({ doc }) => {
         state._docContent = doc?.content ?? '';
@@ -1079,6 +1120,10 @@ function applyRoute(route) {
         bindMain();
         const ta = document.getElementById('doc-content');
         if (ta) ta.value = state._docContent ?? '';
+      }).catch((err) => {
+        console.warn('Load doc failed', err);
+        render();
+        bindMain();
       });
     } else {
       render();
@@ -1089,6 +1134,10 @@ function applyRoute(route) {
 
 async function init() {
   window.addEventListener('popstate', () => applyRoute(parseRoute()));
+
+  // Single delegated listener for in-app links (do not re-attach on every render)
+  const appEl = document.getElementById('app');
+  if (appEl) interceptLinks(appEl);
 
   const user = await loadMe();
   const route = parseRoute();

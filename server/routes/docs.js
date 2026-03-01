@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
-import { requireAuth, getCurrentUser, isAllowed } from '../auth.js';
+import { requireAuth, getCurrentUser, canEditDocs } from '../auth.js';
 import { db } from '../db.js';
 
 const router = Router();
@@ -21,7 +21,7 @@ router.get('/:docKey', requireAuth, (req, res) => {
 
 router.put('/:docKey', requireAuth, (req, res) => {
   const user = getCurrentUser(req);
-  if (!isAllowed(user)) return res.status(403).json({ error: 'Not allowed to edit' });
+  if (!canEditDocs(user)) return res.status(403).json({ error: 'Not allowed to edit' });
   const { docKey } = req.params;
   if (!EDITABLE_DOCS.includes(docKey)) return res.status(404).json({ error: 'Not found' });
   const { content, support_message_id } = req.body || {};

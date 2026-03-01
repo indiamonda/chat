@@ -1764,6 +1764,7 @@ select:focus {
 
 .admin-user-card {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 1rem;
   padding: 1rem;
@@ -1807,6 +1808,29 @@ select:focus {
   display: flex;
   gap: 0.5rem;
   flex-shrink: 0;
+}
+
+.admin-user-perms {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  padding-top: 0.5rem;
+  margin-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.admin-perm-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.admin-perm-check input {
+  cursor: pointer;
 }
 
 /* Edit history */
