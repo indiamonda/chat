@@ -316,8 +316,12 @@ body::after {
   background: linear-gradient(90deg, transparent, var(--purple), transparent);
   border-radius: 0 0 4px 4px;
   pointer-events: none;
-  animation: authLightSpeedIn 0.5s ease-out 0.4s both;
   transform: translateX(-50%);
+  animation: authLineIn 0.5s ease-out 0.4s both;
+}
+@keyframes authLineIn {
+  from { opacity: 0; transform: translateX(-50%) scaleX(0); }
+  to { opacity: 1; transform: translateX(-50%) scaleX(1); }
 }
 .auth-box {
   background: var(--bg-panel);
