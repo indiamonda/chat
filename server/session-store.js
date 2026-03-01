@@ -20,20 +20,20 @@ function getExpires(session) {
   return Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days default
 }
 
-export function createSessionStore() {
-  const store = new EventEmitter();
-  store.get = function get(sid, callback) {
+/** Session store that extends EventEmitter so express-session can call store.on('disconnect', ...). */
+class SqliteSessionStore extends EventEmitter {
+  get(sid, callback) {
     try {
       const row = db.prepare('SELECT session, expires FROM sessions WHERE sid = ? AND expires > ?').get(sid, Date.now());
       if (!row) return callback();
       const session = JSON.parse(row.session);
       callback(null, session);
     } catch {
-      // Corrupt or missing session: treat as no session so we never 500 on asset/API requests
       callback();
     }
-  };
-  store.set = function set(sid, session, callback) {
+  }
+
+  set(sid, session, callback) {
     try {
       const expires = getExpires(session);
       const json = JSON.stringify(session);
@@ -42,16 +42,18 @@ export function createSessionStore() {
       console.error('Session store set error:', err);
     }
     callback();
-  };
-  store.destroy = function destroy(sid, callback) {
+  }
+
+  destroy(sid, callback) {
     try {
       db.prepare('DELETE FROM sessions WHERE sid = ?').run(sid);
     } catch (err) {
       console.error('Session store destroy error:', err);
     }
     callback();
-  };
-  store.touch = function touch(sid, session, callback) {
+  }
+
+  touch(sid, session, callback) {
     try {
       const expires = getExpires(session);
       db.prepare('UPDATE sessions SET expires = ? WHERE sid = ?').run(expires, sid);
@@ -59,6 +61,9 @@ export function createSessionStore() {
       console.error('Session store touch error:', err);
     }
     callback();
-  };
-  return store;
+  }
+}
+
+export function createSessionStore() {
+  return new SqliteSessionStore();
 }
