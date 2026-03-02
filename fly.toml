@@ -8,8 +8,8 @@ primary_region = 'iad'
 
 [build]
 
-# Persistent storage — REQUIRED. Run ONCE before deploy (6 volumes for 6 machines):
-#   for r in iad ewr ord lax dfw sjc; do fly volumes create chat_data --region $r --size 1 -a jchat; done
+# Persistent storage — REQUIRED. Run ONCE before deploy (one volume per region):
+#   for r in iad ewr ord dfw lax sjc; do fly volume create chat_data --region $r --size 1 -a jchat; done
 [mounts]
   source = "chat_data"
   destination = "/data"
