@@ -922,6 +922,12 @@ select:focus {
     border-right: none;
     border-top: 1px solid var(--border);
     padding: 0 0.25rem;
+    z-index: 400;
+    position: relative;
+  }
+
+  .left-bar .left-bar-expand {
+    display: none;
   }
 
   .left-bar .left-bar-avatar {
@@ -954,10 +960,6 @@ select:focus {
   .left-bar .left-bar-bottom {
     flex-shrink: 0;
     padding: 0.4rem;
-  }
-
-  .left-bar .left-bar-expand .left-bar-label {
-    display: none;
   }
 
   .left-bar-expanded {
@@ -1033,10 +1035,12 @@ select:focus {
   .panel-column-overlay {
     display: none;
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
     bottom: 56px;
-    background: rgba(0, 0, 0, 0.4);
-    z-index: 250;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 200;
     pointer-events: auto;
   }
 
@@ -2297,7 +2301,6 @@ select:focus {
   margin-bottom: 1rem;
 }
 
-.profile-modal-overlay { }
 .profile-modal { position: relative; padding: 1.5rem; min-width: 320px; }
 .profile-modal-close { position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; font-size: 1.5rem; color: var(--text-dim); cursor: pointer; line-height: 1; }
 .profile-modal-close:hover { color: var(--text); }

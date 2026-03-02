@@ -544,9 +544,6 @@ function renderMain() {
       </div>
 
       <div class="main-content">
-        <header class="main-content-header">
-          <a href="/inbox" class="main-header-link main-header-inbox">Inbox${((state.inbox || []).filter(i => !i.read_at).length) ? `<span class="header-inbox-badge">${Math.min(99, (state.inbox || []).filter(i => !i.read_at).length)}</span>` : ''}</a>
-        </header>
         <div class="main-content-body">
           ${primaryNav === 'home' ? (isGroup && (state.panel === 'free_chat' || state.panel === 'support') ? renderChatArea() : isGroup && isDocPanel ? renderDocArea() : '<div class="empty-state">Select a panel.</div>') : ''}
           ${primaryNav === 'chat' ? (state.dmUserId ? renderChatArea() : '<div class="empty-state">Select a conversation.</div>') : ''}
