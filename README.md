@@ -34,11 +34,24 @@ npm run dev
 - App: http://localhost:3000  
 - First admin login: `jimmyqrg` / `changeme`
 
+## Environment variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| **SESSION_SECRET** | **Yes (production)** | (insecure default) | Secret for signing session cookies. Set in production: `fly secrets set SESSION_SECRET="$(openssl rand -base64 32)"` |
+| **NODE_ENV** | No | — | Set to `production` on Fly; enables secure cookies. |
+| **PORT** | No | `3000` | Server port (Fly sets automatically). |
+| **HOST** | No | `0.0.0.0` | Bind address. |
+| **DATA_DIR** | No | `./data` (local) or `/data` (Fly volume) | Directory for SQLite DB, uploads, sessions. On Fly the volume is at `/data`. |
+| **ASSET_VERSION** | No | `Date.now()` | Optional cache-bust for JS/CSS. |
+| **ALLOW_IFRAME** | No | — | Set to `true` if app is in an iframe; uses `sameSite=none` and secure cookies. |
+| **COOKIE_SECURE** | No | — | Set to `true` to force secure cookies (e.g. behind a proxy). |
+
 ## Deploy to fly.io
 
 1. Install [flyctl](https://fly.io/docs/hands-on/install-flyctl/) and log in: `fly auth login`.
 
-2. **Create a volume first** (required for persistent DB, sessions, and uploads — without it you get logged out and password resets on every restart):
+2. **Create a volume** (required for persistent DB, sessions, uploads — one machine for SQLite):
    ```bash
    for r in iad ewr ord lax dfw sjc; do fly volumes create chat_data --region $r --size 1 -a jchat; done
    ```
