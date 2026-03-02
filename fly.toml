@@ -8,18 +8,18 @@ primary_region = 'iad'
 
 [build]
 
-# Persistent storage: uncomment [mounts] and create 6 volumes (one per region), then deploy:
-#   for r in iad ewr ord dfw lax sjc; do fly volumes create chat_data --region $r --size 1 -a jchat; done
-# [mounts]
-#   source = "chat_data"
-#   destination = "/data"
+# Persistent storage — REQUIRED. SQLite is single-DB, so use 1 machine. Run ONCE before deploy:
+#   fly volumes create chat_data --region iad --size 1 -a jchat
+[mounts]
+  source = "chat_data"
+  destination = "/data"
 
 [http_service]
   internal_port = 8080
   force_https = true
   auto_stop_machines = false
   auto_start_machines = true
-  min_machines_running = 6
+  min_machines_running = 1
   processes = ["app"]
 
 [[vm]]
