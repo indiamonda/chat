@@ -8,8 +8,8 @@ primary_region = 'iad'
 
 [build]
 
-# Persistent storage — REQUIRED. Run ONCE before deploy (one volume per region):
-#   for r in iad ewr ord dfw lax sjc; do fly volume create chat_data --region $r --size 1 -a jchat; done
+# Persistent storage — one volume in primary_region (SQLite + sessions are per-machine; use 1 machine only)
+#   fly volume create chat_data --region iad --size 1 -a jchat
 [mounts]
   source = "chat_data"
   destination = "/data"
@@ -19,7 +19,7 @@ primary_region = 'iad'
   force_https = true
   auto_stop_machines = false
   auto_start_machines = true
-  min_machines_running = 6
+  min_machines_running = 1
   processes = ["app"]
 
 [[vm]]
