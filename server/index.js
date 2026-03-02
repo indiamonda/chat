@@ -518,6 +518,6 @@ process.on('uncaughtException', (err) => {
 });
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled rejection at', promise, 'reason:', reason);
-  process.exit(1);
+  // Log but do not exit: a single failed async route can reject and would otherwise 502 the whole process (e.g. on Fly).
 });
 start();
