@@ -1431,22 +1431,19 @@ select:focus {
 
 .message-row {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   max-width: 100%;
   position: relative;
-  padding-right: 6rem;
 }
 
 .message-row .message {
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
 }
 
 .message-row .message-like-wrap {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  margin-top: 0.15rem;
   display: flex;
   align-items: center;
   gap: 0.25rem;
@@ -1461,7 +1458,7 @@ select:focus {
 }
 
 .message-row:has(.message.own) {
-  align-self: flex-end;
+  align-items: flex-end;
 }
 
 .message-like-btn {
