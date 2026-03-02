@@ -1,5 +1,9 @@
-/* Out-of-space, purple, dark theme */
-:root {
+/* Themes: JimmyQrg (default), Simple, Comic */
+@import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap');
+
+:root,
+html[data-theme="jimmyqrg"] {
+  --font-family: 'Oxanium', system-ui, sans-serif;
   --bg-deep: #0a0612;
   --bg-main: #120c1a;
   --bg-panel: #1a1225;
@@ -13,10 +17,85 @@
   --text-dim: #a78bb8;
   --star: rgba(196, 181, 255, 0.15);
   --glow: rgba(139, 92, 246, 0.3);
+  --border-width: 1px;
   --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
   --transition-fast: 0.15s var(--ease);
   --transition-normal: 0.25s var(--ease);
   --transition-slow: 0.35s var(--ease);
+}
+
+/* Simple: formal, Roboto, light, blue & green */
+html[data-theme="simple"] {
+  --font-family: 'Roboto', system-ui, sans-serif;
+  --bg-deep: #e8f0f7;
+  --bg-main: #ffffff;
+  --bg-panel: #f5f9fc;
+  --bg-hover: #e3eef6;
+  --border: #b8d4e8;
+  --purple: #1976d2;
+  --purple-dim: #0d47a1;
+  --purple-bright: #42a5f5;
+  --accent: #2e7d32;
+  --text: #1a237e;
+  --text-dim: #5c6bc0;
+  --star: rgba(25, 118, 210, 0.12);
+  --glow: rgba(25, 118, 210, 0.25);
+  --border-width: 1px;
+}
+
+html[data-theme="simple"] body.auth-page::before,
+html[data-theme="simple"] body::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(248, 248, 255, 0.9) 100%),
+    radial-gradient(ellipse 80% 50% at 50% -20%, var(--glow), transparent);
+}
+
+html[data-theme="simple"] body::after {
+  background-image:
+    radial-gradient(1.5px 1.5px at 20px 30px, var(--star), transparent),
+    radial-gradient(1.5px 1.5px at 40px 70px, var(--star), transparent),
+    radial-gradient(1px 1px at 90px 40px, var(--star), transparent),
+    radial-gradient(1.5px 1.5px at 130px 80px, var(--star), transparent),
+    radial-gradient(1px 1px at 160px 120px, var(--star), transparent);
+}
+
+/* Comic: hand-written, Nunito, light, white/black/orange, thicker lines */
+html[data-theme="comic"] {
+  --font-family: 'Nunito', system-ui, sans-serif;
+  --bg-deep: #ffffff;
+  --bg-main: #ffffff;
+  --bg-panel: #fafafa;
+  --bg-hover: #f5f5f5;
+  --border: #2d2d2d;
+  --purple: #ff8c00;
+  --purple-dim: #e67e00;
+  --purple-bright: #ffa726;
+  --accent: #ff8c00;
+  --text: #1a1a1a;
+  --text-dim: #4d4d4d;
+  --star: rgba(0, 0, 0, 0.06);
+  --glow: rgba(255, 140, 0, 0.2);
+  --border-width: 3px;
+}
+
+html[data-theme="comic"] body.auth-page::before,
+html[data-theme="comic"] body::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.92) 100%),
+    radial-gradient(ellipse 80% 50% at 50% -20%, var(--glow), transparent);
+}
+
+html[data-theme="comic"] body::after {
+  background-image:
+    radial-gradient(2px 2px at 20px 30px, var(--star), transparent),
+    radial-gradient(2px 2px at 40px 70px, var(--star), transparent),
+    radial-gradient(1.5px 1.5px at 90px 40px, var(--star), transparent),
+    radial-gradient(2px 2px at 130px 80px, var(--star), transparent),
+    radial-gradient(1.5px 1.5px at 160px 120px, var(--star), transparent);
+}
+
+html[data-theme="comic"] body {
+  font-weight: 600;
 }
 
 * {
@@ -26,7 +105,7 @@
 }
 
 body {
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--font-family);
   background: var(--bg-deep);
   color: var(--text);
   min-height: 100vh;
@@ -102,7 +181,7 @@ body::after {
   display: inline-flex;
   align-items: center;
   padding: 0.5rem 0.75rem;
-  border: 1px dashed var(--border);
+  border: var(--border-width) dashed var(--border);
   border-radius: 8px;
   background: var(--bg-main);
   color: var(--text-dim);
@@ -129,7 +208,7 @@ body::after {
 /* Custom select / dropdown */
 select {
   padding: 0.6rem 2rem 0.6rem 0.75rem;
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   background: var(--bg-main) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a78bb8' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 0.6rem center;
   color: var(--text);
@@ -372,7 +451,7 @@ select:focus {
   position: absolute;
   inset: -2px;
   border-radius: 18px;
-  border: 1px solid transparent;
+  border: var(--border-width) solid transparent;
   pointer-events: none;
   z-index: -1;
   animation: authGlowIn 0.8s ease-out 0.6s both;
@@ -402,7 +481,7 @@ select:focus {
 .auth-box {
   position: relative;
   background: var(--bg-panel);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 16px;
   padding: 2rem;
   width: 100%;
@@ -477,7 +556,7 @@ select:focus {
   width: 100%;
   padding: 0.75rem;
   margin-bottom: 1rem;
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   background: var(--bg-main);
   color: var(--text);
@@ -831,7 +910,7 @@ select:focus {
 .panel-search-bar input {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   background: var(--bg-main);
   color: var(--text);
@@ -1314,6 +1393,27 @@ select:focus {
   border: none;
 }
 
+.message-timestamp {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 100%;
+}
+
+.message-timestamp-line {
+  flex: 1;
+  height: 0;
+  border-top: 1px solid var(--text-dim);
+}
+
+.message-timestamp-text {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  padding: 0 0.25rem;
+}
+
 .message.message-system {
   max-width: none;
   padding: 0.35rem 0;
@@ -1432,7 +1532,7 @@ select:focus {
   min-height: 4rem;
   padding: 0.5rem 0.6rem;
   background: var(--bg-panel);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   color: var(--text);
   font: inherit;
@@ -1518,7 +1618,7 @@ select:focus {
 
 .message-body {
   background: var(--bg-panel);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 12px;
   padding: 0.6rem 0.9rem;
   position: relative;
@@ -1672,7 +1772,7 @@ select:focus {
   flex: 1;
   display: flex;
   align-items: flex-end;
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 12px;
   background: var(--bg-main);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
@@ -1781,7 +1881,7 @@ select:focus {
   padding: 0.5rem 1rem;
   background: transparent;
   color: var(--text-muted);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
@@ -1799,7 +1899,7 @@ select:focus {
   padding: 0.5rem 1rem;
   background: var(--purple-dim);
   color: var(--text);
-  border: 1px solid var(--purple);
+  border: var(--border-width) solid var(--purple);
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
@@ -1827,7 +1927,7 @@ select:focus {
   width: 100%;
   min-height: 300px;
   padding: 1rem;
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   background: var(--bg-main);
   color: var(--text);
@@ -1904,7 +2004,7 @@ select:focus {
 
 .doc-markdown pre {
   background: var(--bg-main);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   padding: 1rem;
   margin: 0.75rem 0;
@@ -1976,7 +2076,7 @@ select:focus {
   width: 100%;
   padding: 0.75rem;
   margin-bottom: 1rem;
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   background: var(--bg-main);
   color: var(--text);
@@ -2083,7 +2183,7 @@ select:focus {
   width: 100%;
   max-width: 240px;
   padding: 0.6rem 0.75rem;
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   background: var(--bg-main);
   color: var(--text);
@@ -2123,7 +2223,7 @@ select:focus {
   padding: 0.5rem 1rem;
   background: transparent;
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
@@ -2139,7 +2239,7 @@ select:focus {
   padding: 0.5rem 1rem;
   background: transparent;
   color: #f87171;
-  border: 1px solid #f87171;
+  border: var(--border-width) solid #f87171;
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
@@ -2155,7 +2255,7 @@ select:focus {
   font-size: 0.8rem;
   background: var(--bg-hover);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 6px;
   cursor: pointer;
   transition: border-color var(--transition-fast), color var(--transition-fast);
@@ -2204,7 +2304,7 @@ select:focus {
 .inbox-item {
   padding: 1rem;
   background: var(--bg-panel);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 12px;
   margin-bottom: 0.75rem;
   cursor: pointer;
@@ -2241,7 +2341,7 @@ select:focus {
 .context-menu {
   position: fixed;
   background: var(--bg-panel);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   padding: 0.25rem 0;
   min-width: 180px;
@@ -2303,7 +2403,7 @@ select:focus {
 
 .modal {
   background: var(--bg-panel);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 16px;
   padding: 1.5rem;
   max-width: 90vw;
@@ -2334,7 +2434,7 @@ select:focus {
 .modal textarea {
   width: 100%;
   padding: 0.6rem 0.75rem;
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   background: var(--bg-main);
   color: var(--text);
@@ -2405,7 +2505,7 @@ select:focus {
   padding: 0.5rem 1rem;
   background: var(--purple-dim);
   color: var(--text);
-  border: 1px solid var(--purple);
+  border: var(--border-width) solid var(--purple);
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
@@ -2423,7 +2523,7 @@ select:focus {
   padding: 0.5rem 1rem;
   background: transparent;
   color: var(--text-dim);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
@@ -2509,11 +2609,11 @@ select:focus {
 
 .inbox-item-actions { margin-top: 0.5rem; display: flex; gap: 0.5rem; }
 .admin-recalled-ul { list-style: none; padding: 0; margin: 0; }
-.admin-recalled-item { padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
+.admin-recalled-item { padding: 0.75rem; border: var(--border-width) solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
 .admin-recalled-content { margin: 0.25rem 0 0; color: var(--text-dim); font-size: 0.9rem; }
 .admin-recalled-time { font-size: 0.85rem; color: var(--text-dim); margin-left: 0.5rem; }
 .admin-timeout-ul { list-style: none; padding: 0; margin: 0; }
-.admin-timeout-item { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.6rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
+.admin-timeout-item { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.6rem; border: var(--border-width) solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
 .admin-timeout-meta { font-size: 0.85rem; color: var(--text-dim); }
 .admin-timeout-locked { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0; }
 
@@ -2530,7 +2630,7 @@ select:focus {
   width: 100%;
   padding: 0.6rem 0.75rem;
   margin-bottom: 1rem;
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 8px;
   background: var(--bg-main);
   color: var(--text);
@@ -2560,7 +2660,7 @@ select:focus {
   gap: 1rem;
   padding: 1rem;
   background: var(--bg-panel);
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   border-radius: 12px;
   transition: border-color var(--transition-fast);
 }

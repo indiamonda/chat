@@ -1,5 +1,10 @@
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete, uploadFile, getDefaultAvatarUrl } from './api.js';
 
+function applyTheme(theme) {
+  const t = theme || state.theme || 'jimmyqrg';
+  document.documentElement.setAttribute('data-theme', t);
+}
+
 let state = {
   user: null,
   users: [],
@@ -21,7 +26,9 @@ let state = {
   messageVersionIndex: {},
   panelColumnExpanded: false,
   language: typeof localStorage !== 'undefined' ? (localStorage.getItem('language') || 'en') : 'en',
+  theme: typeof localStorage !== 'undefined' ? (localStorage.getItem('theme') || 'jimmyqrg') : 'jimmyqrg',
 };
+applyTheme();
 
 const GROUP_ID = 'JimmyQrg';
 
@@ -660,8 +667,28 @@ function getReplyPreview(msg) {
 
 const TS_INTERVAL_MS = 3 * 60 * 1000; // show timestamp when last one was 3+ min ago or none
 
+function formatTimestampForDivider(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+  }
+  if (d.getFullYear() === now.getFullYear()) {
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function renderTimestamp(ts) {
-  return `<div class="message-timestamp">${escapeHtml(formatTime(ts))}</div>`;
+  const text = escapeHtml(formatTimestampForDivider(ts));
+  return `
+    <div class="message-timestamp">
+      <span class="message-timestamp-line"></span>
+      <span class="message-timestamp-text">${text}</span>
+      <span class="message-timestamp-line"></span>
+    </div>
+  `;
 }
 
 function renderMessagesWithTimestamps(list, roomType, roomId) {
@@ -1544,6 +1571,14 @@ function renderSettingsContent() {
     <div class="settings-page">
       ${tab === 'general' ? `
       <div class="settings-general">
+        <h3 class="settings-section-title">Theme</h3>
+        <p class="settings-account-desc">Choose the visual theme for the app.</p>
+        <label class="settings-form-label">Theme</label>
+        <select id="settings-theme" class="settings-select">
+          <option value="jimmyqrg" ${state.theme === 'jimmyqrg' ? 'selected' : ''}>JimmyQrg</option>
+          <option value="simple" ${state.theme === 'simple' ? 'selected' : ''}>Simple</option>
+          <option value="comic" ${state.theme === 'comic' ? 'selected' : ''}>Comic</option>
+        </select>
         <h3 class="settings-section-title">System Language</h3>
         <p class="settings-account-desc">Choose the display language for the app.</p>
         <label class="settings-form-label">Language</label>
@@ -1839,6 +1874,13 @@ function showPasswordModal() {
 }
 
 function bindSettings() {
+  document.getElementById('settings-theme')?.addEventListener('change', (e) => {
+    const theme = e.target.value;
+    state.theme = theme;
+    if (typeof localStorage !== 'undefined') localStorage.setItem('theme', theme);
+    applyTheme(theme);
+    setState({});
+  });
   document.getElementById('settings-language')?.addEventListener('change', (e) => {
     const lang = e.target.value;
     state.language = lang;
