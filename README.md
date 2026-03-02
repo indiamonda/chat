@@ -40,7 +40,7 @@ npm run dev
 
 2. **Create a volume first** (required for persistent DB, sessions, and uploads — without it you get logged out and password resets on every restart):
    ```bash
-   fly volumes create chat_data --region iad --size 1 -a jchat
+   for r in iad ewr ord lax dfw sjc; do fly volumes create chat_data --region $r --size 1 -a jchat; done
    ```
    Use your app’s primary region (e.g. `iad` in fly.toml). If deploy fails with “needs volumes”, run this then deploy again.
 
