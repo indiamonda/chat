@@ -127,7 +127,7 @@ app.get('/api/rooms/:roomType/:roomId/messages', requireAuth, (req, res) => {
            u.username, u.display_name, u.avatar_url
     FROM messages m
     JOIN users u ON u.id = m.sender_id
-    WHERE m.room_type = ? AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
+    WHERE m.room_type = ? AND m.room_id = ? AND m.created_at < ?
     ORDER BY m.created_at DESC
     LIMIT ?
   `).all(roomType, roomId, before, limit);
@@ -239,7 +239,7 @@ app.get('/api/conversations/:convId/messages', requireAuth, (req, res) => {
            u.username, u.display_name, u.avatar_url
     FROM messages m
     JOIN users u ON u.id = m.sender_id
-    WHERE m.room_type = 'dm' AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
+    WHERE m.room_type = 'dm' AND m.room_id = ? AND m.created_at < ?
     ORDER BY m.created_at DESC
     LIMIT ?
   `).all(req.params.convId, before, limit);
