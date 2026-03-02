@@ -582,7 +582,7 @@ select:focus {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.25rem;
+  gap: 0.6rem;
   padding: 0.5rem 0;
   transition: padding 0.28s ease, align-items 0.28s ease;
 }
@@ -1431,6 +1431,12 @@ select:focus {
   box-shadow: inset 0 0 0 2px var(--purple);
 }
 
+.composer-no-files .composer-actions #attach-file {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .composer-pending-file {
   display: flex;
   align-items: center;
@@ -1813,12 +1819,35 @@ select:focus {
   box-shadow: 0 0 0 2px var(--glow);
 }
 
+.settings-avatar-drop-zone {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  background: var(--bg-panel);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.settings-avatar-drop-zone.settings-avatar-drag-over {
+  border-color: var(--purple);
+  background: var(--bg-hover);
+  box-shadow: 0 0 0 2px var(--glow);
+}
+
+.settings-avatar-drop-hint {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
 .settings-form .avatar-preview {
   width: 80px;
   height: 80px;
   border-radius: 50%;
   object-fit: cover;
-  margin-bottom: 0.75rem;
 }
 
 .settings-form button[type="submit"] {

@@ -23,7 +23,8 @@ export function sessionMiddleware() {
     saveUninitialized: false,
     rolling: true,
     cookie: {
-      secure: process.env.NODE_ENV === 'production',
+      /* Only set Secure when serving over HTTPS (e.g. set COOKIE_SECURE=true in production). Default false so HTTP/localhost keeps you logged in. */
+      secure: process.env.COOKIE_SECURE === 'true',
       maxAge: SEVEN_DAYS_MS,
       sameSite: 'lax',
       httpOnly: true,

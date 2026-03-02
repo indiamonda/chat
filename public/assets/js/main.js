@@ -618,7 +618,7 @@ function renderChatArea() {
       ${list.length === 0 ? '<div class="messages-empty">No messages yet.</div>' : list.map(m => renderMessage(m, roomType, roomId)).join('')}
     </div>
     ${(roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm' ? `
-    <div class="composer" id="composer-drop-zone">
+    <div class="composer ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
       ${replyPreview ? `
         <div class="composer-reply">
           Replying to ${escapeHtml(replyPreview.sender)}: ${escapeHtml(replyPreview.content?.slice(0, 50) || '')}…
@@ -1000,7 +1000,14 @@ function bindMain() {
       const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;
       const reply_to_id = state.replyTo?.id || null;
+      const canSendFiles = roomType === 'dm' ? isFriend(state.dmUserId) : true;
       if (state._pendingFile) {
+        if (!canSendFiles) {
+          alert('Add as friend to send files');
+          state._pendingFile = null;
+          render();
+          return;
+        }
         const form = new FormData();
         form.append('file', state._pendingFile);
         form.append('content', text);
@@ -1029,8 +1036,23 @@ function bindMain() {
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   }
 
-  document.getElementById('attach-file')?.addEventListener('click', () => document.getElementById('file-input')?.click());
+  const fileInput = document.getElementById('file-input');
+  const attachBtn = document.getElementById('attach-file');
+  const canSendFiles = document.getElementById('composer-drop-zone')?.dataset.canSendFiles !== 'false';
+  if (fileInput) fileInput.disabled = !canSendFiles;
+  if (attachBtn) {
+    attachBtn.disabled = !canSendFiles;
+    attachBtn.title = canSendFiles ? 'Attach file' : 'Add as friend to send files';
+  }
+  document.getElementById('attach-file')?.addEventListener('click', () => {
+    if (!canSendFiles) {
+      alert('Add as friend to send files');
+      return;
+    }
+    document.getElementById('file-input')?.click();
+  });
   document.getElementById('file-input')?.addEventListener('change', (e) => {
+    if (!canSendFiles) return;
     const file = e.target.files?.[0];
     if (file) {
       state._pendingFile = file;
@@ -1049,7 +1071,7 @@ function bindMain() {
       dropZone.addEventListener(ev, (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (e.dataTransfer.types.includes('Files')) dropZone.classList.add('composer-drag-over');
+        if (e.dataTransfer.types.includes('Files') && canSendFiles) dropZone.classList.add('composer-drag-over');
       });
     });
     dropZone.addEventListener('dragleave', (e) => {
@@ -1060,6 +1082,10 @@ function bindMain() {
       e.preventDefault();
       e.stopPropagation();
       dropZone.classList.remove('composer-drag-over');
+      if (!canSendFiles) {
+        alert('Add as friend to send files');
+        return;
+      }
       const file = e.dataTransfer.files?.[0];
       if (file) {
         state._pendingFile = file;
@@ -1423,7 +1449,10 @@ function renderSettingsContent() {
       ${tab === 'profile' ? `
       <form id="profile-form" class="settings-form">
         <label>Avatar</label>
-        <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" class="avatar-preview" id="avatar-preview" />
+        <div class="settings-avatar-drop-zone" id="settings-avatar-drop-zone">
+          <img src="${state._pendingAvatarObjectUrl || state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" class="avatar-preview" id="avatar-preview" />
+          <span class="settings-avatar-drop-hint">Drop image here or choose below</span>
+        </div>
         <label class="file-label">
           <span class="file-label-text">Choose image</span>
           <input type="file" name="avatar" accept="image/*" class="file-input" />
@@ -1675,6 +1704,14 @@ function bindSettings() {
     e.preventDefault();
     const form = e.target;
     const formData = new FormData(form);
+    if (state._pendingAvatarFile) {
+      formData.set('avatar', state._pendingAvatarFile);
+      state._pendingAvatarFile = null;
+      if (state._pendingAvatarObjectUrl) {
+        URL.revokeObjectURL(state._pendingAvatarObjectUrl);
+        state._pendingAvatarObjectUrl = null;
+      }
+    }
     try {
       const res = await fetch('/api/users/profile', {
         method: 'PATCH',
@@ -1690,6 +1727,34 @@ function bindSettings() {
       alert(err.message);
     }
   });
+
+  const settingsAvatarDrop = document.getElementById('settings-avatar-drop-zone');
+  if (settingsAvatarDrop) {
+    ['dragenter', 'dragover'].forEach((ev) => {
+      settingsAvatarDrop.addEventListener(ev, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer.types.includes('Files')) settingsAvatarDrop.classList.add('settings-avatar-drag-over');
+      });
+    });
+    settingsAvatarDrop.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      if (!settingsAvatarDrop.contains(e.relatedTarget)) settingsAvatarDrop.classList.remove('settings-avatar-drag-over');
+    });
+    settingsAvatarDrop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      settingsAvatarDrop.classList.remove('settings-avatar-drag-over');
+      const file = e.dataTransfer.files?.[0];
+      if (!file || !file.type.startsWith('image/')) return;
+      if (state._pendingAvatarObjectUrl) URL.revokeObjectURL(state._pendingAvatarObjectUrl);
+      state._pendingAvatarFile = file;
+      state._pendingAvatarObjectUrl = URL.createObjectURL(file);
+      const preview = document.getElementById('avatar-preview');
+      if (preview) preview.src = state._pendingAvatarObjectUrl;
+      setState({});
+    });
+  }
 
 }
 
