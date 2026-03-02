@@ -23,10 +23,10 @@ export function sessionMiddleware() {
     saveUninitialized: false,
     rolling: true,
     cookie: {
-      /* Only set Secure when serving over HTTPS (e.g. set COOKIE_SECURE=true in production). Default false so HTTP/localhost keeps you logged in. */
-      secure: process.env.COOKIE_SECURE === 'true',
+      /* For iframe embedding: set ALLOW_IFRAME=true (and use HTTPS). Then sameSite=none and secure=true so the cookie is sent in cross-origin iframes. */
+      secure: process.env.ALLOW_IFRAME === 'true' || process.env.COOKIE_SECURE === 'true',
       maxAge: SEVEN_DAYS_MS,
-      sameSite: 'lax',
+      sameSite: process.env.ALLOW_IFRAME === 'true' ? 'none' : 'lax',
       httpOnly: true,
     },
   });

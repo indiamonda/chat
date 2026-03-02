@@ -8,12 +8,19 @@ primary_region = 'iad'
 
 [build]
 
+# Persistent storage for SQLite DB (and uploads). Create volume first:
+#   fly volumes create chat_data --region iad --size 1
+# With one volume, only one machine runs; increase volumes to scale.
+[mounts]
+  source = "chat_data"
+  destination = "/data"
+
 [http_service]
   internal_port = 8080
   force_https = true
   auto_stop_machines = false
   auto_start_machines = true
-  min_machines_running = 6
+  min_machines_running = 1
   processes = ["app"]
 
 [[vm]]
