@@ -1,4 +1,5 @@
 import session from 'express-session';
+import { EventEmitter } from 'events';
 import { db } from './db.js';
 
 const Store = session.Store;
@@ -80,5 +81,10 @@ class SqliteSessionStore extends Store {
 }
 
 export function createSessionStore() {
-  return new SqliteSessionStore();
+  const store = new SqliteSessionStore();
+  const emitter = new EventEmitter();
+  store.on = emitter.on.bind(emitter);
+  store.once = emitter.once.bind(emitter);
+  store.emit = emitter.emit.bind(emitter);
+  return store;
 }
