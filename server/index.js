@@ -71,10 +71,11 @@ app.use((req, res, next) => {
   session(req, res, (err) => {
     if (err) {
       console.error('Session middleware error:', err);
-      // Stub session with no-op save/destroy so routes calling req.session.save() or .destroy() don't throw
+      // Stub session with no-op save/destroy/touch so routes and res.end() don't throw
       req.session = {
         save: (cb) => { if (typeof cb === 'function') cb(); },
-        destroy: (cb) => { if (typeof cb === 'function') cb(); }
+        destroy: (cb) => { if (typeof cb === 'function') cb(); },
+        touch: () => {}
       };
       touchSession(req, res, next);
       return;

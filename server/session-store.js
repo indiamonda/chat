@@ -1,5 +1,7 @@
-import { EventEmitter } from 'events';
+import session from 'express-session';
 import { db } from './db.js';
+
+const Store = session.Store;
 
 let tableReady = false;
 function ensureTable() {
@@ -29,8 +31,8 @@ function getExpires(session) {
   return Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days default
 }
 
-/** Session store that extends EventEmitter so express-session can call store.on('disconnect', ...). */
-class SqliteSessionStore extends EventEmitter {
+/** Session store extending express-session Store so createSession and .on() exist. */
+class SqliteSessionStore extends Store {
   get(sid, callback) {
     try {
       ensureTable();
