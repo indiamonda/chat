@@ -535,6 +535,32 @@ select:focus {
   display: none;
 }
 
+@keyframes barExpandIn {
+  from { box-shadow: none; }
+  to { box-shadow: 2px 0 12px rgba(0, 0, 0, 0.06); }
+}
+@keyframes labelFadeIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes expandBtnPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+@keyframes panelOverlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes panelSlideIn {
+  from { transform: translateX(-12px); opacity: 0.95; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes panelSlideOut {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(-12px); opacity: 0.95; }
+}
+
 .left-bar {
   order: 0;
   width: 56px;
@@ -544,16 +570,16 @@ select:focus {
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
   overflow: hidden;
-  /* 7 expand animations/transitions */
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.3s ease,
-    border-color 0.25s ease,
-    background 0.25s ease;
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.35s ease,
+    border-color 0.3s ease,
+    background 0.3s ease;
 }
 .left-bar-expanded {
   width: 180px;
   box-shadow: 2px 0 12px rgba(0, 0, 0, 0.06);
   border-color: var(--border);
+  animation: barExpandIn 0.35s ease-out;
 }
 
 .left-bar-avatar {
@@ -581,7 +607,7 @@ select:focus {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.6rem;
   padding: 0.5rem 0;
   transition: padding 0.28s ease, align-items 0.28s ease;
@@ -645,12 +671,21 @@ select:focus {
   text-overflow: ellipsis;
   font-size: 0.9rem;
   opacity: 0;
-  transition: opacity 0.25s ease 0.05s;
+  transition: opacity 0.3s ease 0.08s, transform 0.3s ease 0.08s;
 }
 
 .left-bar-expanded .left-bar-label {
   opacity: 1;
+  animation: labelFadeIn 0.35s ease-out both;
 }
+.left-bar-expanded .left-bar-nav .left-bar-item:nth-child(1) .left-bar-label { animation-delay: 0.05s; }
+.left-bar-expanded .left-bar-nav .left-bar-item:nth-child(2) .left-bar-label { animation-delay: 0.08s; }
+.left-bar-expanded .left-bar-nav .left-bar-item:nth-child(3) .left-bar-label { animation-delay: 0.11s; }
+.left-bar-expanded .left-bar-nav .left-bar-item:nth-child(4) .left-bar-label { animation-delay: 0.14s; }
+.left-bar-expanded .left-bar-nav .left-bar-item:nth-child(5) .left-bar-label { animation-delay: 0.17s; }
+.left-bar-expanded .left-bar-nav .left-bar-item:nth-child(6) .left-bar-label { animation-delay: 0.2s; }
+.left-bar-expanded .left-bar-nav .left-bar-item:nth-child(7) .left-bar-label { animation-delay: 0.23s; }
+.left-bar-expanded .left-bar-expand .left-bar-label { animation-delay: 0.06s; }
 
 .left-bar:not(.left-bar-expanded) .left-bar-label {
   display: none;
@@ -694,6 +729,9 @@ select:focus {
 .left-bar-expand:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+.left-bar-expand:active {
+  animation: expandBtnPop 0.25s ease-out;
 }
 
 .panel-column {
@@ -1017,6 +1055,7 @@ select:focus {
     flex-direction: column;
     flex: 1;
     min-width: 200px;
+    animation: panelSlideIn 0.3s ease-out;
   }
 
   .panel-column-expanded {
@@ -1033,19 +1072,20 @@ select:focus {
   }
 
   .panel-column-overlay {
-    display: none;
+    display: block;
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 56px;
+    inset: 0;
     background: rgba(0, 0, 0, 0.35);
     z-index: 200;
-    pointer-events: auto;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
   }
 
   .panel-column-expanded .panel-column-overlay {
-    display: block;
+    opacity: 1;
+    pointer-events: auto;
+    animation: panelOverlayFadeIn 0.25s ease-out;
   }
 }
 
@@ -1900,6 +1940,35 @@ select:focus {
 
 .settings-account-block {
   margin-bottom: 2rem;
+}
+
+.settings-general .settings-section-title {
+  margin-top: 0;
+}
+
+.settings-form-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.settings-select {
+  width: 100%;
+  max-width: 240px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-main);
+  color: var(--text);
+  font-size: 0.95rem;
+  margin-bottom: 1rem;
+}
+
+.settings-select:focus {
+  outline: none;
+  border-color: var(--purple);
+  box-shadow: 0 0 0 2px var(--glow);
 }
 
 .settings-account-desc {

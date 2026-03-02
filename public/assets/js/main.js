@@ -18,6 +18,7 @@ let state = {
   profileUserId: null,
   editingDocKey: null,
   panelColumnExpanded: false,
+  language: typeof localStorage !== 'undefined' ? (localStorage.getItem('language') || 'en') : 'en',
 };
 
 const GROUP_ID = 'JimmyQrg';
@@ -474,10 +475,8 @@ async function doLogin(isRegister, body) {
 }
 
 function renderMain() {
-  const page = getPage();
-  if (page === 'inbox') return renderInboxPage();
-
   const route = parseRoute();
+  const page = route.page;
   const primaryNav = getPrimaryNav(route);
   const panels = state.group?.panels || ['free_chat', 'support', 'problem_solving', 'rules'];
   const panelLabels = { free_chat: 'Free Chat', support: 'Support', problem_solving: 'Problem Solving', rules: 'Rules' };
@@ -538,8 +537,14 @@ function renderMain() {
         ${primaryNav === 'settings' ? `
         <div class="panel-tabs">
           <h3 class="panel-list-title">Settings</h3>
+          <a href="/settings?tab=general" class="panel-tab ${route.tab === 'general' ? 'active' : ''}">General</a>
           <a href="/settings?tab=profile" class="panel-tab ${(route.tab || 'profile') === 'profile' ? 'active' : ''}">Profile</a>
           <a href="/settings?tab=account" class="panel-tab ${route.tab === 'account' ? 'active' : ''}">Account</a>
+        </div>
+        ` : ''}
+        ${primaryNav === 'inbox' ? `
+        <div class="panel-tabs">
+          <h3 class="panel-list-title">Inbox</h3>
         </div>
         ` : ''}
         </div>
@@ -549,6 +554,7 @@ function renderMain() {
         <div class="main-content-body">
           ${primaryNav === 'home' ? (isGroup && (state.panel === 'free_chat' || state.panel === 'support') ? renderChatArea() : isGroup && isDocPanel ? renderDocArea() : '<div class="empty-state">Select a panel.</div>') : ''}
           ${primaryNav === 'chat' ? (state.dmUserId ? renderChatArea() : '<div class="empty-state">Select a conversation.</div>') : ''}
+          ${primaryNav === 'inbox' ? renderInboxContent() : ''}
           ${primaryNav === 'admin' ? renderAdminContent() : ''}
           ${primaryNav === 'settings' ? renderSettingsContent() : ''}
         </div>
@@ -913,9 +919,7 @@ function bindMain() {
   });
 
   document.getElementById('panel-search-btn')?.addEventListener('click', () => {
-    state.panelSearchOpen = !state.panelSearchOpen;
-    render();
-    bindMain();
+    setState({ panelSearchOpen: !state.panelSearchOpen });
   });
 
   const panelSearchInput = document.getElementById('panel-user-search');
@@ -1441,10 +1445,30 @@ function renderSettingsPage() {
   return `<div class="settings-page-wrap">${renderSettingsContent()}</div>`;
 }
 
+const LANGUAGE_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'zh', label: '中文' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko', label: '한국어' },
+  { value: 'es', label: 'Español' },
+  { value: 'fr', label: 'Français' },
+  { value: 'de', label: 'Deutsch' },
+];
+
 function renderSettingsContent() {
   const tab = new URLSearchParams(window.location.search || '').get('tab') || 'profile';
   return `
     <div class="settings-page">
+      ${tab === 'general' ? `
+      <div class="settings-general">
+        <h3 class="settings-section-title">System Language</h3>
+        <p class="settings-account-desc">Choose the display language for the app.</p>
+        <label class="settings-form-label">Language</label>
+        <select id="settings-language" class="settings-select">
+          ${LANGUAGE_OPTIONS.map(o => `<option value="${o.value}" ${state.language === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+        </select>
+      </div>
+      ` : ''}
       ${tab === 'profile' ? `
       <form id="profile-form" class="settings-form">
         <label>Avatar</label>
@@ -1481,41 +1505,26 @@ function renderSettingsContent() {
   `;
 }
 
-function renderInboxPage() {
+function renderInboxContent() {
   return `
-    <div class="main-layout">
-      <header class="header">
-        <a href="/chat/jimmyqrg" class="header-logo">JimmyQrg</a>
-        <div class="header-actions">
-          <a href="/settings?tab=profile" class="header-link">Settings</a>
-          <a href="/chat/jimmyqrg" class="header-link">Chat</a>
-          <a href="/settings?tab=profile" class="header-user" title="Profile">
-            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
-            <span>${escapeHtml(state.user?.display_name || state.user?.username || '')}</span>
-          </a>
-        </div>
-      </header>
-      <div class="content" style="justify-content:center">
-        <div class="inbox-page">
-          <h2>Inbox</h2>
-          <div id="inbox-list">
-            ${(state.inbox || []).length === 0
-              ? '<div class="inbox-empty">No mail yet.</div>'
-              : (state.inbox || []).map(item => `
-              <div class="inbox-item ${item.read_at ? '' : 'unread'}" data-id="${item.id}" data-type="${escapeHtml(item.type)}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(item.related_extra || '')}">
-                <div class="type">${escapeHtml(item.type)}</div>
-                <div class="title">${escapeHtml(item.title || '')}</div>
-                <div class="body">${escapeHtml(item.body || '')}</div>
-                ${item.type === 'friend_request' && !item.read_at ? `
-                <div class="inbox-item-actions">
-                  <button type="button" class="btn-small btn-primary inbox-accept-fr" data-inbox-id="${item.id}">Accept</button>
-                  <button type="button" class="btn-small inbox-reject-fr" data-inbox-id="${item.id}">Reject</button>
-                </div>
-                ` : ''}
-              </div>
-            `).join('')}
+    <div class="inbox-page">
+      <h2>Inbox</h2>
+      <div id="inbox-list">
+        ${(state.inbox || []).length === 0
+          ? '<div class="inbox-empty">No mail yet.</div>'
+          : (state.inbox || []).map(item => `
+          <div class="inbox-item ${item.read_at ? '' : 'unread'}" data-id="${item.id}" data-type="${escapeHtml(item.type)}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(item.related_extra || '')}">
+            <div class="type">${escapeHtml(item.type)}</div>
+            <div class="title">${escapeHtml(item.title || '')}</div>
+            <div class="body">${escapeHtml(item.body || '')}</div>
+            ${item.type === 'friend_request' && !item.read_at ? `
+            <div class="inbox-item-actions">
+              <button type="button" class="btn-small btn-primary inbox-accept-fr" data-inbox-id="${item.id}">Accept</button>
+              <button type="button" class="btn-small inbox-reject-fr" data-inbox-id="${item.id}">Reject</button>
+            </div>
+            ` : ''}
           </div>
-        </div>
+        `).join('')}
       </div>
     </div>
   `;
@@ -1691,6 +1700,12 @@ function showPasswordModal() {
 }
 
 function bindSettings() {
+  document.getElementById('settings-language')?.addEventListener('change', (e) => {
+    const lang = e.target.value;
+    state.language = lang;
+    if (typeof localStorage !== 'undefined') localStorage.setItem('language', lang);
+    setState({});
+  });
   document.getElementById('open-password-modal')?.addEventListener('click', showPasswordModal);
   document.getElementById('sign-out-btn')?.addEventListener('click', async () => {
     await apiPost('/api/auth/logout');
