@@ -416,18 +416,6 @@ select:focus {
   box-shadow: 0 0 56px rgba(139, 92, 246, 0.25);
   transform: translateY(-2px);
 }
-.auth-box .tabs .tab-link:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-  border-color: var(--purple);
-  transform: scale(1.02);
-  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.2s ease;
-}
-.auth-box .tabs .tab-link.active:hover {
-  background: var(--purple);
-  color: white;
-  transform: scale(1.02);
-}
 .auth-box input:hover {
   border-color: var(--purple-dim);
   background: var(--bg-hover);
@@ -449,33 +437,33 @@ select:focus {
   color: var(--purple-bright);
 }
 
-.auth-box .tabs {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.auth-box .tabs .tab-link,
-.auth-box .tabs button {
-  flex: 1;
-  padding: 0.6rem;
-  border: 1px solid var(--border);
-  background: var(--bg-main);
+.auth-box .auth-switch {
+  margin-top: 1rem;
+  font-size: 0.9rem;
   color: var(--text-dim);
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.95rem;
   text-align: center;
-  text-decoration: none;
-  display: block;
-  transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.2s ease;
 }
 
-.auth-box .tabs .tab-link.active,
-.auth-box .tabs button.active {
-  background: var(--purple-dim);
-  color: var(--text);
-  border-color: var(--purple);
+.auth-box .auth-switch-link {
+  color: var(--purple-bright);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s, text-decoration 0.2s;
+}
+
+.auth-box .auth-switch-link:hover {
+  color: var(--purple);
+  text-decoration: underline;
+}
+
+/* Auth transition: vanish / appear when switching login ↔ signup */
+.auth-content-vanish {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.auth-content-appear {
+  opacity: 1;
+  transition: opacity 0.25s ease;
 }
 
 .auth-box label {

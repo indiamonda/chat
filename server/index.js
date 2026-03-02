@@ -71,8 +71,11 @@ app.use((req, res, next) => {
   session(req, res, (err) => {
     if (err) {
       console.error('Session middleware error:', err);
-      // Continue without session so we never 500 on session/store errors (user appears logged out for this request)
-      req.session = {};
+      // Stub session with no-op save/destroy so routes calling req.session.save() or .destroy() don't throw
+      req.session = {
+        save: (cb) => { if (typeof cb === 'function') cb(); },
+        destroy: (cb) => { if (typeof cb === 'function') cb(); }
+      };
       touchSession(req, res, next);
       return;
     }

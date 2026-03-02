@@ -43,8 +43,9 @@ function interceptLinks(container) {
 function parseRoute() {
   const path = getPath();
   const params = new URLSearchParams(window.location.search || '');
-  if (path === '/login') return { page: 'login' };
-  if (path === '/signup') return { page: 'signup' };
+  const redirect = params.get('redirect') || null;
+  if (path === '/login') return { page: 'login', redirect };
+  if (path === '/signup') return { page: 'signup', redirect };
   if (path === '/settings') return { page: 'settings', tab: params.get('tab') || 'profile' };
   if (path === '/inbox') return { page: 'inbox' };
   if (path === '/manage' || path === '/manage/') return { page: 'admin', adminTab: params.get('tab') || 'action' };
@@ -73,6 +74,21 @@ function getPrimaryNav(route) {
 function getPage() {
   const route = parseRoute();
   return route.page;
+}
+
+/** Build auth path with optional redirect param. Use when navigating to login/signup. */
+function authPath(page, redirectPath) {
+  const base = page === 'signup' ? '/signup' : '/login';
+  if (!redirectPath) return base;
+  const enc = encodeURIComponent(redirectPath.startsWith('/') ? redirectPath : '/' + redirectPath);
+  return `${base}?redirect=${enc}`;
+}
+
+/** Get redirect target from current URL, or default path. */
+function getRedirectOrDefault(defaultPath = '/chat/jimmyqrg') {
+  const params = new URLSearchParams(window.location.search || '');
+  const r = params.get('redirect');
+  return (r && r.startsWith('/')) ? r : defaultPath;
 }
 
 function navigateTo(path) {
@@ -225,10 +241,17 @@ function render() {
   if (!state.user) {
     document.body.classList.add('auth-page');
     const isSignup = route.page === 'signup';
+    const redirect = route.redirect || null;
     const authError = state.authError || '';
     state.authError = null;
-    app.innerHTML = renderAuth(isSignup, authError);
-    bindAuth(isSignup);
+    const isAuthSwitch = state.authPrevSignup != null && state.authPrevSignup !== isSignup && app.querySelector('.auth-screen');
+    if (isAuthSwitch) {
+      authTransition(app, state.authPrevSignup, isSignup, authError, redirect);
+    } else {
+      app.innerHTML = renderAuth(isSignup, authError, redirect);
+      bindAuth(isSignup);
+    }
+    state.authPrevSignup = isSignup;
     return;
   }
 
@@ -237,15 +260,12 @@ function render() {
   bindMain();
 }
 
-function renderAuth(isSignup = false, initialError = '') {
+function renderAuth(isSignup = false, initialError = '', redirect = null) {
+  const switchHref = authPath(isSignup ? 'login' : 'signup', redirect);
   return `
     <div class="auth-screen auth-ani-1">
       <div class="auth-box auth-ani-2">
         <h1 class="auth-ani-3">JimmyQrg Chat</h1>
-        <div class="tabs auth-ani-4">
-          <a href="/login" class="tab-link auth-ani-5 ${!isSignup ? 'active' : ''}" data-tab="login">Login</a>
-          <a href="/signup" class="tab-link auth-ani-6 ${isSignup ? 'active' : ''}" data-tab="register">Sign up</a>
-        </div>
         <form id="auth-form" class="auth-ani-7" novalidate>
           <div id="auth-error" class="error auth-ani-8">${initialError ? escapeHtml(initialError) : ''}</div>
           <div id="auth-fields-login" class="auth-ani-9" style="display:${isSignup ? 'none' : 'block'}">
@@ -267,18 +287,94 @@ function renderAuth(isSignup = false, initialError = '') {
             <input class="auth-ani-24" name="confirm_password" type="password" autocomplete="new-password" placeholder="Confirm password" />
           </div>
           <button type="submit" id="auth-submit" class="auth-ani-25">${isSignup ? 'Sign up' : 'Login'}</button>
+          <p class="auth-switch auth-ani-26">
+            ${isSignup ? 'Already have an account? ' : "Don't have an account? "}
+            <a href="${switchHref}" class="auth-switch-link">${isSignup ? 'Log in' : 'Sign up'}</a>
+          </p>
         </form>
       </div>
     </div>
   `;
 }
 
+function authTransition(container, fromSignup, toSignup, authError, redirect) {
+  const box = container.querySelector('.auth-box');
+  const form = container.querySelector('#auth-form');
+  if (!box || !form) return;
+  const formContent = form;
+  const beforeHeight = box.offsetHeight;
+
+  formContent.classList.add('auth-content-vanish');
+  formContent.offsetHeight;
+
+  formContent.addEventListener('transitionend', function onVanish(e) {
+    if (e.target !== formContent || e.propertyName !== 'opacity') return;
+    formContent.removeEventListener('transitionend', onVanish);
+
+    const errEl = form.querySelector('#auth-error');
+    const fieldsLogin = form.querySelector('#auth-fields-login');
+    const fieldsRegister = form.querySelector('#auth-fields-register');
+    const submitBtn = form.querySelector('#auth-submit');
+    const switchP = form.querySelector('.auth-switch');
+
+    if (errEl) errEl.textContent = authError || '';
+    if (fieldsLogin) fieldsLogin.style.display = toSignup ? 'none' : 'block';
+    if (fieldsRegister) fieldsRegister.style.display = toSignup ? 'block' : 'none';
+    if (submitBtn) submitBtn.textContent = toSignup ? 'Sign up' : 'Login';
+    if (switchP) {
+      switchP.innerHTML = toSignup ? 'Already have an account? ' : "Don't have an account? ";
+      const link = document.createElement('a');
+      link.href = authPath(toSignup ? 'login' : 'signup', redirect);
+      link.className = 'auth-switch-link';
+      link.textContent = toSignup ? 'Log in' : 'Sign up';
+      switchP.appendChild(link);
+    }
+
+    const afterHeight = box.offsetHeight;
+    if (beforeHeight !== afterHeight) {
+      box.style.height = beforeHeight + 'px';
+      box.style.overflow = 'hidden';
+      box.style.transition = 'height 0.25s ease';
+      box.offsetHeight;
+      box.style.height = afterHeight + 'px';
+      box.addEventListener('transitionend', function onResize(e) {
+        if (e.target !== box || e.propertyName !== 'height') return;
+        box.removeEventListener('transitionend', onResize);
+        box.style.height = '';
+        box.style.overflow = '';
+        box.style.transition = '';
+        formContent.classList.remove('auth-content-vanish');
+        formContent.classList.add('auth-content-appear');
+        formContent.offsetHeight;
+        formContent.addEventListener('transitionend', function onAppear(ev) {
+          if (ev.target !== formContent || ev.propertyName !== 'opacity') return;
+          formContent.removeEventListener('transitionend', onAppear);
+          formContent.classList.remove('auth-content-appear');
+        });
+      });
+    } else {
+      formContent.classList.remove('auth-content-vanish');
+      formContent.classList.add('auth-content-appear');
+      formContent.offsetHeight;
+      formContent.addEventListener('transitionend', function onAppear(ev) {
+        if (ev.target !== formContent || ev.propertyName !== 'opacity') return;
+        formContent.removeEventListener('transitionend', onAppear);
+        formContent.classList.remove('auth-content-appear');
+      });
+    }
+  });
+
+  bindAuth(toSignup);
+}
+
 function bindAuth(isSignup) {
   const isRegister = !!isSignup;
-  document.querySelectorAll('.auth-box .tabs .tab-link').forEach(link => {
+  document.querySelectorAll('.auth-box .auth-switch-link').forEach(link => {
     link.addEventListener('click', (e) => { e.preventDefault(); navigateTo(link.getAttribute('href')); });
   });
-  document.getElementById('auth-form').addEventListener('submit', async (e) => {
+  const form = document.getElementById('auth-form');
+  if (!form) return;
+  form.onsubmit = async (e) => {
     e.preventDefault();
     const errEl = document.getElementById('auth-error');
     const form = e.target;
@@ -302,13 +398,13 @@ function bindAuth(isSignup) {
             await loadGroup();
             await loadUsers();
             connectSocket();
-            navigateTo('/chat/jimmyqrg');
-          } catch (e) {
-            state.user = null;
-            state.authError = e.message || 'Session could not be established. Please try again.';
-            navigateTo('/login');
-          }
-        } else throw new Error(data.error || 'Sign up failed');
+          navigateTo(getRedirectOrDefault());
+        } catch (e) {
+          state.user = null;
+          state.authError = e.message || 'Session could not be established. Please try again.';
+          navigateTo(authPath('login', getPath()));
+        }
+      } else throw new Error(data.error || 'Sign up failed');
       } catch (err) {
         errEl.textContent = err.message || 'Failed';
       }
@@ -326,17 +422,17 @@ function bindAuth(isSignup) {
           await loadGroup();
           await loadUsers();
           connectSocket();
-          navigateTo('/chat/jimmyqrg');
+          navigateTo(getRedirectOrDefault());
         } catch (e) {
           state.user = null;
           state.authError = e.message || 'Session could not be established. Please try again.';
-          navigateTo('/login');
+          navigateTo(authPath('login', getPath()));
         }
       } else throw new Error(data.error || 'Login failed');
     } catch (err) {
       errEl.textContent = err.message || 'Failed';
     }
-  });
+  };
 }
 
 async function doLogin(isRegister, body) {
@@ -1135,7 +1231,7 @@ function applyRoute(route) {
   }
   if (route.page === 'admin') {
     if (!state.user?.is_allowed) {
-      navigateTo('/chat/jimmyqrg');
+          navigateTo(getRedirectOrDefault());
       return;
     }
     setState({ panel: '', dmUserId: null });
@@ -1206,7 +1302,7 @@ async function init() {
 
   if (!user) {
     if (route.page !== 'login' && route.page !== 'signup') {
-      navigateTo('/login');
+      navigateTo(authPath('login', getPath()));
       return;
     }
     render();
@@ -1220,7 +1316,7 @@ async function init() {
 
   const path = getPath();
   if (path === '/' || path === '') {
-    navigateTo('/chat/jimmyqrg');
+    navigateTo(getRedirectOrDefault());
     return;
   }
   applyRoute(route);
