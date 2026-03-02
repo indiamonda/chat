@@ -34,18 +34,19 @@ npm run dev
 - App: http://localhost:3000  
 - First admin login: `jimmyqrg` / `changeme`
 
-## Environment variables
+## Environment variables & secrets
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| **SESSION_SECRET** | **Yes (production)** | (insecure default) | Secret for signing session cookies. Set in production: `fly secrets set SESSION_SECRET="$(openssl rand -base64 32)"` |
-| **NODE_ENV** | No | — | Set to `production` on Fly; enables secure cookies. |
-| **PORT** | No | `3000` | Server port (Fly sets automatically). |
-| **HOST** | No | `0.0.0.0` | Bind address. |
-| **DATA_DIR** | No | `./data` (local) or `/data` (Fly volume) | Directory for SQLite DB, uploads, sessions. On Fly the volume is at `/data`. |
-| **ASSET_VERSION** | No | `Date.now()` | Optional cache-bust for JS/CSS. |
-| **ALLOW_IFRAME** | No | — | Set to `true` if app is in an iframe; uses `sameSite=none` and secure cookies. |
-| **COOKIE_SECURE** | No | — | Set to `true` to force secure cookies (e.g. behind a proxy). |
+The app reads config from environment variables. **On Fly.io you set sensitive values (like the session secret) as Secrets** (Dashboard → your app → **Secrets**). Fly injects secrets as env vars; the app uses `process.env.SESSION_SECRET` etc.
+
+| Name | Where to set | Required | Description |
+|------|----------------|----------|-------------|
+| **SESSION_SECRET** | **Fly: Secrets** | **Yes (production)** | Signing secret for session cookies. In Fly dashboard: Secrets → add `SESSION_SECRET` with a long random value. Or CLI: `fly secrets set SESSION_SECRET="$(openssl rand -base64 32)"` |
+| NODE_ENV | Fly sets | No | `production` on Fly; enables secure cookies. |
+| PORT, HOST | Fly sets | No | Server bind. |
+| DATA_DIR | Fly volume mount | No | Default `/data` on Fly (volume); `./data` locally. |
+| ASSET_VERSION | Optional | No | Cache-bust for assets. |
+| ALLOW_IFRAME | Fly: Secrets (if needed) | No | `true` if app runs in an iframe. |
+| COOKIE_SECURE | Fly: Secrets (if needed) | No | `true` to force secure cookies. |
 
 ## Deploy to fly.io
 
@@ -53,7 +54,7 @@ npm run dev
 
 2. **Create a volume** (required for persistent DB, sessions, uploads — one machine for SQLite):
    ```bash
-   for r in iad ewr ord lax dfw sjc; do fly volumes create chat_data --region $r --size 1 -a jchat; done
+   fly volume create chat_data --region iad --size 1 -a jchat
    ```
    Use your app’s primary region (e.g. `iad` in fly.toml). If deploy fails with “needs volumes”, run this then deploy again.
 
@@ -63,10 +64,7 @@ npm run dev
    ```
    Ensure `fly.toml` has the `[mounts]` section pointing at `chat_data` and that the app name matches.
 
-4. Set a strong session secret:
-   ```bash
-   fly secrets set SESSION_SECRET="your-random-secret"
-   ```
+4. **Add secret** for session signing: in Fly dashboard go to your app → **Secrets** → add `SESSION_SECRET` with a long random value (e.g. from a password manager). Or via CLI: `fly secrets set SESSION_SECRET="$(openssl rand -base64 32)"`.
 
 5. Deploy:
    ```bash
