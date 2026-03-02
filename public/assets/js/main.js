@@ -962,7 +962,7 @@ function bindMain() {
         items.push({ label: 'Recall', action: 'recall' });
         items.push({ label: 'Edit', action: 'edit' });
       }
-      if (state.user?.can_delete_messages && !isOwn) items.push({ label: 'Delete (admin)', action: 'delete', danger: true });
+      if (state.user?.can_delete_messages) items.push({ label: 'Delete (admin)', action: 'delete', danger: true });
       if (state.user?.can_kick) items.push({ label: 'Kick user', action: 'kick' });
       if (canSolve) items.push({ label: 'Solve', action: 'solve' });
       items.push({ label: 'Reply', action: 'reply' });
