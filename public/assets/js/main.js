@@ -16,6 +16,8 @@ let state = {
   leftBarExpanded: typeof localStorage !== 'undefined' && localStorage.getItem('leftBarExpanded') === '1',
   panelSearchOpen: false,
   profileUserId: null,
+  editingDocKey: null,
+  panelColumnExpanded: false,
 };
 
 const GROUP_ID = 'JimmyQrg';
@@ -481,47 +483,16 @@ function renderMain() {
   const isGroup = !!route.group;
   const expanded = state.leftBarExpanded;
 
+  const panelExpanded = state.panelColumnExpanded;
   return `
     <div class="app-shell">
-      <aside class="left-bar ${expanded ? 'left-bar-expanded' : ''}" id="left-bar">
-        <div class="left-bar-avatar">
-          <a href="/settings?tab=profile" class="left-bar-avatar-link" title="Profile">
-            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
-          </a>
-        </div>
-        <nav class="left-bar-nav" aria-label="Main">
-          <a href="/chat/jimmyqrg" class="left-bar-item ${primaryNav === 'home' ? 'active' : ''}" title="Home (JimmyQrg group chat)">
-            <span class="left-bar-icon" aria-hidden="true">${ICON_HOME}</span>
-            <span class="left-bar-label">Home</span>
-          </a>
-          <a href="/chat" class="left-bar-item ${primaryNav === 'chat' ? 'active' : ''}" title="Chat (private messages)">
-            <span class="left-bar-icon" aria-hidden="true">${ICON_CHAT}</span>
-            <span class="left-bar-label">Chat</span>
-          </a>
-          <a href="/inbox" class="left-bar-item ${primaryNav === 'inbox' ? 'active' : ''}" title="Inbox">
-            <span class="left-bar-icon" aria-hidden="true">${ICON_INBOX}</span>
-            <span class="left-bar-label">Inbox</span>
-          </a>
-          ${state.user?.is_allowed ? `
-          <a href="/manage" class="left-bar-item ${primaryNav === 'admin' ? 'active' : ''}" title="Admin">
-            <span class="left-bar-icon" aria-hidden="true">${ICON_ADMIN}</span>
-            <span class="left-bar-label">Admin</span>
-          </a>
-          ` : ''}
-          <a href="/settings?tab=profile" class="left-bar-item ${primaryNav === 'settings' ? 'active' : ''}" title="Settings">
-            <span class="left-bar-icon" aria-hidden="true">${ICON_SETTINGS}</span>
-            <span class="left-bar-label">Settings</span>
-          </a>
-        </nav>
-        <div class="left-bar-bottom">
-          <button type="button" class="left-bar-expand" id="left-bar-expand" title="${expanded ? 'Collapse' : 'Expand'}">
-            <span class="left-bar-icon" aria-hidden="true">${expanded ? ICON_CHEVRON_LEFT : ICON_CHEVRON_RIGHT}</span>
-            <span class="left-bar-label">${expanded ? 'Collapse' : 'Expand'}</span>
-          </button>
-        </div>
-      </aside>
-
-      <div class="panel-column" id="panel-column">
+      <div class="app-shell-inner">
+      <div class="panel-column ${panelExpanded ? 'panel-column-expanded' : ''}" id="panel-column">
+        <button type="button" class="panel-column-toggle" id="panel-column-toggle" title="${panelExpanded ? 'Close panels' : 'Open panels'}" aria-label="${panelExpanded ? 'Close panels' : 'Open panels'}">
+          <span class="left-bar-icon" aria-hidden="true">${panelExpanded ? ICON_CHEVRON_LEFT : ICON_CHEVRON_RIGHT}</span>
+        </button>
+        <div class="panel-column-overlay" id="panel-column-overlay" aria-hidden="true"></div>
+        <div class="panel-column-content">
         ${primaryNav === 'home' ? `
         <div class="panel-list">
           <h3 class="panel-list-title">JimmyQrg</h3>
@@ -569,6 +540,7 @@ function renderMain() {
           <a href="/settings?tab=account" class="panel-tab ${route.tab === 'account' ? 'active' : ''}">Account</a>
         </div>
         ` : ''}
+        </div>
       </div>
 
       <div class="main-content">
@@ -582,6 +554,45 @@ function renderMain() {
           ${primaryNav === 'settings' ? renderSettingsContent() : ''}
         </div>
       </div>
+      </div>
+
+      <aside class="left-bar ${expanded ? 'left-bar-expanded' : ''}" id="left-bar">
+        <div class="left-bar-avatar">
+          <a href="/settings?tab=profile" class="left-bar-avatar-link" title="Profile">
+            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
+          </a>
+        </div>
+        <nav class="left-bar-nav" aria-label="Main">
+          <a href="/chat/jimmyqrg" class="left-bar-item ${primaryNav === 'home' ? 'active' : ''}" title="Home (JimmyQrg group chat)">
+            <span class="left-bar-icon" aria-hidden="true">${ICON_HOME}</span>
+            <span class="left-bar-label">Home</span>
+          </a>
+          <a href="/chat" class="left-bar-item ${primaryNav === 'chat' ? 'active' : ''}" title="Chat (private messages)">
+            <span class="left-bar-icon" aria-hidden="true">${ICON_CHAT}</span>
+            <span class="left-bar-label">Chat</span>
+          </a>
+          <a href="/inbox" class="left-bar-item ${primaryNav === 'inbox' ? 'active' : ''}" title="Inbox">
+            <span class="left-bar-icon" aria-hidden="true">${ICON_INBOX}</span>
+            <span class="left-bar-label">Inbox</span>
+          </a>
+          ${state.user?.is_allowed ? `
+          <a href="/manage" class="left-bar-item ${primaryNav === 'admin' ? 'active' : ''}" title="Admin">
+            <span class="left-bar-icon" aria-hidden="true">${ICON_ADMIN}</span>
+            <span class="left-bar-label">Admin</span>
+          </a>
+          ` : ''}
+          <a href="/settings?tab=profile" class="left-bar-item ${primaryNav === 'settings' ? 'active' : ''}" title="Settings">
+            <span class="left-bar-icon" aria-hidden="true">${ICON_SETTINGS}</span>
+            <span class="left-bar-label">Settings</span>
+          </a>
+        </nav>
+        <div class="left-bar-bottom">
+          <button type="button" class="left-bar-expand" id="left-bar-expand" title="${expanded ? 'Collapse' : 'Expand'}">
+            <span class="left-bar-icon" aria-hidden="true">${expanded ? ICON_CHEVRON_LEFT : ICON_CHEVRON_RIGHT}</span>
+            <span class="left-bar-label">${expanded ? 'Collapse' : 'Expand'}</span>
+          </button>
+        </div>
+      </aside>
     </div>
   `;
 }
@@ -705,16 +716,18 @@ function renderMessage(m, roomType, roomId) {
 function renderDocArea() {
   const docKey = state.panel;
   const canEdit = state.user?.can_edit_docs;
+  const isEditing = canEdit && state.editingDocKey === docKey;
   const supportId = state.supportMessageIdForSolve || '';
   const content = state._docContent ?? '';
-  if (canEdit) {
+  if (isEditing) {
     return `
     <div class="doc-panel" data-doc-key="${docKey}">
       <div class="doc-toolbar">
         <button type="button" id="save-doc" class="doc-save">Save</button>
+        <button type="button" id="cancel-doc-edit" class="doc-cancel">Cancel</button>
       </div>
       <div class="doc-editor">
-        <textarea id="doc-content" placeholder="Loading…"></textarea>
+        <textarea id="doc-content" placeholder="Loading…">${escapeHtml(content)}</textarea>
       </div>
       <input type="hidden" id="doc-support-msg-id" value="${escapeHtml(supportId)}" />
     </div>
@@ -722,6 +735,11 @@ function renderDocArea() {
   }
   return `
     <div class="doc-panel" data-doc-key="${docKey}">
+      ${canEdit ? `
+      <div class="doc-toolbar">
+        <button type="button" id="start-doc-edit" class="doc-edit-btn">Edit</button>
+      </div>
+      ` : ''}
       <div class="doc-view doc-markdown">${markdownToHtml(content)}</div>
       <input type="hidden" id="doc-support-msg-id" value="${escapeHtml(supportId)}" />
     </div>
@@ -875,6 +893,20 @@ async function showProfileModal(userId) {
 }
 
 function bindMain() {
+  document.getElementById('panel-column-toggle')?.addEventListener('click', () => {
+    state.panelColumnExpanded = !state.panelColumnExpanded;
+    setState({});
+  });
+  document.getElementById('panel-column-overlay')?.addEventListener('click', () => {
+    state.panelColumnExpanded = false;
+    setState({});
+  });
+  document.querySelector('.panel-column-content')?.addEventListener('click', (e) => {
+    if (e.target.closest('a') && state.panelColumnExpanded) {
+      state.panelColumnExpanded = false;
+      setState({});
+    }
+  });
   document.getElementById('left-bar-expand')?.addEventListener('click', () => {
     state.leftBarExpanded = !state.leftBarExpanded;
     try { localStorage.setItem('leftBarExpanded', state.leftBarExpanded ? '1' : '0'); } catch (_) {}
@@ -983,7 +1015,12 @@ function bindMain() {
         }).catch(console.error);
         return;
       }
-      state.socket?.emit('message:send', { roomType, roomId, content: text, reply_to_id }, () => {
+      state.socket?.emit('message:send', { roomType, roomId, content: text, reply_to_id }, (res) => {
+        if (res?.error) {
+          alert(res.error);
+          return;
+        }
+        if (res?.message) addMessageLocal(res.message);
         setState({ replyTo: null });
         input.value = '';
       });
@@ -1043,9 +1080,31 @@ function bindMain() {
       try {
         await saveDoc(docKey, content, support_message_id || undefined);
         state.supportMessageIdForSolve = null;
+        const { doc: fresh } = await loadDoc(docKey);
+        state._docContent = fresh?.content ?? content;
+        state.editingDocKey = null;
         setState({});
       } catch (e) {
         alert(e.message);
+      }
+    });
+  }
+
+  const cancelDocEdit = document.getElementById('cancel-doc-edit');
+  if (cancelDocEdit) {
+    cancelDocEdit.addEventListener('click', () => {
+      state.editingDocKey = null;
+      setState({});
+    });
+  }
+
+  const startDocEdit = document.getElementById('start-doc-edit');
+  if (startDocEdit) {
+    startDocEdit.addEventListener('click', () => {
+      const docKey = document.querySelector('.doc-panel')?.dataset.docKey;
+      if (docKey) {
+        state.editingDocKey = docKey;
+        setState({});
       }
     });
   }
@@ -1466,6 +1525,7 @@ function applyRoute(route) {
   }
   if (route.page === 'chat') {
     state.panel = route.panel || 'free_chat';
+    state.editingDocKey = null;
     state.dmUserId = route.dmUserId || null;
     state.convId = null;
     if (route.section === 'dms') {
@@ -1501,8 +1561,6 @@ function applyRoute(route) {
         state._docContent = doc?.content ?? '';
         render();
         bindMain();
-        const ta = document.getElementById('doc-content');
-        if (ta) ta.value = state._docContent ?? '';
       }).catch((err) => {
         console.warn('Load doc failed', err);
         render();

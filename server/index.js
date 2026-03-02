@@ -405,7 +405,6 @@ io.on('connection', (socket) => {
       io.to(`dm:${roomId}`).emit('message', msg);
       return ack?.({ message: msg });
     }
-    if (roomType === 'group' && roomId !== GROUP_ID) return ack?.({ error: 'Invalid room' });
     if (roomType === 'group' && !['free_chat', 'support'].includes(roomId)) return ack?.({ error: 'Invalid panel' });
     if (roomType === 'group' && isTimedOut(socket.userId)) return ack?.({ error: 'You are timed out from group chat' });
     db.prepare(`

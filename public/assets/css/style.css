@@ -514,11 +514,29 @@ select:focus {
 /* App shell: left bar + panel column + main content */
 .app-shell {
   display: flex;
+  flex-direction: row;
   height: 100vh;
   overflow: hidden;
 }
 
+.app-shell-inner {
+  order: 1;
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.panel-column-toggle {
+  display: none;
+}
+
+.panel-column-overlay {
+  display: none;
+}
+
 .left-bar {
+  order: 0;
   width: 56px;
   flex-shrink: 0;
   display: flex;
@@ -880,6 +898,151 @@ select:focus {
   justify-content: center;
   color: var(--text-dim);
   padding: 2rem;
+}
+
+/* Narrow: left bar at bottom, panel column collapsible on the left */
+@media (max-width: 768px) {
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .app-shell-inner {
+    order: 1;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
+  .left-bar {
+    order: 2;
+    width: 100%;
+    height: 56px;
+    min-height: 56px;
+    flex-direction: row;
+    border-right: none;
+    border-top: 1px solid var(--border);
+    padding: 0 0.25rem;
+  }
+
+  .left-bar .left-bar-avatar {
+    padding: 0.4rem;
+  }
+
+  .left-bar .left-bar-avatar-link {
+    width: 36px;
+    height: 36px;
+  }
+
+  .left-bar .left-bar-nav {
+    flex: 1;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0;
+  }
+
+  .left-bar .left-bar-item {
+    width: 40px;
+    padding: 0.5rem;
+  }
+
+  .left-bar .left-bar-label {
+    display: none;
+  }
+
+  .left-bar .left-bar-bottom {
+    flex-shrink: 0;
+    padding: 0.4rem;
+  }
+
+  .left-bar .left-bar-expand .left-bar-label {
+    display: none;
+  }
+
+  .left-bar-expanded {
+    width: 100%;
+  }
+
+  /* Panel column: narrow strip by default, overlay when expanded */
+  .panel-column {
+    width: 48px;
+    min-width: 48px;
+    flex-shrink: 0;
+    overflow: visible;
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    transition: width 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .panel-column-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 100%;
+    flex-shrink: 0;
+    background: var(--bg-panel);
+    border: none;
+    border-right: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 0;
+    transition: background var(--transition-fast), color var(--transition-fast);
+  }
+
+  .panel-column-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+
+  .panel-column-toggle .left-bar-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .panel-column-content {
+    display: none;
+    overflow-y: auto;
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+  }
+
+  .panel-column-expanded .panel-column-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .panel-column-expanded {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 56px;
+    width: 260px;
+    max-width: 85vw;
+    z-index: 300;
+    flex-direction: row;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
+    border-right: 1px solid var(--border);
+  }
+
+  .panel-column-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    bottom: 56px;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 250;
+    pointer-events: auto;
+  }
+
+  .panel-column-expanded .panel-column-overlay {
+    display: block;
+  }
 }
 
 /* Main layout (legacy / inbox full page) */
@@ -1434,6 +1597,26 @@ select:focus {
   border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.doc-toolbar .doc-edit-btn,
+.doc-toolbar .doc-cancel {
+  padding: 0.5rem 1rem;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.doc-toolbar .doc-edit-btn:hover,
+.doc-toolbar .doc-cancel:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--text-muted);
 }
 
 .doc-toolbar .doc-save {
