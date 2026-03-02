@@ -7,12 +7,46 @@
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
   <title>JimmyQrg Chat</title>
+  <link rel="preload" as="image" href="/assets/icons/favicon-32.png" />
   <link rel="icon" type="image/png" href="/assets/icons/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32.png" />
-  <link rel="icon" type="image/png" sizes="128x128" href="/assets/icons/favicon-128.png" />
+  <link rel="icon" type="image/png" sizes="128x128" href="/assets/icons/favicon-128.png" id="favicon-128" />
+  <link rel="apple-touch-icon" sizes="128x128" href="/assets/icons/favicon-128.png" id="apple-touch-128" />
   <link rel="icon" type="image/png" sizes="256x256" href="/assets/icons/favicon-256.png" />
-  <link rel="apple-touch-icon" sizes="128x128" href="/assets/icons/favicon-128.png" />
   <link rel="apple-touch-icon" sizes="256x256" href="/assets/icons/favicon-256.png" />
+  <script>
+    (function(){
+      var loaded = false;
+      function load512() {
+        if (loaded) return;
+        var img = new Image();
+        img.onload = function() {
+          loaded = true;
+          var a = document.getElementById('favicon-128');
+          var b = document.getElementById('apple-touch-128');
+          if (a) { a.href = '/assets/icons/favicon-512.png'; a.sizes = '512x512'; }
+          if (b) { b.href = '/assets/icons/favicon-512.png'; b.sizes = '512x512'; }
+        };
+        img.onerror = function() {
+          var fallback = new Image();
+          fallback.onload = function() {
+            loaded = true;
+            var a = document.getElementById('favicon-128');
+            var b = document.getElementById('apple-touch-128');
+            if (a) { a.href = '/assets/icons/favicon-256.png'; a.sizes = '256x256'; }
+            if (b) { b.href = '/assets/icons/favicon-256.png'; b.sizes = '256x256'; }
+          };
+          fallback.src = '/assets/icons/favicon-256.png';
+        };
+        img.src = '/assets/icons/favicon-512.png';
+      }
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(load512, { timeout: 3000 });
+      } else {
+        setTimeout(load512, 2000);
+      }
+    })();
+  </script>
   <link rel="stylesheet" href="/assets/css/style.css?v=1" />
   <script src="/socket.io/socket.io.js"></script>
 </head>
