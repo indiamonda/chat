@@ -114,6 +114,7 @@ body {
 
 body.auth-page {
   background: var(--bg-deep) url('https://jimmyqrg.github.io/background.png') center/cover no-repeat fixed;
+  overflow-y: auto;
 }
 
 body.auth-page::before {
