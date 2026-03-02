@@ -1305,6 +1305,179 @@ select:focus {
   gap: 0.5rem;
 }
 
+.message-timestamp,
+.message-system {
+  align-self: center;
+  text-align: center;
+  padding: 0.35rem 0;
+  background: none;
+  border: none;
+}
+
+.message.message-system {
+  max-width: none;
+  padding: 0.35rem 0;
+}
+
+.message-timestamp .message-system-text,
+.message-system-text {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.message-recalled-line .message-recalled-name {
+  font-style: italic;
+}
+
+.message-row {
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  position: relative;
+  padding-right: 6rem;
+}
+
+.message-row .message {
+  flex: 1;
+  min-width: 0;
+}
+
+.message-row .message-like-wrap {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.message-row:hover .message-like-wrap {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.message-row:has(.message.own) {
+  align-self: flex-end;
+}
+
+.message-like-btn {
+  padding: 0.25rem;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.message-like-btn:hover {
+  color: var(--accent);
+  transform: scale(1.1);
+}
+
+.message-like-count {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  min-width: 1.2em;
+}
+
+.message-edit-history {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.message-edit-history-btn {
+  padding: 0.2rem;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.message-edit-history-btn:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.message-edit-history-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.message-edit-history-label {
+  min-width: 2.2em;
+  text-align: center;
+}
+
+.message-edit-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.message-edit-input {
+  width: 100%;
+  min-height: 4rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+
+.message-edit-input:focus {
+  outline: none;
+  border-color: var(--purple);
+}
+
+.message-edit-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.message-edit-save,
+.message-edit-cancel {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.message-edit-save {
+  background: var(--purple);
+  color: white;
+}
+
+.message-edit-save:hover {
+  background: var(--purple-dim);
+}
+
+.message-edit-cancel {
+  background: transparent;
+  color: var(--text-dim);
+}
+
+.message-edit-cancel:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
 .messages-empty {
   text-align: center;
   padding: 2rem;
@@ -1379,8 +1552,7 @@ select:focus {
 }
 
 .message-time {
-  font-size: 0.75rem;
-  color: var(--text-dim);
+  display: none;
 }
 
 .message-reply-preview {
@@ -1412,41 +1584,8 @@ select:focus {
   color: var(--accent);
 }
 
-.message-recalled {
-  font-style: italic;
-  color: var(--text-dim);
-}
-
-.message-deleted {
-  color: var(--text-dim);
-  font-style: italic;
-}
-
 .message-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.35rem;
-}
-
-.message-actions button {
-  padding: 0;
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: color var(--transition-fast), transform var(--transition-fast);
-}
-
-.message-actions button:hover {
-  color: var(--accent);
-  transform: scale(1.08);
-}
-
-.message-likes {
-  font-size: 0.8rem;
-  color: var(--purple-bright);
+  display: none;
 }
 
 /* Composer */

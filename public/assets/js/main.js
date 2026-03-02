@@ -17,6 +17,8 @@ let state = {
   panelSearchOpen: false,
   profileUserId: null,
   editingDocKey: null,
+  editingMessageId: null,
+  messageVersionIndex: {},
   panelColumnExpanded: false,
   language: typeof localStorage !== 'undefined' ? (localStorage.getItem('language') || 'en') : 'en',
 };
@@ -620,7 +622,7 @@ function renderChatArea() {
 
   return `
     <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
-      ${list.length === 0 ? '<div class="messages-empty">No messages yet.</div>' : list.map(m => renderMessage(m, roomType, roomId)).join('')}
+      ${list.length === 0 ? '<div class="messages-empty">No messages yet.</div>' : renderMessagesWithTimestamps(list, roomType, roomId)}
     </div>
     ${(roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm' ? `
     <div class="composer ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
@@ -656,63 +658,91 @@ function getReplyPreview(msg) {
   return { sender: msg.display_name || msg.username, content: msg.content };
 }
 
+const TS_INTERVAL_MS = 3 * 60 * 1000; // show timestamp when last one was 3+ min ago or none
+
+function renderTimestamp(ts) {
+  return `<div class="message-timestamp">${escapeHtml(formatTime(ts))}</div>`;
+}
+
+function renderMessagesWithTimestamps(list, roomType, roomId) {
+  let lastTs = null;
+  const parts = [];
+  for (const m of list) {
+    const t = m.created_at || 0;
+    if (t && (lastTs == null || t - lastTs >= TS_INTERVAL_MS)) {
+      parts.push(renderTimestamp(t));
+      lastTs = t;
+    } else if (t) lastTs = t;
+    parts.push(renderMessage(m, roomType, roomId));
+  }
+  return parts.join('');
+}
+
 function renderMessage(m, roomType, roomId) {
   const isOwn = m.sender_id === state.user?.id;
-  const canRecallEdit = isOwn && m.created_at && (Date.now() - m.created_at) <= 2 * 60 * 1000;
-  const isSupport = roomType === 'group' && roomId === 'support';
-  const canSolve = state.user?.can_edit_docs && isSupport;
 
   if (m.deleted_by_admin) {
     return `
-      <div class="message own" data-msg-id="${m.id}">
-        <div class="message-body">
-          <span class="message-deleted">Message deleted</span>
-        </div>
+      <div class="message message-system" data-msg-id="${m.id}" data-sender-id="${m.sender_id || ''}">
+        <span class="message-system-text">Message deleted</span>
       </div>
     `;
   }
 
   if (m.recalled_at) {
+    const name = escapeHtml(m.display_name || m.username);
     return `
-      <div class="message" data-msg-id="${m.id}">
-        <div class="message-body">
-          <span class="message-recalled">${escapeHtml(m.display_name || m.username)} recalled a message</span>
-        </div>
+      <div class="message message-system message-recalled-line" data-msg-id="${m.id}" data-sender-id="${m.sender_id || ''}">
+        <span class="message-system-text"><span class="message-recalled-name">${name}</span> recalled a message</span>
       </div>
     `;
   }
 
+  const versions = [...(m.edit_history || []).map(h => h.content), m.content || ''];
+  const versionIndex = Math.max(0, Math.min((state.messageVersionIndex[m.id] ?? versions.length - 1), versions.length - 1));
+  const displayContent = versions[versionIndex];
+  const content = escapeHtml(displayContent || '').replace(/\n/g, '<br>');
   const replyBlock = m.reply_to_id ? `<div class="message-reply-preview" data-reply-to="${m.reply_to_id}">Reply to message</div>` : '';
-  let content = '';
-  if (m.msg_type === 'image') content = `<img src="${escapeHtml(m.content)}" alt="" />`;
-  else if (m.msg_type === 'video') content = `<video src="${escapeHtml(m.content)}" controls></video>`;
-  else if (m.msg_type === 'voice') content = `<audio src="${escapeHtml(m.content)}" controls></audio>`;
-  else if (m.msg_type === 'file') content = `<a href="${escapeHtml(m.content)}" target="_blank" rel="noopener">File</a>`;
-  else content = escapeHtml(m.content || '').replace(/\n/g, '<br>');
+  const likeCount = (m.likes || 0) > 0 ? `<span class="message-like-count">${m.likes}</span>` : '';
+  const likeIcon = `<button type="button" class="message-like-btn" data-msg-id="${m.id}" title="Like" aria-label="Like"><span class="message-like-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span></button>`;
 
-  const editHistory = m.edit_history?.length ? `
-    <details class="edit-history">
-      <summary>Edit history</summary>
-      ${m.edit_history.map((v, i) => `<div class="version">${escapeHtml(String(v.content).slice(0, 200))}</div>`).join('')}
-    </details>
-  ` : '';
+  const chevronLeft = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>`;
+  const chevronRight = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>`;
+  const editHistoryUI = versions.length > 1
+    ? `<span class="message-edit-history" data-msg-id="${m.id}">
+        <button type="button" class="message-edit-history-btn" data-msg-id="${m.id}" data-dir="prev" title="Older version" aria-label="Older version" ${versionIndex <= 0 ? 'disabled' : ''}>${chevronLeft}</button>
+        <span class="message-edit-history-label">${versionIndex + 1}/${versions.length}</span>
+        <button type="button" class="message-edit-history-btn" data-msg-id="${m.id}" data-dir="next" title="Newer version" aria-label="Newer version" ${versionIndex >= versions.length - 1 ? 'disabled' : ''}>${chevronRight}</button>
+      </span>`
+    : '';
 
-  const likeBtn = `<button type="button" class="like-btn" data-msg-id="${m.id}"><span class="icon icon-sm" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span>${m.likes > 0 ? ` ${m.likes}` : ''}</button>`;
+  const isEditing = state.editingMessageId === m.id;
+  const contentBlock = isEditing
+    ? `<div class="message-edit-area">
+        <textarea class="message-edit-input" data-msg-id="${m.id}" rows="3">${escapeHtml(m.content || '')}</textarea>
+        <div class="message-edit-actions">
+          <button type="button" class="message-edit-save" data-msg-id="${m.id}">Save</button>
+          <button type="button" class="message-edit-cancel" data-msg-id="${m.id}">Cancel</button>
+        </div>
+      </div>`
+    : `<div class="message-content">${content}</div>`;
 
   return `
-    <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
-      <img class="message-avatar" src="${m.avatar_url || getDefaultAvatarUrl(m.sender_id)}" alt="" />
-      <div class="message-body">
-        <div class="message-header">
-          <span class="message-sender">${escapeHtml(m.display_name || m.username)}</span>
-          <span class="message-time">${formatTime(m.created_at)}</span>
+    <div class="message-row" data-msg-id="${m.id}">
+      <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
+        <img class="message-avatar" src="${m.avatar_url || getDefaultAvatarUrl(m.sender_id)}" alt="" />
+        <div class="message-body">
+          <div class="message-header">
+            <span class="message-sender">${escapeHtml(m.display_name || m.username)}</span>
+          </div>
+          ${replyBlock}
+          ${contentBlock}
         </div>
-        ${replyBlock}
-        <div class="message-content">${content}</div>
-        ${editHistory}
-        <div class="message-actions">
-          ${likeBtn}
-        </div>
+      </div>
+      <div class="message-like-wrap">
+        ${editHistoryUI}
+        ${likeIcon}
+        ${likeCount}
       </div>
     </div>
   `;
@@ -959,9 +989,12 @@ function bindMain() {
       items.push({ label: 'Reply', action: 'reply' });
 
       showContextMenu(e.clientX, e.clientY, items, (action) => {
-        if (action === 'recall') state.socket?.emit('message:recall', msgId, () => {});
-        if (action === 'edit') promptEdit(msg);
-        if (action === 'delete') state.socket?.emit('message:delete', msgId, () => {});
+        if (action === 'recall') {
+          if (confirm('Are you sure you want to recall this message?')) state.socket?.emit('message:recall', msgId, () => {});
+        } else if (action === 'edit') startInlineEdit(msg);
+        else if (action === 'delete') {
+          if (confirm('Are you sure you want to delete this message?')) state.socket?.emit('message:delete', msgId, () => {});
+        }
         if (action === 'kick') kickUser(senderId);
         if (action === 'solve') {
           state.supportMessageIdForSolve = msgId;
@@ -973,29 +1006,93 @@ function bindMain() {
   }
 
   wrap?.addEventListener('click', (e) => {
-    const likeBtn = e.target.closest('.like-btn');
+    const likeBtn = e.target.closest('.message-like-btn');
     if (likeBtn) {
       e.preventDefault();
+      e.stopPropagation();
       const msgId = likeBtn.dataset.msgId;
       state.socket?.emit('message:like', msgId, () => {});
+      return;
+    }
+    const saveBtn = e.target.closest('.message-edit-save');
+    if (saveBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const msgId = saveBtn.dataset.msgId;
+      const textarea = document.querySelector(`.message-edit-input[data-msg-id="${msgId}"]`);
+      const newContent = textarea?.value?.trim() ?? '';
+      if (newContent) {
+        state.socket?.emit('message:edit', { id: msgId, content: newContent }, () => {});
+      }
+      setState({ editingMessageId: null });
+      return;
+    }
+    const cancelBtn = e.target.closest('.message-edit-cancel');
+    if (cancelBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      setState({ editingMessageId: null });
+      return;
+    }
+    const historyBtn = e.target.closest('.message-edit-history-btn');
+    if (historyBtn && !historyBtn.disabled) {
+      e.preventDefault();
+      e.stopPropagation();
+      const msgId = historyBtn.dataset.msgId;
+      const dir = historyBtn.dataset.dir;
+      const list = state.messages[roomKey(roomType, roomId)] || [];
+      const msg = list.find(m => m.id === msgId);
+      if (!msg) return;
+      const versions = [...(msg.edit_history || []).map(h => h.content), msg.content || ''];
+      const current = state.messageVersionIndex[msgId] ?? versions.length - 1;
+      const next = dir === 'prev' ? Math.max(0, current - 1) : Math.min(versions.length - 1, current + 1);
+      setState({ messageVersionIndex: { ...state.messageVersionIndex, [msgId]: next } });
     }
   });
+
+  if (state.editingMessageId) {
+    requestAnimationFrame(() => {
+      const ta = document.querySelector(`.message-edit-input[data-msg-id="${state.editingMessageId}"]`);
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+        const onKey = (e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            setState({ editingMessageId: null });
+            ta.removeEventListener('keydown', onKey);
+          } else if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const newContent = ta.value.trim();
+            if (newContent) state.socket?.emit('message:edit', { id: state.editingMessageId, content: newContent }, () => {});
+            setState({ editingMessageId: null });
+            ta.removeEventListener('keydown', onKey);
+          }
+        };
+        ta.addEventListener('keydown', onKey);
+      }
+    });
+  }
 
   const sendBtn = document.getElementById('send-btn');
   const input = document.getElementById('composer-input');
   if (sendBtn && input) {
     const send = () => {
+      if (state._sendingMessage) return;
       const text = input.value.trim();
       if (!text && !state._pendingFile) return;
+      state._sendingMessage = true;
       const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;
       const reply_to_id = state.replyTo?.id || null;
       const canSendFiles = roomType === 'dm' ? isFriend(state.dmUserId) : true;
+      const done = () => { state._sendingMessage = false; };
       if (state._pendingFile) {
         if (!canSendFiles) {
           alert('Add as friend to send files');
           state._pendingFile = null;
           render();
+          state._sendingMessage = false;
           return;
         }
         const form = new FormData();
@@ -1009,10 +1106,11 @@ function bindMain() {
           setState({ replyTo: null });
           input.value = '';
           if (roomType === 'dm') loadMessages('dm', roomId).then(render);
-        }).catch(console.error);
+        }).catch(console.error).finally(done);
         return;
       }
       state.socket?.emit('message:send', { roomType, roomId, content: text, reply_to_id }, (res) => {
+        done();
         if (res?.error) {
           alert(res.error);
           return;
@@ -1147,10 +1245,8 @@ function showContextMenu(x, y, items, onSelect) {
   setTimeout(() => document.addEventListener('click', close), 0);
 }
 
-function promptEdit(msg) {
-  const newContent = prompt('Edit message:', msg.content);
-  if (newContent === null) return;
-  state.socket?.emit('message:edit', { id: msg.id, content: newContent }, () => {});
+function startInlineEdit(msg) {
+  setState({ editingMessageId: msg.id });
 }
 
 function kickUser(userId) {
