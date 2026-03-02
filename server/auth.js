@@ -23,8 +23,8 @@ export function sessionMiddleware() {
     saveUninitialized: false,
     rolling: true,
     cookie: {
-      /* For iframe embedding: set ALLOW_IFRAME=true (and use HTTPS). Then sameSite=none and secure=true so the cookie is sent in cross-origin iframes. */
-      secure: process.env.ALLOW_IFRAME === 'true' || process.env.COOKIE_SECURE === 'true',
+      /* Secure=true on HTTPS (production/Fly) so the cookie is sent. For iframe: ALLOW_IFRAME=true => sameSite=none. */
+      secure: process.env.NODE_ENV === 'production' || process.env.ALLOW_IFRAME === 'true' || process.env.COOKIE_SECURE === 'true',
       maxAge: SEVEN_DAYS_MS,
       sameSite: process.env.ALLOW_IFRAME === 'true' ? 'none' : 'lax',
       httpOnly: true,

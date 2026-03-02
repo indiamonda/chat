@@ -212,6 +212,16 @@ export function deleteMessageLocal(id, roomType, roomId) {
   updateMessageLocal(id, roomType, roomId, { deleted_by_admin: 1, content: null, msg_type: 'deleted' });
 }
 
+/** Find a message by id in state.messages (group messages live under group:free_chat / group:support, not group:JimmyQrg). */
+function findMessageInState(msgId) {
+  if (!msgId) return null;
+  for (const key of Object.keys(state.messages || {})) {
+    const m = state.messages[key].find(x => x.id === msgId);
+    if (m) return m;
+  }
+  return null;
+}
+
 function connectSocket() {
   const io = window.io;
   if (!io) return;
@@ -221,27 +231,19 @@ function connectSocket() {
   });
   s.on('message', (msg) => addMessageLocal(msg));
   s.on('message:recalled', ({ id }) => {
-    const key = state.convId ? roomKey('dm', state.convId) : roomKey('group', GROUP_ID);
-    const list = state.messages[key];
-    const m = list?.find(x => x.id === id);
+    const m = findMessageInState(id);
     if (m) removeMessageContent(id, m.room_type, m.room_id);
   });
   s.on('message:edited', ({ id, content, edit_history, updated_at }) => {
-    const key = state.convId ? roomKey('dm', state.convId) : roomKey('group', GROUP_ID);
-    const list = state.messages[key];
-    const m = list?.find(x => x.id === id);
+    const m = findMessageInState(id);
     if (m) updateMessageLocal(id, m.room_type, m.room_id, { content, edit_history, updated_at });
   });
   s.on('message:liked', ({ id, likes }) => {
-    const key = state.convId ? roomKey('dm', state.convId) : roomKey('group', GROUP_ID);
-    const list = state.messages[key];
-    const m = list?.find(x => x.id === id);
+    const m = findMessageInState(id);
     if (m) updateMessageLocal(id, m.room_type, m.room_id, { likes });
   });
   s.on('message:deleted', ({ id }) => {
-    const key = state.convId ? roomKey('dm', state.convId) : roomKey('group', GROUP_ID);
-    const list = state.messages[key];
-    const m = list?.find(x => x.id === id);
+    const m = findMessageInState(id);
     if (m) deleteMessageLocal(id, m.room_type, m.room_id);
   });
   s.on('kicked', () => {

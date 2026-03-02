@@ -38,11 +38,11 @@ npm run dev
 
 1. Install [flyctl](https://fly.io/docs/hands-on/install-flyctl/) and log in: `fly auth login`.
 
-2. Create a volume (required for persistent DB and uploads):
+2. **Create a volume first** (required for persistent DB, sessions, and uploads — without it you get logged out and password resets on every restart):
    ```bash
-   fly volumes create chat_data --region <your-region> --size 1
+   fly volumes create chat_data --region iad --size 1
    ```
-   Use the same region you pick for the app.
+   Use your app’s primary region (e.g. `iad` in fly.toml). If deploy fails with “needs volumes”, run this then deploy again.
 
 3. Launch (first time; use existing app name if you already have one):
    ```bash

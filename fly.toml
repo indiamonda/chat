@@ -8,9 +8,8 @@ primary_region = 'iad'
 
 [build]
 
-# Persistent storage for SQLite DB (and uploads). Create volume first:
+# Persistent storage: REQUIRED to keep login and data across restarts. Create volume once before first deploy:
 #   fly volumes create chat_data --region iad --size 1
-# With one volume, only one machine runs; increase volumes to scale.
 [mounts]
   source = "chat_data"
   destination = "/data"
