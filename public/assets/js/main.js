@@ -11,9 +11,11 @@ let state = {
   socket: null,
   replyTo: null,
   inbox: [],
+  friend_ids: [],
   supportMessageIdForSolve: null,
   leftBarExpanded: typeof localStorage !== 'undefined' && localStorage.getItem('leftBarExpanded') === '1',
   panelSearchOpen: false,
+  profileUserId: null,
 };
 
 const GROUP_ID = 'JimmyQrg';
@@ -63,10 +65,11 @@ function parseRoute() {
   return { page: 'chat', group: true, panel: 'free_chat' };
 }
 
-/** Primary nav for app shell: home (group), chat (DMs), admin, settings */
+/** Primary nav for app shell: home (group), chat (DMs), inbox, admin, settings */
 function getPrimaryNav(route) {
   if (route.page === 'admin') return 'admin';
   if (route.page === 'settings') return 'settings';
+  if (route.page === 'inbox') return 'inbox';
   if (route.page === 'chat') return route.group ? 'home' : 'chat';
   return 'home';
 }
@@ -164,6 +167,21 @@ export async function loadInbox() {
   const { items } = await apiGet('/api/inbox');
   state.inbox = items || [];
   return state.inbox;
+}
+
+export async function loadFriends() {
+  try {
+    const { friend_ids } = await apiGet('/api/friends');
+    state.friend_ids = friend_ids || [];
+    return state.friend_ids;
+  } catch {
+    state.friend_ids = [];
+    return [];
+  }
+}
+
+function isFriend(userId) {
+  return state.friend_ids && state.friend_ids.includes(userId);
 }
 
 export function addMessageLocal(msg) {
@@ -397,6 +415,7 @@ function bindAuth(isSignup) {
           try {
             await loadGroup();
             await loadUsers();
+            await loadFriends();
             connectSocket();
           navigateTo(getRedirectOrDefault());
         } catch (e) {
@@ -421,6 +440,7 @@ function bindAuth(isSignup) {
         try {
           await loadGroup();
           await loadUsers();
+          await loadFriends();
           connectSocket();
           navigateTo(getRedirectOrDefault());
         } catch (e) {
@@ -478,6 +498,10 @@ function renderMain() {
             <span class="left-bar-icon" aria-hidden="true">${ICON_CHAT}</span>
             <span class="left-bar-label">Chat</span>
           </a>
+          <a href="/inbox" class="left-bar-item ${primaryNav === 'inbox' ? 'active' : ''}" title="Inbox">
+            <span class="left-bar-icon" aria-hidden="true">${ICON_INBOX}</span>
+            <span class="left-bar-label">Inbox</span>
+          </a>
           ${state.user?.is_allowed ? `
           <a href="/manage" class="left-bar-item ${primaryNav === 'admin' ? 'active' : ''}" title="Admin">
             <span class="left-bar-icon" aria-hidden="true">${ICON_ADMIN}</span>
@@ -503,7 +527,7 @@ function renderMain() {
           <h3 class="panel-list-title">JimmyQrg</h3>
           <ul class="panel-list-ul">
             ${panels.map(p => `
-              <li><a href="/chat/jimmyqrg?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}">${escapeHtml(panelLabels[p] || p)}</a></li>
+              <li><a href="/chat/jimmyqrg?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}"># ${escapeHtml(panelLabels[p] || p)}</a></li>
             `).join('')}
           </ul>
         </div>
@@ -518,12 +542,14 @@ function renderMain() {
             <input type="search" id="panel-user-search" placeholder="Search users…" />
           </div>
           <ul class="panel-list-ul" id="panel-user-list">
-            ${(state.users || []).filter(u => u.id !== state.user?.id).map(u => `
-              <li><a href="/chat/${encodeURIComponent(u.id)}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml((u.display_name || u.username || '').toLowerCase())}">
+            ${(state.users || []).filter(u => u.id !== state.user?.id).map(u => {
+              const friend = isFriend(u.id);
+              return `
+              <li><a href="${friend ? `/chat/${encodeURIComponent(u.id)}` : '#'}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-user-id="${escapeHtml(u.id)}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml((u.display_name || u.username || '').toLowerCase())}" data-friend="${friend ? '1' : '0'}">
                 <img src="${u.avatar_url || getDefaultAvatarUrl(u.id)}" alt="" class="panel-user-avatar" />
                 <span>${escapeHtml(u.display_name || u.username)}</span>
               </a></li>
-            `).join('')}
+            `; }).join('')}
           </ul>
         </div>
         ` : ''}
@@ -532,6 +558,8 @@ function renderMain() {
           <h3 class="panel-list-title">Admin</h3>
           <a href="/manage?tab=action" class="panel-tab ${(route.adminTab || 'action') === 'action' ? 'active' : ''}">Action</a>
           <a href="/manage?tab=users" class="panel-tab ${route.adminTab === 'users' ? 'active' : ''}">Users</a>
+          <a href="/manage?tab=recalled" class="panel-tab ${route.adminTab === 'recalled' ? 'active' : ''}">Recalled</a>
+          <a href="/manage?tab=timeout" class="panel-tab ${route.adminTab === 'timeout' ? 'active' : ''}">Time out</a>
         </div>
         ` : ''}
         ${primaryNav === 'settings' ? `
@@ -560,6 +588,7 @@ function renderMain() {
 
 const ICON_HOME = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>';
 const ICON_CHAT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+const ICON_INBOX = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>';
 const ICON_ADMIN = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
 const ICON_SETTINGS = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 const ICON_CHEVRON_RIGHT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
@@ -802,6 +831,49 @@ function formatTime(ts) {
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+async function showProfileModal(userId) {
+  if (!userId || userId === state.user?.id) return;
+  try {
+    const { profile } = await apiGet(`/api/users/${encodeURIComponent(userId)}/profile`);
+    const friend = isFriend(userId);
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay profile-modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal profile-modal">
+        <button type="button" class="profile-modal-close" aria-label="Close">&times;</button>
+        <div class="profile-modal-header">
+          <img src="${profile.avatar_url || getDefaultAvatarUrl(profile.id)}" alt="" class="profile-modal-avatar" />
+          <h3 class="profile-modal-name">${escapeHtml(profile.display_name || profile.username)}</h3>
+          <p class="profile-modal-username">@${escapeHtml(profile.username)}</p>
+          ${profile.website ? `<p class="profile-modal-website"><a href="${escapeHtml(profile.website)}" target="_blank" rel="noopener">${escapeHtml(profile.website)}</a></p>` : ''}
+        </div>
+        <div class="profile-modal-actions">
+          <button type="button" class="btn-primary profile-btn-message">Send Message</button>
+          ${!friend ? `<button type="button" class="btn-secondary profile-btn-friend-request">Send Friend Request</button>` : ''}
+        </div>
+      </div>
+    `;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    overlay.querySelector('.profile-modal-close')?.addEventListener('click', () => overlay.remove());
+    overlay.querySelector('.profile-btn-message')?.addEventListener('click', () => { overlay.remove(); navigateTo(`/chat/${encodeURIComponent(userId)}`); });
+    const frBtn = overlay.querySelector('.profile-btn-friend-request');
+    if (frBtn) {
+      frBtn.addEventListener('click', async () => {
+        try {
+          await apiPost('/api/friends/request', { to_user_id: userId });
+          frBtn.textContent = 'Request sent';
+          frBtn.disabled = true;
+        } catch (err) {
+          alert(err.message || 'Failed to send friend request');
+        }
+      });
+    }
+    document.body.appendChild(overlay);
+  } catch (err) {
+    alert(err.message || 'Could not load profile');
+  }
+}
+
 function bindMain() {
   document.getElementById('left-bar-expand')?.addEventListener('click', () => {
     state.leftBarExpanded = !state.leftBarExpanded;
@@ -824,6 +896,13 @@ function bindMain() {
         const match = !q || (a.dataset.username || '').includes(q) || (a.dataset.display || '').includes(q);
         a.closest('li').style.display = match ? '' : 'none';
       });
+    });
+    panelUserList.addEventListener('click', (e) => {
+      const a = e.target.closest('a.panel-list-link[data-friend="0"]');
+      if (a) {
+        e.preventDefault();
+        showProfileModal(a.dataset.userId);
+      }
     });
   }
 
@@ -1046,7 +1125,50 @@ function renderAdminContent() {
             </div>
           </div>
           ` : ''}
-          ${!state.user?.can_send_inbox && !state.user?.can_broadcast ? '<p class="admin-section-desc">You have no action permissions. Ask an admin to grant Send mail or Broadcast.</p>' : ''}
+          ${state.user?.can_timeout ? `
+          <div class="admin-section">
+            <h2 class="admin-section-title">Time out user</h2>
+            <p class="admin-section-desc">Prevent a user from sending messages in the JimmyQrg group chat for a set time.</p>
+            <div class="admin-form">
+              <label>User</label>
+              <select id="admin-timeout-user">
+                <option value="">Select user</option>
+                ${otherUsers.filter(u => u.id !== 'jimmyqrg').map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
+              </select>
+              <label>Duration</label>
+              <input type="text" id="admin-timeout-duration" placeholder="e.g. 5 minute, 1 hour, forever" />
+              ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked" /> Only I can release</label>` : ''}
+              <button type="button" id="admin-timeout-submit" class="btn-primary">Time out</button>
+            </div>
+            <div id="admin-timeout-list" class="admin-timeout-list"></div>
+          </div>
+          ` : ''}
+          ${!state.user?.can_send_inbox && !state.user?.can_broadcast && !state.user?.can_timeout ? '<p class="admin-section-desc">You have no action permissions. Ask an admin to grant Send mail, Broadcast, or Time out.</p>' : ''}
+          ` : ''}
+          ${adminTab === 'recalled' ? `
+          <div class="admin-section">
+            <h2 class="admin-section-title">Recalled messages</h2>
+            <p class="admin-section-desc">Messages that were recalled by users in the group chat.</p>
+            <div id="admin-recalled-list" class="admin-recalled-list"></div>
+          </div>
+          ` : ''}
+          ${adminTab === 'timeout' ? `
+          <div class="admin-section">
+            <h2 class="admin-section-title">Time out user</h2>
+            <p class="admin-section-desc">Prevent a user from sending messages in the JimmyQrg group chat.</p>
+            <div class="admin-form">
+              <label>User</label>
+              <select id="admin-timeout-user-tab">
+                <option value="">Select user</option>
+                ${otherUsers.filter(u => u.id !== 'jimmyqrg').map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
+              </select>
+              <label>Duration</label>
+              <input type="text" id="admin-timeout-duration-tab" placeholder="e.g. 5 minute, 1 hour, forever" />
+              ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked-tab" /> Only I can release</label>` : ''}
+              <button type="button" id="admin-timeout-submit-tab" class="btn-primary">Time out</button>
+            </div>
+            <div id="admin-timeout-list-tab" class="admin-timeout-list"></div>
+          </div>
           ` : ''}
           ${adminTab === 'users' ? `
           <div class="admin-section">
@@ -1055,8 +1177,8 @@ function renderAdminContent() {
             <div class="admin-users-list" id="admin-user-list">
               ${users.map(u => {
                 const canManage = state.user?.can_manage_users;
-                const permLabels = { can_send_inbox: 'Send mail', can_broadcast: 'Broadcast', can_edit_docs: 'Edit docs', can_kick: 'Kick users', can_delete_messages: 'Delete messages', can_manage_users: 'Manage users' };
-                const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users'];
+                const permLabels = { can_send_inbox: 'Send mail', can_broadcast: 'Broadcast', can_edit_docs: 'Edit docs', can_kick: 'Kick users', can_delete_messages: 'Delete messages', can_manage_users: 'Manage users', can_timeout: 'Time out' };
+                const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout'];
                 const isAdmin = u.id === 'jimmyqrg';
                 const showPerms = canManage && !isAdmin && u.is_allowed;
                 return `
@@ -1086,8 +1208,103 @@ function renderAdminContent() {
   `;
 }
 
+async function loadAdminRecalled() {
+  const el = document.getElementById('admin-recalled-list');
+  if (!el) return;
+  try {
+    const { messages } = await apiGet('/api/admin/recalled-messages');
+    el.innerHTML = messages.length === 0
+      ? '<p class="admin-section-desc">No recalled messages.</p>'
+      : `<ul class="admin-recalled-ul">${messages.map(m => `
+        <li class="admin-recalled-item">
+          <strong>${escapeHtml(m.display_name || m.username)}</strong>
+          <span class="admin-recalled-time">${formatTime(m.recalled_at)}</span>
+          <p class="admin-recalled-content">${escapeHtml((m.content || '').slice(0, 200))}</p>
+        </li>
+      `).join('')}</ul>`;
+  } catch (err) {
+    el.innerHTML = '<p class="admin-section-desc">Failed to load.</p>';
+  }
+}
+
+async function loadAdminTimeouts() {
+  const el = document.getElementById('admin-timeout-list');
+  const elTab = document.getElementById('admin-timeout-list-tab');
+  const listEl = el || elTab;
+  if (!listEl) return;
+  try {
+    const { timeouts } = await apiGet('/api/admin/timeouts');
+    const html = timeouts.length === 0
+      ? '<p class="admin-section-desc">No active timeouts.</p>'
+      : `<ul class="admin-timeout-ul">${timeouts.map(t => `
+        <li class="admin-timeout-item">
+          <span>${escapeHtml(t.display_name || t.username)}</span>
+          <span class="admin-timeout-meta">${t.expires_at ? 'until ' + formatTime(t.expires_at) : 'forever'} ${t.locked_release ? '(locked)' : ''}</span>
+          ${(!t.locked_release || state.user?.id === 'jimmyqrg') ? `<button type="button" class="btn-small admin-timeout-release" data-timeout-id="${t.id}">Release</button>` : ''}
+        </li>
+      `).join('')}</ul>`;
+    if (el) el.innerHTML = html;
+    if (elTab) elTab.innerHTML = html;
+  } catch (err) {
+    listEl.innerHTML = '<p class="admin-section-desc">Failed to load.</p>';
+  }
+}
+
 function bindAdmin() {
+  loadAdminRecalled();
+  loadAdminTimeouts();
+
+  document.getElementById('admin-timeout-submit')?.addEventListener('click', async () => {
+    const userId = document.getElementById('admin-timeout-user')?.value;
+    const duration = document.getElementById('admin-timeout-duration')?.value?.trim();
+    const locked = document.getElementById('admin-timeout-locked')?.checked;
+    if (!userId) { alert('Select a user'); return; }
+    try {
+      await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked });
+      document.getElementById('admin-timeout-duration').value = '';
+      loadAdminTimeouts();
+    } catch (err) { alert(err.message); }
+  });
+  document.getElementById('admin-timeout-submit-tab')?.addEventListener('click', async () => {
+    const userId = document.getElementById('admin-timeout-user-tab')?.value;
+    const duration = document.getElementById('admin-timeout-duration-tab')?.value?.trim();
+    const locked = document.getElementById('admin-timeout-locked-tab')?.checked;
+    if (!userId) { alert('Select a user'); return; }
+    try {
+      await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked });
+      document.getElementById('admin-timeout-duration-tab').value = '';
+      loadAdminTimeouts();
+    } catch (err) { alert(err.message); }
+  });
+
+  document.querySelector('.admin-timeout-list')?.closest('.admin-section')?.addEventListener('click', async (e) => {
+    const releaseBtn = e.target.closest('.admin-timeout-release');
+    if (releaseBtn) {
+      const id = releaseBtn.dataset.timeoutId;
+      try {
+        await apiPost(`/api/admin/timeout/${id}/release`, {});
+        loadAdminTimeouts();
+      } catch (err) { alert(err.message); }
+    }
+  });
+  document.getElementById('admin-timeout-list-tab')?.closest('.admin-section')?.addEventListener('click', async (e) => {
+    const releaseBtn = e.target.closest('.admin-timeout-release');
+    if (releaseBtn) {
+      const id = releaseBtn.dataset.timeoutId;
+      try {
+        await apiPost(`/api/admin/timeout/${id}/release`, {});
+        loadAdminTimeouts();
+      } catch (err) { alert(err.message); }
+    }
+  });
+
   document.getElementById('admin-user-list')?.addEventListener('click', async (e) => {
+    const card = e.target.closest('.admin-user-card');
+    if (card && !e.target.closest('button')) {
+      const userId = card.dataset.userId;
+      if (userId) showProfileModal(userId);
+      return;
+    }
     const btn = e.target.closest('button[data-action]');
     if (btn) {
       const userId = btn.dataset.userId;
@@ -1154,6 +1371,8 @@ function renderSettingsContent() {
         </label>
         <label>Display name</label>
         <input type="text" name="display_name" value="${escapeHtml(state.user?.display_name || '')}" />
+        <label>Website</label>
+        <input type="url" name="website" placeholder="https://..." value="${escapeHtml(state.user?.website || '')}" />
         <button type="submit">Save</button>
       </form>
       ` : ''}
@@ -1196,10 +1415,16 @@ function renderInboxPage() {
             ${(state.inbox || []).length === 0
               ? '<div class="inbox-empty">No mail yet.</div>'
               : (state.inbox || []).map(item => `
-              <div class="inbox-item ${item.read_at ? '' : 'unread'}" data-id="${item.id}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(item.related_extra || '')}">
+              <div class="inbox-item ${item.read_at ? '' : 'unread'}" data-id="${item.id}" data-type="${escapeHtml(item.type)}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(item.related_extra || '')}">
                 <div class="type">${escapeHtml(item.type)}</div>
                 <div class="title">${escapeHtml(item.title || '')}</div>
                 <div class="body">${escapeHtml(item.body || '')}</div>
+                ${item.type === 'friend_request' && !item.read_at ? `
+                <div class="inbox-item-actions">
+                  <button type="button" class="btn-small btn-primary inbox-accept-fr" data-inbox-id="${item.id}">Accept</button>
+                  <button type="button" class="btn-small inbox-reject-fr" data-inbox-id="${item.id}">Reject</button>
+                </div>
+                ` : ''}
               </div>
             `).join('')}
           </div>
@@ -1312,6 +1537,7 @@ async function init() {
   await loadGroup();
   await loadUsers();
   await loadInbox();
+  await loadFriends();
   connectSocket();
 
   const path = getPath();
@@ -1411,6 +1637,33 @@ function bindSettings() {
 
 function bindInbox() {
   document.getElementById('inbox-list')?.addEventListener('click', async (e) => {
+    const acceptBtn = e.target.closest('.inbox-accept-fr');
+    const rejectBtn = e.target.closest('.inbox-reject-fr');
+    if (acceptBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const inboxId = acceptBtn.dataset.inboxId;
+      try {
+        await apiPost('/api/friends/accept', { inbox_id: inboxId });
+        await loadInbox();
+        await loadFriends();
+        render();
+        bindInbox();
+      } catch (err) { alert(err.message); }
+      return;
+    }
+    if (rejectBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const inboxId = rejectBtn.dataset.inboxId;
+      try {
+        await apiPost('/api/friends/reject', { inbox_id: inboxId });
+        await loadInbox();
+        render();
+        bindInbox();
+      } catch (err) { alert(err.message); }
+      return;
+    }
     const item = e.target.closest('.inbox-item');
     if (!item) return;
     const id = item.dataset.id;

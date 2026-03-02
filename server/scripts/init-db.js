@@ -107,19 +107,57 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires);
 
+  CREATE TABLE IF NOT EXISTS friendships (
+    user1_id TEXT NOT NULL,
+    user2_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (user1_id, user2_id),
+    CHECK (user1_id < user2_id),
+    FOREIGN KEY (user1_id) REFERENCES users(id),
+    FOREIGN KEY (user2_id) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_friendships_user ON friendships(user1_id, user2_id);
+
+  CREATE TABLE IF NOT EXISTS friend_request_log (
+    id TEXT PRIMARY KEY,
+    from_id TEXT NOT NULL,
+    to_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (from_id) REFERENCES users(id),
+    FOREIGN KEY (to_id) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_friend_request_log_from_to ON friend_request_log(from_id, to_id);
+
+  CREATE TABLE IF NOT EXISTS group_timeouts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    room_type TEXT NOT NULL,
+    room_id TEXT NOT NULL,
+    expires_at INTEGER,
+    locked_release INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    created_by TEXT NOT NULL,
+    released_at INTEGER,
+    released_by TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_group_timeouts_user_room ON group_timeouts(user_id, room_type, room_id);
 `);
 
 try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch (_) {}
-const permCols = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users'];
+try { db.exec('ALTER TABLE users ADD COLUMN website TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE users ADD COLUMN profile_links TEXT'); } catch (_) {}
+const permCols = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout'];
 for (const col of permCols) {
   try { db.exec(`ALTER TABLE users ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
 }
 db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at)
   VALUES ('jimmyqrg', 'jimmyqrg', 'jimmyqrg', NULL, NULL, '$2a$10$placeholder', 1, ?)`).run(Date.now());
-db.prepare(`UPDATE users SET can_send_inbox=1, can_broadcast=1, can_edit_docs=1, can_kick=1, can_delete_messages=1, can_manage_users=1 WHERE id='jimmyqrg'`).run();
+db.prepare(`UPDATE users SET can_send_inbox=1, can_broadcast=1, can_edit_docs=1, can_kick=1, can_delete_messages=1, can_manage_users=1, can_timeout=1 WHERE id='jimmyqrg'`).run();
 // Backfill: existing is_allowed users get all permissions (except can_manage_users) so they keep working
 try {
-  db.prepare(`UPDATE users SET can_send_inbox=1, can_broadcast=1, can_edit_docs=1, can_kick=1, can_delete_messages=1 WHERE is_allowed=1 AND id!='jimmyqrg'`).run();
+  db.prepare(`UPDATE users SET can_send_inbox=1, can_broadcast=1, can_edit_docs=1, can_kick=1, can_delete_messages=1, can_timeout=1 WHERE is_allowed=1 AND id!='jimmyqrg'`).run();
 } catch (_) {}
 
 // Initial password is set at server startup (see server/index.js) so we don't need bcrypt here.

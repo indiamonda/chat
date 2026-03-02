@@ -6,7 +6,7 @@ import express from 'express';
 import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
-import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages } from './auth.js';
+import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages, canTimeout } from './auth.js';
 import { db, GROUP_ID, PANELS } from './db.js';
 import { upload } from './upload.js';
 import { getUploadUrl } from './upload.js';
@@ -15,6 +15,7 @@ import userRoutes from './routes/users.js';
 import docsRoutes from './routes/docs.js';
 import inboxRoutes from './routes/inbox.js';
 import adminRoutes from './routes/admin.js';
+import friendsRoutes, { areFriends } from './routes/friends.js';
 import { randomUUID } from 'node:crypto';
 
 function createInboxForNewMessage(messageId, content, replyToId, senderId, roomType, roomId) {
@@ -111,6 +112,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/docs', docsRoutes);
 app.use('/api/inbox', inboxRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/friends', friendsRoutes);
 
 app.get('/api/group', requireAuth, (req, res) => {
   res.json({ id: GROUP_ID, panels: PANELS });
@@ -329,7 +331,7 @@ io.use((socket, next) => {
     if (!userId) return next(new Error('Not authenticated'));
     socket.userId = userId;
     try {
-      socket.user = db.prepare('SELECT id, username, display_name, avatar_url, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages FROM users WHERE id = ?').get(userId);
+      socket.user = db.prepare('SELECT id, username, display_name, avatar_url, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_timeout FROM users WHERE id = ?').get(userId);
     } catch (e) {
       console.error('Socket user lookup error:', e);
       return next(new Error('User not found'));
@@ -341,12 +343,21 @@ io.use((socket, next) => {
     socket.user.can_edit_docs = !!socket.user.can_edit_docs;
     socket.user.can_kick = !!socket.user.can_kick;
     socket.user.can_delete_messages = !!socket.user.can_delete_messages;
+    socket.user.can_timeout = !!socket.user.can_timeout;
     next();
   });
 });
 
 function isKicked(userId) {
   const row = db.prepare('SELECT id FROM kicked WHERE user_id = ? AND room_type = ? AND room_id = ?').get(userId, 'group', GROUP_ID);
+  return !!row;
+}
+
+function isTimedOut(userId) {
+  const now = Date.now();
+  const row = db.prepare(
+    'SELECT id FROM group_timeouts WHERE user_id = ? AND room_type = ? AND room_id = ? AND released_at IS NULL AND (expires_at IS NULL OR expires_at > ?)'
+  ).get(userId, 'group', GROUP_ID, now);
   return !!row;
 }
 
@@ -374,6 +385,14 @@ io.on('connection', (socket) => {
     if (roomType === 'dm') {
       const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(roomId);
       if (!conv || (conv.user1_id !== socket.userId && conv.user2_id !== socket.userId)) return ack?.({ error: 'Forbidden' });
+      const otherId = conv.user1_id === socket.userId ? conv.user2_id : conv.user1_id;
+      if (!areFriends(socket.userId, otherId)) {
+        const myCount = db.prepare('SELECT COUNT(*) as c FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?').get('dm', roomId, socket.userId).c;
+        const otherCount = db.prepare('SELECT COUNT(*) as c FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?').get('dm', roomId, otherId).c;
+        if (otherCount > 0) return ack?.({ error: 'Accept their friend request to continue chatting' });
+        if (myCount >= 10) return ack?.({ error: 'Add as friend to send more messages' });
+        if ((msg_type && msg_type !== 'text') || (payload && payload.msg_type && payload.msg_type !== 'text')) return ack?.({ error: 'Add as friend to send files' });
+      }
       db.prepare(`
         INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
         VALUES (?, 'dm', ?, ?, ?, ?, ?, ?, ?)
@@ -388,6 +407,7 @@ io.on('connection', (socket) => {
     }
     if (roomType === 'group' && roomId !== GROUP_ID) return ack?.({ error: 'Invalid room' });
     if (roomType === 'group' && !['free_chat', 'support'].includes(roomId)) return ack?.({ error: 'Invalid panel' });
+    if (roomType === 'group' && isTimedOut(socket.userId)) return ack?.({ error: 'You are timed out from group chat' });
     db.prepare(`
       INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

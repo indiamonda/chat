@@ -525,12 +525,17 @@ select:focus {
   flex-direction: column;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
-  transition: width var(--transition-normal);
   overflow: hidden;
+  /* 7 expand animations/transitions */
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.3s ease,
+    border-color 0.25s ease,
+    background 0.25s ease;
 }
-
 .left-bar-expanded {
   width: 180px;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.06);
+  border-color: var(--border);
 }
 
 .left-bar-avatar {
@@ -552,13 +557,16 @@ select:focus {
   object-fit: cover;
 }
 
+/* Icons centered in middle; expand stays at bottom */
 .left-bar-nav {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 0.25rem;
   padding: 0.5rem 0;
+  transition: padding 0.28s ease, align-items 0.28s ease;
 }
 
 .left-bar-expanded .left-bar-nav {
@@ -575,9 +583,13 @@ select:focus {
   color: var(--text-dim);
   text-decoration: none;
   border-radius: 8px;
-  transition: background var(--transition-fast), color var(--transition-fast);
   width: 40px;
   justify-content: center;
+  transition: width 0.28s ease,
+    justify-content 0.28s ease,
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.25s ease;
 }
 
 .left-bar-expanded .left-bar-item {
@@ -614,6 +626,12 @@ select:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 0.9rem;
+  opacity: 0;
+  transition: opacity 0.25s ease 0.05s;
+}
+
+.left-bar-expanded .left-bar-label {
+  opacity: 1;
 }
 
 .left-bar:not(.left-bar-expanded) .left-bar-label {
@@ -625,6 +643,7 @@ select:focus {
   flex-shrink: 0;
   display: flex;
   justify-content: center;
+  transition: justify-content 0.28s ease;
 }
 
 .left-bar-expanded .left-bar-bottom {
@@ -645,6 +664,7 @@ select:focus {
   border-radius: 8px;
   font-size: 0.9rem;
   font-family: inherit;
+  transition: width 0.28s ease, justify-content 0.28s ease, color 0.2s ease, transform 0.2s ease;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
@@ -666,6 +686,7 @@ select:focus {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  transition: opacity 0.2s ease, transform 0.25s ease;
 }
 
 .panel-list-title {
@@ -2063,6 +2084,28 @@ select:focus {
   color: var(--text-dim);
   margin-bottom: 1rem;
 }
+
+.profile-modal-overlay { }
+.profile-modal { position: relative; padding: 1.5rem; min-width: 320px; }
+.profile-modal-close { position: absolute; top: 0.5rem; right: 0.5rem; background: none; border: none; font-size: 1.5rem; color: var(--text-dim); cursor: pointer; line-height: 1; }
+.profile-modal-close:hover { color: var(--text); }
+.profile-modal-header { text-align: center; margin-bottom: 1.25rem; }
+.profile-modal-avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto 0.75rem; }
+.profile-modal-name { margin: 0 0 0.25rem; font-size: 1.25rem; }
+.profile-modal-username { color: var(--text-dim); font-size: 0.9rem; margin: 0 0 0.5rem; }
+.profile-modal-website { font-size: 0.9rem; margin: 0; }
+.profile-modal-website a { color: var(--purple-bright); }
+.profile-modal-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
+
+.inbox-item-actions { margin-top: 0.5rem; display: flex; gap: 0.5rem; }
+.admin-recalled-ul { list-style: none; padding: 0; margin: 0; }
+.admin-recalled-item { padding: 0.75rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
+.admin-recalled-content { margin: 0.25rem 0 0; color: var(--text-dim); font-size: 0.9rem; }
+.admin-recalled-time { font-size: 0.85rem; color: var(--text-dim); margin-left: 0.5rem; }
+.admin-timeout-ul { list-style: none; padding: 0; margin: 0; }
+.admin-timeout-item { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.6rem; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
+.admin-timeout-meta { font-size: 0.85rem; color: var(--text-dim); }
+.admin-timeout-locked { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0; }
 
 .admin-form label {
   display: block;

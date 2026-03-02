@@ -4,7 +4,7 @@ import { db, GROUP_ID } from '../db.js';
 import { upload } from '../upload.js';
 
 const router = Router();
-const PERM_COLS = 'can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_manage_users';
+const PERM_COLS = 'can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_manage_users, can_timeout';
 
 router.get('/', requireAuth, (req, res) => {
   const me = getCurrentUser(req);
@@ -26,6 +26,7 @@ router.get('/', requireAuth, (req, res) => {
       out.can_kick = !!u.can_kick;
       out.can_delete_messages = !!u.can_delete_messages;
       out.can_manage_users = !!u.can_manage_users;
+      out.can_timeout = !!u.can_timeout;
     } else {
       PERM_COLS.split(', ').forEach(c => delete out[c]);
     }
@@ -39,20 +40,48 @@ router.get('/profile', requireAuth, (req, res) => {
   res.json({ user });
 });
 
+/** Public profile for viewing another user (id, username, display_name, avatar_url, website, profile_links). */
+router.get('/:id/profile', requireAuth, (req, res) => {
+  const target = db.prepare(
+    'SELECT id, username, display_name, avatar_url, website, profile_links FROM users WHERE id = ?'
+  ).get(req.params.id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  const profile = {
+    id: target.id,
+    username: target.username,
+    display_name: target.display_name,
+    avatar_url: target.avatar_url,
+    website: target.website || null,
+    profile_links: target.profile_links ? JSON.parse(target.profile_links) : null
+  };
+  res.json({ profile });
+});
+
 router.patch('/profile', requireAuth, upload.single('avatar'), (req, res) => {
   const user = getCurrentUser(req);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
-  const { display_name } = req.body || {};
+  const { display_name, website, profile_links } = req.body || {};
   let avatar_url = user.avatar_url;
   if (req.file) avatar_url = `/uploads/${req.file.filename}`;
-  if (typeof display_name === 'string' && display_name.trim()) {
-    db.prepare('UPDATE users SET display_name = ?, avatar_url = ? WHERE id = ?')
-      .run(display_name.trim().slice(0, 64), avatar_url || null, user.id);
-  } else if (req.file) {
-    db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(avatar_url, user.id);
+  const name = typeof display_name === 'string' && display_name.trim() ? display_name.trim().slice(0, 64) : null;
+  const web = typeof website === 'string' ? website.trim().slice(0, 512) : null;
+  const links = profile_links != null ? (typeof profile_links === 'string' ? profile_links : JSON.stringify(profile_links)) : null;
+  if (name !== null || req.file || web !== null || links !== null) {
+    const updates = [];
+    const values = [];
+    if (name !== null) { updates.push('display_name = ?'); values.push(name); }
+    if (req.file || avatar_url !== undefined) { updates.push('avatar_url = ?'); values.push(avatar_url || null); }
+    if (web !== null) { updates.push('website = ?'); values.push(web); }
+    if (links !== null) { updates.push('profile_links = ?'); values.push(links); }
+    if (updates.length) {
+      values.push(user.id);
+      db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    }
   }
-  const updated = db.prepare('SELECT id, username, display_name, avatar_url, is_allowed FROM users WHERE id = ?').get(user.id);
-  res.json({ user: { ...updated, is_allowed: !!updated.is_allowed } });
+  const updated = db.prepare('SELECT id, username, display_name, avatar_url, website, profile_links, is_allowed FROM users WHERE id = ?').get(user.id);
+  const out = { ...updated, is_allowed: !!updated.is_allowed };
+  if (out.profile_links && typeof out.profile_links === 'string') out.profile_links = JSON.parse(out.profile_links);
+  res.json({ user: out });
 });
 
 router.patch('/password', requireAuth, async (req, res) => {
