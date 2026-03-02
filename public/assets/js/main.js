@@ -898,24 +898,11 @@ async function showProfileModal(userId) {
 }
 
 function bindMain() {
-  document.getElementById('panel-column-toggle')?.addEventListener('click', () => {
-    state.panelColumnExpanded = !state.panelColumnExpanded;
-    setState({});
-  });
-  document.getElementById('panel-column-overlay')?.addEventListener('click', () => {
-    state.panelColumnExpanded = false;
-    setState({});
-  });
   document.querySelector('.panel-column-content')?.addEventListener('click', (e) => {
     if (e.target.closest('a') && state.panelColumnExpanded) {
       state.panelColumnExpanded = false;
       setState({});
     }
-  });
-  document.getElementById('left-bar-expand')?.addEventListener('click', () => {
-    state.leftBarExpanded = !state.leftBarExpanded;
-    try { localStorage.setItem('leftBarExpanded', state.leftBarExpanded ? '1' : '0'); } catch (_) {}
-    setState({});
   });
 
   document.getElementById('panel-search-btn')?.addEventListener('click', () => {
@@ -1615,7 +1602,55 @@ async function init() {
 
   // Single delegated listener for in-app links (do not re-attach on every render)
   const appEl = document.getElementById('app');
-  if (appEl) interceptLinks(appEl);
+  if (appEl) {
+    interceptLinks(appEl);
+    // Delegated listeners for expand/toggle: update state + toggle class on existing DOM (no setState)
+    // so first click works and CSS transition/animation run on the same element
+    appEl.addEventListener('click', (e) => {
+      const toggle = e.target.closest('#panel-column-toggle');
+      const expand = e.target.closest('#left-bar-expand');
+      const overlay = e.target.closest('#panel-column-overlay');
+      if (toggle) {
+        e.preventDefault();
+        state.panelColumnExpanded = !state.panelColumnExpanded;
+        const panel = document.getElementById('panel-column');
+        if (panel) panel.classList.toggle('panel-column-expanded', state.panelColumnExpanded);
+        const btn = document.getElementById('panel-column-toggle');
+        if (btn) {
+          btn.title = state.panelColumnExpanded ? 'Close panels' : 'Open panels';
+          btn.setAttribute('aria-label', btn.title);
+          const icon = btn.querySelector('.left-bar-icon');
+          if (icon) icon.innerHTML = state.panelColumnExpanded ? ICON_CHEVRON_LEFT : ICON_CHEVRON_RIGHT;
+        }
+      } else if (expand) {
+        e.preventDefault();
+        state.leftBarExpanded = !state.leftBarExpanded;
+        try { localStorage.setItem('leftBarExpanded', state.leftBarExpanded ? '1' : '0'); } catch (_) {}
+        const bar = document.getElementById('left-bar');
+        if (bar) bar.classList.toggle('left-bar-expanded', state.leftBarExpanded);
+        const expandBtn = document.getElementById('left-bar-expand');
+        if (expandBtn) {
+          expandBtn.title = state.leftBarExpanded ? 'Collapse' : 'Expand';
+          const icon = expandBtn.querySelector('.left-bar-icon');
+          const label = expandBtn.querySelector('.left-bar-label');
+          if (icon) icon.innerHTML = state.leftBarExpanded ? ICON_CHEVRON_LEFT : ICON_CHEVRON_RIGHT;
+          if (label) label.textContent = state.leftBarExpanded ? 'Collapse' : 'Expand';
+        }
+      } else if (overlay) {
+        e.preventDefault();
+        state.panelColumnExpanded = false;
+        const panel = document.getElementById('panel-column');
+        if (panel) panel.classList.remove('panel-column-expanded');
+        const btn = document.getElementById('panel-column-toggle');
+        if (btn) {
+          btn.title = 'Open panels';
+          btn.setAttribute('aria-label', 'Open panels');
+          const icon = btn.querySelector('.left-bar-icon');
+          if (icon) icon.innerHTML = ICON_CHEVRON_RIGHT;
+        }
+      }
+    });
+  }
 
   const user = await loadMe();
   const route = parseRoute();
@@ -1672,9 +1707,11 @@ function showPasswordModal() {
     e.preventDefault();
     const form = e.target;
     const msgEl = overlay.querySelector('#password-modal-message');
-    const current = form.current_password?.value?.trim() || '';
-    const newPass = form.new_password?.value?.trim() || '';
-    const confirm = form.new_password_confirm?.value?.trim() || '';
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn?.disabled) return;
+    const current = (form.current_password?.value ?? '').trim();
+    const newPass = (form.new_password?.value ?? '').trim();
+    const confirm = (form.new_password_confirm?.value ?? '').trim();
     if (!current || !newPass) {
       if (msgEl) { msgEl.textContent = 'Please fill in current and new password.'; msgEl.dataset.type = 'error'; }
       return;
@@ -1688,6 +1725,7 @@ function showPasswordModal() {
       return;
     }
     if (msgEl) msgEl.textContent = '';
+    if (submitBtn) submitBtn.disabled = true;
     try {
       await apiPatch('/api/users/password', { current_password: current, new_password: newPass });
       if (msgEl) { msgEl.textContent = 'Password changed.'; msgEl.dataset.type = 'success'; }
@@ -1695,6 +1733,7 @@ function showPasswordModal() {
       setTimeout(() => overlay.remove(), 800);
     } catch (err) {
       if (msgEl) { msgEl.textContent = err.message || 'Failed to change password.'; msgEl.dataset.type = 'error'; }
+      if (submitBtn) submitBtn.disabled = false;
     }
   });
 }
@@ -1741,6 +1780,21 @@ function bindSettings() {
       alert(err.message);
     }
   });
+
+  const profileForm = document.getElementById('profile-form');
+  const avatarFileInput = profileForm?.querySelector('input[name="avatar"]');
+  if (avatarFileInput) {
+    avatarFileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file || !file.type.startsWith('image/')) return;
+      if (state._pendingAvatarObjectUrl) URL.revokeObjectURL(state._pendingAvatarObjectUrl);
+      state._pendingAvatarFile = file;
+      state._pendingAvatarObjectUrl = URL.createObjectURL(file);
+      const preview = document.getElementById('avatar-preview');
+      if (preview) preview.src = state._pendingAvatarObjectUrl;
+      setState({});
+    });
+  }
 
   const settingsAvatarDrop = document.getElementById('settings-avatar-drop-zone');
   if (settingsAvatarDrop) {

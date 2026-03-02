@@ -87,7 +87,9 @@ router.patch('/profile', requireAuth, upload.single('avatar'), (req, res) => {
 router.patch('/password', requireAuth, async (req, res) => {
   const user = getCurrentUser(req);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
-  const { current_password, new_password } = req.body || {};
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const current_password = typeof body.current_password === 'string' ? body.current_password.trim() : '';
+  const new_password = typeof body.new_password === 'string' ? body.new_password.trim() : '';
   if (!current_password || !new_password) return res.status(400).json({ error: 'Current password and new password required' });
   const result = await changePassword(user.id, current_password, new_password);
   if (result.error) return res.status(400).json({ error: result.error });

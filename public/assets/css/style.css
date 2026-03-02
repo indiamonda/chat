@@ -1072,20 +1072,7 @@ select:focus {
   }
 
   .panel-column-overlay {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: transparent;
-    z-index: 200;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.25s ease;
-  }
-
-  .panel-column-expanded .panel-column-overlay {
-    opacity: 1;
-    pointer-events: auto;
-    animation: panelOverlayFadeIn 0.25s ease-out;
+    display: none;
   }
 }
 
