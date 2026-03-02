@@ -1709,9 +1709,12 @@ function showPasswordModal() {
     const msgEl = overlay.querySelector('#password-modal-message');
     const submitBtn = form.querySelector('button[type="submit"]');
     if (submitBtn?.disabled) return;
-    const current = (form.current_password?.value ?? '').trim();
-    const newPass = (form.new_password?.value ?? '').trim();
-    const confirm = (form.new_password_confirm?.value ?? '').trim();
+    const currentInput = form.querySelector('input[name="current_password"]');
+    const newInput = form.querySelector('input[name="new_password"]');
+    const confirmInput = form.querySelector('input[name="new_password_confirm"]');
+    const current = (currentInput?.value ?? '').trim();
+    const newPass = (newInput?.value ?? '').trim();
+    const confirm = (confirmInput?.value ?? '').trim();
     if (!current || !newPass) {
       if (msgEl) { msgEl.textContent = 'Please fill in current and new password.'; msgEl.dataset.type = 'error'; }
       return;
@@ -1727,7 +1730,8 @@ function showPasswordModal() {
     if (msgEl) msgEl.textContent = '';
     if (submitBtn) submitBtn.disabled = true;
     try {
-      await apiPatch('/api/users/password', { current_password: current, new_password: newPass });
+      const payload = { current_password: current, new_password: newPass };
+      await apiPatch('/api/users/password', payload);
       if (msgEl) { msgEl.textContent = 'Password changed.'; msgEl.dataset.type = 'success'; }
       form.reset();
       setTimeout(() => overlay.remove(), 800);
