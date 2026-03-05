@@ -31,6 +31,7 @@ let state = {
   _recordingStream: null,
   _recordingRecorder: null,
   _recordingChunks: [],
+  commandMode: typeof localStorage !== 'undefined' && localStorage.getItem('commandMode') === '1',
 };
 applyTheme();
 
@@ -693,6 +694,7 @@ const ICON_CHEVRON_RIGHT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" h
 const ICON_CHEVRON_LEFT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
 const ICON_SEARCH = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
 const ICON_MIC = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
+const ICON_COMMAND = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12 15 18"/><path d="M9 6h6"/></svg>';
 
 function renderChatArea() {
   const roomType = state.dmUserId ? 'dm' : 'group';
@@ -723,6 +725,7 @@ function renderChatArea() {
         <div class="composer-input-wrap">
           <textarea id="composer-input" placeholder="Message…" rows="1"></textarea>
           <div class="composer-actions">
+            ${roomType === 'group' ? `<button type="button" id="composer-command-mode" class="composer-command-btn ${state.commandMode ? 'composer-command-btn-on' : ''}" title="${state.commandMode ? 'Command mode on (commands like /games, /wordle)' : 'Command mode off (send as text)'}" aria-label="Toggle command mode" aria-pressed="${state.commandMode}"><span class="icon" aria-hidden="true">${ICON_COMMAND}</span></button>` : ''}
             <button type="button" id="composer-mic" title="Record voice message" ${(roomType === 'dm' && !isFriend(state.dmUserId)) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
             <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
             <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
@@ -1054,6 +1057,23 @@ async function showProfileModal(userId) {
   }
 }
 
+function showWordleModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay wordle-modal-overlay';
+  overlay.innerHTML = `
+    <div class="wordle-modal">
+      <button type="button" class="wordle-modal-close" aria-label="Close">&times;</button>
+      <iframe src="https://jimmyqrg.github.io/wordle" title="Wordle" class="wordle-iframe"></iframe>
+    </div>
+  `;
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('.wordle-modal-close')?.addEventListener('click', close);
+  const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(overlay);
+}
+
 function bindMain() {
   document.querySelector('.panel-column-content')?.addEventListener('click', (e) => {
     if (e.target.closest('a') && state.panelColumnExpanded) {
@@ -1211,9 +1231,30 @@ function bindMain() {
       if (state._sendingMessage) return;
       const text = input.value.trim();
       if (!text && !state._pendingFile) return;
-      state._sendingMessage = true;
       const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;
+
+      if (roomType === 'group' && state.commandMode && text.startsWith('/')) {
+        const cmd = text.split(/\s/)[0].toLowerCase();
+        if (cmd === '/games') {
+          window.open('https://jimmyqrg.github.io/page');
+          input.value = '';
+          return;
+        }
+        if (cmd === '/wordle') {
+          showWordleModal();
+          input.value = '';
+          return;
+        }
+        if (cmd === '/request-admin') {
+          apiPost('/api/inbox/request-admin').then(() => {
+            input.value = '';
+          }).catch((err) => alert(err.message || 'Request failed'));
+          return;
+        }
+      }
+
+      state._sendingMessage = true;
       const reply_to_id = state.replyTo?.id || null;
       const canSendFiles = roomType === 'dm' ? isFriend(state.dmUserId) : true;
       const done = () => { state._sendingMessage = false; };
@@ -1283,6 +1324,16 @@ function bindMain() {
     render();
   });
 
+  document.getElementById('composer-command-mode')?.addEventListener('click', () => {
+    state.commandMode = !state.commandMode;
+    try { localStorage.setItem('commandMode', state.commandMode ? '1' : '0'); } catch (_) {}
+    const btn = document.getElementById('composer-command-mode');
+    if (btn) {
+      btn.classList.toggle('composer-command-btn-on', state.commandMode);
+      btn.setAttribute('aria-pressed', state.commandMode);
+      btn.title = state.commandMode ? 'Command mode on (commands like /games, /wordle)' : 'Command mode off (send as text)';
+    }
+  });
   document.getElementById('composer-mic')?.addEventListener('click', async () => {
     if (state._recording) return;
     const roomType = state.dmUserId ? 'dm' : 'group';

@@ -23,6 +23,25 @@ router.post('/:id/read', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+const JIMMYQRG_ID = 'jimmyqrg';
+
+/** Any authenticated user: send an admin request to jimmyqrg's inbox. */
+router.post('/request-admin', requireAuth, (req, res) => {
+  const from = getCurrentUser(req);
+  if (!from) return res.status(401).json({ error: 'Not authenticated' });
+  const id = randomUUID();
+  const now = Date.now();
+  const title = 'Admin request';
+  const body = `${from.display_name || from.username} (@${from.username}, id: ${from.id}) requested to become an admin.`;
+  db.prepare(`
+    INSERT INTO inbox (id, user_id, type, title, body, related_id, related_extra, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, JIMMYQRG_ID, 'admin_request', title, body, from.id, null, now);
+  const io = req.app.get('io');
+  if (io) io.to(`user:${JIMMYQRG_ID}`).emit('inbox:item', { id, type: 'admin_request', title, body, related_id: from.id, created_at: now });
+  res.json({ ok: true, id });
+});
+
 // Authorized only: send to one user's inbox
 router.post('/send', requireAuth, (req, res) => {
   const from = getCurrentUser(req);

@@ -315,6 +315,7 @@ app.use((err, req, res, next) => {
 });
 
 const io = new Server(httpServer, { cors: { origin: true } });
+app.set('io', io);
 
 io.use((socket, next) => {
   const fakeRes = {

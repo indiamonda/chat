@@ -58,11 +58,13 @@ export async function uploadFile(path, file, extra = {}) {
 
 const AVATAR_COLOR_COUNT = 108;
 
+/** Deterministic 32-bit hash so the same user id always yields the same color everywhere. */
 function simpleHash(str) {
   if (!str) return 0;
   let h = 0;
-  for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
-  return Math.abs(h);
+  const s = String(str).trim();
+  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  return h >>> 0;
 }
 
 /** Generate 100+ distinct hex colors (HSL hue spread + slight S/L variation for variety). */
@@ -103,9 +105,10 @@ function darkenHex(hex, factor = 0.35) {
   return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('');
 }
 
-/** Returns a default avatar as data URL: person silhouette (like default-avatar-0) with one of 108 colors. */
+/** Returns a default avatar as data URL: person silhouette (like default-avatar-0) with one of 108 colors. Same user id always gets the same color across devices and time. */
 export function getDefaultAvatarUrl(userIdOrUsername) {
-  const i = userIdOrUsername != null ? simpleHash(String(userIdOrUsername)) % AVATAR_COLOR_COUNT : 0;
+  const key = userIdOrUsername != null ? String(userIdOrUsername).trim() : '';
+  const i = key ? simpleHash(key) % AVATAR_COLOR_COUNT : 0;
   const fill = avatarColors[i];
   const bg = darkenHex(fill);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="32" fill="${bg}"/><circle cx="32" cy="26" r="12" fill="${fill}"/><ellipse cx="32" cy="58" rx="20" ry="14" fill="${fill}"/></svg>`;
