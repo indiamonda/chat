@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <script>
     (function(){
-      var t=typeof localStorage!=='undefined'&&localStorage.getItem('theme');
-      if(t==='simple'||t==='comic'||t==='jimmyqrg')document.documentElement.setAttribute('data-theme',t);
       var L=['en','zh','ja','ko','es','fr','de'];
       var lang=typeof localStorage!=='undefined'&&localStorage.getItem('language');
       if(lang&&L.indexOf(lang)!==-1)document.documentElement.setAttribute('lang',lang);

@@ -1891,6 +1891,12 @@ select:focus {
   color: var(--accent);
 }
 
+.message-content-plaintext {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-top: 0.5em;
+}
+
 .message-actions {
   display: none;
 }

@@ -43,7 +43,6 @@ let state = {
   _recordingChunks: [],
   commandMode: typeof localStorage !== 'undefined' && localStorage.getItem('commandMode') === '1',
 };
-applyTheme();
 if (typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('lang', state.language || 'en');
 
 /** Hardcoded UI strings (no Google Translate). */
@@ -490,6 +489,11 @@ function getRedirectOrDefault(defaultPath = '/chat/group') {
   return (r && r.startsWith('/')) ? r : defaultPath;
 }
 
+/** True if we consider this a mobile context (Enter should add newline instead of send). */
+function isMobile() {
+  return typeof window !== 'undefined' && (('ontouchstart' in window) || (window.matchMedia && window.matchMedia('(max-width: 768px)').matches));
+}
+
 function navigateTo(path) {
   const full = path.startsWith('http') ? path : (path.startsWith('/') ? path : '/' + path);
   if (full.startsWith('http') && new URL(full).origin !== window.location.origin) {
@@ -722,6 +726,7 @@ function render() {
   const route = parseRoute();
 
   if (!state.user) {
+    document.documentElement.removeAttribute('data-theme');
     document.body.classList.add('auth-page');
     const isSignup = route.page === 'signup';
     const redirect = route.redirect || null;
@@ -738,6 +743,7 @@ function render() {
     return;
   }
 
+  applyTheme(state.theme);
   document.body.classList.remove('auth-page');
   app.innerHTML = renderMain();
   bindMain();
@@ -1503,8 +1509,23 @@ function renderLatexBlock(latex) {
   return '<pre class="language-block-latex"><code>' + escapeHtml(latex) + '</code></pre>';
 }
 
-/** Process message content: apply language blocks then markdown. */
+/** Process message content: apply language blocks then markdown. Supports /plaintext: everything below a line containing "/plaintext" is rendered as plain text. */
 function renderMessageContent(raw) {
+  if (raw == null || raw === '') return '';
+  const lineSeparator = /\r\n|\r|\n/;
+  const lines = String(raw).split(lineSeparator);
+  const plaintextLineIndex = lines.findIndex((l) => l.trim().includes('/plaintext'));
+  if (plaintextLineIndex >= 0) {
+    const above = lines.slice(0, plaintextLineIndex).join('\n');
+    const below = lines.slice(plaintextLineIndex + 1).join('\n');
+    const aboveHtml = above ? renderMessageContentInner(above) : '';
+    const belowHtml = below ? '<div class="message-content-plaintext">' + escapeHtml(below) + '</div>' : '';
+    return aboveHtml + belowHtml;
+  }
+  return renderMessageContentInner(raw);
+}
+
+function renderMessageContentInner(raw) {
   if (raw == null || raw === '') return '';
   const segments = parseLanguageBlocks(raw);
   const parts = [];
@@ -2233,7 +2254,13 @@ function bindMain() {
       });
     };
     sendBtn.addEventListener('click', send);
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        if (isMobile()) return;
+        e.preventDefault();
+        send();
+      }
+    });
   }
 
   const fileInput = document.getElementById('file-input');
@@ -2830,6 +2857,10 @@ function renderInboxContent() {
 }
 
 function applyRoute(route) {
+  if (state.user && (route.page === 'login' || route.page === 'signup')) {
+    navigateTo('/chat/group');
+    return;
+  }
   if (!state.user && (route.page === 'login' || route.page === 'signup')) {
     render();
     return;
