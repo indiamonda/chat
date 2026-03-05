@@ -16,4 +16,6 @@ RUN mkdir -p /data && chown -R nodejs:nodejs /data
 USER nodejs
 EXPOSE 8080
 ENV DATA_DIR=/data
-CMD ["sh", "-c", "node server/scripts/init-db.js && node server/index.js"]
+# Only run init-db when the database file doesn't exist (e.g. first deploy or new volume).
+# This prevents overwriting an existing DB and resetting passwords to the default placeholder.
+CMD ["sh", "-c", "[ -f ${DATA_DIR}/chat.db ] || node server/scripts/init-db.js; exec node server/index.js"]

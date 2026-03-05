@@ -852,7 +852,7 @@ function renderChatArea() {
 
 function getReplyPreview(msg) {
   if (!msg) return null;
-  return { sender: msg.display_name || msg.username, content: msg.content };
+  return { sender: msg.display_name || msg.username || 'Unknown user', content: msg.content };
 }
 
 const TS_INTERVAL_MS = 3 * 60 * 1000; // show timestamp when last one was 3+ min ago or none
@@ -980,7 +980,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
   }
 
   if (m.recalled_at) {
-    const name = escapeHtml(m.display_name || m.username);
+    const name = escapeHtml(m.display_name || m.username || 'Unknown user');
     return `
       <div class="message message-system message-recalled-line" data-msg-id="${m.id}" data-sender-id="${m.sender_id || ''}">
         <span class="message-system-text"><span class="message-recalled-name">${name}</span> recalled a message</span>
@@ -1020,7 +1020,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
 
   const defaultAvatar = getDefaultAvatarUrl(m.sender_id);
   const avatarSrc = (m.avatar_url && String(m.avatar_url).trim()) ? m.avatar_url : defaultAvatar;
-  const senderName = escapeHtml(m.display_name || m.username);
+  const senderName = escapeHtml(m.display_name || m.username || 'Unknown user');
   return `
     <div class="message-row" data-msg-id="${m.id}">
       <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
@@ -1082,11 +1082,11 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
-/** Parse $\language="name" ... \$ blocks. Returns array of { type: 'text'|'block', content, language? }. */
+/** Parse $ [\]language="name" ... \$ blocks. Returns array of { type: 'text'|'block', content, language? }. Accepts both $ language="LaTeX" and $\language="LaTeX". */
 function parseLanguageBlocks(str) {
   if (str == null || str === '') return [{ type: 'text', content: '' }];
   const s = String(str);
-  const re = /\$\s*language\s*=\s*"([^"]+)"\s*\n([\s\S]*?)\\\$/g;
+  const re = /\$\s*\\?language\s*=\s*"([^"]+)"\s*\n([\s\S]*?)\\\$/g;
   const segments = [];
   let lastEnd = 0;
   let m;
@@ -1392,8 +1392,12 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
     const nextId = next?.id || '';
     const contentEl = overlay.querySelector('.media-popup-content');
     const controlsEl = overlay.querySelector('.media-popup-controls');
+    const imageOverlayEl = overlay.querySelector('.media-popup-image-overlay');
+    const popupEl = overlay.querySelector('.media-popup');
     if (!contentEl || !controlsEl) return;
     contentEl.innerHTML = '';
+    if (popupEl) popupEl.classList.toggle('media-popup--video', k === 'video');
+    if (imageOverlayEl) imageOverlayEl.style.display = k === 'video' ? 'none' : '';
     if (k === 'video') {
       const steps = [5, 10, 15];
       const stepBtns = steps.map(s => `<button type="button" class="media-popup-step" data-sec="${s}" title="Back ${s}s">−${s}s</button>`).join('');
@@ -2191,7 +2195,7 @@ async function loadAdminRecalled() {
       ? '<p class="admin-section-desc">No recalled messages.</p>'
       : `<ul class="admin-recalled-ul">${messages.map(m => `
         <li class="admin-recalled-item">
-          <strong>${escapeHtml(m.display_name || m.username)}</strong>
+          <strong>${escapeHtml(m.display_name || m.username || 'Unknown user')}</strong>
           <span class="admin-recalled-time">${formatTime(m.recalled_at)}</span>
           <p class="admin-recalled-content">${escapeHtml((m.content || '').slice(0, 200))}</p>
         </li>

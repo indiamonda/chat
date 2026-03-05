@@ -126,7 +126,7 @@ app.get('/api/rooms/:roomType/:roomId/messages', requireAuth, (req, res) => {
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
            u.username, u.display_name, u.avatar_url
     FROM messages m
-    JOIN users u ON u.id = m.sender_id
+    LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = ? AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
     ORDER BY m.created_at DESC
     LIMIT ?
@@ -168,7 +168,7 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
            u.username, u.display_name, u.avatar_url
     FROM messages m
-    JOIN users u ON u.id = m.sender_id
+    LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.id = ?
   `).get(id);
   res.status(201).json({ message: { ...row, likes: 0, edit_history: null } });
@@ -255,7 +255,7 @@ app.get('/api/conversations/:convId/messages', requireAuth, (req, res) => {
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
            u.username, u.display_name, u.avatar_url
     FROM messages m
-    JOIN users u ON u.id = m.sender_id
+    LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = 'dm' AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
     ORDER BY m.created_at DESC
     LIMIT ?
@@ -291,7 +291,7 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
            u.username, u.display_name, u.avatar_url
     FROM messages m
-    JOIN users u ON u.id = m.sender_id
+    LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.id = ?
   `).get(id);
   const msg = { ...row, likes: 0, edit_history: null };
@@ -420,7 +420,7 @@ io.on('connection', (socket) => {
       `).run(id, roomId, socket.userId, content || '', msg_type || 'text', reply_to_id || null, now, now);
       createInboxForNewMessage(id, content || '', reply_to_id || null, socket.userId, 'dm', roomId);
       const row = db.prepare(`
-        SELECT m.*, u.username, u.display_name, u.avatar_url FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = ?
+        SELECT m.*, u.username, u.display_name, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.sender_id WHERE m.id = ?
       `).get(id);
       const msg = { ...row, likes: 0, edit_history: null };
       io.to(`dm:${roomId}`).emit('message', msg);
@@ -434,7 +434,7 @@ io.on('connection', (socket) => {
     `).run(id, roomType, roomId, socket.userId, content || '', msg_type || 'text', reply_to_id || null, now, now);
     createInboxForNewMessage(id, content || '', reply_to_id || null, socket.userId, roomType, roomId);
     const row = db.prepare(`
-      SELECT m.*, u.username, u.display_name, u.avatar_url FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = ?
+      SELECT m.*, u.username, u.display_name, u.avatar_url FROM messages m LEFT JOIN users u ON u.id = m.sender_id WHERE m.id = ?
     `).get(id);
     const msg = { ...row, likes: 0, edit_history: null };
     io.to(`group:${GROUP_ID}`).emit('message', msg);

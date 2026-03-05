@@ -87,7 +87,7 @@ router.get('/recalled-messages', requireAuth, (req, res) => {
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.recalled_at, m.created_at,
            u.username, u.display_name, u.avatar_url
     FROM messages m
-    JOIN users u ON u.id = m.sender_id
+    LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = 'group' AND m.room_id = ? AND m.recalled_at IS NOT NULL AND m.deleted_by_admin = 0
     ORDER BY m.recalled_at DESC
     LIMIT ?

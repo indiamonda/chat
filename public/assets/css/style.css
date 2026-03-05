@@ -3236,20 +3236,26 @@ select:focus {
   align-items: center;
   justify-content: center;
 }
+.media-popup--video .media-popup-image-overlay {
+  display: none;
+}
 .media-popup-close {
   position: absolute;
-  top: -40px;
-  right: 0;
-  background: none;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(0, 0, 0, 0.55);
   border: none;
   color: #fff;
   font-size: 1.5rem;
+  line-height: 1;
   cursor: pointer;
-  padding: 0.25rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
   z-index: 10;
 }
 .media-popup-close:hover {
-  opacity: 0.9;
+  background: rgba(0, 0, 0, 0.75);
+  opacity: 1;
 }
 .media-popup-content {
   position: relative;
@@ -3285,6 +3291,11 @@ select:focus {
   gap: 0.5rem;
   flex-wrap: wrap;
 }
+.media-popup--video .media-popup-controls {
+  background: rgba(0, 0, 0, 0.7);
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+}
 .media-popup-controls-row {
   display: flex;
   align-items: center;
@@ -3299,6 +3310,12 @@ select:focus {
   border-radius: 6px;
   color: var(--text);
   cursor: pointer;
+}
+.media-popup--video .media-popup-controls .media-popup-prev,
+.media-popup--video .media-popup-controls .media-popup-next {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
 }
 .media-popup-controls .media-popup-prev:disabled,
 .media-popup-controls .media-popup-next:disabled {
@@ -3315,6 +3332,12 @@ select:focus {
   color: var(--text);
   cursor: pointer;
 }
+.media-popup--video .media-popup-step,
+.media-popup--video .media-popup-step-fwd {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
 .media-popup-play {
   padding: 0.35rem 0.75rem;
   background: var(--purple);
@@ -3326,6 +3349,9 @@ select:focus {
 .media-popup-download {
   padding: 0.35rem;
   color: #fff;
+}
+.media-popup--video .media-popup-download {
+  color: rgba(255, 255, 255, 0.9);
 }
 .media-popup-download:hover {
   color: var(--accent);
