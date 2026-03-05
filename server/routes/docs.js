@@ -4,7 +4,7 @@ import { requireAuth, getCurrentUser, canEditDocs } from '../auth.js';
 import { db } from '../db.js';
 
 const router = Router();
-const EDITABLE_DOCS = ['problem_solving', 'rules'];
+const EDITABLE_DOCS = ['problem_solving', 'rules', 'announcements'];
 
 router.get('/:docKey', requireAuth, (req, res) => {
   const { docKey } = req.params;

@@ -37,8 +37,8 @@ applyTheme();
 const GROUP_ID = 'JimmyQrg';
 
 // URL panel param <-> internal panel
-const PANEL_TO_URL = { free_chat: 'chat', support: 'support', problem_solving: 'problem', rules: 'rules' };
-const URL_TO_PANEL = { chat: 'free_chat', support: 'support', problem: 'problem_solving', rules: 'rules' };
+const PANEL_TO_URL = { free_chat: 'chat', support: 'support', problem_solving: 'problem', rules: 'rules', announcements: 'announcements' };
+const URL_TO_PANEL = { chat: 'free_chat', support: 'support', problem: 'problem_solving', rules: 'rules', announcements: 'announcements' };
 
 function roomKey(roomType, roomId) {
   return `${roomType}:${roomId}`;
@@ -546,9 +546,9 @@ function renderMain() {
   const route = parseRoute();
   const page = route.page;
   const primaryNav = getPrimaryNav(route);
-  const panels = state.group?.panels || ['free_chat', 'support', 'problem_solving', 'rules'];
-  const panelLabels = { free_chat: 'Free Chat', support: 'Support', problem_solving: 'Problem Solving', rules: 'Rules' };
-  const isDocPanel = state.panel === 'problem_solving' || state.panel === 'rules';
+  const panels = state.group?.panels || ['free_chat', 'support', 'problem_solving', 'rules', 'announcements'];
+  const panelLabels = { free_chat: 'Free Chat', support: 'Support', problem_solving: 'Problem Solving', rules: 'Rules', announcements: 'Announcements' };
+  const isDocPanel = state.panel === 'problem_solving' || state.panel === 'rules' || state.panel === 'announcements';
   const isGroup = !!route.group;
   const expanded = state.leftBarExpanded;
 
@@ -1876,7 +1876,7 @@ function applyRoute(route) {
         render();
         bindMain();
       });
-    } else if (state.panel === 'problem_solving' || state.panel === 'rules') {
+    } else if (state.panel === 'problem_solving' || state.panel === 'rules' || state.panel === 'announcements') {
       loadDoc(state.panel).then(({ doc }) => {
         state._docContent = doc?.content ?? '';
         render();

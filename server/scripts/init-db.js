@@ -162,10 +162,11 @@ try {
 
 // Initial password is set at server startup (see server/index.js) so we don't need bcrypt here.
 
-// Initial doc content for problem_solving and rules
+// Initial doc content for problem_solving, rules, and announcements
 const docs = [
   { doc_key: 'problem_solving', content: '# Problem Solving\n\nDocument for solutions. Only allowed users can edit.' },
-  { doc_key: 'rules', content: '# Rules\n\nCommunity rules. Only allowed users can edit.' }
+  { doc_key: 'rules', content: '# Rules\n\nCommunity rules. Only allowed users can edit.' },
+  { doc_key: 'announcements', content: '# Announcements\n\nOfficial announcements. Only allowed users can edit.' }
 ];
 const insDoc = db.prepare('INSERT OR IGNORE INTO doc_versions (id, doc_key, content, editor_id, created_at) VALUES (?, ?, ?, ?, ?)');
 for (const d of docs) {
