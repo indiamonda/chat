@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages, canTimeout } from './auth.js';
 import { db, GROUP_ID, PANELS } from './db.js';
 import { upload } from './upload.js';
-import { getUploadUrl } from './upload.js';
+import { getUploadUrl, getFileRef } from './upload.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import docsRoutes from './routes/docs.js';
@@ -159,7 +159,7 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
   let finalContent = typeof content === 'string' ? content : '';
   let msgType = (msg_type || 'text').slice(0, 32);
   if (req.file) {
-    finalContent = getUploadUrl(req.file.filename);
+    finalContent = getFileRef(req.file.filename);
     if (!msgType || msgType === 'text') {
       const mt = req.file.mimetype || '';
       msgType = mt.startsWith('image/') ? 'image' : mt.startsWith('video/') ? 'video' : mt.startsWith('audio/') ? 'audio' : 'file';
@@ -282,7 +282,7 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   let finalContent = typeof content === 'string' ? content : '';
   let msgType = (msg_type || 'text').slice(0, 32);
   if (req.file) {
-    finalContent = getUploadUrl(req.file.filename);
+    finalContent = getFileRef(req.file.filename);
     if (!msgType || msgType === 'text') {
       const mt = req.file.mimetype || '';
       msgType = mt.startsWith('image/') ? 'image' : mt.startsWith('video/') ? 'video' : mt.startsWith('audio/') ? 'audio' : 'file';

@@ -1188,6 +1188,12 @@ const ICON_CHEVRON_LEFT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" he
 const ICON_SEARCH = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
 const ICON_MIC = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
 const ICON_COMMAND = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12 15 18"/><path d="M9 6h6"/></svg>';
+const ICON_PLAY = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+const ICON_PAUSE = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
+const ICON_PREV = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/><path d="M9 18V6"/></svg>';
+const ICON_NEXT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/><path d="M15 6v12"/></svg>';
+const ICON_REWIND = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
+const ICON_FORWARD = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>';
 
 function renderChatArea() {
   const roomType = state.dmUserId ? 'dm' : 'group';
@@ -1263,18 +1269,38 @@ function renderTimestamp(ts) {
   `;
 }
 
+/** Parse file ref: /file <id> → { fileId, url }. /uploads/<id> only for legacy file messages (msg_type file/image/video/audio). */
+function parseFileRef(content, msgType) {
+  const s = (content || '').trim();
+  if (s.startsWith('/file ')) {
+    const fileId = s.slice(6).trim();
+    if (fileId) return { fileId, url: `/uploads/${fileId}` };
+  }
+  const isLegacyFile = /^(file|image|video|audio|gif)$/i.test(msgType || '');
+  if (isLegacyFile && s.startsWith('/uploads/')) {
+    const fileId = s.slice('/uploads/'.length).split(/[?#]/)[0].trim();
+    if (fileId) return { fileId, url: `/uploads/${fileId}` };
+  }
+  return null;
+}
+
+function isFileMessage(m) {
+  return !!parseFileRef(m.content, m.msg_type);
+}
+
 function isMediaMessage(m) {
-  if (!(m.content || '').trim().startsWith('/uploads/')) return false;
-  const k = getFileKind(m);
+  const ref = parseFileRef(m.content, m.msg_type);
+  if (!ref) return false;
+  const k = getFileKind(m, ref.url);
   return k === 'video' || k === 'image' || k === 'gif';
 }
 function getMediaMessageIds(list) {
   return (list || []).filter(isMediaMessage).map(m => m.id);
 }
 
-function getFileKind(msg) {
+function getFileKind(msg, urlOverride) {
   const type = (msg.msg_type || '').toLowerCase();
-  const url = (msg.content || '').toLowerCase();
+  const url = (urlOverride || msg.content || '').toLowerCase();
   if (type === 'video' || /\.(mp4|webm|mov|ogg)(\?|$)/.test(url)) return 'video';
   if (type === 'audio' || type === 'voice' || /\.(mp3|wav|ogg|webm|m4a)(\?|$)/.test(url)) return 'audio';
   if (type === 'image' || type === 'gif' || /\.(gif|jpg|jpeg|png|webp)(\?|$)/.test(url)) return url.includes('.gif') ? 'gif' : 'image';
@@ -1282,9 +1308,10 @@ function getFileKind(msg) {
 }
 
 function renderFileBlock(msg, mediaContext) {
-  const url = (msg.content || '').trim();
-  if (!url.startsWith('/uploads/')) return `<div class="message-content">${escapeHtml(url)}</div>`;
-  const kind = getFileKind(msg);
+  const ref = parseFileRef(msg.content, msg.msg_type);
+  if (!ref) return `<div class="message-content">${escapeHtml((msg.content || '').trim())}</div>`;
+  const url = ref.url;
+  const kind = getFileKind(msg, url);
   const safeUrl = escapeHtml(url).replace(/"/g, '&quot;');
   const { mediaIds = [], currentIndex = -1 } = mediaContext || {};
   const prevId = currentIndex > 0 ? mediaIds[currentIndex - 1] : null;
@@ -1354,7 +1381,7 @@ function renderMessagesWithTimestamps(list, roomType, roomId) {
 
 function renderMessage(m, roomType, roomId, context = {}) {
   const isOwn = m.sender_id === state.user?.id;
-  const isFileMessage = (m.content || '').trim().startsWith('/uploads/');
+  const isFileMessage = !!parseFileRef(m.content, m.msg_type);
 
   if (m.deleted_by_admin) {
     return `
@@ -1840,8 +1867,8 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
     if (imageOverlayEl) imageOverlayEl.style.display = k === 'video' ? 'none' : '';
     if (k === 'video') {
       const steps = [5, 10, 15];
-      const stepBtns = steps.map(s => `<button type="button" class="media-popup-step" data-sec="${s}" title="Back ${s}s">−${s}s</button>`).join('');
-      const stepFwd = steps.map(s => `<button type="button" class="media-popup-step-fwd" data-sec="${s}" title="Forward ${s}s">+${s}s</button>`).join('');
+      const stepBtns = steps.map(s => `<button type="button" class="media-popup-step" data-sec="${s}" title="Back ${s}s" aria-label="Back ${s}s"><span class="icon icon-sm">${ICON_REWIND}</span><span class="media-popup-step-sec">${s}</span></button>`).join('');
+      const stepFwd = steps.map(s => `<button type="button" class="media-popup-step-fwd" data-sec="${s}" title="Forward ${s}s" aria-label="Forward ${s}s"><span class="icon icon-sm">${ICON_FORWARD}</span><span class="media-popup-step-sec">${s}</span></button>`).join('');
       const vid = document.createElement('video');
       vid.className = 'media-popup-video';
       vid.src = u;
@@ -1850,12 +1877,12 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
       contentEl.appendChild(vid);
       controlsEl.innerHTML = `
         <div class="media-popup-controls-row">
-          <button type="button" class="media-popup-prev" ${!prevId ? 'disabled' : ''} data-msg-id="${prevId}" title="Previous">Previous</button>
+          <button type="button" class="media-popup-prev" ${!prevId ? 'disabled' : ''} data-msg-id="${prevId}" title="Previous" aria-label="Previous"><span class="icon icon-sm">${ICON_PREV}</span></button>
           <span class="media-popup-step-group">${stepBtns}</span>
-          <button type="button" class="media-popup-play" title="Play (K)">Play</button>
+          <button type="button" class="media-popup-play" title="Play (K)" aria-label="Play"><span class="icon icon-sm media-popup-play-icon">${ICON_PLAY}</span></button>
           <span class="media-popup-step-group">${stepFwd}</span>
-          <button type="button" class="media-popup-next" ${!nextId ? 'disabled' : ''} data-msg-id="${nextId}" title="Next">Next</button>
-          <a href="${safeUrl(u)}" download class="media-popup-download" title="Download">${ICON_DOWNLOAD}</a>
+          <button type="button" class="media-popup-next" ${!nextId ? 'disabled' : ''} data-msg-id="${nextId}" title="Next" aria-label="Next"><span class="icon icon-sm">${ICON_NEXT}</span></button>
+          <a href="${safeUrl(u)}" download class="media-popup-download" title="Download" aria-label="Download"><span class="icon icon-sm">${ICON_DOWNLOAD}</span></a>
         </div>
       `;
       overlay.querySelector('.media-popup-prev')?.addEventListener('click', () => { if (prev) setMedia(prev); });
@@ -2045,16 +2072,15 @@ function bindMain() {
       if (state.user?.can_delete_messages) items.push({ label: 'Delete (admin)', action: 'delete', danger: true });
       if (state.user?.can_kick) items.push({ label: 'Kick user', action: 'kick' });
       if (canSolve) items.push({ label: 'Solve', action: 'solve' });
-      const fileUrl = (msg.content || '').trim();
-      if (fileUrl.startsWith('/uploads/')) items.push({ label: 'Get file id', action: 'get-file-id' });
+      const fileRef = parseFileRef(msg.content, msg.msg_type);
+      if (fileRef) items.push({ label: 'Get file id', action: 'get-file-id' });
       items.push({ label: 'Copy', action: 'copy' });
       items.push({ label: 'Reply', action: 'reply' });
 
       showContextMenu(e.clientX, e.clientY, items, (action) => {
-        if (action === 'get-file-id') {
-          const fileId = fileUrl.slice('/uploads/'.length);
-          if (fileId && navigator.clipboard?.writeText) {
-            navigator.clipboard.writeText(fileId).then(() => {}).catch(() => {});
+        if (action === 'get-file-id' && fileRef) {
+          if (fileRef.fileId && navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(fileRef.fileId).then(() => {}).catch(() => {});
           }
           return;
         }
@@ -2248,7 +2274,7 @@ function bindMain() {
           }
           state._sendingMessage = true;
           const reply_to_id = state.replyTo?.id || null;
-          state.socket?.emit('message:send', { roomType, roomId, content: `/uploads/${fileId}`, msg_type: 'file', reply_to_id }, (res) => {
+          state.socket?.emit('message:send', { roomType, roomId, content: `/file ${fileId}`, msg_type: 'file', reply_to_id }, (res) => {
             state._sendingMessage = false;
             if (res?.error) { alert(res.error); return; }
             if (res?.message) addMessageLocal(res.message);

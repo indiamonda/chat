@@ -25,3 +25,8 @@ export const upload = multer({
 export function getUploadUrl(filename) {
   return `/uploads/${filename}`;
 }
+
+/** File reference format for messages: /file <id> */
+export function getFileRef(filename) {
+  return `/file ${filename}`;
+}
