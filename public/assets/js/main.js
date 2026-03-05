@@ -27,6 +27,10 @@ let state = {
   panelColumnExpanded: false,
   language: typeof localStorage !== 'undefined' ? (localStorage.getItem('language') || 'en') : 'en',
   theme: typeof localStorage !== 'undefined' ? (localStorage.getItem('theme') || 'jimmyqrg') : 'jimmyqrg',
+  _recording: false,
+  _recordingStream: null,
+  _recordingRecorder: null,
+  _recordingChunks: [],
 };
 applyTheme();
 
@@ -222,6 +226,17 @@ export function deleteMessageLocal(id, roomType, roomId) {
   updateMessageLocal(id, roomType, roomId, { deleted_by_admin: 1, content: null, msg_type: 'deleted' });
 }
 
+/** Remove a message from the list entirely (admin delete – no trace). */
+export function removeMessageLocal(id, roomType, roomId) {
+  const key = roomKey(roomType, roomId);
+  const list = state.messages[key];
+  if (!list) return;
+  const i = list.findIndex(m => m.id === id);
+  if (i === -1) return;
+  list.splice(i, 1);
+  render();
+}
+
 /** Find a message by id in state.messages (group messages live under group:free_chat / group:support, not group:JimmyQrg). */
 function findMessageInState(msgId) {
   if (!msgId) return null;
@@ -254,7 +269,7 @@ function connectSocket() {
   });
   s.on('message:deleted', ({ id }) => {
     const m = findMessageInState(id);
-    if (m) deleteMessageLocal(id, m.room_type, m.room_id);
+    if (m) removeMessageLocal(id, m.room_type, m.room_id);
   });
   s.on('kicked', () => {
     alert('You have been kicked from the group.');
@@ -607,6 +622,18 @@ function renderMain() {
           </button>
         </div>
       </aside>
+      ${state._recording ? `
+      <div id="recording-overlay" class="recording-overlay">
+        <div class="recording-overlay-backdrop"></div>
+        <div class="recording-overlay-content">
+          <p class="recording-overlay-title">Recording</p>
+          <div class="recording-overlay-actions">
+            <button type="button" id="recording-cancel" class="btn-secondary">Cancel</button>
+            <button type="button" id="recording-send" class="btn-primary">Send</button>
+          </div>
+        </div>
+      </div>
+      ` : ''}
     </div>
   `;
 }
@@ -619,6 +646,7 @@ const ICON_SETTINGS = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height
 const ICON_CHEVRON_RIGHT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
 const ICON_CHEVRON_LEFT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
 const ICON_SEARCH = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
+const ICON_MIC = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
 
 function renderChatArea() {
   const roomType = state.dmUserId ? 'dm' : 'group';
@@ -649,6 +677,7 @@ function renderChatArea() {
         <div class="composer-input-wrap">
           <textarea id="composer-input" placeholder="Message…" rows="1"></textarea>
           <div class="composer-actions">
+            <button type="button" id="composer-mic" title="Record voice message" ${(roomType === 'dm' && !isFriend(state.dmUserId)) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
             <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
             <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
           </div>
@@ -1179,6 +1208,88 @@ function bindMain() {
     state._pendingFile = null;
     render();
   });
+
+  document.getElementById('composer-mic')?.addEventListener('click', async () => {
+    if (state._recording) return;
+    const roomType = state.dmUserId ? 'dm' : 'group';
+    const canSendFiles = roomType === 'dm' ? isFriend(state.dmUserId) : true;
+    if (!canSendFiles) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      state._recordingStream = stream;
+      state._recordingChunks = [];
+      const recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (e) => { if (e.data.size) state._recordingChunks.push(e.data); };
+      recorder.start();
+      state._recordingRecorder = recorder;
+      setState({ _recording: true });
+    } catch (err) {
+      console.error('Microphone access failed', err);
+    }
+  });
+
+  function stopRecording(discard = true) {
+    if (state._recordingKeydownHandler) {
+      document.removeEventListener('keydown', state._recordingKeydownHandler);
+      state._recordingKeydownHandler = null;
+    }
+    if (state._recordingRecorder && state._recordingRecorder.state !== 'inactive') {
+      state._recordingRecorder.stop();
+    }
+    if (state._recordingStream) {
+      state._recordingStream.getTracks().forEach((t) => t.stop());
+    }
+    state._recording = false;
+    state._recordingStream = null;
+    state._recordingRecorder = null;
+    const chunks = state._recordingChunks || [];
+    state._recordingChunks = [];
+    setState({});
+    return discard ? null : chunks;
+  }
+
+  document.getElementById('recording-send')?.addEventListener('click', () => {
+    const chunks = stopRecording(false);
+    if (!chunks || chunks.length === 0) return;
+    const roomType = state.dmUserId ? 'dm' : 'group';
+    const roomId = state.dmUserId ? state.convId : state.panel;
+    const reply_to_id = state.replyTo?.id || null;
+    const canSendFiles = roomType === 'dm' ? isFriend(state.dmUserId) : true;
+    if (!canSendFiles) return;
+    const blob = new Blob(chunks, { type: 'audio/webm' });
+    const file = new File([blob], 'voice.webm', { type: 'audio/webm' });
+    const form = new FormData();
+    form.append('file', file);
+    form.append('content', '');
+    form.append('msg_type', 'voice');
+    if (reply_to_id) form.append('reply_to_id', reply_to_id);
+    const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
+    fetch(path, { method: 'POST', credentials: 'include', body: form }).then((r) => r.json()).then((data) => {
+      if (data.message) addMessageLocal(data.message);
+      setState({ replyTo: null });
+      if (roomType === 'dm') loadMessages('dm', roomId).then(render);
+    }).catch(console.error);
+  });
+
+  document.getElementById('recording-cancel')?.addEventListener('click', () => {
+    stopRecording(true);
+  });
+
+  const recordingOverlay = document.getElementById('recording-overlay');
+  if (recordingOverlay && !state._recordingKeydownHandler) {
+    const keydown = (e) => {
+      if (!state._recording) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        stopRecording(true);
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('recording-send')?.click();
+      }
+    };
+    state._recordingKeydownHandler = keydown;
+    document.addEventListener('keydown', keydown);
+  }
 
   const dropZone = document.getElementById('composer-drop-zone');
   if (dropZone) {
