@@ -1224,7 +1224,7 @@ function getReplyPreview(msg) {
   return { sender: msg.display_name || msg.username || 'Unknown user', content: msg.content };
 }
 
-const TS_INTERVAL_MS = 3 * 60 * 1000; // show timestamp when last one was 3+ min ago or none
+const TS_INTERVAL_MS = 15 * 60 * 1000; // show timestamp when last one was 15+ min ago or none
 
 function formatTimestampForDivider(ts) {
   if (!ts) return '';
