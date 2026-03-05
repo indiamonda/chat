@@ -3093,7 +3093,6 @@ select:focus {
   width: 100%;
   height: auto;
   display: block;
-  vertical-align: top;
 }
 .message-file-image .message-file-download {
   position: absolute;
@@ -3337,4 +3336,174 @@ select:focus {
   display: inline-block;
   margin-top: 0.5rem;
   color: var(--purple-bright);
+}
+
+/* Language blocks in messages (markdown, html, latex, raw) */
+.language-block-html {
+  margin: 0.5em 0;
+  padding: 0.5rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.language-block-html p,
+.language-block-html div,
+.language-block-html span {
+  margin: 0.25em 0;
+}
+
+.language-block-latex {
+  margin: 0.5em 0;
+  padding: 0.75rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.language-block-latex pre,
+.language-block-error {
+  margin: 0;
+  padding: 0.5rem;
+  background: var(--bg-deep);
+  border-radius: 6px;
+  font-size: 0.9rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.language-block-latex code,
+.language-block-error {
+  color: var(--text-dim);
+}
+
+.language-block-raw {
+  margin: 0.5em 0;
+  padding: 0.5rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+  font-size: 0.9rem;
+}
+
+.language-block-raw code {
+  background: none;
+  padding: 0;
+  color: var(--text);
+}
+
+/* Inbox action buttons (inherit from btn-small) */
+.inbox-accept-fr,
+.inbox-reject-fr {
+  font-size: 0.85rem;
+}
+
+/* Modal overlay base (ensure consistent with other modals) */
+.modal-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-overlay .modal {
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  padding: 1.5rem;
+  color: var(--text);
+}
+
+/* Composer reply and pending file (ensure layout) */
+.composer-reply {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.cancel-reply-link {
+  background: none;
+  border: none;
+  color: var(--purple-bright);
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+}
+
+.cancel-reply-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.composer-pending-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.composer-pending-file span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Panel list header (Chat / Inbox section title row) */
+.panel-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.5rem 0.35rem;
+}
+
+.panel-list-header .panel-list-title {
+  margin: 0;
+}
+
+.panel-search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.panel-search-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* Loading state */
+#app.app-loading {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Message like count */
+.message-like-count {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  min-width: 1.2em;
+  text-align: center;
 }

@@ -44,6 +44,7 @@ let state = {
   commandMode: typeof localStorage !== 'undefined' && localStorage.getItem('commandMode') === '1',
 };
 applyTheme();
+if (typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('lang', state.language || 'en');
 
 const GROUP_ID = 'JimmyQrg';
 
@@ -413,6 +414,7 @@ function render() {
   document.body.classList.remove('auth-page');
   app.innerHTML = renderMain();
   bindMain();
+  if (route.page === 'settings') bindSettings();
 }
 
 function renderAuth(isSignup = false, initialError = '', redirect = null) {
@@ -2625,6 +2627,7 @@ function bindSettings() {
     const lang = e.target.value;
     state.language = lang;
     if (typeof localStorage !== 'undefined') localStorage.setItem('language', lang);
+    if (document.documentElement) document.documentElement.setAttribute('lang', lang);
     setState({});
   });
   document.getElementById('open-password-modal')?.addEventListener('click', showPasswordModal);
