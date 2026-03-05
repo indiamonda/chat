@@ -152,7 +152,10 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
   let msgType = (msg_type || 'text').slice(0, 32);
   if (req.file) {
     finalContent = getUploadUrl(req.file.filename);
-    if (!msgType || msgType === 'text') msgType = req.file.mimetype?.startsWith('image/') ? 'image' : req.file.mimetype?.startsWith('video/') ? 'video' : 'file';
+    if (!msgType || msgType === 'text') {
+      const mt = req.file.mimetype || '';
+      msgType = mt.startsWith('image/') ? 'image' : mt.startsWith('video/') ? 'video' : mt.startsWith('audio/') ? 'audio' : 'file';
+    }
   }
   const id = randomUUID();
   const now = Date.now();
@@ -258,7 +261,10 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   let msgType = (msg_type || 'text').slice(0, 32);
   if (req.file) {
     finalContent = getUploadUrl(req.file.filename);
-    if (!msgType || msgType === 'text') msgType = req.file.mimetype?.startsWith('image/') ? 'image' : req.file.mimetype?.startsWith('video/') ? 'video' : 'file';
+    if (!msgType || msgType === 'text') {
+      const mt = req.file.mimetype || '';
+      msgType = mt.startsWith('image/') ? 'image' : mt.startsWith('video/') ? 'video' : mt.startsWith('audio/') ? 'audio' : 'file';
+    }
   }
   const id = randomUUID();
   const now = Date.now();

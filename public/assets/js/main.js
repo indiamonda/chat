@@ -31,6 +31,9 @@ let state = {
   editingMessageId: null,
   messageVersionIndex: {},
   panelColumnExpanded: false,
+  lastSeenByRoom: {},
+  convByUserId: {},
+  convIdToUserId: {},
   language: typeof localStorage !== 'undefined' ? (localStorage.getItem('language') || 'en') : 'en',
   theme: typeof localStorage !== 'undefined' ? (localStorage.getItem('theme') || 'jimmyqrg') : 'jimmyqrg',
   _recording: false,
@@ -49,6 +52,37 @@ const URL_TO_PANEL = { chat: 'free_chat', support: 'support', problem: 'problem_
 
 function roomKey(roomType, roomId) {
   return `${roomType}:${roomId}`;
+}
+
+function currentRoomKey() {
+  const roomType = state.dmUserId ? 'dm' : 'group';
+  const roomId = state.dmUserId ? state.convId : state.panel;
+  return roomId ? roomKey(roomType, roomId) : null;
+}
+
+function getNewCount(roomType, roomId) {
+  const key = roomKey(roomType, roomId);
+  const list = state.messages[key];
+  if (!list || !list.length) return 0;
+  const seen = state.lastSeenByRoom[key] || 0;
+  return list.filter(m => (m.created_at || 0) > seen).length;
+}
+
+function hasNewGroupMessages() {
+  const panels = state.group?.panels || [];
+  return panels.some(p => (p === 'free_chat' || p === 'support') && getNewCount('group', p) > 0);
+}
+
+function getTotalNewDmCount() {
+  let total = 0;
+  for (const key of Object.keys(state.messages || {})) {
+    if (key.startsWith('dm:')) total += getNewCount('dm', key.slice(4));
+  }
+  return total;
+}
+
+function getUnreadInboxCount() {
+  return (state.inbox || []).filter(i => !i.read_at).length;
 }
 
 function getPath() {
@@ -219,7 +253,12 @@ export async function loadMessages(roomType, roomId) {
   const { messages } = await apiGet(path);
   const key = roomKey(roomType, roomId);
   state.messages[key] = messages || [];
-  return state.messages[key];
+  const list = state.messages[key];
+  if (currentRoomKey() === key && list.length) {
+    const maxAt = Math.max(...list.map(m => m.created_at || 0));
+    state.lastSeenByRoom[key] = Math.max(state.lastSeenByRoom[key] || 0, maxAt);
+  }
+  return list;
 }
 
 export async function loadDoc(docKey) {
@@ -256,6 +295,9 @@ export function addMessageLocal(msg) {
   if (!state.messages[key]) state.messages[key] = [];
   if (state.messages[key].some(m => m.id === msg.id)) return;
   state.messages[key].push(msg);
+  if (currentRoomKey() === key) {
+    state.lastSeenByRoom[key] = Math.max(state.lastSeenByRoom[key] || 0, msg.created_at || 0);
+  }
   render();
 }
 
@@ -573,9 +615,11 @@ function renderMain() {
         <div class="panel-list">
           <h3 class="panel-list-title">JimmyQrg</h3>
           <ul class="panel-list-ul">
-            ${panels.map(p => `
-              <li><a href="/chat/group?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}"># ${escapeHtml(panelLabels[p] || p)}</a></li>
-            `).join('')}
+            ${panels.map(p => {
+              const isChat = p === 'free_chat' || p === 'support';
+              const hasNew = isChat && getNewCount('group', p) > 0;
+              return `<li><a href="/chat/group?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}"># ${escapeHtml(panelLabels[p] || p)}${hasNew ? '<span class="panel-list-badge panel-list-badge-dot" aria-label="New"></span>' : ''}</a></li>`;
+            }).join('')}
           </ul>
         </div>
         ` : ''}
@@ -589,16 +633,32 @@ function renderMain() {
             <input type="search" id="panel-user-search" placeholder="Search users…" />
           </div>
           <ul class="panel-list-ul" id="panel-user-list">
-            ${(state.users || []).filter(u => u.id !== state.user?.id).map(u => {
-              const friend = isFriend(u.id);
-              const defAv = getDefaultAvatarUrl(u.id);
-              const avSrc = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : defAv;
-              return `
-              <li><a href="${friend ? `/chat/${encodeURIComponent(u.id)}` : '#'}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-user-id="${escapeHtml(u.id)}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml((u.display_name || u.username || '').toLowerCase())}" data-friend="${friend ? '1' : '0'}">
+            ${(function() {
+              const users = (state.users || []).filter(u => u.id !== state.user?.id);
+              const convId = (uid) => state.convByUserId[uid];
+              const lastMessageAt = (uid) => { const c = convId(uid); if (!c) return 0; const list = state.messages['dm:' + c]; return list?.length ? Math.max(...list.map(m => m.created_at || 0)) : 0; };
+              const newCount = (uid) => { const c = convId(uid); return c ? getNewCount('dm', c) : 0; };
+              const name = (u) => (u.display_name || u.username || '').toLowerCase();
+              users.sort((a, b) => {
+                const at = lastMessageAt(a.id), bt = lastMessageAt(b.id);
+                if (bt !== at) return bt - at;
+                const an = newCount(a.id), bn = newCount(b.id);
+                if (bn !== an) return bn - an;
+                return name(a).localeCompare(name(b));
+              });
+              return users.map(u => {
+                const friend = isFriend(u.id);
+                const defAv = getDefaultAvatarUrl(u.id);
+                const avSrc = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : defAv;
+                const n = newCount(u.id);
+                const badge = n > 0 ? `<span class="panel-list-badge panel-list-badge-count" aria-label="${n} new">${n > 99 ? '99+' : n}</span>` : '';
+                return `
+              <li><a href="${friend ? `/chat/${encodeURIComponent(u.id)}` : '#'}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-user-id="${escapeHtml(u.id)}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml(name(u))}" data-friend="${friend ? '1' : '0'}">
                 <span class="panel-user-avatar-wrap" data-user-id="${escapeHtml(u.id)}" title="View profile"><img src="${avSrc}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="panel-user-avatar" /></span>
-                <span>${escapeHtml(u.display_name || u.username)}</span>
+                <span class="panel-list-link-text">${escapeHtml(u.display_name || u.username)}</span>${badge}
               </a></li>
-            `; }).join('')}
+            `; }).join('');
+            })()}
           </ul>
         </div>
         ` : ''}
@@ -646,15 +706,15 @@ function renderMain() {
         </div>
         <nav class="left-bar-nav" aria-label="Main">
           <a href="/chat/group" class="left-bar-item ${primaryNav === 'home' ? 'active' : ''}" title="Home (JimmyQrg group chat)">
-            <span class="left-bar-icon" aria-hidden="true">${ICON_HOME}</span>
+            <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_HOME}</span>${hasNewGroupMessages() ? '<span class="left-bar-badge left-bar-badge-dot" aria-label="New messages"></span>' : ''}</span>
             <span class="left-bar-label">Home</span>
           </a>
           <a href="/chat" class="left-bar-item ${primaryNav === 'chat' ? 'active' : ''}" title="Chat (private messages)">
-            <span class="left-bar-icon" aria-hidden="true">${ICON_CHAT}</span>
+            <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_CHAT}</span>${(function(){ const n = getTotalNewDmCount(); return n > 0 ? `<span class="left-bar-badge left-bar-badge-count" aria-label="${n} new">${n > 99 ? '99+' : n}</span>` : ''; })()}</span>
             <span class="left-bar-label">Chat</span>
           </a>
           <a href="/inbox" class="left-bar-item ${primaryNav === 'inbox' ? 'active' : ''}" title="Inbox">
-            <span class="left-bar-icon" aria-hidden="true">${ICON_INBOX}</span>
+            <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_INBOX}</span>${(function(){ const n = getUnreadInboxCount(); return n > 0 ? `<span class="left-bar-badge left-bar-badge-count" aria-label="${n} unread">${n > 99 ? '99+' : n}</span>` : ''; })()}</span>
             <span class="left-bar-label">Inbox</span>
           </a>
           ${state.user?.is_allowed ? `
@@ -775,22 +835,91 @@ function renderTimestamp(ts) {
   `;
 }
 
+const MEDIA_TYPES = ['video', 'image'];
+function getMediaMessageIds(list) {
+  return (list || []).filter(m => MEDIA_TYPES.includes(m.msg_type) && (m.content || '').startsWith('/uploads/')).map(m => m.id);
+}
+
+function getFileKind(msg) {
+  const type = (msg.msg_type || '').toLowerCase();
+  const url = (msg.content || '').toLowerCase();
+  if (type === 'video' || /\.(mp4|webm|mov|ogg)(\?|$)/.test(url)) return 'video';
+  if (type === 'audio' || type === 'voice' || /\.(mp3|wav|ogg|webm|m4a)(\?|$)/.test(url)) return 'audio';
+  if (type === 'image' || type === 'gif' || /\.(gif|jpg|jpeg|png|webp)(\?|$)/.test(url)) return url.includes('.gif') ? 'gif' : 'image';
+  return 'file';
+}
+
+function renderFileBlock(msg, mediaContext) {
+  const url = (msg.content || '').trim();
+  if (!url.startsWith('/uploads/')) return `<div class="message-content">${escapeHtml(url)}</div>`;
+  const kind = getFileKind(msg);
+  const safeUrl = escapeHtml(url).replace(/"/g, '&quot;');
+  const { mediaIds = [], currentIndex = -1 } = mediaContext || {};
+  const prevId = currentIndex > 0 ? mediaIds[currentIndex - 1] : null;
+  const nextId = currentIndex >= 0 && currentIndex < mediaIds.length - 1 ? mediaIds[currentIndex + 1] : null;
+
+  if (kind === 'video') {
+    return `
+      <div class="message-file message-file-video" data-msg-id="${escapeHtml(msg.id)}" data-url="${safeUrl}"
+           data-prev-media-id="${prevId || ''}" data-next-media-id="${nextId || ''}" role="button" tabindex="0">
+        <video class="message-file-video-thumb" src="${safeUrl}" preload="metadata" muted playsinline></video>
+        <span class="message-file-video-play" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+        <a href="${safeUrl}" download class="message-file-download message-file-download-video" onclick="event.stopPropagation()" title="Download">${ICON_DOWNLOAD}</a>
+      </div>`;
+  }
+  if (kind === 'image' || kind === 'gif') {
+    return `
+      <div class="message-file message-file-image" data-msg-id="${escapeHtml(msg.id)}" data-url="${safeUrl}"
+           data-prev-media-id="${prevId || ''}" data-next-media-id="${nextId || ''}" role="button" tabindex="0">
+        <img class="message-file-image-img" src="${safeUrl}" alt="" loading="lazy" />
+        <a href="${safeUrl}" download class="message-file-download message-file-download-image" onclick="event.stopPropagation()" title="Download">${ICON_DOWNLOAD}</a>
+      </div>`;
+  }
+  if (kind === 'audio') {
+    return `
+      <div class="message-file message-file-audio" data-msg-id="${escapeHtml(msg.id)}" data-url="${safeUrl}">
+        <div class="message-file-audio-wrap">
+          <audio class="message-file-audio-el" src="${safeUrl}" preload="metadata"></audio>
+          <div class="message-file-audio-progress-wrap">
+            <input type="range" class="message-file-audio-progress" min="0" max="100" value="0" title="Seek" />
+          </div>
+          <p class="message-file-audio-time">Current: <span class="message-file-audio-current">00:00</span> / Total: <span class="message-file-audio-total">00:00</span></p>
+          <a href="${safeUrl}" download class="message-file-audio-download" title="Download">${ICON_DOWNLOAD}</a>
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="message-file message-file-other" data-msg-id="${escapeHtml(msg.id)}" data-url="${safeUrl}">
+      <div class="message-file-other-wrap">
+        <button type="button" class="message-file-other-icon" title="View file content" aria-label="View file">${ICON_FILE}</button>
+        <a href="${safeUrl}" download class="message-file-other-download" title="Download">${ICON_DOWNLOAD}</a>
+      </div>
+    </div>`;
+}
+
+const ICON_DOWNLOAD = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>';
+const ICON_FILE = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>';
+
 function renderMessagesWithTimestamps(list, roomType, roomId) {
   let lastTs = null;
+  const mediaIds = getMediaMessageIds(list);
   const parts = [];
-  for (const m of list) {
+  for (let i = 0; i < list.length; i++) {
+    const m = list[i];
     const t = m.created_at || 0;
     if (t && (lastTs == null || t - lastTs >= TS_INTERVAL_MS)) {
       parts.push(renderTimestamp(t));
       lastTs = t;
     } else if (t) lastTs = t;
-    parts.push(renderMessage(m, roomType, roomId));
+    const mediaIndex = mediaIds.indexOf(m.id);
+    parts.push(renderMessage(m, roomType, roomId, { mediaIds, mediaIndex }));
   }
   return parts.join('');
 }
 
-function renderMessage(m, roomType, roomId) {
+function renderMessage(m, roomType, roomId, context = {}) {
   const isOwn = m.sender_id === state.user?.id;
+  const isFileMessage = (m.msg_type && m.msg_type !== 'text' && (m.content || '').startsWith('/uploads/')) || ((m.content || '').startsWith('/uploads/') && (m.msg_type === 'video' || m.msg_type === 'image' || m.msg_type === 'audio' || m.msg_type === 'file'));
 
   if (m.deleted_by_admin) {
     return `
@@ -812,14 +941,15 @@ function renderMessage(m, roomType, roomId) {
   const versions = [...(m.edit_history || []).map(h => h.content), m.content || ''];
   const versionIndex = Math.max(0, Math.min((state.messageVersionIndex[m.id] ?? versions.length - 1), versions.length - 1));
   const displayContent = versions[versionIndex];
-  const content = renderMessageContent(displayContent || '');
+  const mediaContext = { mediaIds: context.mediaIds || [], currentIndex: context.mediaIndex ?? -1 };
+  const content = isFileMessage ? renderFileBlock(m, mediaContext) : renderMessageContent(displayContent || '');
   const replyBlock = m.reply_to_id ? `<div class="message-reply-preview" data-reply-to="${m.reply_to_id}">Reply to message</div>` : '';
   const likeCount = (m.likes || 0) > 0 ? `<span class="message-like-count">${m.likes}</span>` : '';
   const likeIcon = `<button type="button" class="message-like-btn" data-msg-id="${m.id}" title="Like" aria-label="Like"><span class="message-like-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span></button>`;
 
   const chevronLeft = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>`;
   const chevronRight = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>`;
-  const editHistoryUI = versions.length > 1
+  const editHistoryUI = !isFileMessage && versions.length > 1
     ? `<span class="message-edit-history" data-msg-id="${m.id}">
         <button type="button" class="message-edit-history-btn" data-msg-id="${m.id}" data-dir="prev" title="Older version" aria-label="Older version" ${versionIndex <= 0 ? 'disabled' : ''}>${chevronLeft}</button>
         <span class="message-edit-history-label">${versionIndex + 1}/${versions.length}</span>
@@ -827,7 +957,7 @@ function renderMessage(m, roomType, roomId) {
       </span>`
     : '';
 
-  const isEditing = state.editingMessageId === m.id;
+  const isEditing = !isFileMessage && state.editingMessageId === m.id;
   const contentBlock = isEditing
     ? `<div class="message-edit-area">
         <textarea class="message-edit-input" data-msg-id="${m.id}" rows="3">${escapeHtml(m.content || '')}</textarea>
@@ -836,7 +966,7 @@ function renderMessage(m, roomType, roomId) {
           <button type="button" class="message-edit-cancel" data-msg-id="${m.id}">Cancel</button>
         </div>
       </div>`
-    : `<div class="message-content">${content}</div>`;
+    : `<div class="message-content message-content-file">${content}</div>`;
 
   const defaultAvatar = getDefaultAvatarUrl(m.sender_id);
   const avatarSrc = (m.avatar_url && String(m.avatar_url).trim()) ? m.avatar_url : defaultAvatar;
@@ -1119,6 +1249,13 @@ function formatTime(ts) {
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatAudioTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 async function showProfileModal(userId) {
   if (!userId || userId === state.user?.id) return;
   try {
@@ -1178,6 +1315,176 @@ function showWordleModal() {
   const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
   document.addEventListener('keydown', onKey);
   document.body.appendChild(overlay);
+}
+
+function getStepOptions(durationSeconds) {
+  if (durationSeconds <= 60) return [5];
+  if (durationSeconds <= 180) return [5, 10];
+  return [5, 10, 15];
+}
+
+function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
+  const list = state.messages[roomKey(roomType, roomId)] || [];
+  const mediaList = list.filter(m => MEDIA_TYPES.includes(m.msg_type) && (m.content || '').startsWith('/uploads/'));
+  const safeUrl = (u) => escapeHtml(u || '').replace(/"/g, '&quot;');
+  const overlay = document.createElement('div');
+  overlay.className = 'media-popup-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+
+  function setMedia(msg) {
+    if (!msg) return;
+    const u = (msg.content || '').trim();
+    const k = getFileKind(msg);
+    const prev = mediaList[mediaList.findIndex(m => m.id === msg.id) - 1];
+    const next = mediaList[mediaList.findIndex(m => m.id === msg.id) + 1];
+    const prevId = prev?.id || '';
+    const nextId = next?.id || '';
+    const contentEl = overlay.querySelector('.media-popup-content');
+    const controlsEl = overlay.querySelector('.media-popup-controls');
+    if (!contentEl || !controlsEl) return;
+    contentEl.innerHTML = '';
+    if (k === 'video') {
+      const steps = [5, 10, 15];
+      const stepBtns = steps.map(s => `<button type="button" class="media-popup-step" data-sec="${s}" title="Back ${s}s">−${s}s</button>`).join('');
+      const stepFwd = steps.map(s => `<button type="button" class="media-popup-step-fwd" data-sec="${s}" title="Forward ${s}s">+${s}s</button>`).join('');
+      const vid = document.createElement('video');
+      vid.className = 'media-popup-video';
+      vid.src = u;
+      vid.controls = false;
+      vid.playsInline = true;
+      contentEl.appendChild(vid);
+      controlsEl.innerHTML = `
+        <div class="media-popup-controls-row">
+          <button type="button" class="media-popup-prev" ${!prevId ? 'disabled' : ''} data-msg-id="${prevId}" title="Previous">Previous</button>
+          <span class="media-popup-step-group">${stepBtns}</span>
+          <button type="button" class="media-popup-play" title="Play (K)">Play</button>
+          <span class="media-popup-step-group">${stepFwd}</span>
+          <button type="button" class="media-popup-next" ${!nextId ? 'disabled' : ''} data-msg-id="${nextId}" title="Next">Next</button>
+          <a href="${safeUrl(u)}" download class="media-popup-download" title="Download">${ICON_DOWNLOAD}</a>
+        </div>
+      `;
+      overlay.querySelector('.media-popup-prev')?.addEventListener('click', () => { if (prev) setMedia(prev); });
+      overlay.querySelector('.media-popup-next')?.addEventListener('click', () => { if (next) setMedia(next); });
+      overlay.querySelector('.media-popup-play')?.addEventListener('click', () => { vid.paused ? vid.play() : vid.pause(); });
+      overlay.querySelectorAll('.media-popup-step').forEach(btn => btn.addEventListener('click', () => { vid.currentTime = Math.max(0, vid.currentTime - parseInt(btn.dataset.sec, 10)); }));
+      overlay.querySelectorAll('.media-popup-step-fwd').forEach(btn => btn.addEventListener('click', () => { vid.currentTime = Math.min(vid.duration, vid.currentTime + parseInt(btn.dataset.sec, 10)); }));
+      vid.addEventListener('loadedmetadata', () => {
+        const dur = vid.duration;
+        const opts = getStepOptions(dur);
+        const row = controlsEl.querySelector('.media-popup-controls-row');
+        if (row) {
+          const backGroup = row.querySelector('.media-popup-step-group');
+          const fwdGroup = row.querySelectorAll('.media-popup-step-group')[1];
+          if (backGroup) backGroup.innerHTML = opts.map(s => `<button type="button" class="media-popup-step" data-sec="${s}">−${s}s</button>`).join('');
+          if (fwdGroup) fwdGroup.innerHTML = opts.map(s => `<button type="button" class="media-popup-step-fwd" data-sec="${s}">+${s}s</button>`).join('');
+          [...(row.querySelectorAll('.media-popup-step'))].forEach(btn => btn.addEventListener('click', () => { vid.currentTime = Math.max(0, vid.currentTime - parseInt(btn.dataset.sec, 10)); }));
+          [...(row.querySelectorAll('.media-popup-step-fwd'))].forEach(btn => btn.addEventListener('click', () => { vid.currentTime = Math.min(vid.duration, vid.currentTime + parseInt(btn.dataset.sec, 10)); }));
+        }
+      });
+      vid.addEventListener('play', () => { const b = overlay.querySelector('.media-popup-play'); if (b) b.textContent = 'Pause'; });
+      vid.addEventListener('pause', () => { const b = overlay.querySelector('.media-popup-play'); if (b) b.textContent = 'Play'; });
+    } else {
+      controlsEl.innerHTML = `
+        <div class="media-popup-image-ui media-popup-controls-row" role="toolbar">
+          <button type="button" class="media-popup-prev" ${!prevId ? 'disabled' : ''} data-msg-id="${prevId}">Previous</button>
+          <button type="button" class="media-popup-next" ${!nextId ? 'disabled' : ''} data-msg-id="${nextId}">Next</button>
+          <a href="${safeUrl(u)}" download class="media-popup-download">${ICON_DOWNLOAD}</a>
+        </div>
+      `;
+      controlsEl.classList.add('media-popup-image-ui');
+      controlsEl.style.opacity = '0';
+      const img = document.createElement('img');
+      img.className = 'media-popup-image';
+      img.src = u;
+      img.alt = '';
+      contentEl.appendChild(img);
+      let scale = 1;
+      let uiTimer = null;
+      const isTouch = 'ontouchstart' in window;
+      function showUI() {
+        controlsEl.style.opacity = '1';
+        if (uiTimer) clearTimeout(uiTimer);
+        uiTimer = setTimeout(hideUI, 2000);
+      }
+      function hideUI() {
+        if (!isTouch) controlsEl.style.opacity = '0';
+        if (uiTimer) clearTimeout(uiTimer);
+      }
+      overlay.querySelector('.media-popup-image-overlay')?.addEventListener('click', showUI);
+      contentEl.addEventListener('wheel', (e) => { e.preventDefault(); scale = Math.max(0.25, Math.min(4, scale + (e.deltaY > 0 ? -0.1 : 0.1))); img.style.transform = `scale(${scale})`; });
+      contentEl.addEventListener('mouseleave', () => { if (!isTouch) hideUI(); });
+      overlay.querySelector('.media-popup-prev')?.addEventListener('click', () => { if (prev) setMedia(prev); });
+      overlay.querySelector('.media-popup-next')?.addEventListener('click', () => { if (next) setMedia(next); });
+    }
+  }
+
+  const initialMsg = list.find(m => m.id === msgId) || { content: url, msg_type: kind === 'video' ? 'video' : 'image' };
+  const isVideo = kind === 'video';
+  overlay.innerHTML = `
+    <div class="media-popup">
+      <button type="button" class="media-popup-close" aria-label="Close">&times;</button>
+      <div class="media-popup-content"></div>
+      <div class="media-popup-image-overlay"></div>
+      <div class="media-popup-controls"></div>
+    </div>
+  `;
+  const close = () => {
+    overlay.querySelector('.media-popup-video')?.pause();
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') close();
+    if (e.key === ' ') e.preventDefault();
+    if (e.key === 'k' || e.key === 'K') {
+      const v = overlay.querySelector('.media-popup-video');
+      if (v) { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+    }
+  };
+  overlay.querySelector('.media-popup-close')?.addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.classList.contains('media-popup-close')) close(); });
+  document.addEventListener('keydown', onKey);
+  setMedia(initialMsg);
+  if (isVideo) {
+    const v = overlay.querySelector('.media-popup-video');
+    if (v) v.play().catch(() => {});
+  }
+  let uiHideTimer = null;
+  overlay.addEventListener('keydown', (e) => {
+    const c = overlay.querySelector('.media-popup-controls.media-popup-image-ui');
+    if (c) { c.style.opacity = '1'; clearTimeout(uiHideTimer); uiHideTimer = setTimeout(() => { if (!('ontouchstart' in window)) c.style.opacity = '0'; }, 2000); }
+  });
+  overlay.addEventListener('mousemove', (e) => {
+    if (e.target.closest('.media-popup-content') || e.target.closest('.media-popup-controls')) {
+      const c = overlay.querySelector('.media-popup-controls.media-popup-image-ui');
+      if (c) { c.style.opacity = '1'; clearTimeout(uiHideTimer); uiHideTimer = setTimeout(() => { if (!('ontouchstart' in window)) c.style.opacity = '0'; }, 2000); }
+    }
+  });
+  document.body.appendChild(overlay);
+}
+
+async function openFileContentModal(url) {
+  try {
+    const res = await fetch(url, { credentials: 'include' });
+    const text = await res.text();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay file-content-modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal file-content-modal">
+        <button type="button" class="file-content-modal-close" aria-label="Close">&times;</button>
+        <pre class="file-content-modal-body">${escapeHtml(text)}</pre>
+        <a href="${escapeHtml(url).replace(/"/g, '&quot;')}" download class="file-content-modal-download">Download</a>
+      </div>
+    `;
+    const close = () => overlay.remove();
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('.file-content-modal-close')?.addEventListener('click', close);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    document.body.appendChild(overlay);
+  } catch (e) {
+    alert('Could not load file content');
+  }
 }
 
 function bindMain() {
@@ -1262,6 +1569,28 @@ function bindMain() {
   }
 
   wrap?.addEventListener('click', (e) => {
+    const videoEl = e.target.closest('.message-file-video');
+    if (videoEl && !e.target.closest('a')) {
+      e.preventDefault();
+      e.stopPropagation();
+      openMediaPopup(videoEl.dataset.msgId, videoEl.dataset.url, 'video', videoEl.dataset.prevMediaId || null, videoEl.dataset.nextMediaId || null, roomType, roomId);
+      return;
+    }
+    const imageEl = e.target.closest('.message-file-image');
+    if (imageEl && !e.target.closest('a')) {
+      e.preventDefault();
+      e.stopPropagation();
+      openMediaPopup(imageEl.dataset.msgId, imageEl.dataset.url, 'image', imageEl.dataset.prevMediaId || null, imageEl.dataset.nextMediaId || null, roomType, roomId);
+      return;
+    }
+    const otherIcon = e.target.closest('.message-file-other-icon');
+    if (otherIcon) {
+      e.preventDefault();
+      e.stopPropagation();
+      const url = otherIcon.closest('.message-file-other')?.dataset?.url;
+      if (url) openFileContentModal(url);
+      return;
+    }
     const likeBtn = e.target.closest('.message-like-btn');
     if (likeBtn) {
       e.preventDefault();
@@ -1303,6 +1632,32 @@ function bindMain() {
       const current = state.messageVersionIndex[msgId] ?? versions.length - 1;
       const next = dir === 'prev' ? Math.max(0, current - 1) : Math.min(versions.length - 1, current + 1);
       setState({ messageVersionIndex: { ...state.messageVersionIndex, [msgId]: next } });
+    }
+  });
+
+  wrap?.addEventListener('loadedmetadata', (e) => {
+    if (e.target.classList?.contains('message-file-audio-el')) {
+      const el = e.target;
+      const totalSpan = el.closest('.message-file-audio')?.querySelector('.message-file-audio-total');
+      if (totalSpan) totalSpan.textContent = formatAudioTime(el.duration);
+    }
+  });
+  wrap?.addEventListener('timeupdate', (e) => {
+    if (e.target.classList?.contains('message-file-audio-el')) {
+      const el = e.target;
+      const block = el.closest('.message-file-audio');
+      const currentSpan = block?.querySelector('.message-file-audio-current');
+      const progress = block?.querySelector('.message-file-audio-progress');
+      if (currentSpan) currentSpan.textContent = formatAudioTime(el.currentTime);
+      if (progress && Number.isFinite(el.duration)) progress.value = (el.currentTime / el.duration) * 100;
+    }
+  });
+  wrap?.addEventListener('input', (e) => {
+    if (e.target.classList?.contains('message-file-audio-progress')) {
+      const range = e.target;
+      const block = range.closest('.message-file-audio');
+      const audio = block?.querySelector('.message-file-audio-el');
+      if (audio && Number.isFinite(audio.duration)) audio.currentTime = (Number(range.value) / 100) * audio.duration;
     }
   });
 
@@ -1375,7 +1730,7 @@ function bindMain() {
         const form = new FormData();
         form.append('file', state._pendingFile);
         form.append('content', text);
-        form.append('msg_type', state._pendingFile.type.startsWith('image/') ? 'image' : state._pendingFile.type.startsWith('video/') ? 'video' : state._pendingFile.type.startsWith('audio/') ? 'voice' : 'file');
+        form.append('msg_type', state._pendingFile.type.startsWith('image/') ? 'image' : state._pendingFile.type.startsWith('video/') ? 'video' : state._pendingFile.type.startsWith('audio/') ? 'audio' : 'file');
         if (reply_to_id) form.append('reply_to_id', reply_to_id);
         const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
         fetch(path, { method: 'POST', credentials: 'include', body: form }).then(() => {
@@ -2038,6 +2393,8 @@ function applyRoute(route) {
     if (route.dmUserId) {
       apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
         state.convId = conversation_id;
+        state.convByUserId[route.dmUserId] = conversation_id;
+        state.convIdToUserId[conversation_id] = route.dmUserId;
         return loadMessages('dm', conversation_id).then(() => {
           state.socket?.emit('dm:join', conversation_id, () => {});
           render();
