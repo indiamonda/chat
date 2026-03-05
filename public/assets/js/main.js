@@ -809,7 +809,7 @@ function renderChatArea() {
         <div class="composer-input-wrap">
           <textarea id="composer-input" placeholder="Message…" rows="1"></textarea>
           <div class="composer-actions">
-            ${roomType === 'group' ? `<button type="button" id="composer-command-mode" class="composer-command-btn ${state.commandMode ? 'composer-command-btn-on' : ''}" title="${state.commandMode ? 'Command mode on (commands like /games, /wordle)' : 'Command mode off (send as text)'}" aria-label="Toggle command mode" aria-pressed="${state.commandMode}"><span class="icon" aria-hidden="true">${ICON_COMMAND}</span></button>` : ''}
+            ${roomType === 'group' ? `<button type="button" id="composer-command-mode" class="composer-command-btn ${state.commandMode ? 'composer-command-btn-on' : ''}" title="${state.commandMode ? 'Command mode on (e.g. /games, /wordle, /file &lt;id&gt;)' : 'Command mode off (send as text)'}" aria-label="Toggle command mode" aria-pressed="${state.commandMode}"><span class="icon" aria-hidden="true">${ICON_COMMAND}</span></button>` : ''}
             <button type="button" id="composer-mic" title="Record voice message" ${(roomType === 'dm' && !isFriend(state.dmUserId)) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
             <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
             <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
@@ -1572,9 +1572,18 @@ function bindMain() {
       if (state.user?.can_delete_messages) items.push({ label: 'Delete (admin)', action: 'delete', danger: true });
       if (state.user?.can_kick) items.push({ label: 'Kick user', action: 'kick' });
       if (canSolve) items.push({ label: 'Solve', action: 'solve' });
+      const fileUrl = (msg.content || '').trim();
+      if (fileUrl.startsWith('/uploads/')) items.push({ label: 'Get file id', action: 'get-file-id' });
       items.push({ label: 'Reply', action: 'reply' });
 
       showContextMenu(e.clientX, e.clientY, items, (action) => {
+        if (action === 'get-file-id') {
+          const fileId = fileUrl.slice('/uploads/'.length);
+          if (fileId && navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(fileId).then(() => {}).catch(() => {});
+          }
+          return;
+        }
         if (action === 'recall') {
           if (confirm('Are you sure you want to recall this message?')) state.socket?.emit('message:recall', msgId, () => {});
         } else if (action === 'edit') startInlineEdit(msg);
@@ -1736,6 +1745,23 @@ function bindMain() {
           }).catch((err) => alert(err.message || 'Request failed'));
           return;
         }
+        if (cmd === '/file') {
+          const fileId = text.slice(5).trimStart();
+          if (!fileId) {
+            alert('Usage: /file <file_id>');
+            return;
+          }
+          state._sendingMessage = true;
+          const reply_to_id = state.replyTo?.id || null;
+          state.socket?.emit('message:send', { roomType, roomId, content: `/uploads/${fileId}`, msg_type: 'file', reply_to_id }, (res) => {
+            state._sendingMessage = false;
+            if (res?.error) { alert(res.error); return; }
+            if (res?.message) addMessageLocal(res.message);
+            setState({ replyTo: null });
+            input.value = '';
+          });
+          return;
+        }
       }
 
       state._sendingMessage = true;
@@ -1815,7 +1841,7 @@ function bindMain() {
     if (btn) {
       btn.classList.toggle('composer-command-btn-on', state.commandMode);
       btn.setAttribute('aria-pressed', state.commandMode);
-      btn.title = state.commandMode ? 'Command mode on (commands like /games, /wordle)' : 'Command mode off (send as text)';
+      btn.title = state.commandMode ? 'Command mode on (e.g. /games, /wordle, /file <id>)' : 'Command mode off (send as text)';
     }
   });
   document.getElementById('composer-mic')?.addEventListener('click', async () => {
