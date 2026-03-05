@@ -95,7 +95,7 @@ app.use((req, res, next) => {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
-    res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://translate.google.com https://translate.googleapis.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' wss: https:; frame-src 'self' https://translate.google.com;");
+    res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://translate.google.com https://translate.googleapis.com https://translate-pa.googleapis.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://www.gstatic.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; connect-src 'self' wss: https:; frame-src 'self' https://translate.google.com;");
     const version = process.env.ASSET_VERSION || Date.now();
     const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
     return res.type('html').send(html);
@@ -325,7 +325,7 @@ app.use((err, req, res, next) => {
     const p = join(publicDir, 'index.html');
     if (existsSync(p)) {
       res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://translate.google.com https://translate.googleapis.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' wss: https:; frame-src 'self' https://translate.google.com;");
+      res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://translate.google.com https://translate.googleapis.com https://translate-pa.googleapis.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://www.gstatic.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; connect-src 'self' wss: https:; frame-src 'self' https://translate.google.com;");
       const version = process.env.ASSET_VERSION || Date.now();
       const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
       return res.status(200).type('html').send(html);
