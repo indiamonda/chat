@@ -71,7 +71,7 @@ function parseRoute() {
   const chatMatch = path.match(/^\/chat\/([^/]+)$/);
   if (chatMatch) {
     const id = chatMatch[1];
-    if (id.toLowerCase() === 'jimmyqrg') {
+    if (id.toLowerCase() === 'group') {
       const panelParam = params.get('panel') || 'chat';
       const panel = URL_TO_PANEL[panelParam] || 'free_chat';
       return { page: 'chat', group: true, panel };
@@ -104,7 +104,7 @@ function authPath(page, redirectPath) {
 }
 
 /** Get redirect target from current URL, or default path. */
-function getRedirectOrDefault(defaultPath = '/chat/jimmyqrg') {
+function getRedirectOrDefault(defaultPath = '/chat/group') {
   const params = new URLSearchParams(window.location.search || '');
   const r = params.get('redirect');
   return (r && r.startsWith('/')) ? r : defaultPath;
@@ -523,7 +523,7 @@ function renderMain() {
           <h3 class="panel-list-title">JimmyQrg</h3>
           <ul class="panel-list-ul">
             ${panels.map(p => `
-              <li><a href="/chat/jimmyqrg?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}"># ${escapeHtml(panelLabels[p] || p)}</a></li>
+              <li><a href="/chat/group?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}"># ${escapeHtml(panelLabels[p] || p)}</a></li>
             `).join('')}
           </ul>
         </div>
@@ -594,7 +594,7 @@ function renderMain() {
           </a>
         </div>
         <nav class="left-bar-nav" aria-label="Main">
-          <a href="/chat/jimmyqrg" class="left-bar-item ${primaryNav === 'home' ? 'active' : ''}" title="Home (JimmyQrg group chat)">
+          <a href="/chat/group" class="left-bar-item ${primaryNav === 'home' ? 'active' : ''}" title="Home (JimmyQrg group chat)">
             <span class="left-bar-icon" aria-hidden="true">${ICON_HOME}</span>
             <span class="left-bar-label">Home</span>
           </a>
@@ -1059,7 +1059,7 @@ function bindMain() {
         if (action === 'kick') kickUser(senderId);
         if (action === 'solve') {
           state.supportMessageIdForSolve = msgId;
-          navigateTo('/chat/jimmyqrg?panel=problem');
+          navigateTo('/chat/group?panel=problem');
         }
         if (action === 'reply') setState({ replyTo: msg });
       });
@@ -2125,7 +2125,7 @@ function bindInbox() {
     bindInbox();
     try {
       const extra = extraStr ? JSON.parse(extraStr) : {};
-      if (extra.panel === 'problem_solving') navigateTo('/chat/jimmyqrg?panel=problem');
+      if (extra.panel === 'problem_solving') navigateTo('/chat/group?panel=problem');
     } catch (_) {}
   });
 }
