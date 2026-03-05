@@ -57,11 +57,16 @@ function applyGoogleTranslate() {
   const lang = state.language || 'en';
   if (lang === 'en') return;
   const code = toGoogleTranslateCode(lang);
-  const sel = document.querySelector('.goog-te-combo');
-  if (sel && sel.value !== code) {
-    sel.value = code;
-    sel.dispatchEvent(new Event('change'));
+  function tryApply(attempt) {
+    const sel = document.querySelector('.goog-te-combo');
+    if (sel) {
+      sel.value = code;
+      sel.dispatchEvent(new Event('change'));
+      return;
+    }
+    if (attempt < 10) setTimeout(() => tryApply(attempt + 1), 150);
   }
+  tryApply(0);
 }
 
 const GROUP_ID = 'JimmyQrg';
@@ -457,7 +462,7 @@ function render() {
   app.innerHTML = renderMain();
   bindMain();
   if (route.page === 'settings') bindSettings();
-  if ((state.language || 'en') !== 'en') setTimeout(applyGoogleTranslate, 200);
+  if ((state.language || 'en') !== 'en') setTimeout(applyGoogleTranslate, 350);
 }
 
 function renderAuth(isSignup = false, initialError = '', redirect = null) {
@@ -2762,7 +2767,6 @@ function bindSettings() {
     state.language = lang;
     if (typeof localStorage !== 'undefined') localStorage.setItem('language', lang);
     if (document.documentElement) document.documentElement.setAttribute('lang', lang);
-    applyGoogleTranslate();
     setState({});
   });
   document.getElementById('open-password-modal')?.addEventListener('click', showPasswordModal);
