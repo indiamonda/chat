@@ -1880,15 +1880,20 @@ function applyRoute(route) {
         bindMain();
       });
     } else if (state.panel === 'problem_solving' || state.panel === 'rules' || state.panel === 'announcements') {
-      loadDoc(state.panel).then(({ doc }) => {
+      const loadPanelDoc = () => loadDoc(state.panel).then(({ doc }) => {
         state._docContent = doc?.content ?? '';
         render();
         bindMain();
-      }).catch((err) => {
-        console.warn('Load doc failed', err);
-        render();
-        bindMain();
       });
+      if (state.panel === 'announcements') {
+        apiPost('/api/docs/announcements/sync').then(() => loadPanelDoc(), () => loadPanelDoc());
+      } else {
+        loadPanelDoc().catch((err) => {
+          console.warn('Load doc failed', err);
+          render();
+          bindMain();
+        });
+      }
     } else {
       render();
       bindMain();

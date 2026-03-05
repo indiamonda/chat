@@ -6,6 +6,65 @@ import { db } from '../db.js';
 const router = Router();
 const EDITABLE_DOCS = ['problem_solving', 'rules', 'announcements'];
 
+const PORTAL_ANNOUNCEMENT_URL = 'https://jimmyqrg.github.io/?directly=1';
+
+/** Parse "Latest updates" and "History" list items from portal announcement HTML. Returns single paragraph. */
+function parsePortalAnnouncement(html) {
+  const items = [];
+  const latestMatch = html.match(/✨\s*Latest updates:[\s\S]*?<ul>([\s\S]*?)<\/ul>/i);
+  if (latestMatch) {
+    const lis = latestMatch[1].match(/<li>([\s\S]*?)<\/li>/g) || [];
+    lis.forEach(li => items.push(li.replace(/<\/?li>/g, '').replace(/<[^>]+>/g, '').trim()));
+  }
+  const historyMatch = html.match(/⏱️\s*History[\s\S]*?<ul>([\s\S]*?)<\/ul>/i);
+  if (historyMatch) {
+    const lis = historyMatch[1].match(/<li>([\s\S]*?)<\/li>/g) || [];
+    lis.forEach(li => items.push(li.replace(/<\/?li>/g, '').replace(/<b>|<\/b>/gi, '**').replace(/<[^>]+>/g, '').trim()));
+  }
+  return items.filter(Boolean).join('. ');
+}
+
+/** Sync announcements doc with portal: fetch portal, parse latest, prepend if missing. */
+router.post('/announcements/sync', requireAuth, async (req, res) => {
+  const user = getCurrentUser(req);
+  if (!canEditDocs(user)) return res.status(403).json({ error: 'Not allowed to edit' });
+  try {
+    const resp = await fetch(PORTAL_ANNOUNCEMENT_URL, { headers: { 'User-Agent': 'JimmyQrg-Chat-Sync/1' } });
+    const html = await resp.text();
+    const content = parsePortalAnnouncement(html);
+    if (!content) return res.json({ synced: false, reason: 'no_content' });
+
+    const now = new Date();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const yyyy = now.getFullYear();
+    const dateLine = `**${mm}/${dd}/${yyyy}**`;
+    const newEntry = `${dateLine} ${content}`;
+
+    const row = db.prepare(`
+      SELECT id, content FROM doc_versions WHERE doc_key = 'announcements' ORDER BY created_at DESC LIMIT 1
+    `).get();
+    const currentContent = row?.content || '';
+
+    if (currentContent.includes(newEntry)) {
+      return res.json({ synced: false, reason: 'already_present' });
+    }
+
+    const title = '# Announcements\n\n';
+    const rest = currentContent.startsWith(title) ? currentContent.slice(title.length) : currentContent;
+    const updatedContent = title + newEntry + '\n\n' + rest;
+
+    const id = randomUUID();
+    const created = Date.now();
+    db.prepare('INSERT INTO doc_versions (id, doc_key, content, editor_id, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(id, 'announcements', updatedContent, user.id, created);
+    res.json({ synced: true, version_id: id, created_at: created });
+  } catch (err) {
+    console.error('Announcements sync error:', err);
+    res.status(500).json({ error: err.message || 'Sync failed' });
+  }
+});
+
 router.get('/:docKey', requireAuth, (req, res) => {
   const { docKey } = req.params;
   if (!EDITABLE_DOCS.includes(docKey)) return res.status(404).json({ error: 'Not found' });
