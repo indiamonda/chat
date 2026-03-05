@@ -78,4 +78,4 @@ export function validateUsername(username) {
 }
 
 export const GROUP_ID = 'JimmyQrg';
-export const PANELS = ['free_chat', 'support', 'problem_solving', 'rules', 'announcements'];
+export const PANELS = ['announcements', 'free_chat', 'support', 'problem_solving', 'rules'];

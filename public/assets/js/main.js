@@ -546,7 +546,7 @@ function renderMain() {
   const route = parseRoute();
   const page = route.page;
   const primaryNav = getPrimaryNav(route);
-  const panels = state.group?.panels || ['free_chat', 'support', 'problem_solving', 'rules', 'announcements'];
+  const panels = state.group?.panels || ['announcements', 'free_chat', 'support', 'problem_solving', 'rules'];
   const panelLabels = { free_chat: 'Free Chat', support: 'Support', problem_solving: 'Problem Solving', rules: 'Rules', announcements: 'Announcements' };
   const isDocPanel = state.panel === 'problem_solving' || state.panel === 'rules' || state.panel === 'announcements';
   const isGroup = !!route.group;
