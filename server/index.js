@@ -214,6 +214,20 @@ app.delete('/api/messages/:id/like', requireAuth, (req, res) => {
   res.json({ likes: count.c });
 });
 
+// List current user's conversations (for DM list order and conv mapping)
+app.get('/api/conversations', requireAuth, (req, res) => {
+  const me = getCurrentUser(req);
+  const rows = db.prepare(`
+    SELECT c.id AS conversation_id,
+           CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END AS other_user_id,
+           (SELECT MAX(m.created_at) FROM messages m WHERE m.room_type = 'dm' AND m.room_id = c.id AND m.deleted_by_admin = 0) AS last_message_at
+    FROM conversations c
+    WHERE c.user1_id = ? OR c.user2_id = ?
+    ORDER BY last_message_at DESC
+  `).all(me.id, me.id, me.id);
+  res.json({ conversations: rows });
+});
+
 // Private conversation: get or create
 app.get('/api/conversations/with/:userId', requireAuth, (req, res) => {
   const me = getCurrentUser(req);

@@ -824,18 +824,20 @@ select:focus {
   min-width: 8px;
 }
 
+/* Red dot with number (private chat total, inbox unread). Group chat uses .left-bar-badge-dot only (no number). */
 .left-bar-badge-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
-  min-width: 16px;
-  height: 16px;
+  padding: 0 5px;
+  min-width: 18px;
+  height: 18px;
   border-radius: 999px;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 600;
   color: #fff;
   line-height: 1;
+  box-sizing: border-box;
 }
 
 .left-bar-label {
@@ -1144,7 +1146,8 @@ select:focus {
   padding: 2rem;
 }
 
-/* Vertical / portrait: left bar at bottom, panel column collapsible on the left (by height/width ratio, not px) */
+/* Vertical / portrait layout: use only aspect ratio (height vs width), never pixel width.
+   When height >= width (e.g. portrait phone, tall window), use vertical layout. */
 @media (max-aspect-ratio: 1/1) {
   .app-shell {
     flex-direction: column;

@@ -34,6 +34,7 @@ let state = {
   lastSeenByRoom: {},
   convByUserId: {},
   convIdToUserId: {},
+  lastMessageAtByUserId: {},
   language: typeof localStorage !== 'undefined' ? (localStorage.getItem('language') || 'en') : 'en',
   theme: typeof localStorage !== 'undefined' ? (localStorage.getItem('theme') || 'jimmyqrg') : 'jimmyqrg',
   _recording: false,
@@ -68,11 +69,13 @@ function getNewCount(roomType, roomId) {
   return list.filter(m => (m.created_at || 0) > seen).length;
 }
 
+/** Group chat: show red dot only (no amount). */
 function hasNewGroupMessages() {
   const panels = state.group?.panels || [];
   return panels.some(p => (p === 'free_chat' || p === 'support') && getNewCount('group', p) > 0);
 }
 
+/** Private chat: show total new count on Chat icon and per-user in list. */
 function getTotalNewDmCount() {
   let total = 0;
   for (const key of Object.keys(state.messages || {})) {
@@ -273,6 +276,18 @@ export async function loadInbox() {
   const { items } = await apiGet('/api/inbox');
   state.inbox = items || [];
   return state.inbox;
+}
+
+/** Load conversation list so DM list order (last chat time > new count > alpha) and per-user badges work. */
+export async function loadConversations() {
+  const { conversations } = await apiGet('/api/conversations').catch(() => ({ conversations: [] }));
+  state.lastMessageAtByUserId = {};
+  (conversations || []).forEach((c) => {
+    state.convByUserId[c.other_user_id] = c.conversation_id;
+    state.convIdToUserId[c.conversation_id] = c.other_user_id;
+    if (c.last_message_at != null) state.lastMessageAtByUserId[c.other_user_id] = c.last_message_at;
+  });
+  return conversations || [];
 }
 
 export async function loadFriends() {
@@ -636,9 +651,10 @@ function renderMain() {
             ${(function() {
               const users = (state.users || []).filter(u => u.id !== state.user?.id);
               const convId = (uid) => state.convByUserId[uid];
-              const lastMessageAt = (uid) => { const c = convId(uid); if (!c) return 0; const list = state.messages['dm:' + c]; return list?.length ? Math.max(...list.map(m => m.created_at || 0)) : 0; };
+              const lastMessageAt = (uid) => { const fromApi = state.lastMessageAtByUserId?.[uid]; if (fromApi != null) return fromApi; const c = convId(uid); if (!c) return 0; const list = state.messages['dm:' + c]; return list?.length ? Math.max(...list.map(m => m.created_at || 0)) : 0; };
               const newCount = (uid) => { const c = convId(uid); return c ? getNewCount('dm', c) : 0; };
               const name = (u) => (u.display_name || u.username || '').toLowerCase();
+              /* Private chat list order: last chat time (recent first) > new message count (high first) > alphabetical */
               users.sort((a, b) => {
                 const at = lastMessageAt(a.id), bt = lastMessageAt(b.id);
                 if (bt !== at) return bt - at;
@@ -2384,55 +2400,71 @@ function applyRoute(route) {
     state.editingDocKey = null;
     state.dmUserId = route.dmUserId || null;
     state.convId = null;
-    if (route.section === 'dms') {
-      setState({});
-      render();
-      bindMain();
-      return;
-    }
-    if (route.dmUserId) {
-      apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
-        state.convId = conversation_id;
-        state.convByUserId[route.dmUserId] = conversation_id;
-        state.convIdToUserId[conversation_id] = route.dmUserId;
-        return loadMessages('dm', conversation_id).then(() => {
-          state.socket?.emit('dm:join', conversation_id, () => {});
-          render();
-          bindMain();
-        });
-      }).catch((err) => {
-        console.warn('Load conversation/messages failed', err);
+    loadConversations().then(() => {
+      if (route.section === 'dms') {
+        setState({});
         render();
         bindMain();
-      });
-      return;
-    }
-    state.convId = null;
-    if (state.panel === 'free_chat' || state.panel === 'support') {
-      loadMessages('group', state.panel).then(() => { render(); bindMain(); }).catch((err) => {
-        console.warn('Load messages failed', err);
-        render();
-        bindMain();
-      });
-    } else if (state.panel === 'problem_solving' || state.panel === 'rules' || state.panel === 'announcements') {
-      const loadPanelDoc = () => loadDoc(state.panel).then(({ doc }) => {
-        state._docContent = doc?.content ?? '';
-        render();
-        bindMain();
-      });
-      if (state.panel === 'announcements') {
-        apiPost('/api/docs/announcements/sync').then(() => loadPanelDoc(), () => loadPanelDoc());
-      } else {
-        loadPanelDoc().catch((err) => {
-          console.warn('Load doc failed', err);
-          render();
-          bindMain();
-        });
+        return;
       }
-    } else {
-      render();
-      bindMain();
-    }
+      if (route.dmUserId) {
+        apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
+          state.convId = conversation_id;
+          state.convByUserId[route.dmUserId] = conversation_id;
+          state.convIdToUserId[conversation_id] = route.dmUserId;
+          return loadMessages('dm', conversation_id).then(() => {
+            state.socket?.emit('dm:join', conversation_id, () => {});
+            render();
+            bindMain();
+          });
+        }).catch((err) => {
+          console.warn('Load conversation/messages failed', err);
+          render();
+          bindMain();
+        });
+        return;
+      }
+      state.convId = null;
+      if (state.panel === 'free_chat' || state.panel === 'support') {
+        loadMessages('group', state.panel).then(() => { render(); bindMain(); }).catch((err) => {
+          console.warn('Load messages failed', err);
+          render();
+          bindMain();
+        });
+      } else if (state.panel === 'problem_solving' || state.panel === 'rules' || state.panel === 'announcements') {
+        const loadPanelDoc = () => loadDoc(state.panel).then(({ doc }) => {
+          state._docContent = doc?.content ?? '';
+          render();
+          bindMain();
+        });
+        if (state.panel === 'announcements') {
+          apiPost('/api/docs/announcements/sync').then(() => loadPanelDoc(), () => loadPanelDoc());
+        } else {
+          loadPanelDoc().catch((err) => {
+            console.warn('Load doc failed', err);
+            render();
+            bindMain();
+          });
+        }
+      } else {
+        render();
+        bindMain();
+      }
+    }).catch((err) => {
+      console.warn('Load conversations failed', err);
+      if (route.section === 'dms') { setState({}); render(); bindMain(); return; }
+      if (route.dmUserId) {
+        apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
+          state.convId = conversation_id;
+          state.convByUserId[route.dmUserId] = conversation_id;
+          state.convIdToUserId[conversation_id] = route.dmUserId;
+          return loadMessages('dm', conversation_id).then(() => { state.socket?.emit('dm:join', conversation_id, () => {}); render(); bindMain(); });
+        }).catch(() => { render(); bindMain(); });
+      } else {
+        render();
+        bindMain();
+      }
+    });
   }
 }
 
