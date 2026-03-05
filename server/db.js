@@ -20,6 +20,7 @@ for (const col of PERM_COLS) {
 }
 try { db.exec('ALTER TABLE users ADD COLUMN website TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN profile_links TEXT'); } catch (_) {} // JSON array of {label, url}
+try { db.exec('ALTER TABLE users ADD COLUMN description TEXT'); } catch (_) {}
 
 // Friendships and friend-request rate limits
 try {

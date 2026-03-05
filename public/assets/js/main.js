@@ -51,10 +51,54 @@ function getPath() {
 function interceptLinks(container) {
   if (!container) return;
   container.addEventListener('click', (e) => {
+    const messageAvatarWrap = e.target.closest('.message-avatar-wrap');
+    if (messageAvatarWrap) {
+      const id = messageAvatarWrap.dataset.senderId;
+      if (id) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (id === state.user?.id) navigateTo('/settings?tab=profile');
+        else showProfileModal(id);
+      }
+      return;
+    }
+    const panelAvatarWrap = e.target.closest('.panel-user-avatar-wrap');
+    if (panelAvatarWrap) {
+      const id = panelAvatarWrap.dataset.userId;
+      if (id) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (id === state.user?.id) navigateTo('/settings?tab=profile');
+        else showProfileModal(id);
+      }
+      return;
+    }
     const a = e.target.closest('a[href^="/"]');
     if (!a || a.hasAttribute('target') || a.getAttribute('href').startsWith('/api')) return;
     e.preventDefault();
     navigateTo(a.getAttribute('href'));
+  });
+  container.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const messageAvatarWrap = e.target.closest('.message-avatar-wrap');
+    if (messageAvatarWrap) {
+      const id = messageAvatarWrap.dataset.senderId;
+      if (id) {
+        e.preventDefault();
+        if (id === state.user?.id) navigateTo('/settings?tab=profile');
+        else showProfileModal(id);
+      }
+      return;
+    }
+    const panelAvatarWrap = e.target.closest('.panel-user-avatar-wrap');
+    if (panelAvatarWrap) {
+      const id = panelAvatarWrap.dataset.userId;
+      if (id) {
+        e.preventDefault();
+        if (id === state.user?.id) navigateTo('/settings?tab=profile');
+        else showProfileModal(id);
+      }
+    }
   });
 }
 
@@ -544,7 +588,7 @@ function renderMain() {
               const avSrc = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : defAv;
               return `
               <li><a href="${friend ? `/chat/${encodeURIComponent(u.id)}` : '#'}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-user-id="${escapeHtml(u.id)}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml((u.display_name || u.username || '').toLowerCase())}" data-friend="${friend ? '1' : '0'}">
-                <img src="${avSrc}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="panel-user-avatar" />
+                <span class="panel-user-avatar-wrap" data-user-id="${escapeHtml(u.id)}" title="View profile"><img src="${avSrc}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="panel-user-avatar" /></span>
                 <span>${escapeHtml(u.display_name || u.username)}</span>
               </a></li>
             `; }).join('')}
@@ -791,7 +835,7 @@ function renderMessage(m, roomType, roomId) {
   return `
     <div class="message-row" data-msg-id="${m.id}">
       <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
-        <div class="message-avatar-wrap">
+        <div class="message-avatar-wrap" data-sender-id="${escapeHtml(m.sender_id || '')}" title="View profile" role="button" tabindex="0">
           <span class="message-sender">${senderName}</span>
           <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
         </div>
@@ -959,6 +1003,7 @@ async function showProfileModal(userId) {
           <img src="${(profile.avatar_url && String(profile.avatar_url).trim()) ? profile.avatar_url : getDefaultAvatarUrl(profile.id)}" data-fallback="${getDefaultAvatarUrl(profile.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="profile-modal-avatar" />
           <h3 class="profile-modal-name">${escapeHtml(profile.display_name || profile.username)}</h3>
           <p class="profile-modal-username">@${escapeHtml(profile.username)}</p>
+          ${profile.description ? `<p class="profile-modal-description">${escapeHtml(profile.description)}</p>` : ''}
           ${profile.website ? `<p class="profile-modal-website"><a href="${escapeHtml(profile.website)}" target="_blank" rel="noopener">${escapeHtml(profile.website)}</a></p>` : ''}
         </div>
         <div class="profile-modal-actions">
@@ -1718,6 +1763,8 @@ function renderSettingsContent() {
         </label>
         <label>Display name</label>
         <input type="text" name="display_name" value="${escapeHtml(state.user?.display_name || '')}" />
+        <label>Description</label>
+        <textarea name="description" rows="3" placeholder="A short bio or description">${escapeHtml(state.user?.description || '')}</textarea>
         <label>Website</label>
         <input type="url" name="website" placeholder="https://..." value="${escapeHtml(state.user?.website || '')}" />
         <button type="submit">Save</button>

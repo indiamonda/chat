@@ -63,7 +63,7 @@ function normalizeUser(u) {
 export function getCurrentUser(req) {
   if (!req.session?.userId) return null;
   try {
-    const u = db.prepare(`SELECT id, username, display_name, avatar_url, email, is_allowed, ${PERM_COLS} FROM users WHERE id = ?`).get(req.session.userId);
+    const u = db.prepare(`SELECT id, username, display_name, avatar_url, email, description, is_allowed, ${PERM_COLS} FROM users WHERE id = ?`).get(req.session.userId);
     return normalizeUser(u);
   } catch {
     return null;
@@ -189,7 +189,7 @@ export function canTimeout(user) {
 /** Return normalized user by id (for login/register response). */
 export function getNormalizedUserById(id) {
   try {
-    const u = db.prepare(`SELECT id, username, display_name, avatar_url, email, is_allowed, ${PERM_COLS} FROM users WHERE id = ?`).get(id);
+    const u = db.prepare(`SELECT id, username, display_name, avatar_url, email, description, is_allowed, ${PERM_COLS} FROM users WHERE id = ?`).get(id);
     return normalizeUser(u);
   } catch {
     return null;

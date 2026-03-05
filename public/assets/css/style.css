@@ -897,6 +897,11 @@ select:focus {
   color: var(--purple-bright);
 }
 
+.panel-user-avatar-wrap {
+  display: inline-flex;
+  flex-shrink: 0;
+  cursor: pointer;
+}
 .panel-user-avatar {
   width: 32px;
   height: 32px;
@@ -1656,6 +1661,7 @@ select:focus {
   align-items: center;
   gap: 0.2rem;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .message-sender {
@@ -2703,6 +2709,7 @@ select:focus {
 .profile-modal-avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto 0.75rem; }
 .profile-modal-name { margin: 0 0 0.25rem; font-size: 1.25rem; }
 .profile-modal-username { color: var(--text-dim); font-size: 0.9rem; margin: 0 0 0.5rem; }
+.profile-modal-description { font-size: 0.9rem; margin: 0 0 0.5rem; white-space: pre-wrap; word-break: break-word; color: var(--text); }
 .profile-modal-website { font-size: 0.9rem; margin: 0; }
 .profile-modal-website a { color: var(--purple-bright); }
 .profile-modal-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
