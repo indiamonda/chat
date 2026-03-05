@@ -1510,7 +1510,7 @@ function renderLatexBlock(latex) {
 }
 
 /** Process message content: apply language blocks then markdown.
- * Supports /plaintext (or '/plain text'): everything below that line is rendered as plain text.
+ * Supports /plaintext: everything below that line is rendered as plain text.
  */
 function renderMessageContent(raw) {
   if (raw == null || raw === '') return '';
@@ -1518,7 +1518,7 @@ function renderMessageContent(raw) {
   const lines = String(raw).split(lineSeparator);
   const plaintextLineIndex = lines.findIndex((l) => {
     const t = l.trim().toLowerCase();
-    return t === '/plaintext' || t === '/plain text';
+    return t === '/plaintext';
   });
   if (plaintextLineIndex >= 0) {
     const above = lines.slice(0, plaintextLineIndex).join('\n');
@@ -2031,6 +2031,7 @@ function bindMain() {
       if (canSolve) items.push({ label: 'Solve', action: 'solve' });
       const fileUrl = (msg.content || '').trim();
       if (fileUrl.startsWith('/uploads/')) items.push({ label: 'Get file id', action: 'get-file-id' });
+      items.push({ label: 'Copy', action: 'copy' });
       items.push({ label: 'Reply', action: 'reply' });
 
       showContextMenu(e.clientX, e.clientY, items, (action) => {
@@ -2038,6 +2039,13 @@ function bindMain() {
           const fileId = fileUrl.slice('/uploads/'.length);
           if (fileId && navigator.clipboard?.writeText) {
             navigator.clipboard.writeText(fileId).then(() => {}).catch(() => {});
+          }
+          return;
+        }
+        if (action === 'copy') {
+          if (navigator.clipboard?.writeText) {
+            const text = msg.content != null ? String(msg.content) : '';
+            navigator.clipboard.writeText(text).then(() => {}).catch(() => {});
           }
           return;
         }
