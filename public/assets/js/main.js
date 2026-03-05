@@ -267,6 +267,21 @@ export async function loadMe() {
   }
 }
 
+/** Load public config (e.g. reCAPTCHA site key). Cached in state. */
+export async function loadConfig() {
+  if (state._configLoaded) return state.recaptchaSiteKey != null ? { recaptchaSiteKey: state.recaptchaSiteKey } : null;
+  try {
+    const data = await apiGet('/api/config');
+    state.recaptchaSiteKey = data.recaptchaSiteKey || '';
+    state._configLoaded = true;
+    return data;
+  } catch {
+    state._configLoaded = true;
+    state.recaptchaSiteKey = '';
+    return { recaptchaSiteKey: '' };
+  }
+}
+
 export async function loadUsers() {
   const { users } = await apiGet('/api/users');
   state.users = users;
@@ -470,6 +485,7 @@ function renderAuth(isSignup = false, initialError = '', redirect = null) {
             <input class="auth-ani-22" name="reg_password" type="password" autocomplete="new-password" placeholder="Password" />
             <label class="auth-ani-23">Confirm password</label>
             <input class="auth-ani-24" name="confirm_password" type="password" autocomplete="new-password" placeholder="Confirm password" />
+            <div id="auth-recaptcha-wrap" class="auth-recaptcha-wrap" aria-live="polite"></div>
           </div>
           <button type="submit" id="auth-submit" class="auth-ani-25">${isSignup ? 'Sign up' : 'Login'}</button>
           <p class="auth-switch auth-ani-26">
@@ -552,6 +568,34 @@ function authTransition(container, fromSignup, toSignup, authError, redirect) {
   bindAuth(toSignup);
 }
 
+/** Load reCAPTCHA script and render widget into container. Resolves when widget is ready. */
+function loadRecaptchaAndRender(siteKey, container) {
+  return new Promise((resolve, reject) => {
+    if (window.grecaptcha && window.grecaptcha.render) {
+      try {
+        const widgetId = window.grecaptcha.render(container, { sitekey: siteKey, theme: 'light' });
+        resolve(widgetId);
+      } catch (err) {
+        reject(err);
+      }
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://www.google.com/recaptcha/api.js?onload=__recaptchaOnLoad&render=explicit';
+    script.async = true;
+    script.defer = true;
+    window.__recaptchaOnLoad = () => {
+      try {
+        const widgetId = window.grecaptcha.render(container, { sitekey: siteKey, theme: 'light' });
+        resolve(widgetId);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    document.head.appendChild(script);
+  });
+}
+
 function bindAuth(isSignup) {
   const isRegister = !!isSignup;
   document.querySelectorAll('.auth-box .auth-switch-link').forEach(link => {
@@ -559,6 +603,15 @@ function bindAuth(isSignup) {
   });
   const form = document.getElementById('auth-form');
   if (!form) return;
+  let recaptchaWidgetId = null;
+  if (isRegister) {
+    loadConfig().then((config) => {
+      const wrap = document.getElementById('auth-recaptcha-wrap');
+      if (wrap && config?.recaptchaSiteKey) {
+        loadRecaptchaAndRender(config.recaptchaSiteKey, wrap).then((id) => { recaptchaWidgetId = id; }).catch(() => {});
+      }
+    });
+  }
   form.onsubmit = async (e) => {
     e.preventDefault();
     const errEl = document.getElementById('auth-error');
@@ -575,8 +628,20 @@ function bindAuth(isSignup) {
       if (!email) { errEl.textContent = 'Email is required'; return; }
       if (!password) { errEl.textContent = 'Password is required'; return; }
       if (password !== confirm) { errEl.textContent = 'Passwords do not match'; return; }
+      let recaptchaToken = null;
+      if (state.recaptchaSiteKey && window.grecaptcha) {
+        try {
+          recaptchaToken = recaptchaWidgetId != null ? window.grecaptcha.getResponse(recaptchaWidgetId) : window.grecaptcha.getResponse();
+        } catch { recaptchaToken = ''; }
+      }
+      if (state.recaptchaSiteKey && !recaptchaToken) {
+        errEl.textContent = 'Please complete the reCAPTCHA check.';
+        return;
+      }
       try {
-        const data = await doLogin(true, { username, email, password, display_name });
+        const body = { username, email, password, display_name };
+        if (recaptchaToken != null) body.recaptcha_token = recaptchaToken;
+        const data = await doLogin(true, body);
         if (data.user) {
           state.user = data.user;
           try {
@@ -593,6 +658,9 @@ function bindAuth(isSignup) {
       } else throw new Error(data.error || 'Sign up failed');
       } catch (err) {
         errEl.textContent = err.message || 'Failed';
+        if (state.recaptchaSiteKey && window.grecaptcha && recaptchaWidgetId != null) {
+          try { window.grecaptcha.reset(recaptchaWidgetId); } catch (_) {}
+        }
       }
       return;
     }
