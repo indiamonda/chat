@@ -675,24 +675,36 @@ function findMessageInState(msgId) {
   return null;
 }
 
+let _connectSocketScheduled = null;
 function connectSocket() {
+  if (_connectSocketScheduled) return;
+  _connectSocketScheduled = true;
   const io = window.io;
-  if (!io) return;
+  if (!io) {
+    _connectSocketScheduled = false;
+    return;
+  }
   if (state.socket) {
+    state.socket.removeAllListeners();
     state.socket.disconnect();
     state.socket = null;
   }
   const s = io({ withCredentials: true });
   s.on('connect', () => {
+    _connectSocketScheduled = false;
     if (state.dmUserId && state.convId) s.emit('dm:join', state.convId, () => {});
   });
   s.on('connect_error', (err) => {
+    _connectSocketScheduled = false;
     if (err?.message === 'Not authenticated' || err?.message?.includes('auth')) {
       state.user = null;
       state.socket = null;
       state.authError = 'Session expired. Please log in again.';
       navigateTo('/login');
     }
+  });
+  s.on('disconnect', () => {
+    _connectSocketScheduled = false;
   });
   s.on('message', (msg) => addMessageLocal(msg));
   s.on('message:recalled', ({ id }) => {
@@ -2323,16 +2335,20 @@ function bindMain() {
     render();
   });
 
-  document.getElementById('composer-command-mode')?.addEventListener('click', () => {
-    state.commandMode = !state.commandMode;
-    try { localStorage.setItem('commandMode', state.commandMode ? '1' : '0'); } catch (_) {}
-    const btn = document.getElementById('composer-command-mode');
-    if (btn) {
+  if (!window._commandModeDelegated) {
+    window._commandModeDelegated = true;
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('#composer-command-mode');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      state.commandMode = !state.commandMode;
+      try { localStorage.setItem('commandMode', state.commandMode ? '1' : '0'); } catch (_) {}
       btn.classList.toggle('composer-command-btn-on', state.commandMode);
       btn.setAttribute('aria-pressed', state.commandMode);
       btn.title = state.commandMode ? 'Command mode on (e.g. /games, /wordle, /file <id>)' : 'Command mode off (send as text)';
-    }
-  });
+    });
+  }
   document.getElementById('composer-mic')?.addEventListener('click', async () => {
     if (state._recording) return;
     const roomType = state.dmUserId ? 'dm' : 'group';
