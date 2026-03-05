@@ -1218,10 +1218,10 @@ select:focus {
   .left-bar .left-bar-nav {
     flex: 1;
     flex-direction: row;
-    justify-content: center;
+    justify-content: space-evenly;
     align-items: center;
-    gap: 0.15rem;
-    padding: 0;
+    gap: 0.5rem;
+    padding: 0 0.5rem;
   }
 
   .left-bar .left-bar-item {

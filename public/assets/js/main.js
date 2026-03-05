@@ -1224,7 +1224,8 @@ function getReplyPreview(msg) {
   return { sender: msg.display_name || msg.username || 'Unknown user', content: msg.content };
 }
 
-const TS_INTERVAL_MS = 15 * 60 * 1000; // show timestamp when last one was 15+ min ago or none
+const TS_INTERVAL_MS = 15 * 60 * 1000; // today: 15 min
+const TS_INTERVAL_DAY_MS = 24 * 60 * 60 * 1000; // other days: 1 day
 
 function formatTimestampForDivider(ts) {
   if (!ts) return '';
@@ -1323,10 +1324,13 @@ function renderMessagesWithTimestamps(list, roomType, roomId) {
   let lastTs = null;
   const mediaIds = getMediaMessageIds(list);
   const parts = [];
+  const todayStr = new Date().toDateString();
   for (let i = 0; i < list.length; i++) {
     const m = list[i];
     const t = m.created_at || 0;
-    if (t && (lastTs == null || t - lastTs >= TS_INTERVAL_MS)) {
+    const isToday = t && new Date(t).toDateString() === todayStr;
+    const intervalMs = isToday ? TS_INTERVAL_MS : TS_INTERVAL_DAY_MS;
+    if (t && (lastTs == null || t - lastTs >= intervalMs)) {
       parts.push(renderTimestamp(t));
       lastTs = t;
     } else if (t) lastTs = t;
