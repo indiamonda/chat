@@ -540,9 +540,11 @@ function renderMain() {
           <ul class="panel-list-ul" id="panel-user-list">
             ${(state.users || []).filter(u => u.id !== state.user?.id).map(u => {
               const friend = isFriend(u.id);
+              const defAv = getDefaultAvatarUrl(u.id);
+              const avSrc = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : defAv;
               return `
               <li><a href="${friend ? `/chat/${encodeURIComponent(u.id)}` : '#'}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-user-id="${escapeHtml(u.id)}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml((u.display_name || u.username || '').toLowerCase())}" data-friend="${friend ? '1' : '0'}">
-                <img src="${u.avatar_url || getDefaultAvatarUrl(u.id)}" alt="" class="panel-user-avatar" />
+                <img src="${avSrc}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="panel-user-avatar" />
                 <span>${escapeHtml(u.display_name || u.username)}</span>
               </a></li>
             `; }).join('')}
@@ -588,7 +590,7 @@ function renderMain() {
       <aside class="left-bar ${expanded ? 'left-bar-expanded' : ''}" id="left-bar">
         <div class="left-bar-avatar">
           <a href="/settings?tab=profile" class="left-bar-avatar-link" title="Profile">
-            <img src="${state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" />
+            <img src="${(state.user?.avatar_url && String(state.user.avatar_url).trim()) ? state.user.avatar_url : getDefaultAvatarUrl(state.user?.id)}" data-fallback="${getDefaultAvatarUrl(state.user?.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
           </a>
         </div>
         <nav class="left-bar-nav" aria-label="Main">
@@ -783,10 +785,12 @@ function renderMessage(m, roomType, roomId) {
       </div>`
     : `<div class="message-content">${content}</div>`;
 
+  const defaultAvatar = getDefaultAvatarUrl(m.sender_id);
+  const avatarSrc = (m.avatar_url && String(m.avatar_url).trim()) ? m.avatar_url : defaultAvatar;
   return `
     <div class="message-row" data-msg-id="${m.id}">
       <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
-        <img class="message-avatar" src="${m.avatar_url || getDefaultAvatarUrl(m.sender_id)}" alt="" />
+        <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
         <div class="message-body">
           <div class="message-header">
             <span class="message-sender">${escapeHtml(m.display_name || m.username)}</span>
@@ -951,7 +955,7 @@ async function showProfileModal(userId) {
       <div class="modal profile-modal">
         <button type="button" class="profile-modal-close" aria-label="Close">&times;</button>
         <div class="profile-modal-header">
-          <img src="${profile.avatar_url || getDefaultAvatarUrl(profile.id)}" alt="" class="profile-modal-avatar" />
+          <img src="${(profile.avatar_url && String(profile.avatar_url).trim()) ? profile.avatar_url : getDefaultAvatarUrl(profile.id)}" data-fallback="${getDefaultAvatarUrl(profile.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="profile-modal-avatar" />
           <h3 class="profile-modal-name">${escapeHtml(profile.display_name || profile.username)}</h3>
           <p class="profile-modal-username">@${escapeHtml(profile.username)}</p>
           ${profile.website ? `<p class="profile-modal-website"><a href="${escapeHtml(profile.website)}" target="_blank" rel="noopener">${escapeHtml(profile.website)}</a></p>` : ''}
@@ -1490,9 +1494,11 @@ function renderAdminContent() {
                 const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout'];
                 const isAdmin = u.id === 'jimmyqrg';
                 const showPerms = canManage && !isAdmin && u.is_allowed;
+                const defAvU = getDefaultAvatarUrl(u.id);
+                const avSrcU = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : defAvU;
                 return `
                 <div class="admin-user-card" data-user-id="${u.id}">
-                  <img src="${u.avatar_url || getDefaultAvatarUrl(u.id)}" alt="" class="admin-user-avatar" />
+                  <img src="${avSrcU}" data-fallback="${defAvU.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="admin-user-avatar" />
                   <div class="admin-user-info">
                     <span class="admin-user-name">${escapeHtml(u.display_name || u.username)}</span>
                     <span class="admin-user-meta">${isAdmin ? 'Admin' : (u.is_allowed ? 'On admin list' : 'Member')}</span>
@@ -1702,7 +1708,7 @@ function renderSettingsContent() {
       <form id="profile-form" class="settings-form">
         <label>Avatar</label>
         <div class="settings-avatar-drop-zone" id="settings-avatar-drop-zone">
-          <img src="${state._pendingAvatarObjectUrl || state.user?.avatar_url || getDefaultAvatarUrl(state.user?.id)}" alt="" class="avatar-preview" id="avatar-preview" />
+          <img src="${state._pendingAvatarObjectUrl || ((state.user?.avatar_url && String(state.user.avatar_url).trim()) ? state.user.avatar_url : getDefaultAvatarUrl(state.user?.id))}" data-fallback="${getDefaultAvatarUrl(state.user?.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="avatar-preview" id="avatar-preview" />
           <span class="settings-avatar-drop-hint">Drop image here or choose below</span>
         </div>
         <label class="file-label">

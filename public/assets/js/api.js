@@ -94,11 +94,21 @@ function hslToHex(h, s, l) {
 
 const avatarColors = getAvatarColors(AVATAR_COLOR_COUNT);
 
-/** Returns a default avatar as data URL: same user id always gets the same color (one of 108). */
+/** Darken a hex color for avatar background (person shape stays in main color). */
+function darkenHex(hex, factor = 0.35) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.round(((n >> 16) & 255) * factor);
+  const g = Math.round(((n >> 8) & 255) * factor);
+  const b = Math.round((n & 255) * factor);
+  return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+/** Returns a default avatar as data URL: person silhouette (like default-avatar-0) with one of 108 colors. */
 export function getDefaultAvatarUrl(userIdOrUsername) {
   const i = userIdOrUsername != null ? simpleHash(String(userIdOrUsername)) % AVATAR_COLOR_COUNT : 0;
   const fill = avatarColors[i];
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="${fill}"/></svg>`;
+  const bg = darkenHex(fill);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="32" fill="${bg}"/><circle cx="32" cy="26" r="12" fill="${fill}"/><ellipse cx="32" cy="58" rx="20" ry="14" fill="${fill}"/></svg>`;
   return 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
 

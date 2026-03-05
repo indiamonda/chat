@@ -96,7 +96,11 @@ html[data-theme="comic"] body {
   font-weight: 600;
 }
 
-/* Simple: own message bubble is dark blue – use white text for contrast */
+/* Simple: own message bubble – dark blue background, white text for contrast */
+html[data-theme="simple"] .message.own .message-body {
+  background: #0d47a1 !important;
+  border-color: #1565c0 !important;
+}
 html[data-theme="simple"] .message.own .message-body,
 html[data-theme="simple"] .message.own .message-body .message-content,
 html[data-theme="simple"] .message.own .message-body .message-reply-preview {
