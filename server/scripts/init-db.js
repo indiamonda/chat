@@ -162,16 +162,17 @@ try {
 
 // Initial password is set at server startup (see server/index.js) so we don't need bcrypt here.
 
-// Initial doc content for problem_solving, rules, and announcements
+// Initial doc content only when no version exists for that doc_key (so restarts don't overwrite saved content)
 const docs = [
   { doc_key: 'problem_solving', content: '# Problem Solving\n\nDocument for solutions. Only allowed users can edit.' },
   { doc_key: 'rules', content: '# Rules\n\nCommunity rules. Only allowed users can edit.' },
   { doc_key: 'announcements', content: '# Announcements\n\nOfficial announcements. Only allowed users can edit.' }
 ];
-const insDoc = db.prepare('INSERT OR IGNORE INTO doc_versions (id, doc_key, content, editor_id, created_at) VALUES (?, ?, ?, ?, ?)');
+const hasDoc = db.prepare('SELECT 1 FROM doc_versions WHERE doc_key = ? LIMIT 1');
+const insDoc = db.prepare('INSERT INTO doc_versions (id, doc_key, content, editor_id, created_at) VALUES (?, ?, ?, ?, ?)');
 for (const d of docs) {
-  const id = randomUUID();
-  try { insDoc.run(id, d.doc_key, d.content, 'jimmyqrg', Date.now()); } catch (_) {}
+  if (hasDoc.get(d.doc_key)) continue;
+  insDoc.run(randomUUID(), d.doc_key, d.content, 'jimmyqrg', Date.now());
 }
 
 console.log('Database initialized at', dbPath);
