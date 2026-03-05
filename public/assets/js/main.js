@@ -1319,8 +1319,10 @@ function markdownToHtml(md) {
         `<a href="${safeHref(url)}" target="_blank" rel="noopener">${url}</a>`)
       .replace(/(?<![\/">])(www\.[^\s<>"']+)/g, (_, url) =>
         `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`)
+      .replace(/\b([a-zA-Z0-9][-a-zA-Z0-9]*\.github\.io(?:\/[^\s<>"']*)?)/g, (_, url) =>
+        `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`)
       .replace(/\b([a-zA-Z0-9][-a-zA-Z0-9]*\.(?:com|org|net|io|co|edu|gov|dev|app)(?:\/[^\s<>"']*)?)/g, (_, url) =>
-        `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`);
+        url === 'github.io' ? url : `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`);
   }
 
   function inlineMarkdown(s) {
