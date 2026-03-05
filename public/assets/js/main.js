@@ -1509,12 +1509,17 @@ function renderLatexBlock(latex) {
   return '<pre class="language-block-latex"><code>' + escapeHtml(latex) + '</code></pre>';
 }
 
-/** Process message content: apply language blocks then markdown. Supports /plaintext: everything below a line containing "/plaintext" is rendered as plain text. */
+/** Process message content: apply language blocks then markdown.
+ * Supports /plaintext (or '/plain text'): everything below that line is rendered as plain text.
+ */
 function renderMessageContent(raw) {
   if (raw == null || raw === '') return '';
   const lineSeparator = /\r\n|\r|\n/;
   const lines = String(raw).split(lineSeparator);
-  const plaintextLineIndex = lines.findIndex((l) => l.trim().includes('/plaintext'));
+  const plaintextLineIndex = lines.findIndex((l) => {
+    const t = l.trim().toLowerCase();
+    return t === '/plaintext' || t === '/plain text';
+  });
   if (plaintextLineIndex >= 0) {
     const above = lines.slice(0, plaintextLineIndex).join('\n');
     const below = lines.slice(plaintextLineIndex + 1).join('\n');
@@ -2087,12 +2092,12 @@ function bindMain() {
     if (saveBtn) {
       e.preventDefault();
       e.stopPropagation();
+      if (saveBtn.disabled) return;
       const msgId = saveBtn.dataset.msgId;
       const textarea = document.querySelector(`.message-edit-input[data-msg-id="${msgId}"]`);
       const newContent = textarea?.value?.trim() ?? '';
-      if (newContent) {
-        state.socket?.emit('message:edit', { id: msgId, content: newContent }, () => {});
-      }
+      if (!newContent) return;
+      state.socket?.emit('message:edit', { id: msgId, content: newContent }, () => {});
       setState({ editingMessageId: null });
       return;
     }
@@ -2151,17 +2156,31 @@ function bindMain() {
       if (ta) {
         ta.focus();
         ta.setSelectionRange(ta.value.length, ta.value.length);
+        const saveBtn = ta.closest('.message-edit-area')?.querySelector('.message-edit-save');
+        const updateSaveState = () => {
+          if (!saveBtn) return;
+          const hasContent = ta.value.trim().length > 0;
+          saveBtn.disabled = !hasContent;
+        };
+        updateSaveState();
+        ta.addEventListener('input', updateSaveState);
         const onKey = (e) => {
           if (e.key === 'Escape') {
             e.preventDefault();
             setState({ editingMessageId: null });
             ta.removeEventListener('keydown', onKey);
+            ta.removeEventListener('input', updateSaveState);
           } else if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
             const newContent = ta.value.trim();
-            if (newContent) state.socket?.emit('message:edit', { id: state.editingMessageId, content: newContent }, () => {});
+            if (!newContent) {
+              e.preventDefault();
+              return;
+            }
+            e.preventDefault();
+            state.socket?.emit('message:edit', { id: state.editingMessageId, content: newContent }, () => {});
             setState({ editingMessageId: null });
             ta.removeEventListener('keydown', onKey);
+            ta.removeEventListener('input', updateSaveState);
           }
         };
         ta.addEventListener('keydown', onKey);

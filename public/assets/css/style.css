@@ -1737,6 +1737,17 @@ select:focus {
   background: var(--purple-dim);
 }
 
+.message-edit-save[disabled] {
+  background: var(--border);
+  color: var(--text-dim);
+  cursor: default;
+  opacity: 0.7;
+}
+
+.message-edit-save[disabled]:hover {
+  background: var(--border);
+}
+
 .message-edit-cancel {
   background: transparent;
   color: var(--text-dim);
