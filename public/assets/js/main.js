@@ -853,9 +853,13 @@ function renderTimestamp(ts) {
   `;
 }
 
-const MEDIA_TYPES = ['video', 'image'];
+function isMediaMessage(m) {
+  if (!(m.content || '').trim().startsWith('/uploads/')) return false;
+  const k = getFileKind(m);
+  return k === 'video' || k === 'image' || k === 'gif';
+}
 function getMediaMessageIds(list) {
-  return (list || []).filter(m => MEDIA_TYPES.includes(m.msg_type) && (m.content || '').startsWith('/uploads/')).map(m => m.id);
+  return (list || []).filter(isMediaMessage).map(m => m.id);
 }
 
 function getFileKind(msg) {
@@ -937,7 +941,7 @@ function renderMessagesWithTimestamps(list, roomType, roomId) {
 
 function renderMessage(m, roomType, roomId, context = {}) {
   const isOwn = m.sender_id === state.user?.id;
-  const isFileMessage = (m.msg_type && m.msg_type !== 'text' && (m.content || '').startsWith('/uploads/')) || ((m.content || '').startsWith('/uploads/') && (m.msg_type === 'video' || m.msg_type === 'image' || m.msg_type === 'audio' || m.msg_type === 'file'));
+  const isFileMessage = (m.content || '').trim().startsWith('/uploads/');
 
   if (m.deleted_by_admin) {
     return `
@@ -1343,7 +1347,7 @@ function getStepOptions(durationSeconds) {
 
 function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
   const list = state.messages[roomKey(roomType, roomId)] || [];
-  const mediaList = list.filter(m => MEDIA_TYPES.includes(m.msg_type) && (m.content || '').startsWith('/uploads/'));
+  const mediaList = list.filter(isMediaMessage);
   const safeUrl = (u) => escapeHtml(u || '').replace(/"/g, '&quot;');
   const overlay = document.createElement('div');
   overlay.className = 'media-popup-overlay';
@@ -1402,6 +1406,8 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
       });
       vid.addEventListener('play', () => { const b = overlay.querySelector('.media-popup-play'); if (b) b.textContent = 'Pause'; });
       vid.addEventListener('pause', () => { const b = overlay.querySelector('.media-popup-play'); if (b) b.textContent = 'Play'; });
+      overlay._imageShowUI = null;
+      overlay._imageHideUI = null;
     } else {
       controlsEl.innerHTML = `
         <div class="media-popup-image-ui media-popup-controls-row" role="toolbar">
@@ -1426,12 +1432,14 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
         uiTimer = setTimeout(hideUI, 2000);
       }
       function hideUI() {
-        if (!isTouch) controlsEl.style.opacity = '0';
+        controlsEl.style.opacity = '0';
         if (uiTimer) clearTimeout(uiTimer);
       }
+      overlay._imageShowUI = showUI;
+      overlay._imageHideUI = hideUI;
       overlay.querySelector('.media-popup-image-overlay')?.addEventListener('click', showUI);
+      contentEl.addEventListener('click', showUI);
       contentEl.addEventListener('wheel', (e) => { e.preventDefault(); scale = Math.max(0.25, Math.min(4, scale + (e.deltaY > 0 ? -0.1 : 0.1))); img.style.transform = `scale(${scale})`; });
-      contentEl.addEventListener('mouseleave', () => { if (!isTouch) hideUI(); });
       overlay.querySelector('.media-popup-prev')?.addEventListener('click', () => { if (prev) setMedia(prev); });
       overlay.querySelector('.media-popup-next')?.addEventListener('click', () => { if (next) setMedia(next); });
     }
@@ -1468,16 +1476,12 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
     const v = overlay.querySelector('.media-popup-video');
     if (v) v.play().catch(() => {});
   }
-  let uiHideTimer = null;
-  overlay.addEventListener('keydown', (e) => {
-    const c = overlay.querySelector('.media-popup-controls.media-popup-image-ui');
-    if (c) { c.style.opacity = '1'; clearTimeout(uiHideTimer); uiHideTimer = setTimeout(() => { if (!('ontouchstart' in window)) c.style.opacity = '0'; }, 2000); }
-  });
+  overlay.addEventListener('keydown', () => { overlay._imageShowUI?.(); });
   overlay.addEventListener('mousemove', (e) => {
-    if (e.target.closest('.media-popup-content') || e.target.closest('.media-popup-controls')) {
-      const c = overlay.querySelector('.media-popup-controls.media-popup-image-ui');
-      if (c) { c.style.opacity = '1'; clearTimeout(uiHideTimer); uiHideTimer = setTimeout(() => { if (!('ontouchstart' in window)) c.style.opacity = '0'; }, 2000); }
-    }
+    if (e.target.closest('.media-popup-content') || e.target.closest('.media-popup-controls')) overlay._imageShowUI?.();
+  });
+  overlay.addEventListener('mouseleave', () => {
+    if (!('ontouchstart' in window)) overlay._imageHideUI?.();
   });
   document.body.appendChild(overlay);
 }
@@ -1495,10 +1499,11 @@ async function openFileContentModal(url) {
         <a href="${escapeHtml(url).replace(/"/g, '&quot;')}" download class="file-content-modal-download">Download</a>
       </div>
     `;
-    const close = () => overlay.remove();
+    const onEscape = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onEscape); } };
+    const close = () => { overlay.remove(); document.removeEventListener('keydown', onEscape); };
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
     overlay.querySelector('.file-content-modal-close')?.addEventListener('click', close);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    document.addEventListener('keydown', onEscape);
     document.body.appendChild(overlay);
   } catch (e) {
     alert('Could not load file content');

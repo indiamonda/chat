@@ -3239,7 +3239,7 @@ select:focus {
 .media-popup-image-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.65);
   pointer-events: auto;
   cursor: pointer;
 }
