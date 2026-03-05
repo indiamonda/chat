@@ -48,6 +48,10 @@ The app reads config from environment variables. **On Fly.io you set sensitive v
 | ALLOW_IFRAME | Fly: Secrets (if needed) | No | `true` if app runs in an iframe. |
 | COOKIE_SECURE | Fly: Secrets (if needed) | No | `true` to force secure cookies. |
 
+## Live app
+
+- **Production**: https://jchat.fly.dev
+
 ## Deploy to fly.io
 
 1. Install [flyctl](https://fly.io/docs/hands-on/install-flyctl/) and log in: `fly auth login`.

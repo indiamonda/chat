@@ -96,6 +96,34 @@ html[data-theme="comic"] body {
   font-weight: 600;
 }
 
+/* Simple: own message bubble is dark blue – use white text for contrast */
+html[data-theme="simple"] .message.own .message-body,
+html[data-theme="simple"] .message.own .message-body .message-content,
+html[data-theme="simple"] .message.own .message-body .message-reply-preview {
+  color: #ffffff;
+}
+html[data-theme="simple"] .message.own .message-sender {
+  color: rgba(255, 255, 255, 0.95);
+}
+html[data-theme="simple"] .message.own .message-body .message-reply-preview {
+  color: rgba(255, 255, 255, 0.85);
+  border-left-color: rgba(255, 255, 255, 0.6);
+}
+
+/* Comic: own message bubble is orange – use white text for contrast */
+html[data-theme="comic"] .message.own .message-body,
+html[data-theme="comic"] .message.own .message-body .message-content,
+html[data-theme="comic"] .message.own .message-body .message-reply-preview {
+  color: #ffffff;
+}
+html[data-theme="comic"] .message.own .message-sender {
+  color: rgba(255, 255, 255, 0.95);
+}
+html[data-theme="comic"] .message.own .message-body .message-reply-preview {
+  color: rgba(255, 255, 255, 0.85);
+  border-left-color: rgba(255, 255, 255, 0.6);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -1418,6 +1446,7 @@ select:focus {
   flex: 1;
   height: 0;
   border-top: 1px solid var(--text-dim);
+  opacity: 0.6;
 }
 
 .message-timestamp-text {
@@ -1425,6 +1454,7 @@ select:focus {
   color: var(--text-dim);
   flex-shrink: 0;
   padding: 0 0.25rem;
+  opacity: 0.6;
 }
 
 .message.message-system {
