@@ -254,10 +254,15 @@ export function setState(updates) {
   render();
 }
 
+const LOAD_ME_TIMEOUT_MS = 12_000;
+
 /** Load current user from session. 401 here is expected when not logged in (e.g. on login/signup page). */
 export async function loadMe() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), LOAD_ME_TIMEOUT_MS);
   try {
-    const res = await fetch('/api/auth/me', { credentials: 'include' });
+    const res = await fetch('/api/auth/me', { credentials: 'include', signal: controller.signal });
+    clearTimeout(timeoutId);
     if (res.status === 401) {
       state.user = null;
       return null;
@@ -266,7 +271,11 @@ export async function loadMe() {
     if (!res.ok) throw new Error(data?.error || res.statusText);
     state.user = data.user;
     return data.user;
-  } catch {
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err?.name === 'AbortError') {
+      console.warn('Auth check timed out; showing login.');
+    }
     state.user = null;
     return null;
   }
