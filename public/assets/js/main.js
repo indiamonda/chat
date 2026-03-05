@@ -46,6 +46,63 @@ let state = {
 applyTheme();
 if (typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('lang', state.language || 'en');
 
+/** Simple i18n: returns string for current language, fallback to en. */
+const STRINGS = {
+  en: {
+    nav_home: 'Home', nav_chat: 'Chat', nav_inbox: 'Inbox', nav_admin: 'Admin', nav_settings: 'Settings',
+    nav_expand: 'Expand', nav_collapse: 'Collapse',
+    settings_theme: 'Theme', settings_theme_desc: 'Choose the visual theme',
+    settings_language: 'System Language', settings_language_desc: 'Choose the display language', settings_language_label: 'Language',
+    loading: 'Loading…',
+  },
+  zh: {
+    nav_home: '首页', nav_chat: '私信', nav_inbox: '收件箱', nav_admin: '管理', nav_settings: '设置',
+    nav_expand: '展开', nav_collapse: '收起',
+    settings_theme: '主题', settings_theme_desc: '请选择主题',
+    settings_language: '系统语言', settings_language_desc: '请选择语言', settings_language_label: '语言',
+    loading: '玩命加载中…',
+  },
+  ja: {
+    nav_home: 'ホーム', nav_chat: 'チャット', nav_inbox: '受信トレイ', nav_admin: '管理', nav_settings: '設定',
+    nav_expand: '展開', nav_collapse: '折りたたむ',
+    settings_theme: 'テーマ', settings_theme_desc: 'アプリの見た目を選びます。',
+    settings_language: '言語', settings_language_desc: '表示言語を選びます。', settings_language_label: '言語',
+    loading: '読み込み中…',
+  },
+  ko: {
+    nav_home: '홈', nav_chat: '채팅', nav_inbox: '받은편지함', nav_admin: '관리', nav_settings: '설정',
+    nav_expand: '펼치기', nav_collapse: '접기',
+    settings_theme: '테마', settings_theme_desc: '앱 테마를 선택하세요.',
+    settings_language: '언어', settings_language_desc: '표시 언어를 선택하세요.', settings_language_label: '언어',
+    loading: '로딩 중…',
+  },
+  es: {
+    nav_home: 'Inicio', nav_chat: 'Chat', nav_inbox: 'Bandeja', nav_admin: 'Admin', nav_settings: 'Ajustes',
+    nav_expand: 'Expandir', nav_collapse: 'Contraer',
+    settings_theme: 'Tema', settings_theme_desc: 'Elige el tema visual de la app.',
+    settings_language: 'Idioma', settings_language_desc: 'Elige el idioma de la app.', settings_language_label: 'Idioma',
+    loading: 'Cargando…',
+  },
+  fr: {
+    nav_home: 'Accueil', nav_chat: 'Chat', nav_inbox: 'Boîte de réception', nav_admin: 'Admin', nav_settings: 'Paramètres',
+    nav_expand: 'Développer', nav_collapse: 'Réduire',
+    settings_theme: 'Thème', settings_theme_desc: 'Choisissez le thème visuel.',
+    settings_language: 'Langue', settings_language_desc: 'Choisissez la langue d\'affichage.', settings_language_label: 'Langue',
+    loading: 'Chargement…',
+  },
+  de: {
+    nav_home: 'Start', nav_chat: 'Chat', nav_inbox: 'Posteingang', nav_admin: 'Admin', nav_settings: 'Einstellungen',
+    nav_expand: 'Erweitern', nav_collapse: 'Einklappen',
+    settings_theme: 'Design', settings_theme_desc: 'Wähle das visuelle Design.',
+    settings_language: 'Sprache', settings_language_desc: 'Anzeigesprache wählen.', settings_language_label: 'Sprache',
+    loading: 'Laden…',
+  },
+};
+function t(key) {
+  const lang = state.language || 'en';
+  return (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.en[key] || key;
+}
+
 const GROUP_ID = 'JimmyQrg';
 
 // URL panel param <-> internal panel
@@ -723,33 +780,33 @@ function renderMain() {
           </a>
         </div>
         <nav class="left-bar-nav" aria-label="Main">
-          <a href="/chat/group" class="left-bar-item ${primaryNav === 'home' ? 'active' : ''}" title="Home (JimmyQrg group chat)">
+          <a href="/chat/group" class="left-bar-item ${primaryNav === 'home' ? 'active' : ''}" title="${t('nav_home')} (JimmyQrg group chat)">
             <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_HOME}</span>${hasNewGroupMessages() ? '<span class="left-bar-badge left-bar-badge-dot" aria-label="New messages"></span>' : ''}</span>
-            <span class="left-bar-label">Home</span>
+            <span class="left-bar-label">${t('nav_home')}</span>
           </a>
-          <a href="/chat" class="left-bar-item ${primaryNav === 'chat' ? 'active' : ''}" title="Chat (private messages)">
+          <a href="/chat" class="left-bar-item ${primaryNav === 'chat' ? 'active' : ''}" title="${t('nav_chat')} (private messages)">
             <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_CHAT}</span>${(function(){ const n = getTotalNewDmCount(); return n > 0 ? `<span class="left-bar-badge left-bar-badge-count" aria-label="${n} new">${n > 99 ? '99+' : n}</span>` : ''; })()}</span>
-            <span class="left-bar-label">Chat</span>
+            <span class="left-bar-label">${t('nav_chat')}</span>
           </a>
-          <a href="/inbox" class="left-bar-item ${primaryNav === 'inbox' ? 'active' : ''}" title="Inbox">
+          <a href="/inbox" class="left-bar-item ${primaryNav === 'inbox' ? 'active' : ''}" title="${t('nav_inbox')}">
             <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_INBOX}</span>${(function(){ const n = getUnreadInboxCount(); return n > 0 ? `<span class="left-bar-badge left-bar-badge-count" aria-label="${n} unread">${n > 99 ? '99+' : n}</span>` : ''; })()}</span>
-            <span class="left-bar-label">Inbox</span>
+            <span class="left-bar-label">${t('nav_inbox')}</span>
           </a>
           ${state.user?.is_allowed ? `
-          <a href="/manage" class="left-bar-item ${primaryNav === 'admin' ? 'active' : ''}" title="Admin">
+          <a href="/manage" class="left-bar-item ${primaryNav === 'admin' ? 'active' : ''}" title="${t('nav_admin')}">
             <span class="left-bar-icon" aria-hidden="true">${ICON_ADMIN}</span>
-            <span class="left-bar-label">Admin</span>
+            <span class="left-bar-label">${t('nav_admin')}</span>
           </a>
           ` : ''}
-          <a href="/settings?tab=profile" class="left-bar-item ${primaryNav === 'settings' ? 'active' : ''}" title="Settings">
+          <a href="/settings?tab=profile" class="left-bar-item ${primaryNav === 'settings' ? 'active' : ''}" title="${t('nav_settings')}">
             <span class="left-bar-icon" aria-hidden="true">${ICON_SETTINGS}</span>
-            <span class="left-bar-label">Settings</span>
+            <span class="left-bar-label">${t('nav_settings')}</span>
           </a>
         </nav>
         <div class="left-bar-bottom">
-          <button type="button" class="left-bar-expand" id="left-bar-expand" title="${expanded ? 'Collapse' : 'Expand'}">
+          <button type="button" class="left-bar-expand" id="left-bar-expand" title="${expanded ? t('nav_collapse') : t('nav_expand')}">
             <span class="left-bar-icon" aria-hidden="true">${expanded ? ICON_CHEVRON_LEFT : ICON_CHEVRON_RIGHT}</span>
-            <span class="left-bar-label">${expanded ? 'Collapse' : 'Expand'}</span>
+            <span class="left-bar-label">${expanded ? t('nav_collapse') : t('nav_expand')}</span>
           </button>
         </div>
       </aside>
@@ -2319,17 +2376,17 @@ function renderSettingsContent() {
     <div class="settings-page">
       ${tab === 'general' ? `
       <div class="settings-general">
-        <h3 class="settings-section-title">Theme</h3>
-        <p class="settings-account-desc">Choose the visual theme for the app.</p>
-        <label class="settings-form-label">Theme</label>
+        <h3 class="settings-section-title">${t('settings_theme')}</h3>
+        <p class="settings-account-desc">${t('settings_theme_desc')}</p>
+        <label class="settings-form-label">${t('settings_theme')}</label>
         <select id="settings-theme" class="settings-select">
           <option value="jimmyqrg" ${state.theme === 'jimmyqrg' ? 'selected' : ''}>JimmyQrg</option>
           <option value="simple" ${state.theme === 'simple' ? 'selected' : ''}>Simple</option>
           <option value="comic" ${state.theme === 'comic' ? 'selected' : ''}>Comic</option>
         </select>
-        <h3 class="settings-section-title">System Language</h3>
-        <p class="settings-account-desc">Choose the display language for the app.</p>
-        <label class="settings-form-label">Language</label>
+        <h3 class="settings-section-title">${t('settings_language')}</h3>
+        <p class="settings-account-desc">${t('settings_language_desc')}</p>
+        <label class="settings-form-label">${t('settings_language_label')}</label>
         <select id="settings-language" class="settings-select">
           ${LANGUAGE_OPTIONS.map(o => `<option value="${o.value}" ${state.language === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
         </select>
@@ -2502,6 +2559,9 @@ function applyRoute(route) {
 }
 
 async function init() {
+  const loadingEl = document.querySelector('.loading-text');
+  if (loadingEl) loadingEl.textContent = t('loading');
+
   window.addEventListener('popstate', () => applyRoute(parseRoute()));
 
   // Single delegated listener for in-app links (do not re-attach on every render)
