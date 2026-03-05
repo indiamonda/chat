@@ -1,5 +1,11 @@
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete, uploadFile, getDefaultAvatarUrl } from './api.js';
 
+if (typeof window !== 'undefined' && window.katex) {
+  window.renderKatex = function (latex, displayMode) {
+    return window.katex.renderToString(latex, { throwOnError: false, displayMode: !!displayMode });
+  };
+}
+
 function applyTheme(theme) {
   const t = theme || state.theme || 'jimmyqrg';
   document.documentElement.setAttribute('data-theme', t);
@@ -806,7 +812,7 @@ function renderMessage(m, roomType, roomId) {
   const versions = [...(m.edit_history || []).map(h => h.content), m.content || ''];
   const versionIndex = Math.max(0, Math.min((state.messageVersionIndex[m.id] ?? versions.length - 1), versions.length - 1));
   const displayContent = versions[versionIndex];
-  const content = markdownToHtml(displayContent || '');
+  const content = renderMessageContent(displayContent || '');
   const replyBlock = m.reply_to_id ? `<div class="message-reply-preview" data-reply-to="${m.reply_to_id}">Reply to message</div>` : '';
   const likeCount = (m.likes || 0) > 0 ? `<span class="message-like-count">${m.likes}</span>` : '';
   const likeIcon = `<button type="button" class="message-like-btn" data-msg-id="${m.id}" title="Like" aria-label="Like"><span class="message-like-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span></button>`;
@@ -896,6 +902,87 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
+/** Parse $\language="name" ... \$ blocks. Returns array of { type: 'text'|'block', content, language? }. */
+function parseLanguageBlocks(str) {
+  if (str == null || str === '') return [{ type: 'text', content: '' }];
+  const s = String(str);
+  const re = /\$\s*language\s*=\s*"([^"]+)"\s*\n([\s\S]*?)\\\$/g;
+  const segments = [];
+  let lastEnd = 0;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > lastEnd) {
+      segments.push({ type: 'text', content: s.slice(lastEnd, m.index) });
+    }
+    segments.push({ type: 'block', language: m[1].trim().toLowerCase(), content: m[2].replace(/\n$/, '') });
+    lastEnd = re.lastIndex;
+  }
+  if (lastEnd < s.length) {
+    segments.push({ type: 'text', content: s.slice(lastEnd) });
+  }
+  return segments.length ? segments : [{ type: 'text', content: s }];
+}
+
+/** Sanitize HTML to a safe subset of tags (no script, no event handlers). */
+function sanitizeHtml(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const allowedTags = new Set(['p', 'div', 'span', 'br', 'strong', 'em', 'b', 'i', 'ul', 'ol', 'li', 'a', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
+  const allowedAttrs = { a: ['href'] };
+  function serialize(n) {
+    if (n.nodeType === Node.TEXT_NODE) return escapeHtml(n.textContent);
+    if (n.nodeType !== Node.ELEMENT_NODE) return '';
+    const tag = n.tagName.toLowerCase();
+    if (!allowedTags.has(tag)) return Array.from(n.childNodes).map(serialize).join('');
+    const attrs = allowedAttrs[tag];
+    let attrStr = '';
+    if (attrs && tag === 'a') {
+      const href = n.getAttribute('href');
+      if (href) attrStr = ' href="' + escapeHtml(href).replace(/"/g, '&quot;') + '"';
+    }
+    const inner = Array.from(n.childNodes).map(serialize).join('');
+    if (tag === 'br') return '<br>';
+    return '<' + tag + attrStr + '>' + inner + '</' + tag + '>';
+  }
+  return Array.from(doc.body.childNodes).map(serialize).join('');
+}
+
+/** Render LaTeX block to HTML using KaTeX if available. */
+function renderLatexBlock(latex) {
+  if (typeof window.renderKatex === 'function') {
+    try {
+      return window.renderKatex(latex, true);
+    } catch (e) {
+      return '<pre class="language-block-error">' + escapeHtml(latex) + '</pre>';
+    }
+  }
+  return '<pre class="language-block-latex"><code>' + escapeHtml(latex) + '</code></pre>';
+}
+
+/** Process message content: apply language blocks then markdown. */
+function renderMessageContent(raw) {
+  if (raw == null || raw === '') return '';
+  const segments = parseLanguageBlocks(raw);
+  const parts = [];
+  for (const seg of segments) {
+    if (seg.type === 'text') {
+      parts.push(markdownToHtml(seg.content));
+    } else {
+      const lang = seg.language;
+      const content = seg.content;
+      if (lang === 'markdown') {
+        parts.push(markdownToHtml(content));
+      } else if (lang === 'html') {
+        parts.push('<div class="language-block-html">' + sanitizeHtml(content) + '</div>');
+      } else if (lang === 'latex') {
+        parts.push('<div class="language-block-latex">' + renderLatexBlock(content) + '</div>');
+      } else {
+        parts.push('<pre class="language-block-raw"><code>' + escapeHtml(content) + '</code></pre>');
+      }
+    }
+  }
+  return parts.join('');
+}
+
 /** Render Markdown to safe HTML (no raw HTML execution). Supports # headers, **bold**, *italic*, `code`, > blockquote, -, * lists, ``` blocks, [links](url). */
 function markdownToHtml(md) {
   if (md == null || md === '') return '';
@@ -929,15 +1016,34 @@ function markdownToHtml(md) {
       blockquoteLines = [];
     }
   }
+  function linkifyPlainText(segment) {
+    if (!segment || /^<a\s|^<\/a>/.test(segment)) return segment;
+    const safeHref = (u) => u.replace(/"/g, '&quot;');
+    return segment
+      .replace(/(https?:\/\/[^\s<>"']+)/g, (_, url) =>
+        `<a href="${safeHref(url)}" target="_blank" rel="noopener">${url}</a>`)
+      .replace(/(?<![\/">])(www\.[^\s<>"']+)/g, (_, url) =>
+        `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`)
+      .replace(/\b([a-zA-Z0-9][-a-zA-Z0-9]*\.(?:com|org|net|io|co|edu|gov|dev|app)(?:\/[^\s<>"']*)?)/g, (_, url) =>
+        `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`);
+  }
+
   function inlineMarkdown(s) {
     const escaped = escapeHtml(s);
-    return escaped
+    const withMarkdown = escaped
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/__(.+?)__/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       .replace(/_(.+?)_/g, '<em>$1</em>')
       .replace(/`([^`]*)`/g, '<code>$1</code>')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    const parts = withMarkdown.split(/(<a\s[^>]*>|<\/a>)/g);
+    for (let i = 0; i < parts.length; i++) {
+      if (!/^<a\s|^<\/a>/.test(parts[i])) {
+        parts[i] = linkifyPlainText(parts[i]);
+      }
+    }
+    return parts.join('');
   }
 
   for (let i = 0; i < lines.length; i++) {
