@@ -46,35 +46,286 @@ let state = {
 applyTheme();
 if (typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('lang', state.language || 'en');
 
-/** Map our language code to Google Translate code (zh -> zh-CN). */
-function toGoogleTranslateCode(lang) {
-  if (lang === 'zh') return 'zh-CN';
-  return lang || 'en';
-}
+/** Hardcoded UI strings (no Google Translate). */
+const STRINGS = {
+  en: {
+    general: 'General',
+    profile: 'Profile',
+    account: 'Account',
+    settings: 'Settings',
+    theme: 'Theme',
+    systemLanguage: 'System Language',
+    chooseTheme: 'Choose the visual theme for the app.',
+    chooseLanguage: 'Choose the display language for the app.',
+    language: 'Language',
+    password: 'Password',
+    changePassword: 'Change password',
+    changePasswordDesc: 'Change your password. Your current password is required.',
+    signOut: 'Sign out',
+    signOutDesc: 'Sign out of your account on this device.',
+    home: 'Home',
+    chat: 'Chat',
+    inbox: 'Inbox',
+    admin: 'Admin',
+    expand: 'Expand',
+    collapse: 'Collapse',
+    dropImage: 'Drop image here or choose below',
+    chooseImage: 'Choose image',
+    displayName: 'Display name',
+    description: 'Description',
+    descriptionPlaceholder: 'A short bio or description',
+    website: 'Website',
+    save: 'Save',
+    avatar: 'Avatar',
+    loading: 'Loading…',
+    selectPanel: 'Select a panel.',
+    selectConversation: 'Select a conversation.',
+    noMailYet: 'No mail yet.',
+    accept: 'Accept',
+    reject: 'Reject',
+    recording: 'Recording',
+    cancel: 'Cancel',
+    send: 'Send',
+    currentPassword: 'Current password',
+    newPassword: 'New password',
+    confirmNewPassword: 'Confirm new password',
+    atLeast6: 'At least 6 characters',
+    confirmNewPasswordPlaceholder: 'Confirm new password',
+    passwordChanged: 'Password changed.',
+    fillCurrentNew: 'Please fill in current and new password.',
+    newPasswordMin: 'New password must be at least 6 characters.',
+    newPasswordMismatch: 'New password and confirmation do not match.',
+    failedChangePassword: 'Failed to change password.',
+    usernameOrEmail: 'Username or email',
+    confirmPassword: 'Confirm password',
+    email: 'Email',
+    signUp: 'Sign up',
+    login: 'Login',
+    alreadyHaveAccount: 'Already have an account? ',
+    noAccount: "Don't have an account? ",
+    logIn: 'Log in',
+    passwordRequired: 'Password is required',
+    passwordsDoNotMatch: 'Passwords do not match',
+    freeChat: 'Free Chat',
+    support: 'Support',
+    problemSolving: 'Problem Solving',
+    rules: 'Rules',
+    announcements: 'Announcements',
+    action: 'Action',
+    users: 'Users',
+    recalled: 'Recalled',
+    timeout: 'Time out',
+  },
+  zh: {
+    general: '通用',
+    profile: '个人资料',
+    account: '账户',
+    settings: '设置',
+    theme: '主题',
+    systemLanguage: '系统语言',
+    chooseTheme: '选择应用的视觉主题。',
+    chooseLanguage: '选择应用的显示语言。',
+    language: '语言',
+    password: '密码',
+    changePassword: '修改密码',
+    changePasswordDesc: '修改密码。需要输入当前密码。',
+    signOut: '退出登录',
+    signOutDesc: '在此设备上退出账户。',
+    home: '首页',
+    chat: '私信',
+    inbox: '收件箱',
+    admin: '管理',
+    expand: '展开',
+    collapse: '收起',
+    dropImage: '将图片拖到此处或从下方选择',
+    chooseImage: '选择图片',
+    displayName: '显示名称',
+    description: '简介',
+    descriptionPlaceholder: '简短介绍',
+    website: '网站',
+    save: '保存',
+    avatar: '头像',
+    loading: '加载中…',
+    selectPanel: '请选择一个面板。',
+    selectConversation: '请选择会话。',
+    noMailYet: '暂无消息。',
+    accept: '接受',
+    reject: '拒绝',
+    recording: '录音中',
+    cancel: '取消',
+    send: '发送',
+    currentPassword: '当前密码',
+    newPassword: '新密码',
+    confirmNewPassword: '确认新密码',
+    atLeast6: '至少 6 个字符',
+    confirmNewPasswordPlaceholder: '确认新密码',
+    passwordChanged: '密码已修改。',
+    fillCurrentNew: '请填写当前密码和新密码。',
+    newPasswordMin: '新密码至少需要 6 个字符。',
+    newPasswordMismatch: '新密码与确认不一致。',
+    failedChangePassword: '修改密码失败。',
+    usernameOrEmail: '用户名或邮箱',
+    confirmPassword: '确认密码',
+    email: '邮箱',
+    signUp: '注册',
+    login: '登录',
+    alreadyHaveAccount: '已有账号？',
+    noAccount: '没有账号？',
+    logIn: '登录',
+    passwordRequired: '请输入密码',
+    passwordsDoNotMatch: '两次密码不一致',
+    freeChat: '自由聊天',
+    support: '支持',
+    problemSolving: '问题解决',
+    rules: '规则',
+    announcements: '公告',
+    action: '操作',
+    users: '用户',
+    recalled: '已撤回',
+    timeout: '超时',
+  },
+  ja: {
+    general: '一般',
+    profile: 'プロフィール',
+    account: 'アカウント',
+    settings: '設定',
+    theme: 'テーマ',
+    systemLanguage: 'システム言語',
+    chooseTheme: 'アプリの表示テーマを選択します。',
+    chooseLanguage: 'アプリの表示言語を選択します。',
+    language: '言語',
+    password: 'パスワード',
+    changePassword: 'パスワードを変更',
+    changePasswordDesc: 'パスワードを変更します。現在のパスワードが必要です。',
+    signOut: 'ログアウト',
+    signOutDesc: 'このデバイスからログアウトします。',
+    home: 'ホーム',
+    chat: 'チャット',
+    inbox: '受信トレイ',
+    admin: '管理',
+    expand: '展開',
+    collapse: '折りたたむ',
+    dropImage: '画像をここにドロップするか、下から選択',
+    chooseImage: '画像を選択',
+    displayName: '表示名',
+    description: '自己紹介',
+    descriptionPlaceholder: '短い自己紹介',
+    website: 'ウェブサイト',
+    save: '保存',
+    avatar: 'アバター',
+    loading: '読み込み中…',
+    selectPanel: 'パネルを選択してください。',
+    selectConversation: '会話を選択してください。',
+    noMailYet: 'メールはまだありません。',
+    accept: '承諾',
+    reject: '拒否',
+    recording: '録音中',
+    cancel: 'キャンセル',
+    send: '送信',
+    currentPassword: '現在のパスワード',
+    newPassword: '新しいパスワード',
+    confirmNewPassword: '新しいパスワードの確認',
+    atLeast6: '6文字以上',
+    confirmNewPasswordPlaceholder: '新しいパスワードの確認',
+    passwordChanged: 'パスワードを変更しました。',
+    fillCurrentNew: '現在のパスワードと新しいパスワードを入力してください。',
+    newPasswordMin: '新しいパスワードは6文字以上にしてください。',
+    newPasswordMismatch: '新しいパスワードと確認が一致しません。',
+    failedChangePassword: 'パスワードの変更に失敗しました。',
+    usernameOrEmail: 'ユーザー名またはメール',
+    confirmPassword: 'パスワードの確認',
+    email: 'メール',
+    signUp: '登録',
+    login: 'ログイン',
+    alreadyHaveAccount: 'すでにアカウントをお持ちですか？',
+    noAccount: 'アカウントをお持ちでないですか？',
+    logIn: 'ログイン',
+    passwordRequired: 'パスワードを入力してください',
+    passwordsDoNotMatch: 'パスワードが一致しません',
+    freeChat: 'フリーチャット',
+    support: 'サポート',
+    problemSolving: '問題解決',
+    rules: 'ルール',
+    announcements: 'お知らせ',
+    action: '操作',
+    users: 'ユーザー',
+    recalled: '取り消し',
+    timeout: 'タイムアウト',
+  },
+  ko: {
+    general: '일반',
+    profile: '프로필',
+    account: '계정',
+    settings: '설정',
+    theme: '테마',
+    systemLanguage: '시스템 언어',
+    chooseTheme: '앱의 테마를 선택하세요.',
+    chooseLanguage: '앱의 표시 언어를 선택하세요.',
+    language: '언어',
+    password: '비밀번호',
+    changePassword: '비밀번호 변경',
+    changePasswordDesc: '비밀번호를 변경합니다. 현재 비밀번호가 필요합니다.',
+    signOut: '로그아웃',
+    signOutDesc: '이 기기에서 로그아웃합니다.',
+    home: '홈',
+    chat: '채팅',
+    inbox: '받은편지함',
+    admin: '관리',
+    expand: '펼치기',
+    collapse: '접기',
+    dropImage: '이미지를 여기에 놓거나 아래에서 선택',
+    chooseImage: '이미지 선택',
+    displayName: '표시 이름',
+    description: '소개',
+    descriptionPlaceholder: '간단한 소개',
+    website: '웹사이트',
+    save: '저장',
+    avatar: '아바타',
+    loading: '로딩 중…',
+    selectPanel: '패널을 선택하세요.',
+    selectConversation: '대화를 선택하세요.',
+    noMailYet: '메일이 없습니다.',
+    accept: '수락',
+    reject: '거절',
+    recording: '녹음 중',
+    cancel: '취소',
+    send: '보내기',
+    currentPassword: '현재 비밀번호',
+    newPassword: '새 비밀번호',
+    confirmNewPassword: '새 비밀번호 확인',
+    atLeast6: '6자 이상',
+    confirmNewPasswordPlaceholder: '새 비밀번호 확인',
+    passwordChanged: '비밀번호가 변경되었습니다.',
+    fillCurrentNew: '현재 비밀번호와 새 비밀번호를 입력하세요.',
+    newPasswordMin: '새 비밀번호는 6자 이상이어야 합니다.',
+    newPasswordMismatch: '새 비밀번호와 확인이 일치하지 않습니다.',
+    failedChangePassword: '비밀번호 변경에 실패했습니다.',
+    usernameOrEmail: '사용자 이름 또는 이메일',
+    confirmPassword: '비밀번호 확인',
+    email: '이메일',
+    signUp: '가입',
+    login: '로그인',
+    alreadyHaveAccount: '이미 계정이 있으신가요? ',
+    noAccount: '계정이 없으신가요? ',
+    logIn: '로그인',
+    passwordRequired: '비밀번호를 입력하세요',
+    passwordsDoNotMatch: '비밀번호가 일치하지 않습니다',
+    freeChat: '자유 채팅',
+    support: '지원',
+    problemSolving: '문제 해결',
+    rules: '규칙',
+    announcements: '공지',
+    action: '작업',
+    users: '사용자',
+    recalled: '취소됨',
+    timeout: '타임아웃',
+  },
+};
 
-/** Apply language by setting Google Translate cookie and reloading so translation takes effect. */
-function applyLanguageWithReload(lang) {
-  const code = toGoogleTranslateCode(lang);
-  const cookie = lang === 'en' ? 'googtrans=; path=/; max-age=0' : `googtrans=/en/${code}; path=/; max-age=31536000`;
-  document.cookie = cookie;
-  window.location.reload();
-}
-
-/** Trigger Google Translate to the given language. Call after render when language !== 'en'. */
-function applyGoogleTranslate() {
+function t(key) {
   const lang = state.language || 'en';
-  if (lang === 'en') return;
-  const code = toGoogleTranslateCode(lang);
-  function tryApply(attempt) {
-    const sel = document.querySelector('.goog-te-combo');
-    if (sel) {
-      sel.value = code;
-      sel.dispatchEvent(new Event('change'));
-      return;
-    }
-    if (attempt < 10) setTimeout(() => tryApply(attempt + 1), 150);
-  }
-  tryApply(0);
+  const strings = STRINGS[lang] || STRINGS.en;
+  return strings[key] != null ? strings[key] : (STRINGS.en[key] != null ? STRINGS.en[key] : key);
 }
 
 const GROUP_ID = 'JimmyQrg';
@@ -491,7 +742,6 @@ function render() {
   app.innerHTML = renderMain();
   bindMain();
   if (route.page === 'settings') bindSettings();
-  if ((state.language || 'en') !== 'en') setTimeout(applyGoogleTranslate, 350);
 }
 
 function renderAuth(isSignup = false, initialError = '', redirect = null) {
@@ -503,28 +753,28 @@ function renderAuth(isSignup = false, initialError = '', redirect = null) {
         <form id="auth-form" class="auth-ani-7" novalidate>
           <div id="auth-error" class="error auth-ani-8">${initialError ? escapeHtml(initialError) : ''}</div>
           <div id="auth-fields-login" class="auth-ani-9" style="display:${isSignup ? 'none' : 'block'}">
-            <label class="auth-ani-10">Username or email</label>
-            <input class="auth-ani-11" name="login_identifier" type="text" autocomplete="username" placeholder="Username or email" />
-            <label class="auth-ani-12">Password</label>
+            <label class="auth-ani-10">${t('usernameOrEmail')}</label>
+            <input class="auth-ani-11" name="login_identifier" type="text" autocomplete="username" placeholder="${t('usernameOrEmail')}" />
+            <label class="auth-ani-12">${t('password')}</label>
             <input class="auth-ani-13" name="login_password" type="password" autocomplete="current-password" />
           </div>
           <div id="auth-fields-register" class="auth-ani-14" style="display:${isSignup ? 'block' : 'none'}">
-            <label class="auth-ani-15">Display name</label>
-            <input class="auth-ani-16" name="display_name" type="text" autocomplete="name" placeholder="Display name" />
+            <label class="auth-ani-15">${t('displayName')}</label>
+            <input class="auth-ani-16" name="display_name" type="text" autocomplete="name" placeholder="${t('displayName')}" />
             <label class="auth-ani-17">Username (lowercase letters and numbers only)</label>
             <input class="auth-ani-18" name="reg_username" type="text" autocomplete="username" placeholder="Username" />
-            <label class="auth-ani-19">Email</label>
-            <input class="auth-ani-20" name="email" type="email" autocomplete="email" placeholder="Email" />
-            <label class="auth-ani-21">Password</label>
-            <input class="auth-ani-22" name="reg_password" type="password" autocomplete="new-password" placeholder="Password" />
-            <label class="auth-ani-23">Confirm password</label>
-            <input class="auth-ani-24" name="confirm_password" type="password" autocomplete="new-password" placeholder="Confirm password" />
+            <label class="auth-ani-19">${t('email')}</label>
+            <input class="auth-ani-20" name="email" type="email" autocomplete="email" placeholder="${t('email')}" />
+            <label class="auth-ani-21">${t('password')}</label>
+            <input class="auth-ani-22" name="reg_password" type="password" autocomplete="new-password" placeholder="${t('password')}" />
+            <label class="auth-ani-23">${t('confirmPassword')}</label>
+            <input class="auth-ani-24" name="confirm_password" type="password" autocomplete="new-password" placeholder="${t('confirmPassword')}" />
             <div id="auth-recaptcha-wrap" class="auth-recaptcha-wrap" aria-live="polite"></div>
           </div>
-          <button type="submit" id="auth-submit" class="auth-ani-25">${isSignup ? 'Sign up' : 'Login'}</button>
+          <button type="submit" id="auth-submit" class="auth-ani-25">${isSignup ? t('signUp') : t('login')}</button>
           <p class="auth-switch auth-ani-26">
-            ${isSignup ? 'Already have an account? ' : "Don't have an account? "}
-            <a href="${switchHref}" class="auth-switch-link">${isSignup ? 'Log in' : 'Sign up'}</a>
+            ${isSignup ? t('alreadyHaveAccount') : t('noAccount')}
+            <a href="${switchHref}" class="auth-switch-link">${isSignup ? t('logIn') : t('signUp')}</a>
           </p>
         </form>
       </div>
@@ -660,8 +910,8 @@ function bindAuth(isSignup) {
       if (!display_name) { errEl.textContent = 'Display name is required'; return; }
       if (!username) { errEl.textContent = 'Username is required'; return; }
       if (!email) { errEl.textContent = 'Email is required'; return; }
-      if (!password) { errEl.textContent = 'Password is required'; return; }
-      if (password !== confirm) { errEl.textContent = 'Passwords do not match'; return; }
+      if (!password) { errEl.textContent = t('passwordRequired'); return; }
+      if (password !== confirm) { errEl.textContent = t('passwordsDoNotMatch'); return; }
       let recaptchaToken = null;
       if (state.recaptchaSiteKey && window.grecaptcha) {
         try {
@@ -701,7 +951,7 @@ function bindAuth(isSignup) {
     const usernameOrEmail = (form.login_identifier?.value || '').trim();
     const password = form.login_password?.value || '';
     if (!usernameOrEmail) { errEl.textContent = 'Username or email is required'; return; }
-    if (!password) { errEl.textContent = 'Password is required'; return; }
+    if (!password) { errEl.textContent = t('passwordRequired'); return; }
     try {
       const data = await doLogin(false, { username: usernameOrEmail, password });
       if (data.user) {
@@ -754,7 +1004,7 @@ function renderMain() {
   const page = route.page;
   const primaryNav = getPrimaryNav(route);
   const panels = state.group?.panels || ['announcements', 'free_chat', 'support', 'problem_solving', 'rules'];
-  const panelLabels = { free_chat: 'Free Chat', support: 'Support', problem_solving: 'Problem Solving', rules: 'Rules', announcements: 'Announcements' };
+  const panelLabels = { free_chat: t('freeChat'), support: t('support'), problem_solving: t('problemSolving'), rules: t('rules'), announcements: t('announcements') };
   const isDocPanel = state.panel === 'problem_solving' || state.panel === 'rules' || state.panel === 'announcements';
   const isGroup = !!route.group;
   const expanded = state.leftBarExpanded;
@@ -784,7 +1034,7 @@ function renderMain() {
         ${primaryNav === 'chat' ? `
         <div class="panel-list panel-list-users">
           <div class="panel-list-header">
-            <h3 class="panel-list-title">Chat</h3>
+            <h3 class="panel-list-title">${t('chat')}</h3>
             <button type="button" class="panel-search-btn" id="panel-search-btn" title="Search users">${ICON_SEARCH}</button>
           </div>
           <div class="panel-search-bar ${state.panelSearchOpen ? 'open' : ''}" id="panel-search-bar">
@@ -823,24 +1073,24 @@ function renderMain() {
         ` : ''}
         ${primaryNav === 'admin' ? `
         <div class="panel-tabs">
-          <h3 class="panel-list-title">Admin</h3>
-          <a href="/manage?tab=action" class="panel-tab ${(route.adminTab || 'action') === 'action' ? 'active' : ''}">Action</a>
-          <a href="/manage?tab=users" class="panel-tab ${route.adminTab === 'users' ? 'active' : ''}">Users</a>
-          <a href="/manage?tab=recalled" class="panel-tab ${route.adminTab === 'recalled' ? 'active' : ''}">Recalled</a>
-          <a href="/manage?tab=timeout" class="panel-tab ${route.adminTab === 'timeout' ? 'active' : ''}">Time out</a>
+          <h3 class="panel-list-title">${t('admin')}</h3>
+          <a href="/manage?tab=action" class="panel-tab ${(route.adminTab || 'action') === 'action' ? 'active' : ''}">${t('action')}</a>
+          <a href="/manage?tab=users" class="panel-tab ${route.adminTab === 'users' ? 'active' : ''}">${t('users')}</a>
+          <a href="/manage?tab=recalled" class="panel-tab ${route.adminTab === 'recalled' ? 'active' : ''}">${t('recalled')}</a>
+          <a href="/manage?tab=timeout" class="panel-tab ${route.adminTab === 'timeout' ? 'active' : ''}">${t('timeout')}</a>
         </div>
         ` : ''}
         ${primaryNav === 'settings' ? `
         <div class="panel-tabs">
-          <h3 class="panel-list-title">Settings</h3>
-          <a href="/settings?tab=general" class="panel-tab ${route.tab === 'general' ? 'active' : ''}">General</a>
-          <a href="/settings?tab=profile" class="panel-tab ${(route.tab || 'profile') === 'profile' ? 'active' : ''}">Profile</a>
-          <a href="/settings?tab=account" class="panel-tab ${route.tab === 'account' ? 'active' : ''}">Account</a>
+          <h3 class="panel-list-title">${t('settings')}</h3>
+          <a href="/settings?tab=general" class="panel-tab ${route.tab === 'general' ? 'active' : ''}">${t('general')}</a>
+          <a href="/settings?tab=profile" class="panel-tab ${(route.tab || 'profile') === 'profile' ? 'active' : ''}">${t('profile')}</a>
+          <a href="/settings?tab=account" class="panel-tab ${route.tab === 'account' ? 'active' : ''}">${t('account')}</a>
         </div>
         ` : ''}
         ${primaryNav === 'inbox' ? `
         <div class="panel-tabs">
-          <h3 class="panel-list-title">Inbox</h3>
+          <h3 class="panel-list-title">${t('inbox')}</h3>
         </div>
         ` : ''}
         </div>
@@ -848,8 +1098,8 @@ function renderMain() {
 
       <div class="main-content">
         <div class="main-content-body">
-          ${primaryNav === 'home' ? (isGroup && (state.panel === 'free_chat' || state.panel === 'support') ? renderChatArea() : isGroup && isDocPanel ? renderDocArea() : '<div class="empty-state">Select a panel.</div>') : ''}
-          ${primaryNav === 'chat' ? (state.dmUserId ? renderChatArea() : '<div class="empty-state">Select a conversation.</div>') : ''}
+          ${primaryNav === 'home' ? (isGroup && (state.panel === 'free_chat' || state.panel === 'support') ? renderChatArea() : isGroup && isDocPanel ? renderDocArea() : `<div class="empty-state">${t('selectPanel')}</div>`) : ''}
+          ${primaryNav === 'chat' ? (state.dmUserId ? renderChatArea() : `<div class="empty-state">${t('selectConversation')}</div>`) : ''}
           ${primaryNav === 'inbox' ? renderInboxContent() : ''}
           ${primaryNav === 'admin' ? renderAdminContent() : ''}
           ${primaryNav === 'settings' ? renderSettingsContent() : ''}
@@ -859,38 +1109,38 @@ function renderMain() {
 
       <aside class="left-bar ${expanded ? 'left-bar-expanded' : ''}" id="left-bar">
         <div class="left-bar-avatar">
-          <a href="/settings?tab=profile" class="left-bar-avatar-link" title="Profile">
+          <a href="/settings?tab=profile" class="left-bar-avatar-link" title="${t('profile')}">
             <img src="${getCurrentUserAvatarUrl()}" data-fallback="${getDefaultAvatarUrl(state.user?.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
           </a>
         </div>
         <nav class="left-bar-nav" aria-label="Main">
           <a href="/chat/group" class="left-bar-item ${primaryNav === 'home' ? 'active' : ''}" title="Home (JimmyQrg group chat)">
             <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_HOME}</span>${hasNewGroupMessages() ? '<span class="left-bar-badge left-bar-badge-dot" aria-label="New messages"></span>' : ''}</span>
-            <span class="left-bar-label">Home</span>
+            <span class="left-bar-label">${t('home')}</span>
           </a>
-          <a href="/chat" class="left-bar-item ${primaryNav === 'chat' ? 'active' : ''}" title="Chat (private messages)">
+          <a href="/chat" class="left-bar-item ${primaryNav === 'chat' ? 'active' : ''}" title="${t('chat')} (private messages)">
             <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_CHAT}</span>${(function(){ const n = getTotalNewDmCount(); return n > 0 ? `<span class="left-bar-badge left-bar-badge-count" aria-label="${n} new">${n > 99 ? '99+' : n}</span>` : ''; })()}</span>
-            <span class="left-bar-label">Chat</span>
+            <span class="left-bar-label">${t('chat')}</span>
           </a>
-          <a href="/inbox" class="left-bar-item ${primaryNav === 'inbox' ? 'active' : ''}" title="Inbox">
+          <a href="/inbox" class="left-bar-item ${primaryNav === 'inbox' ? 'active' : ''}" title="${t('inbox')}">
             <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_INBOX}</span>${(function(){ const n = getUnreadInboxCount(); return n > 0 ? `<span class="left-bar-badge left-bar-badge-count" aria-label="${n} unread">${n > 99 ? '99+' : n}</span>` : ''; })()}</span>
-            <span class="left-bar-label">Inbox</span>
+            <span class="left-bar-label">${t('inbox')}</span>
           </a>
           ${state.user?.is_allowed ? `
           <a href="/manage" class="left-bar-item ${primaryNav === 'admin' ? 'active' : ''}" title="Admin">
             <span class="left-bar-icon" aria-hidden="true">${ICON_ADMIN}</span>
-            <span class="left-bar-label">Admin</span>
+            <span class="left-bar-label">${t('admin')}</span>
           </a>
           ` : ''}
-          <a href="/settings?tab=profile" class="left-bar-item ${primaryNav === 'settings' ? 'active' : ''}" title="Settings">
+          <a href="/settings?tab=profile" class="left-bar-item ${primaryNav === 'settings' ? 'active' : ''}" title="${t('settings')}">
             <span class="left-bar-icon" aria-hidden="true">${ICON_SETTINGS}</span>
-            <span class="left-bar-label">Settings</span>
+            <span class="left-bar-label">${t('settings')}</span>
           </a>
         </nav>
         <div class="left-bar-bottom">
-          <button type="button" class="left-bar-expand" id="left-bar-expand" title="${expanded ? 'Collapse' : 'Expand'}">
+          <button type="button" class="left-bar-expand" id="left-bar-expand" title="${expanded ? t('collapse') : t('expand')}">
             <span class="left-bar-icon" aria-hidden="true">${expanded ? ICON_CHEVRON_LEFT : ICON_CHEVRON_RIGHT}</span>
-            <span class="left-bar-label">${expanded ? 'Collapse' : 'Expand'}</span>
+            <span class="left-bar-label">${expanded ? t('collapse') : t('expand')}</span>
           </button>
         </div>
       </aside>
@@ -898,10 +1148,10 @@ function renderMain() {
       <div id="recording-overlay" class="recording-overlay">
         <div class="recording-overlay-backdrop"></div>
         <div class="recording-overlay-content">
-          <p class="recording-overlay-title">Recording</p>
+          <p class="recording-overlay-title">${t('recording')}</p>
           <div class="recording-overlay-actions">
-            <button type="button" id="recording-cancel" class="btn-secondary">Cancel</button>
-            <button type="button" id="recording-send" class="btn-primary">Send</button>
+            <button type="button" id="recording-cancel" class="btn-secondary">${t('cancel')}</button>
+            <button type="button" id="recording-send" class="btn-primary">${t('send')}</button>
           </div>
         </div>
       </div>
@@ -1169,7 +1419,7 @@ function renderDocArea() {
         <button type="button" id="cancel-doc-edit" class="doc-cancel">Cancel</button>
       </div>
       <div class="doc-editor">
-        <textarea id="doc-content" placeholder="Loading…">${escapeHtml(content)}</textarea>
+        <textarea id="doc-content" placeholder="${t('loading')}">${escapeHtml(content)}</textarea>
       </div>
       <input type="hidden" id="doc-support-msg-id" value="${escapeHtml(supportId)}" />
     </div>
@@ -1314,15 +1564,45 @@ function markdownToHtml(md) {
   function linkifyPlainText(segment) {
     if (!segment || /^<a\s|^<\/a>/.test(segment)) return segment;
     const safeHref = (u) => u.replace(/"/g, '&quot;');
-    return segment
-      .replace(/(https?:\/\/[^\s<>"']+)/g, (_, url) =>
-        `<a href="${safeHref(url)}" target="_blank" rel="noopener">${url}</a>`)
-      .replace(/(?<![\/">])(www\.[^\s<>"']+)/g, (_, url) =>
-        `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`)
-      .replace(/\b([a-zA-Z0-9][-a-zA-Z0-9]*\.github\.io(?:\/[^\s<>"']*)?)/g, (_, url) =>
-        `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`)
-      .replace(/\b([a-zA-Z0-9][-a-zA-Z0-9]*\.(?:com|org|net|io|co|edu|gov|dev|app)(?:\/[^\s<>"']*)?)/g, (_, url) =>
-        url === 'github.io' ? url : `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`);
+    // Linkify only plain text: split by existing <a>...</a>, process each text part, rejoin (avoids double-linking)
+    const linkTag = /<a\s[^>]*>.*?<\/a>/g;
+    const linkifyPlainOnly = (text) => {
+      if (!text) return text;
+      return text
+        .replace(/(?<![\/">])(www\.[^\s<>"']+)/g, (_, url) =>
+          `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`)
+        .replace(/\b([a-zA-Z0-9][-a-zA-Z0-9_]*\.github\.io(?:\/[^\s<>"']*)?)/g, (_, url) =>
+          `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`)
+        .replace(/\b(localhost(?::\d+)?(?:\/[^\s<>"']*)?)/gi, (_, u) =>
+          `<a href="${safeHref('https://' + u)}" target="_blank" rel="noopener">${u}</a>`)
+        .replace(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?(?:\/[^\s<>"']*)?)/g, (_, u) =>
+          `<a href="${safeHref('https://' + u)}" target="_blank" rel="noopener">${u}</a>`)
+        .replace(/\b((?:[a-zA-Z0-9][-a-zA-Z0-9_]*\.)+[a-zA-Z0-9][-a-zA-Z0-9_]*(?::\d+)?(?:\/?[^\s<>"']*)?)\b/g, (_, url) => {
+          const tldMatch = url.match(/\.(com|org|net|io|co|edu|gov|dev|app|ai|site|xyz|test|local|internal)(?:\/|:\d+|\?|#|$)/i);
+          if (!tldMatch) return url;
+          if (url === 'github.io') return url;
+          return `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`;
+        });
+    };
+    const linkifyOne = (text) => {
+      if (!text) return text;
+      const withScheme = text.replace(/(https?:\/\/[^\s<>"']+)/g, (_, url) =>
+        `<a href="${safeHref(url)}" target="_blank" rel="noopener">${url}</a>`);
+      const parts = withScheme.split(linkTag);
+      const links = withScheme.match(linkTag) || [];
+      let out = linkifyPlainOnly(parts[0]);
+      for (let i = 0; i < links.length; i++) {
+        out += links[i] + linkifyPlainOnly(parts[i + 1]);
+      }
+      return out;
+    };
+    const parts = segment.split(linkTag);
+    const links = segment.match(linkTag) || [];
+    let out = linkifyOne(parts[0]);
+    for (let i = 0; i < links.length; i++) {
+      out += links[i] + linkifyOne(parts[i + 1]);
+    }
+    return out;
   }
 
   function inlineMarkdown(s) {
@@ -2470,17 +2750,17 @@ function renderSettingsContent() {
     <div class="settings-page">
       ${tab === 'general' ? `
       <div class="settings-general">
-        <h3 class="settings-section-title">Theme</h3>
-        <p class="settings-account-desc">Choose the visual theme for the app.</p>
-        <label class="settings-form-label">Theme</label>
+        <h3 class="settings-section-title">${t('theme')}</h3>
+        <p class="settings-account-desc">${t('chooseTheme')}</p>
+        <label class="settings-form-label">${t('theme')}</label>
         <select id="settings-theme" class="settings-select">
           <option value="jimmyqrg" ${state.theme === 'jimmyqrg' ? 'selected' : ''}>JimmyQrg</option>
           <option value="simple" ${state.theme === 'simple' ? 'selected' : ''}>Simple</option>
           <option value="comic" ${state.theme === 'comic' ? 'selected' : ''}>Comic</option>
         </select>
-        <h3 class="settings-section-title">System Language</h3>
-        <p class="settings-account-desc">Choose the display language for the app.</p>
-        <label class="settings-form-label">Language</label>
+        <h3 class="settings-section-title">${t('systemLanguage')}</h3>
+        <p class="settings-account-desc">${t('chooseLanguage')}</p>
+        <label class="settings-form-label">${t('language')}</label>
         <select id="settings-language" class="settings-select">
           ${LANGUAGE_OPTIONS.map(o => `<option value="${o.value}" ${state.language === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
         </select>
@@ -2488,35 +2768,35 @@ function renderSettingsContent() {
       ` : ''}
       ${tab === 'profile' ? `
       <form id="profile-form" class="settings-form">
-        <label>Avatar</label>
+        <label>${t('avatar')}</label>
         <div class="settings-avatar-drop-zone" id="settings-avatar-drop-zone">
           <img src="${state._pendingAvatarObjectUrl || getCurrentUserAvatarUrl()}" data-fallback="${getDefaultAvatarUrl(state.user?.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="avatar-preview" id="avatar-preview" />
-          <span class="settings-avatar-drop-hint">Drop image here or choose below</span>
+          <span class="settings-avatar-drop-hint">${t('dropImage')}</span>
         </div>
         <label class="file-label">
-          <span class="file-label-text">Choose image</span>
+          <span class="file-label-text">${t('chooseImage')}</span>
           <input type="file" name="avatar" accept="image/*" class="file-input" />
         </label>
-        <label>Display name</label>
+        <label>${t('displayName')}</label>
         <input type="text" name="display_name" value="${escapeHtml(state.user?.display_name || '')}" />
-        <label>Description</label>
-        <textarea name="description" rows="3" placeholder="A short bio or description">${escapeHtml(state.user?.description || '')}</textarea>
-        <label>Website</label>
+        <label>${t('description')}</label>
+        <textarea name="description" rows="3" placeholder="${t('descriptionPlaceholder')}">${escapeHtml(state.user?.description || '')}</textarea>
+        <label>${t('website')}</label>
         <input type="url" name="website" placeholder="https://..." value="${escapeHtml(state.user?.website || '')}" />
-        <button type="submit">Save</button>
+        <button type="submit">${t('save')}</button>
       </form>
       ` : ''}
       ${tab === 'account' ? `
       <div class="settings-account">
         <div class="settings-account-block">
-          <h3 class="settings-section-title">Password</h3>
-          <p class="settings-account-desc">Change your password. Your current password is required.</p>
-          <button type="button" id="open-password-modal" class="btn-secondary">Change password</button>
+          <h3 class="settings-section-title">${t('password')}</h3>
+          <p class="settings-account-desc">${t('changePasswordDesc')}</p>
+          <button type="button" id="open-password-modal" class="btn-secondary">${t('changePassword')}</button>
         </div>
         <div class="settings-account-block">
-          <h3 class="settings-section-title">Sign out</h3>
-          <p class="settings-account-desc">Sign out of your account on this device.</p>
-          <button type="button" id="sign-out-btn" class="btn-danger">Sign out</button>
+          <h3 class="settings-section-title">${t('signOut')}</h3>
+          <p class="settings-account-desc">${t('signOutDesc')}</p>
+          <button type="button" id="sign-out-btn" class="btn-danger">${t('signOut')}</button>
         </div>
       </div>
       ` : ''}
@@ -2527,10 +2807,10 @@ function renderSettingsContent() {
 function renderInboxContent() {
   return `
     <div class="inbox-page">
-      <h2>Inbox</h2>
+      <h2>${t('inbox')}</h2>
       <div id="inbox-list">
         ${(state.inbox || []).length === 0
-          ? '<div class="inbox-empty">No mail yet.</div>'
+          ? `<div class="inbox-empty">${t('noMailYet')}</div>`
           : (state.inbox || []).map(item => `
           <div class="inbox-item ${item.read_at ? '' : 'unread'}" data-id="${item.id}" data-type="${escapeHtml(item.type)}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(item.related_extra || '')}">
             <div class="type">${escapeHtml(item.type)}</div>
@@ -2538,8 +2818,8 @@ function renderInboxContent() {
             <div class="body">${escapeHtml(item.body || '')}</div>
             ${item.type === 'friend_request' && !item.read_at ? `
             <div class="inbox-item-actions">
-              <button type="button" class="btn-small btn-primary inbox-accept-fr" data-inbox-id="${item.id}">Accept</button>
-              <button type="button" class="btn-small inbox-reject-fr" data-inbox-id="${item.id}">Reject</button>
+              <button type="button" class="btn-small btn-primary inbox-accept-fr" data-inbox-id="${item.id}">${t('accept')}</button>
+              <button type="button" class="btn-small inbox-reject-fr" data-inbox-id="${item.id}">${t('reject')}</button>
             </div>
             ` : ''}
           </div>
@@ -2654,7 +2934,7 @@ function applyRoute(route) {
 
 async function init() {
   const loadingEl = document.querySelector('.loading-text');
-  if (loadingEl) loadingEl.textContent = 'Loading…';
+  if (loadingEl) loadingEl.textContent = t('loading');
 
   window.addEventListener('popstate', () => applyRoute(parseRoute()));
 
@@ -2751,19 +3031,19 @@ function showPasswordModal() {
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
     <div class="modal" style="max-width: 400px;">
-      <h3>Change password</h3>
-      <p class="modal-hint">Your current password is required.</p>
+      <h3>${t('changePassword')}</h3>
+      <p class="modal-hint">${t('changePasswordDesc')}</p>
       <form id="password-modal-form">
-        <label>Current password</label>
-        <input type="password" name="current_password" autocomplete="current-password" placeholder="Current password" />
-        <label>New password</label>
-        <input type="password" name="new_password" autocomplete="new-password" placeholder="At least 6 characters" />
-        <label>Confirm new password</label>
-        <input type="password" name="new_password_confirm" autocomplete="new-password" placeholder="Confirm new password" />
+        <label>${t('currentPassword')}</label>
+        <input type="password" name="current_password" autocomplete="current-password" placeholder="${t('currentPassword')}" />
+        <label>${t('newPassword')}</label>
+        <input type="password" name="new_password" autocomplete="new-password" placeholder="${t('atLeast6')}" />
+        <label>${t('confirmNewPassword')}</label>
+        <input type="password" name="new_password_confirm" autocomplete="new-password" placeholder="${t('confirmNewPasswordPlaceholder')}" />
         <p id="password-modal-message" class="settings-form-message" aria-live="polite"></p>
         <div class="modal-actions">
-          <button type="button" id="password-modal-cancel" class="modal-close">Cancel</button>
-          <button type="submit" class="btn-primary">Change password</button>
+          <button type="button" id="password-modal-cancel" class="modal-close">${t('cancel')}</button>
+          <button type="submit" class="btn-primary">${t('changePassword')}</button>
         </div>
       </form>
     </div>
@@ -2784,15 +3064,15 @@ function showPasswordModal() {
     const newPass = (newInput?.value ?? '').trim();
     const confirm = (confirmInput?.value ?? '').trim();
     if (!current || !newPass) {
-      if (msgEl) { msgEl.textContent = 'Please fill in current and new password.'; msgEl.dataset.type = 'error'; }
+      if (msgEl) { msgEl.textContent = t('fillCurrentNew'); msgEl.dataset.type = 'error'; }
       return;
     }
     if (newPass.length < 6) {
-      if (msgEl) { msgEl.textContent = 'New password must be at least 6 characters.'; msgEl.dataset.type = 'error'; }
+      if (msgEl) { msgEl.textContent = t('newPasswordMin'); msgEl.dataset.type = 'error'; }
       return;
     }
     if (newPass !== confirm) {
-      if (msgEl) { msgEl.textContent = 'New password and confirmation do not match.'; msgEl.dataset.type = 'error'; }
+      if (msgEl) { msgEl.textContent = t('newPasswordMismatch'); msgEl.dataset.type = 'error'; }
       return;
     }
     if (msgEl) msgEl.textContent = '';
@@ -2800,11 +3080,11 @@ function showPasswordModal() {
     try {
       const payload = { current_password: current, new_password: newPass };
       await apiPatch('/api/users/password', payload);
-      if (msgEl) { msgEl.textContent = 'Password changed.'; msgEl.dataset.type = 'success'; }
+      if (msgEl) { msgEl.textContent = t('passwordChanged'); msgEl.dataset.type = 'success'; }
       form.reset();
       setTimeout(() => overlay.remove(), 800);
     } catch (err) {
-      if (msgEl) { msgEl.textContent = err.message || 'Failed to change password.'; msgEl.dataset.type = 'error'; }
+      if (msgEl) { msgEl.textContent = err.message || t('failedChangePassword'); msgEl.dataset.type = 'error'; }
       if (submitBtn) submitBtn.disabled = false;
     }
   });
@@ -2823,7 +3103,8 @@ function bindSettings() {
     state.language = lang;
     if (typeof localStorage !== 'undefined') localStorage.setItem('language', lang);
     if (document.documentElement) document.documentElement.setAttribute('lang', lang);
-    applyLanguageWithReload(lang);
+    setState({});
+    render();
   });
   document.getElementById('open-password-modal')?.addEventListener('click', showPasswordModal);
   document.getElementById('sign-out-btn')?.addEventListener('click', async () => {
