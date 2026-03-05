@@ -1070,6 +1070,9 @@ function bindMain() {
   const roomType = wrap?.dataset.roomType;
   const roomId = wrap?.dataset.roomId;
   if (wrap && roomType && roomId) {
+    requestAnimationFrame(() => {
+      wrap.scrollTop = wrap.scrollHeight;
+    });
     wrap.addEventListener('contextmenu', (e) => {
       const msgEl = e.target.closest('.message[data-msg-id]');
       if (!msgEl) return;
