@@ -1916,8 +1916,7 @@ function bindSettings() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       state.user = data.user;
-      const preview = document.getElementById('avatar-preview');
-      if (preview) preview.src = data.user?.avatar_url || getDefaultAvatarUrl(data.user?.id);
+      setState({});
     } catch (err) {
       alert(err.message);
     }

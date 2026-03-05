@@ -56,7 +56,7 @@ export async function uploadFile(path, file, extra = {}) {
   return data;
 }
 
-const DEFAULT_AVATAR_COUNT = 8;
+const AVATAR_COLOR_COUNT = 108;
 
 function simpleHash(str) {
   if (!str) return 0;
@@ -65,11 +65,42 @@ function simpleHash(str) {
   return Math.abs(h);
 }
 
-/** Returns a default avatar URL by index 0–7 so the same user always gets the same color. */
+/** Generate 100+ distinct hex colors (HSL hue spread + slight S/L variation for variety). */
+function getAvatarColors(n) {
+  const colors = [];
+  const golden = 0.618033988749895;
+  for (let i = 0; i < n; i++) {
+    const hue = (i * golden * 360) % 360;
+    const sat = 52 + (simpleHash(String(i)) % 28);
+    const light = 42 + (simpleHash(String(i + n)) % 26);
+    colors.push(hslToHex(hue, sat, light));
+  }
+  return colors;
+}
+
+function hslToHex(h, s, l) {
+  s /= 100;
+  l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => {
+    const k = (n + h / 30) % 12;
+    return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+  };
+  const r = Math.round(f(0) * 255);
+  const g = Math.round(f(8) * 255);
+  const b = Math.round(f(4) * 255);
+  return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
+const avatarColors = getAvatarColors(AVATAR_COLOR_COUNT);
+
+/** Returns a default avatar as data URL: same user id always gets the same color (one of 108). */
 export function getDefaultAvatarUrl(userIdOrUsername) {
-  const i = userIdOrUsername != null ? simpleHash(String(userIdOrUsername)) % DEFAULT_AVATAR_COUNT : 0;
-  return `/assets/default-avatar-${i}.svg`;
+  const i = userIdOrUsername != null ? simpleHash(String(userIdOrUsername)) % AVATAR_COLOR_COUNT : 0;
+  const fill = avatarColors[i];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="32" fill="${fill}"/></svg>`;
+  return 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
 
 /** Fallback when no user id/username is available. */
-export const DEFAULT_AVATAR = '/assets/default-avatar-0.svg';
+export const DEFAULT_AVATAR = getDefaultAvatarUrl('default');
