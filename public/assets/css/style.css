@@ -1,7 +1,31 @@
-/* Themes: JimmyQrg (default), Simple, Comic – fonts loaded via <link> in index.html */
+@font-face {
+  font-family: 'JimmyQrg';
+  src: url('/assets/ttf/jimmyqrg.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JimmyComicLatin';
+  src: url('/assets/ttf/comic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JimmyComicChinese';
+  src: url('/assets/ttf/comic-chinese.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Themes: JimmyQrg (default), Simple, Comic – fonts use local TTFs in /assets/ttf (plus system fallbacks) */
 :root,
 html[data-theme="jimmyqrg"] {
-  --font-family: 'Oxanium', system-ui, sans-serif;
+  --font-family: 'JimmyQrg', system-ui, sans-serif;
   --bg-deep: #0a0612;
   --bg-main: #120c1a;
   --bg-panel: #1a1225;
@@ -59,7 +83,7 @@ html[data-theme="simple"] body::after {
 
 /* Comic: hand-written, Nunito, light, white/black/orange, thicker lines */
 html[data-theme="comic"] {
-  --font-family: 'Nunito', system-ui, sans-serif;
+  --font-family: 'JimmyComicLatin', 'JimmyComicChinese', system-ui, sans-serif;
   --bg-deep: #ffffff;
   --bg-main: #ffffff;
   --bg-panel: #fafafa;
