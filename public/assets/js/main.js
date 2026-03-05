@@ -66,6 +66,15 @@ function applyGoogleTranslate() {
 
 const GROUP_ID = 'JimmyQrg';
 
+/** Current user avatar URL with cache-busting so updates show after profile save. */
+function getCurrentUserAvatarUrl() {
+  const u = state.user;
+  if (!u) return getDefaultAvatarUrl(null);
+  const base = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : getDefaultAvatarUrl(u.id);
+  if (!base || !base.startsWith('/')) return base;
+  return base + '?v=' + (u._avatarVersion || 0);
+}
+
 // URL panel param <-> internal panel
 const PANEL_TO_URL = { free_chat: 'chat', support: 'support', problem_solving: 'problem', rules: 'rules', announcements: 'announcements' };
 const URL_TO_PANEL = { chat: 'free_chat', support: 'support', problem: 'problem_solving', rules: 'rules', announcements: 'announcements' };
@@ -738,7 +747,7 @@ function renderMain() {
       <aside class="left-bar ${expanded ? 'left-bar-expanded' : ''}" id="left-bar">
         <div class="left-bar-avatar">
           <a href="/settings?tab=profile" class="left-bar-avatar-link" title="Profile">
-            <img src="${(state.user?.avatar_url && String(state.user.avatar_url).trim()) ? state.user.avatar_url : getDefaultAvatarUrl(state.user?.id)}" data-fallback="${getDefaultAvatarUrl(state.user?.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
+            <img src="${getCurrentUserAvatarUrl()}" data-fallback="${getDefaultAvatarUrl(state.user?.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
           </a>
         </div>
         <nav class="left-bar-nav" aria-label="Main">
@@ -2358,7 +2367,7 @@ function renderSettingsContent() {
       <form id="profile-form" class="settings-form">
         <label>Avatar</label>
         <div class="settings-avatar-drop-zone" id="settings-avatar-drop-zone">
-          <img src="${state._pendingAvatarObjectUrl || ((state.user?.avatar_url && String(state.user.avatar_url).trim()) ? state.user.avatar_url : getDefaultAvatarUrl(state.user?.id))}" data-fallback="${getDefaultAvatarUrl(state.user?.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="avatar-preview" id="avatar-preview" />
+          <img src="${state._pendingAvatarObjectUrl || getCurrentUserAvatarUrl()}" data-fallback="${getDefaultAvatarUrl(state.user?.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="avatar-preview" id="avatar-preview" />
           <span class="settings-avatar-drop-hint">Drop image here or choose below</span>
         </div>
         <label class="file-label">
@@ -2713,6 +2722,7 @@ function bindSettings() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       state.user = data.user;
+      state.user._avatarVersion = Date.now();
       setState({});
     } catch (err) {
       alert(err.message);
