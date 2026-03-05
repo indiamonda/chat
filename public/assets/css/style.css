@@ -106,9 +106,6 @@ html[data-theme="simple"] .message.own .message-body .message-content,
 html[data-theme="simple"] .message.own .message-body .message-reply-preview {
   color: #ffffff;
 }
-html[data-theme="simple"] .message.own .message-sender {
-  color: rgba(255, 255, 255, 0.95);
-}
 html[data-theme="simple"] .message.own .message-body .message-reply-preview {
   color: rgba(255, 255, 255, 0.85);
   border-left-color: rgba(255, 255, 255, 0.6);
@@ -119,9 +116,6 @@ html[data-theme="comic"] .message.own .message-body,
 html[data-theme="comic"] .message.own .message-body .message-content,
 html[data-theme="comic"] .message.own .message-body .message-reply-preview {
   color: #ffffff;
-}
-html[data-theme="comic"] .message.own .message-sender {
-  color: rgba(255, 255, 255, 0.95);
 }
 html[data-theme="comic"] .message.own .message-body .message-reply-preview {
   color: rgba(255, 255, 255, 0.85);
@@ -1647,6 +1641,26 @@ select:focus {
   flex-direction: row-reverse;
 }
 
+.message-avatar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+
+.message-sender {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  max-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1.2;
+}
+
 .message-avatar {
   width: 36px;
   height: 36px;
@@ -1680,19 +1694,6 @@ select:focus {
 
 .message.own:hover .message-body {
   box-shadow: 0 2px 12px var(--glow);
-}
-
-.message-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.25rem;
-}
-
-.message-sender {
-  font-weight: 600;
-  color: var(--purple-bright);
-  font-size: 0.9rem;
 }
 
 .message-time {

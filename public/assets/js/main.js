@@ -787,14 +787,15 @@ function renderMessage(m, roomType, roomId) {
 
   const defaultAvatar = getDefaultAvatarUrl(m.sender_id);
   const avatarSrc = (m.avatar_url && String(m.avatar_url).trim()) ? m.avatar_url : defaultAvatar;
+  const senderName = escapeHtml(m.display_name || m.username);
   return `
     <div class="message-row" data-msg-id="${m.id}">
       <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
-        <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
+        <div class="message-avatar-wrap">
+          <span class="message-sender">${senderName}</span>
+          <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
+        </div>
         <div class="message-body">
-          <div class="message-header">
-            <span class="message-sender">${escapeHtml(m.display_name || m.username)}</span>
-          </div>
           ${replyBlock}
           ${contentBlock}
         </div>
