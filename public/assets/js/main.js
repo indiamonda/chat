@@ -803,7 +803,7 @@ function renderMessage(m, roomType, roomId) {
   const versions = [...(m.edit_history || []).map(h => h.content), m.content || ''];
   const versionIndex = Math.max(0, Math.min((state.messageVersionIndex[m.id] ?? versions.length - 1), versions.length - 1));
   const displayContent = versions[versionIndex];
-  const content = escapeHtml(displayContent || '').replace(/\n/g, '<br>');
+  const content = markdownToHtml(displayContent || '');
   const replyBlock = m.reply_to_id ? `<div class="message-reply-preview" data-reply-to="${m.reply_to_id}">Reply to message</div>` : '';
   const likeCount = (m.likes || 0) > 0 ? `<span class="message-like-count">${m.likes}</span>` : '';
   const likeIcon = `<button type="button" class="message-like-btn" data-msg-id="${m.id}" title="Like" aria-label="Like"><span class="message-like-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span></button>`;
@@ -893,7 +893,7 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
-/** Render Markdown to safe HTML (no raw HTML execution). */
+/** Render Markdown to safe HTML (no raw HTML execution). Supports # headers, **bold**, *italic*, `code`, > blockquote, -, * lists, ``` blocks, [links](url). */
 function markdownToHtml(md) {
   if (md == null || md === '') return '';
   const lines = String(md).replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
@@ -902,6 +902,7 @@ function markdownToHtml(md) {
   let blockContent = [];
   let listItems = [];
   let listOrdered = false;
+  let blockquoteLines = [];
 
   function flushBlock() {
     if (blockContent.length) {
@@ -918,12 +919,21 @@ function markdownToHtml(md) {
       listItems = [];
     }
   }
+  function flushBlockquote() {
+    if (blockquoteLines.length) {
+      const html = blockquoteLines.map(l => `<p>${inlineMarkdown(l)}</p>`).join('');
+      out.push(`<blockquote>${html}</blockquote>`);
+      blockquoteLines = [];
+    }
+  }
   function inlineMarkdown(s) {
-    return escapeHtml(s)
+    const escaped = escapeHtml(s);
+    return escaped
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')
       .replace(/\*(.+?)\*/g, '<em>$1</em>')
       .replace(/_(.+?)_/g, '<em>$1</em>')
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/`([^`]*)`/g, '<code>$1</code>')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   }
 
@@ -931,6 +941,7 @@ function markdownToHtml(md) {
     const line = lines[i];
     const trimmed = line.trimEnd();
     if (trimmed.startsWith('```')) {
+      flushBlockquote();
       flushList();
       if (inBlock) {
         flushBlock();
@@ -941,6 +952,15 @@ function markdownToHtml(md) {
     }
     if (inBlock) {
       blockContent.push(line);
+      continue;
+    }
+    if (blockquoteLines.length && !trimmed.startsWith('>')) {
+      flushBlockquote();
+    }
+    const blockquoteMatch = trimmed.match(/^>\s?(.*)$/);
+    if (blockquoteMatch) {
+      flushList();
+      blockquoteLines.push(blockquoteMatch[1]);
       continue;
     }
     const olMatch = trimmed.match(/^(\d+)\.\s+(.+)$/);
@@ -978,6 +998,7 @@ function markdownToHtml(md) {
   }
   flushBlock();
   flushList();
+  flushBlockquote();
   return out.join('\n');
 }
 
