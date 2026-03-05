@@ -1,6 +1,4 @@
-/* Themes: JimmyQrg (default), Simple, Comic */
-@import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap');
-
+/* Themes: JimmyQrg (default), Simple, Comic – fonts loaded via <link> in index.html */
 :root,
 html[data-theme="jimmyqrg"] {
   --font-family: 'Oxanium', system-ui, sans-serif;
@@ -102,14 +100,28 @@ html[data-theme="comic"] body {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  font-family: inherit;
+}
+
+html {
+  font-family: var(--font-family);
 }
 
 body {
-  font-family: var(--font-family);
+  font-family: inherit;
   background: var(--bg-deep);
   color: var(--text);
   min-height: 100vh;
   overflow: hidden;
+}
+
+button,
+input,
+select,
+textarea,
+optgroup,
+[role="button"] {
+  font-family: var(--font-family);
 }
 
 body.auth-page {
