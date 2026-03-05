@@ -23,8 +23,8 @@ export function sessionMiddleware() {
     saveUninitialized: false,
     rolling: true,
     cookie: {
-      /* Secure=true on HTTPS (production/Fly) so the cookie is sent. For iframe: ALLOW_IFRAME=true => sameSite=none. */
-      secure: process.env.NODE_ENV === 'production' || process.env.ALLOW_IFRAME === 'true' || process.env.COOKIE_SECURE === 'true',
+      /* Secure=true on HTTPS. Set COOKIE_INSECURE=true for local http (e.g. localhost) so the session cookie is sent. */
+      secure: process.env.COOKIE_INSECURE === 'true' ? false : (process.env.NODE_ENV === 'production' || process.env.ALLOW_IFRAME === 'true' || process.env.COOKIE_SECURE === 'true'),
       maxAge: SEVEN_DAYS_MS,
       sameSite: process.env.ALLOW_IFRAME === 'true' ? 'none' : 'lax',
       httpOnly: true,

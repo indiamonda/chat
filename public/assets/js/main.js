@@ -697,14 +697,25 @@ function bindAuth(isSignup) {
 
 async function doLogin(isRegister, body) {
   const url = isRegister ? '/api/auth/register' : '/api/auth/login';
-  const res = await fetch(url, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw new Error(err.message || 'Network error. Please check your connection.');
+  }
+  const text = await res.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(res.ok ? 'Invalid response from server.' : 'Login failed. Please try again.');
+  }
+  if (!res.ok) throw new Error(data.error || res.statusText || 'Request failed.');
   if (data.user) state.user = data.user;
   return data;
 }
