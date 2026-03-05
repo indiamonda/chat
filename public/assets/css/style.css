@@ -1781,7 +1781,7 @@ select:focus {
   font-size: 0.7rem;
   font-weight: 500;
   color: var(--text-dim);
-  max-width: 48px;
+  max-width: 96px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1988,7 +1988,7 @@ select:focus {
 
 .composer textarea {
   flex: 1;
-  min-height: 44px;
+  min-height: 32px;
   max-height: 120px;
   padding: 0.6rem 0.9rem;
   border: none;
