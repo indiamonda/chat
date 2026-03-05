@@ -23,7 +23,7 @@ export function sessionMiddleware() {
     saveUninitialized: false,
     rolling: true,
     cookie: {
-      /* Secure=true on HTTPS. Set COOKIE_INSECURE=true for local http (e.g. localhost) so the session cookie is sent. */
+      /* When ALLOW_IFRAME=true: SameSite=None; Secure so the session cookie is sent when the app is embedded in an iframe on another site. Required for iframe embedding (e.g. fly secrets set ALLOW_IFRAME=true). */
       secure: process.env.COOKIE_INSECURE === 'true' ? false : (process.env.NODE_ENV === 'production' || process.env.ALLOW_IFRAME === 'true' || process.env.COOKIE_SECURE === 'true'),
       maxAge: SEVEN_DAYS_MS,
       sameSite: process.env.ALLOW_IFRAME === 'true' ? 'none' : 'lax',

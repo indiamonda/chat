@@ -16,7 +16,11 @@ export async function api(path, options = {}) {
   } catch {
     throw new Error(text || res.statusText);
   }
-  if (!res.ok) throw new Error(data?.error || res.statusText);
+  if (!res.ok) {
+    const err = new Error(data?.error || res.statusText);
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 

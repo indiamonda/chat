@@ -52,6 +52,14 @@ function toGoogleTranslateCode(lang) {
   return lang || 'en';
 }
 
+/** Apply language by setting Google Translate cookie and reloading so translation takes effect. */
+function applyLanguageWithReload(lang) {
+  const code = toGoogleTranslateCode(lang);
+  const cookie = lang === 'en' ? 'googtrans=; path=/; max-age=0' : `googtrans=/en/${code}; path=/; max-age=31536000`;
+  document.cookie = cookie;
+  window.location.reload();
+}
+
 /** Trigger Google Translate to the given language. Call after render when language !== 'en'. */
 function applyGoogleTranslate() {
   const lang = state.language || 'en';
@@ -415,9 +423,21 @@ function findMessageInState(msgId) {
 function connectSocket() {
   const io = window.io;
   if (!io) return;
+  if (state.socket) {
+    state.socket.disconnect();
+    state.socket = null;
+  }
   const s = io({ withCredentials: true });
   s.on('connect', () => {
     if (state.dmUserId && state.convId) s.emit('dm:join', state.convId, () => {});
+  });
+  s.on('connect_error', (err) => {
+    if (err?.message === 'Not authenticated' || err?.message?.includes('auth')) {
+      state.user = null;
+      state.socket = null;
+      state.authError = 'Session expired. Please log in again.';
+      navigateTo('/login');
+    }
   });
   s.on('message', (msg) => addMessageLocal(msg));
   s.on('message:recalled', ({ id }) => {
@@ -662,7 +682,7 @@ function bindAuth(isSignup) {
             await loadGroup();
             await loadUsers();
             await loadFriends();
-            connectSocket();
+            setTimeout(() => connectSocket(), 200);
           navigateTo(getRedirectOrDefault());
         } catch (e) {
           state.user = null;
@@ -690,7 +710,7 @@ function bindAuth(isSignup) {
           await loadGroup();
           await loadUsers();
           await loadFriends();
-          connectSocket();
+          setTimeout(() => connectSocket(), 200);
           navigateTo(getRedirectOrDefault());
         } catch (e) {
           state.user = null;
@@ -1200,7 +1220,7 @@ function parseLanguageBlocks(str) {
 function sanitizeHtml(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const allowedTags = new Set(['p', 'div', 'span', 'br', 'strong', 'em', 'b', 'i', 'ul', 'ol', 'li', 'a', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
-  const allowedAttrs = { a: ['href'] };
+  const allowedAttrs = { a: ['href', 'target'] };
   function serialize(n) {
     if (n.nodeType === Node.TEXT_NODE) return escapeHtml(n.textContent);
     if (n.nodeType !== Node.ELEMENT_NODE) return '';
@@ -1211,6 +1231,8 @@ function sanitizeHtml(html) {
     if (attrs && tag === 'a') {
       const href = n.getAttribute('href');
       if (href) attrStr = ' href="' + escapeHtml(href).replace(/"/g, '&quot;') + '"';
+      const target = (n.getAttribute('target') || '').toLowerCase();
+      if (target === '_blank' || target === 'blank') attrStr += ' target="_blank" rel="noopener"';
     }
     const inner = Array.from(n.childNodes).map(serialize).join('');
     if (tag === 'br') return '<br>';
@@ -1401,6 +1423,7 @@ function formatAudioTime(seconds) {
 
 async function showProfileModal(userId) {
   if (!userId || userId === state.user?.id) return;
+  document.querySelectorAll('.profile-modal-overlay').forEach((el) => el.remove());
   try {
     const { profile } = await apiGet(`/api/users/${encodeURIComponent(userId)}/profile`);
     const friend = isFriend(userId);
@@ -1661,6 +1684,7 @@ function bindMain() {
       const a = e.target.closest('a.panel-list-link[data-friend="0"]');
       if (a) {
         e.preventDefault();
+        e.stopPropagation();
         showProfileModal(a.dataset.userId);
       }
     });
@@ -2696,18 +2720,28 @@ async function init() {
     return;
   }
 
-  await loadGroup();
-  await loadUsers();
-  await loadInbox();
-  await loadFriends();
-  connectSocket();
+  try {
+    await loadGroup();
+    await loadUsers();
+    await loadInbox();
+    await loadFriends();
+    connectSocket();
 
-  const path = getPath();
-  if (path === '/' || path === '') {
-    navigateTo(getRedirectOrDefault());
-    return;
+    const path = getPath();
+    if (path === '/' || path === '') {
+      navigateTo(getRedirectOrDefault());
+      return;
+    }
+    applyRoute(route);
+  } catch (err) {
+    if (err?.status === 401 && typeof window !== 'undefined' && window.self !== window.top) {
+      state.user = null;
+      state.authError = 'App is in an iframe but the session cookie was not sent. Set ALLOW_IFRAME=true on the server (e.g. fly secrets set ALLOW_IFRAME=true -a jchat) so the session cookie uses SameSite=None.';
+      navigateTo(authPath('login', getPath()));
+      return;
+    }
+    throw err;
   }
-  applyRoute(route);
 }
 
 function showPasswordModal() {
@@ -2787,7 +2821,7 @@ function bindSettings() {
     state.language = lang;
     if (typeof localStorage !== 'undefined') localStorage.setItem('language', lang);
     if (document.documentElement) document.documentElement.setAttribute('lang', lang);
-    setState({});
+    applyLanguageWithReload(lang);
   });
   document.getElementById('open-password-modal')?.addEventListener('click', showPasswordModal);
   document.getElementById('sign-out-btn')?.addEventListener('click', async () => {
@@ -2815,8 +2849,18 @@ function bindSettings() {
         credentials: 'include',
         body: formData,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (res.status === 401) {
+        state.user = null;
+        state.authError = 'Session expired. Please log in again.';
+        navigateTo('/login');
+        return;
+      }
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (_) {}
+      if (!res.ok) throw new Error(data.error || res.statusText);
       state.user = data.user;
       state.user._avatarVersion = Date.now();
       setState({});
