@@ -61,8 +61,26 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin />
   <script src="/socket.io/socket.io.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin></script>
+  <script>
+    function googleTranslateElementInit() {
+      new google.translate.TranslateElement(
+        { pageLanguage: 'en', includedLanguages: 'en,zh-CN,ja,ko,es,fr,de', layout: google.translate.TranslateElement.InlineLayout.SIMPLE },
+        'google_translate_element'
+      );
+      var lang = typeof localStorage !== 'undefined' && localStorage.getItem('language');
+      if (lang && lang !== 'en') {
+        var code = lang === 'zh' ? 'zh-CN' : lang;
+        setTimeout(function() {
+          var sel = document.querySelector('.goog-te-combo');
+          if (sel) { sel.value = code; sel.dispatchEvent(new Event('change')); }
+        }, 500);
+      }
+    }
+  </script>
+  <script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
 </head>
 <body>
+  <div id="google_translate_element" style="position:absolute;left:-9999px;top:0;width:1px;height:1px;overflow:hidden;" aria-hidden="true"></div>
   <div id="app" class="app-loading">
     <div class="loading-screen">
       <div class="loading-spinner"></div>

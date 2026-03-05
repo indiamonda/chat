@@ -95,7 +95,7 @@ app.use((req, res, next) => {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
-    res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'sha256-MXsC0/C95mWdbubPg8LKr+lO6HcClxANC8q9tAz6Ngc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' wss: https:;");
+    res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'sha256-MXsC0/C95mWdbubPg8LKr+lO6HcClxANC8q9tAz6Ngc=' https://translate.google.com https://translate.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' wss: https:; frame-src 'self' https://translate.google.com;");
     const version = process.env.ASSET_VERSION || Date.now();
     const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
     return res.type('html').send(html);
@@ -325,7 +325,7 @@ app.use((err, req, res, next) => {
     const p = join(publicDir, 'index.html');
     if (existsSync(p)) {
       res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'sha256-MXsC0/C95mWdbubPg8LKr+lO6HcClxANC8q9tAz6Ngc='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' wss: https:;");
+      res.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'sha256-MXsC0/C95mWdbubPg8LKr+lO6HcClxANC8q9tAz6Ngc=' https://translate.google.com https://translate.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' wss: https:; frame-src 'self' https://translate.google.com;");
       const version = process.env.ASSET_VERSION || Date.now();
       const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
       return res.status(200).type('html').send(html);

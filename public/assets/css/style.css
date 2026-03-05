@@ -1763,6 +1763,7 @@ select:focus {
 }
 
 .message.own {
+  justify-self: end;
   align-self: flex-end;
   flex-direction: row-reverse;
 }
