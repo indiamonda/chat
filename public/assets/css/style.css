@@ -1907,8 +1907,15 @@ select:focus {
   border-radius: 8px;
 }
 
-.message-content a[href^="/uploads"] {
-  color: var(--accent);
+.message-content a {
+  color: inherit;
+  text-decoration: underline;
+}
+.message-content a:link,
+.message-content a:visited,
+.message-content a:hover,
+.message-content a:active {
+  color: inherit;
 }
 
 .message-content-plaintext {
@@ -3447,9 +3454,6 @@ select:focus {
   color: inherit;
 }
 
-.language-block-html a {
-  color: var(--accent);
-}
 
 .language-block-latex {
   margin: 0.5em 0;
