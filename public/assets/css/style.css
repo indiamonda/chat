@@ -2131,7 +2131,7 @@ select:focus {
 .composer textarea {
   flex: 1;
   min-height: 22px;
-  max-height: 160px;
+  max-height: 200px;
   padding: 0.5rem 0.9rem;
   border: none;
   background: transparent;
@@ -2140,6 +2140,7 @@ select:focus {
   resize: none;
   font-family: inherit;
   overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .composer textarea:focus {

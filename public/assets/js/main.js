@@ -2590,6 +2590,13 @@ function bindMain() {
 
   const sendBtn = document.getElementById('send-btn');
   const input = document.getElementById('composer-input');
+  const COMPOSER_MAX_HEIGHT = 200;
+  function resizeComposerInput() {
+    if (!input) return;
+    input.style.height = '0';
+    const h = Math.min(input.scrollHeight, COMPOSER_MAX_HEIGHT);
+    input.style.height = Math.max(22, h) + 'px';
+  }
   if (sendBtn && input) {
     const send = () => {
       if (state._sendingMessage) return;
@@ -2603,16 +2610,19 @@ function bindMain() {
         if (cmd === '/games') {
           window.open('https://jimmyqrg.github.io/page');
           input.value = '';
+          resizeComposerInput();
           return;
         }
         if (cmd === '/wordle') {
           showWordleModal();
           input.value = '';
+          resizeComposerInput();
           return;
         }
         if (cmd === '/request-admin') {
           apiPost('/api/inbox/request-admin').then(() => {
             input.value = '';
+            resizeComposerInput();
           }).catch((err) => alert(err.message || 'Request failed'));
           return;
         }
@@ -2624,12 +2634,13 @@ function bindMain() {
           }
           state._sendingMessage = true;
           const reply_to_id = state.replyTo?.id || null;
-          state.socket?.emit('message:send', { roomType, roomId, content: `/file ${fileId}`, msg_type: 'file', reply_to_id }, (res) => {
+            state.socket?.emit('message:send', { roomType, roomId, content: `/file ${fileId}`, msg_type: 'file', reply_to_id }, (res) => {
             state._sendingMessage = false;
             if (res?.error) { alert(res.error); return; }
             if (res?.message) addMessageLocal(res.message);
             setState({ replyTo: null });
             input.value = '';
+            resizeComposerInput();
           });
           return;
         }
@@ -2666,6 +2677,7 @@ function bindMain() {
             state._pendingFile = null;
             setState({ replyTo: null });
             input.value = '';
+            resizeComposerInput();
             if (roomType === 'dm') loadMessages('dm', roomId).then(render);
           })
           .catch(console.error)
@@ -2681,6 +2693,7 @@ function bindMain() {
         if (res?.message) addMessageLocal(res.message);
         setState({ replyTo: null });
         input.value = '';
+        resizeComposerInput();
       });
     };
     sendBtn.addEventListener('click', send);
@@ -2691,6 +2704,8 @@ function bindMain() {
         send();
       }
     });
+    input.addEventListener('input', resizeComposerInput);
+    requestAnimationFrame(resizeComposerInput);
   }
 
   const fileInput = document.getElementById('file-input');
