@@ -19,6 +19,7 @@ import friendsRoutes, { areFriends } from './routes/friends.js';
 import blocksRoutes, { isBlocked } from './routes/blocks.js';
 import notificationsRoutes, { getPrefs as getNotificationPrefs } from './routes/notifications.js';
 import { randomUUID } from 'node:crypto';
+import tzLookup from 'tz-lookup';
 
 function createInboxForNewMessage(messageId, content, replyToId, senderId, roomType, roomId) {
   const toNotify = new Set();
@@ -158,6 +159,45 @@ app.get('/api/link-preview', requireAuth, async (req, res) => {
     res.json({ title: title || null, description: desc || null, image: image || null, url });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Failed to fetch preview' });
+  }
+});
+
+/** Timezone from coordinates (for DND at night). Requires auth. */
+app.get('/api/timezone', requireAuth, (req, res) => {
+  const lat = parseFloat(req.query.lat);
+  const lng = parseFloat(req.query.lng);
+  if (typeof lat !== 'number' || typeof lng !== 'number' || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return res.status(400).json({ error: 'Invalid lat/lng' });
+  }
+  try {
+    const tz = tzLookup(lat, lng);
+    res.json({ timezone: tz || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Timezone lookup failed' });
+  }
+});
+
+/** Geocode city/address to coordinates (for DND at night). Requires auth. Uses Nominatim. */
+app.get('/api/geocode', requireAuth, async (req, res) => {
+  const q = (req.query.q || '').trim().slice(0, 200);
+  if (!q) return res.status(400).json({ error: 'Query required' });
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const resp = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'JimmyQrg-Chat-DND/1' }
+    });
+    clearTimeout(timeout);
+    const data = await resp.json();
+    const first = Array.isArray(data) ? data[0] : null;
+    if (!first || first.lat == null || first.lon == null) {
+      return res.json({ lat: null, lon: null });
+    }
+    res.json({ lat: parseFloat(first.lat), lon: parseFloat(first.lon) });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Geocode failed' });
   }
 });
 

@@ -23,6 +23,13 @@ router.post('/:id/read', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+router.delete('/:id', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  const result = db.prepare('DELETE FROM inbox WHERE id = ? AND user_id = ?').run(req.params.id, user.id);
+  if (result.changes === 0) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
+});
+
 const JIMMYQRG_ID = 'jimmyqrg';
 
 /** Any authenticated user: send an admin request to jimmyqrg's inbox. */

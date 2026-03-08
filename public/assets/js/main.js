@@ -75,6 +75,7 @@ const STRINGS = {
     dropImage: 'Drop image here or choose below',
     chooseImage: 'Choose image',
     displayName: 'Display name',
+    username: 'Username',
     description: 'Description',
     descriptionPlaceholder: 'A short bio or description',
     website: 'Website',
@@ -86,6 +87,8 @@ const STRINGS = {
     noMailYet: 'No mail yet.',
     accept: 'Accept',
     reject: 'Reject',
+    delete: 'Delete',
+    deleteMailConfirm: 'Delete this mail?',
     recording: 'Recording',
     cancel: 'Cancel',
     send: 'Send',
@@ -121,6 +124,9 @@ const STRINGS = {
     block: 'Block',
     unblock: 'Unblock',
     blocked: 'Blocked',
+    sendFriendRequest: 'Send friend request',
+    requestSent: 'Request sent',
+    sendMessage: 'Send message',
     notifications: 'Notifications',
     notificationsDesc: 'Desktop notifications for messages and mail.',
     notifyMails: 'Mail (inbox)',
@@ -135,6 +141,10 @@ const STRINGS = {
     dndSeconds: 'Seconds',
     dndEndNow: 'End DND now',
     dndAtNight: 'Do not disturb at night',
+    dndUseLocation: 'Use my location',
+    dndEnterCity: 'Enter city',
+    dndCityHint: 'Enter your city to use its local time for night hours.',
+    dndCityPlaceholder: 'e.g. New York, London',
     scrollToBottom: 'Scroll to bottom',
     notifModalTitle: 'Desktop notifications',
     notifModalDesc: 'Would you like to receive desktop notifications from this chat app on this device? You can change this later in Settings → Notifications.',
@@ -165,6 +175,7 @@ const STRINGS = {
     dropImage: '将图片拖到此处或从下方选择',
     chooseImage: '选择图片',
     displayName: '显示名称',
+    username: '用户名',
     description: '简介',
     descriptionPlaceholder: '简短介绍',
     website: '网站',
@@ -176,6 +187,8 @@ const STRINGS = {
     noMailYet: '暂无消息。',
     accept: '接受',
     reject: '拒绝',
+    delete: '删除',
+    deleteMailConfirm: '删除此邮件？',
     recording: '录音中',
     cancel: '取消',
     send: '发送',
@@ -211,6 +224,9 @@ const STRINGS = {
     block: '屏蔽',
     unblock: '取消屏蔽',
     blocked: '已屏蔽',
+    sendFriendRequest: '发送好友请求',
+    requestSent: '已发送',
+    sendMessage: '发送消息',
     notifications: '通知',
     notificationsDesc: '桌面通知，用于消息和邮件。',
     notifyMails: '邮件（收件箱）',
@@ -225,6 +241,10 @@ const STRINGS = {
     dndSeconds: '秒',
     dndEndNow: '立即结束勿扰',
     dndAtNight: '夜间勿扰',
+    dndUseLocation: '使用我的位置',
+    dndEnterCity: '输入城市',
+    dndCityHint: '输入城市以使用其本地时间判断夜间。',
+    dndCityPlaceholder: '例如：北京、上海',
     scrollToBottom: '滚动到底部',
     notifModalTitle: '桌面通知',
     notifModalDesc: '是否要在此设备上接收此聊天应用的桌面通知？您可以在设置 → 通知中稍后更改。',
@@ -255,6 +275,7 @@ const STRINGS = {
     dropImage: '画像をここにドロップするか、下から選択',
     chooseImage: '画像を選択',
     displayName: '表示名',
+    username: 'ユーザー名',
     description: '自己紹介',
     descriptionPlaceholder: '短い自己紹介',
     website: 'ウェブサイト',
@@ -266,6 +287,8 @@ const STRINGS = {
     noMailYet: 'メールはまだありません。',
     accept: '承諾',
     reject: '拒否',
+    delete: '削除',
+    deleteMailConfirm: 'このメールを削除しますか？',
     recording: '録音中',
     cancel: 'キャンセル',
     send: '送信',
@@ -312,11 +335,21 @@ const STRINGS = {
     dndSeconds: '秒',
     dndEndNow: 'おやすみモードを終了',
     dndAtNight: '夜間おやすみモード',
+    dndUseLocation: '現在地を使用',
+    dndEnterCity: '都市を入力',
+    dndCityHint: '都市を入力すると、その地域の現地時間で夜間を判定します。',
+    dndCityPlaceholder: '例：東京、大阪',
     scrollToBottom: '一番下へ',
     notifModalTitle: 'デスクトップ通知',
     notifModalDesc: 'このチャットアプリのデスクトップ通知をこのデバイスで受け取りますか？設定 → 通知で後から変更できます。',
     notifModalAllow: '通知を有効にする',
     notifModalDecline: '後で',
+    block: 'ブロック',
+    unblock: 'ブロック解除',
+    blocked: 'ブロック済み',
+    sendFriendRequest: '友達リクエストを送る',
+    requestSent: 'リクエスト送信済み',
+    sendMessage: 'メッセージを送る',
   },
   ko: {
     general: '일반',
@@ -342,6 +375,7 @@ const STRINGS = {
     dropImage: '이미지를 여기에 놓거나 아래에서 선택',
     chooseImage: '이미지 선택',
     displayName: '표시 이름',
+    username: '사용자 이름',
     description: '소개',
     descriptionPlaceholder: '간단한 소개',
     website: '웹사이트',
@@ -353,6 +387,8 @@ const STRINGS = {
     noMailYet: '메일이 없습니다.',
     accept: '수락',
     reject: '거절',
+    delete: '삭제',
+    deleteMailConfirm: '이 메일을 삭제하시겠습니까?',
     recording: '녹음 중',
     cancel: '취소',
     send: '보내기',
@@ -399,7 +435,17 @@ const STRINGS = {
     dndSeconds: '초',
     dndEndNow: '방해 금지 종료',
     dndAtNight: '야간 방해 금지',
+    dndUseLocation: '내 위치 사용',
+    dndEnterCity: '도시 입력',
+    dndCityHint: '도시를 입력하면 해당 지역의 현지 시간으로 야간을 판단합니다.',
+    dndCityPlaceholder: '예: 서울, 부산',
     scrollToBottom: '맨 아래로',
+    block: '차단',
+    unblock: '차단 해제',
+    blocked: '차단됨',
+    sendFriendRequest: '친구 요청 보내기',
+    requestSent: '요청 보냄',
+    sendMessage: '메시지 보내기',
     notifModalTitle: '데스크톱 알림',
     notifModalDesc: '이 채팅 앱의 데스크톱 알림을 이 기기에서 받으시겠습니까? 설정 → 알림에서 나중에 변경할 수 있습니다.',
     notifModalAllow: '알림 사용',
@@ -479,7 +525,7 @@ function interceptLinks(container) {
         e.preventDefault();
         e.stopPropagation();
         if (id === state.user?.id) navigateTo('/settings?tab=profile');
-        else showProfileModal(id);
+        else navigateTo(`/chat/${encodeURIComponent(id)}?view=profile`);
       }
       return;
     }
@@ -490,7 +536,7 @@ function interceptLinks(container) {
         e.preventDefault();
         e.stopPropagation();
         if (id === state.user?.id) navigateTo('/settings?tab=profile');
-        else showProfileModal(id);
+        else navigateTo(`/chat/${encodeURIComponent(id)}?view=profile`);
       }
       return;
     }
@@ -517,7 +563,7 @@ function interceptLinks(container) {
       if (id) {
         e.preventDefault();
         if (id === state.user?.id) navigateTo('/settings?tab=profile');
-        else showProfileModal(id);
+        else navigateTo(`/chat/${encodeURIComponent(id)}?view=profile`);
       }
       return;
     }
@@ -527,7 +573,7 @@ function interceptLinks(container) {
       if (id) {
         e.preventDefault();
         if (id === state.user?.id) navigateTo('/settings?tab=profile');
-        else showProfileModal(id);
+        else navigateTo(`/chat/${encodeURIComponent(id)}?view=profile`);
       }
     }
   });
@@ -607,7 +653,7 @@ function parseRoute() {
       const panel = URL_TO_PANEL[panelParam] || 'free_chat';
       return { page: 'chat', group: true, panel };
     }
-    return { page: 'chat', dmUserId: id };
+    return { page: 'chat', dmUserId: id, view: params.get('view') || null };
   }
   return { page: 'chat', group: true, panel: 'free_chat' };
 }
@@ -873,15 +919,68 @@ function ensureNotificationPermissionModalVisible() {
   showNotificationPermissionModal();
 }
 
+const DND_TZ_KEY = 'dnd_timezone';
+
+function getDndTimezone() {
+  try {
+    const tz = localStorage.getItem(DND_TZ_KEY);
+    return tz && tz.length < 64 ? tz : null;
+  } catch (_) { return null; }
+}
+
+function setDndTimezone(tz) {
+  try {
+    if (tz) localStorage.setItem(DND_TZ_KEY, tz);
+    else localStorage.removeItem(DND_TZ_KEY);
+  } catch (_) {}
+}
+
 function isNightTime() {
   try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const tz = getDndTimezone() || Intl.DateTimeFormat().resolvedOptions().timeZone;
     const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: tz, hour: 'numeric', hour12: false }), 10);
     return hour >= 22 || hour < 7;
   } catch (_) {
     const hour = new Date().getHours();
     return hour >= 22 || hour < 7;
   }
+}
+
+/** Try geolocation -> /api/timezone, save to localStorage. Returns Promise<boolean>. */
+async function resolveDndTimezoneFromLocation() {
+  if (!navigator.geolocation) return false;
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { lat, lng } = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          const data = await apiGet(`/api/timezone?lat=${lat}&lng=${lng}`);
+          if (data?.timezone) {
+            setDndTimezone(data.timezone);
+            resolve(true);
+          } else resolve(false);
+        } catch (_) { resolve(false); }
+      },
+      () => resolve(false),
+      { timeout: 10000, maximumAge: 86400000 }
+    );
+  });
+}
+
+/** Geocode city -> timezone, save. Returns Promise<boolean>. */
+async function resolveDndTimezoneFromCity(city) {
+  const q = (city || '').trim().slice(0, 100);
+  if (!q) return false;
+  try {
+    const geo = await apiGet(`/api/geocode?q=${encodeURIComponent(q)}`);
+    if (geo?.lat == null || geo?.lon == null) return false;
+    const tzData = await apiGet(`/api/timezone?lat=${geo.lat}&lng=${geo.lon}`);
+    if (tzData?.timezone) {
+      setDndTimezone(tzData.timezone);
+      return true;
+    }
+  } catch (_) {}
+  return false;
 }
 
 function shouldShowNotification(trigger, fromUserId) {
@@ -1407,8 +1506,9 @@ function renderMain() {
                 const avSrc = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : defAv;
                 const n = newCount(u.id);
                 const badge = n > 0 ? `<span class="panel-list-badge panel-list-badge-count" aria-label="${n} new">${n > 99 ? '99+' : n}</span>` : '';
+                const chatHref = `/chat/${encodeURIComponent(u.id)}${friend ? '' : '?view=profile'}`;
                 return `
-              <li><a href="${friend ? `/chat/${encodeURIComponent(u.id)}` : '#'}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-user-id="${escapeHtml(u.id)}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml(name(u))}" data-friend="${friend ? '1' : '0'}">
+              <li><a href="${chatHref}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-user-id="${escapeHtml(u.id)}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml(name(u))}" data-friend="${friend ? '1' : '0'}">
                 <span class="panel-user-avatar-wrap" data-user-id="${escapeHtml(u.id)}" title="View profile"><img src="${avSrc}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="panel-user-avatar" /></span>
                 <span class="panel-list-link-text">${escapeHtml(u.display_name || u.username)}</span>${badge}
               </a></li>
@@ -1446,7 +1546,7 @@ function renderMain() {
       <div class="main-content">
         <div class="main-content-body">
           ${primaryNav === 'home' ? (isGroup && (state.panel === 'free_chat' || state.panel === 'support') ? renderChatArea() : isGroup && isDocPanel ? renderDocArea() : `<div class="empty-state">${t('selectPanel')}</div>`) : ''}
-          ${primaryNav === 'chat' ? (state.dmUserId ? renderChatArea() : `<div class="empty-state">${t('selectConversation')}</div>`) : ''}
+          ${primaryNav === 'chat' ? (state.dmUserId ? renderChatArea() : `<div class="empty-state"><i class="fas fa-comments empty-state-icon" aria-hidden="true"></i><span>${t('selectConversation')}</span></div>`) : ''}
           ${primaryNav === 'inbox' ? renderInboxContent() : ''}
           ${primaryNav === 'admin' ? renderAdminContent() : ''}
           ${primaryNav === 'settings' ? renderSettingsContent() : ''}
@@ -1524,7 +1624,77 @@ const ICON_NEXT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24
 const ICON_REWIND = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
 const ICON_FORWARD = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>';
 
+function renderProfileView(userId) {
+  const pv = state._profileView;
+  if (!pv || pv.userId !== userId) return '<div class="profile-view-loading">' + t('loading') + '</div>';
+  if (pv.error) return `<div class="profile-view-error">${escapeHtml(pv.error)}</div>`;
+  if (pv.loading || !pv.profile) return '<div class="profile-view-loading">' + t('loading') + '</div>';
+  const profile = pv.profile;
+  const avatarUrl = (profile.avatar_url && String(profile.avatar_url).trim()) ? profile.avatar_url : getDefaultAvatarUrl(profile.id);
+  const chatHref = `/chat/${encodeURIComponent(userId)}`;
+  return `
+    <div class="profile-view">
+      <div class="profile-view-header">
+        <a href="${chatHref}" class="profile-view-back">← ${t('chat')}</a>
+      </div>
+      <div class="profile-view-body settings-form">
+        <div class="profile-view-avatar-wrap">
+          <img src="${escapeHtml(avatarUrl)}" data-fallback="${getDefaultAvatarUrl(profile.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="profile-view-avatar" />
+        </div>
+        <div class="profile-view-field">
+          <span class="profile-view-label">${t('displayName')}</span>
+          <span class="profile-view-value">${escapeHtml(profile.display_name || profile.username || '')}</span>
+        </div>
+        <div class="profile-view-field">
+          <span class="profile-view-label">${t('username')}</span>
+          <span class="profile-view-value">@${escapeHtml(profile.username || '')}</span>
+        </div>
+        ${profile.description ? `
+        <div class="profile-view-field">
+          <span class="profile-view-label">${t('description')}</span>
+          <span class="profile-view-value">${escapeHtml(profile.description)}</span>
+        </div>
+        ` : ''}
+        ${profile.website ? `
+        <div class="profile-view-field">
+          <span class="profile-view-label">${t('website')}</span>
+          <span class="profile-view-value"><a href="${escapeHtml(profile.website)}" target="_blank" rel="noopener">${escapeHtml(profile.website)}</a></span>
+        </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
 function renderChatArea() {
+  const route = parseRoute();
+  const isProfileView = route.dmUserId && route.view === 'profile';
+  if (isProfileView) {
+    const profileContent = renderProfileView(route.dmUserId);
+    return `
+    <div class="chat-area chat-area-profile-view">
+    <div class="messages-wrap messages-wrap-profile-view" data-room-type="dm" data-room-id="${state.convId || ''}">
+      ${profileContent}
+    </div>
+    ${`
+    <div class="composer composer-profile-view ${!isFriend(route.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${isFriend(route.dmUserId)}">
+      <div class="composer-row">
+        <div class="composer-input-wrap">
+          <textarea id="composer-input" placeholder="Message…" rows="1"></textarea>
+          <div class="composer-actions">
+            <button type="button" id="composer-mic" title="Record voice message" ${!isFriend(route.dmUserId) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
+            <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
+            <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
+          </div>
+        </div>
+        <button type="button" class="composer-send" id="send-btn">Send</button>
+      </div>
+    </div>
+    `}
+    </div>
+    `;
+  }
+
   const roomType = state.dmUserId ? 'dm' : 'group';
   const roomId = state.dmUserId ? state.convId : state.panel;
   const key = roomKey(roomType, state.dmUserId ? state.convId : state.panel);
@@ -2145,6 +2315,7 @@ async function showProfileModal(userId) {
     overlay.innerHTML = `
       <div class="modal profile-modal">
         <button type="button" class="profile-modal-close" aria-label="Close">&times;</button>
+        <div class="profile-modal-scroll">
         <div class="profile-modal-header">
           <img src="${(profile.avatar_url && String(profile.avatar_url).trim()) ? profile.avatar_url : getDefaultAvatarUrl(profile.id)}" data-fallback="${getDefaultAvatarUrl(profile.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="profile-modal-avatar" />
           <h3 class="profile-modal-name">${escapeHtml(profile.display_name || profile.username)}</h3>
@@ -2153,14 +2324,21 @@ async function showProfileModal(userId) {
           ${profile.website ? `<p class="profile-modal-website"><a href="${escapeHtml(profile.website)}" target="_blank" rel="noopener">${escapeHtml(profile.website)}</a></p>` : ''}
         </div>
         <div class="profile-modal-actions">
-          <button type="button" class="btn-primary profile-btn-message">Send Message</button>
-          ${!friend ? `<button type="button" class="btn-secondary profile-btn-friend-request">Send Friend Request</button>` : ''}
+          <button type="button" class="btn-primary profile-btn-message">${t('sendMessage')}</button>
+          ${!friend ? `<button type="button" class="btn-secondary profile-btn-friend-request">${t('sendFriendRequest')}</button>` : ''}
           <button type="button" class="btn-secondary profile-btn-block" data-blocked="${blocked}">${blocked ? t('unblock') : t('block')}</button>
+        </div>
         </div>
       </div>
     `;
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
-    overlay.querySelector('.profile-modal-close')?.addEventListener('click', () => overlay.remove());
+    const onEscape = (e) => { if (e.key === 'Escape') close(); };
+    const close = () => {
+      overlay.remove();
+      document.removeEventListener('keydown', onEscape);
+    };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('.profile-modal-close')?.addEventListener('click', close);
+    document.addEventListener('keydown', onEscape);
     overlay.querySelector('.profile-btn-message')?.addEventListener('click', () => { overlay.remove(); navigateTo(`/chat/${encodeURIComponent(userId)}`); });
     const blockBtn = overlay.querySelector('.profile-btn-block');
     if (blockBtn) {
@@ -2188,7 +2366,7 @@ async function showProfileModal(userId) {
       frBtn.addEventListener('click', async () => {
         try {
           await apiPost('/api/friends/request', { to_user_id: userId });
-          frBtn.textContent = 'Request sent';
+          frBtn.textContent = t('requestSent');
           frBtn.disabled = true;
         } catch (err) {
           alert(err.message || 'Failed to send friend request');
@@ -2225,6 +2403,8 @@ function getStepOptions(durationSeconds) {
 }
 
 function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
+  const existing = document.querySelector('.media-popup-overlay');
+  if (existing) existing.remove();
   const list = state.messages[roomKey(roomType, roomId)] || [];
   const mediaList = list.filter(isMediaMessage);
   const safeUrl = (u) => escapeHtml(u || '').replace(/"/g, '&quot;');
@@ -2425,13 +2605,36 @@ function bindMain() {
         a.closest('li').style.display = match ? '' : 'none';
       });
     });
-    panelUserList.addEventListener('click', (e) => {
-      const a = e.target.closest('a.panel-list-link[data-friend="0"]');
-      if (a) {
-        e.preventDefault();
-        e.stopPropagation();
-        showProfileModal(a.dataset.userId);
-      }
+    panelUserList.addEventListener('contextmenu', (e) => {
+      const a = e.target.closest('a.panel-list-link[data-user-id]');
+      if (!a) return;
+      e.preventDefault();
+      const userId = a.dataset.userId;
+      const friend = a.dataset.friend === '1';
+      const items = [
+        { label: t('profile'), action: 'profile' },
+        { label: t('chat'), action: 'chat' },
+      ];
+      if (!friend) items.push({ label: t('sendFriendRequest'), action: 'friend-request' });
+      items.push({ label: t('block'), action: 'block', danger: true });
+      showContextMenu(e.clientX, e.clientY, items, async (action) => {
+        if (action === 'profile') navigateTo(`/chat/${encodeURIComponent(userId)}?view=profile`);
+        else if (action === 'chat') navigateTo(`/chat/${encodeURIComponent(userId)}`);
+        else if (action === 'friend-request') {
+          try {
+            await apiPost('/api/friends/request', { to_user_id: userId });
+            await loadFriends();
+            render();
+          } catch (err) { alert(err.message || 'Failed to send friend request'); }
+        } else if (action === 'block') {
+          try {
+            await apiPost('/api/blocks', { user_id: userId });
+            state.blocked_ids = [...(state.blocked_ids || []), userId];
+            await loadFriends();
+            render();
+          } catch (err) { alert(err.message); }
+        }
+      });
     });
   }
 
@@ -2518,6 +2721,7 @@ function bindMain() {
     if (videoEl && !e.target.closest('a')) {
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
       openMediaPopup(videoEl.dataset.msgId, videoEl.dataset.url, 'video', videoEl.dataset.prevMediaId || null, videoEl.dataset.nextMediaId || null, roomType, roomId);
       return;
     }
@@ -2525,6 +2729,7 @@ function bindMain() {
     if (imageEl && !e.target.closest('a')) {
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
       openMediaPopup(imageEl.dataset.msgId, imageEl.dataset.url, 'image', imageEl.dataset.prevMediaId || null, imageEl.dataset.nextMediaId || null, roomType, roomId);
       return;
     }
@@ -3438,6 +3643,12 @@ function renderSettingsContent() {
               <input type="checkbox" id="notif-dnd-at-night" ${state.notificationPrefs?.dnd_at_night ? 'checked' : ''} />
               <span>${t('dndAtNight')}</span>
             </label>
+            ${state.notificationPrefs?.dnd_at_night ? `
+            <div class="dnd-location-row" style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+              <button type="button" id="notif-dnd-use-location" class="btn-small">${t('dndUseLocation')}</button>
+              <button type="button" id="notif-dnd-enter-city" class="btn-small">${t('dndEnterCity')}</button>
+            </div>
+            ` : ''}
           </div>
         </div>
       </div>
@@ -3469,15 +3680,18 @@ function renderInboxContent() {
           ? `<div class="inbox-empty">${t('noMailYet')}</div>`
           : (state.inbox || []).map(item => `
           <div class="inbox-item ${item.read_at ? '' : 'unread'}" data-id="${item.id}" data-type="${escapeHtml(item.type)}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(item.related_extra || '')}">
-            <div class="type">${escapeHtml(item.type)}</div>
-            <div class="title">${escapeHtml(item.title || '')}</div>
-            <div class="body">${escapeHtml(item.body || '')}</div>
-            ${item.type === 'friend_request' && !item.read_at ? `
-            <div class="inbox-item-actions">
-              <button type="button" class="btn-small btn-primary inbox-accept-fr" data-inbox-id="${item.id}">${t('accept')}</button>
-              <button type="button" class="btn-small inbox-reject-fr" data-inbox-id="${item.id}">${t('reject')}</button>
+            <div class="inbox-item-main">
+              <div class="type">${escapeHtml(item.type)}</div>
+              <div class="title">${escapeHtml(item.title || '')}</div>
+              <div class="body">${escapeHtml(item.body || '')}</div>
+              ${item.type === 'friend_request' && !item.read_at ? `
+              <div class="inbox-item-actions">
+                <button type="button" class="btn-small btn-primary inbox-accept-fr" data-inbox-id="${item.id}">${t('accept')}</button>
+                <button type="button" class="btn-small inbox-reject-fr" data-inbox-id="${item.id}">${t('reject')}</button>
+              </div>
+              ` : ''}
             </div>
-            ` : ''}
+            <button type="button" class="inbox-item-delete" data-inbox-id="${item.id}" title="${t('delete')}" aria-label="${t('delete')}"><i class="fas fa-trash-alt" aria-hidden="true"></i></button>
           </div>
         `).join('')}
       </div>
@@ -3530,38 +3744,53 @@ function applyRoute(route) {
       if (route.section === 'dms') {
         setState({});
         render();
-        bindMain();
         return;
       }
       if (route.dmUserId) {
-        apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
-          state.convId = conversation_id;
-          state.convByUserId[route.dmUserId] = conversation_id;
-          state.convIdToUserId[conversation_id] = route.dmUserId;
-          return loadMessages('dm', conversation_id).then(() => {
-            state.socket?.emit('dm:join', conversation_id, () => {});
-            render();
-            bindMain();
-          });
-        }).catch((err) => {
-          console.warn('Load conversation/messages failed', err);
+        if (route.view === 'profile') {
+          state._profileView = { userId: route.dmUserId, profile: null, loading: true, error: null };
           render();
-          bindMain();
-        });
+          apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
+            state.convId = conversation_id;
+            state.convByUserId[route.dmUserId] = conversation_id;
+            state.convIdToUserId[conversation_id] = route.dmUserId;
+            state.socket?.emit('dm:join', conversation_id, () => {});
+            setState({});
+          }).catch(() => { state.convId = null; });
+          apiGet(`/api/users/${encodeURIComponent(route.dmUserId)}/profile`).then(({ profile }) => {
+            state._profileView = { userId: route.dmUserId, profile, loading: false, error: null };
+            setState({});
+          }).catch((err) => {
+            state._profileView = { userId: route.dmUserId, profile: null, loading: false, error: err.message || 'Could not load profile' };
+            setState({});
+          });
+        } else {
+          state._profileView = null;
+          apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
+            state.convId = conversation_id;
+            state.convByUserId[route.dmUserId] = conversation_id;
+            state.convIdToUserId[conversation_id] = route.dmUserId;
+            return loadMessages('dm', conversation_id).then(() => {
+              state.socket?.emit('dm:join', conversation_id, () => {});
+              render();
+            });
+          }).catch((err) => {
+            console.warn('Load conversation/messages failed', err);
+            render();
+          });
+        }
         return;
       }
       state.convId = null;
       if (state.panel === 'free_chat' || state.panel === 'support') {
-        loadMessages('group', state.panel).then(() => { render(); bindMain(); }).catch((err) => {
+        loadMessages('group', state.panel).then(() => { render(); }).catch((err) => {
           console.warn('Load messages failed', err);
           render();
-          bindMain();
         });
       } else if (state.panel === 'problem_solving' || state.panel === 'rules' || state.panel === 'announcements') {
         const loadPanelDoc = () => loadDoc(state.panel).then(({ doc }) => {
           state._docContent = doc?.content ?? '';
           render();
-          bindMain();
         });
         if (state.panel === 'announcements') {
           apiPost('/api/docs/announcements/sync').then(() => loadPanelDoc(), () => loadPanelDoc());
@@ -3569,26 +3798,36 @@ function applyRoute(route) {
           loadPanelDoc().catch((err) => {
             console.warn('Load doc failed', err);
             render();
-            bindMain();
           });
         }
       } else {
         render();
-        bindMain();
       }
     }).catch((err) => {
       console.warn('Load conversations failed', err);
-      if (route.section === 'dms') { setState({}); render(); bindMain(); return; }
+      if (route.section === 'dms') { setState({}); render(); return; }
       if (route.dmUserId) {
-        apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
-          state.convId = conversation_id;
-          state.convByUserId[route.dmUserId] = conversation_id;
-          state.convIdToUserId[conversation_id] = route.dmUserId;
-          return loadMessages('dm', conversation_id).then(() => { state.socket?.emit('dm:join', conversation_id, () => {}); render(); bindMain(); });
-        }).catch(() => { render(); bindMain(); });
+        if (route.view === 'profile') {
+          state._profileView = { userId: route.dmUserId, profile: null, loading: true, error: null };
+          render();
+          apiGet(`/api/users/${encodeURIComponent(route.dmUserId)}/profile`).then(({ profile }) => {
+            state._profileView = { userId: route.dmUserId, profile, loading: false, error: null };
+            setState({});
+          }).catch((err) => {
+            state._profileView = { userId: route.dmUserId, profile: null, loading: false, error: err.message || 'Could not load profile' };
+            setState({});
+          });
+        } else {
+          state._profileView = null;
+          apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
+            state.convId = conversation_id;
+            state.convByUserId[route.dmUserId] = conversation_id;
+            state.convIdToUserId[conversation_id] = route.dmUserId;
+            return loadMessages('dm', conversation_id).then(() => { state.socket?.emit('dm:join', conversation_id, () => {}); render(); });
+          }).catch(() => { render(); });
+        }
       } else {
         render();
-        bindMain();
       }
     });
   }
@@ -3697,6 +3936,36 @@ async function init() {
     }
     throw err;
   }
+}
+
+function showDndCityModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal dnd-modal" style="max-width: 320px;">
+      <h3>${t('dndEnterCity')}</h3>
+      <p class="modal-hint">${t('dndCityHint')}</p>
+      <input type="text" id="dnd-city-input" placeholder="${t('dndCityPlaceholder')}" style="width:100%;margin:0.5rem 0;padding:0.5rem;border:var(--border-width) solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text)" />
+      <div class="modal-actions">
+        <button type="button" id="dnd-city-cancel" class="modal-close">${t('dndCancel')}</button>
+        <button type="button" id="dnd-city-ok" class="btn-primary">${t('dndSet')}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#dnd-city-cancel')?.addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#dnd-city-ok')?.addEventListener('click', async () => {
+    const input = overlay.querySelector('#dnd-city-input');
+    const city = input?.value?.trim();
+    if (!city) return;
+    const ok = await resolveDndTimezoneFromCity(city);
+    overlay.remove();
+    if (ok) render();
+  });
+  const onEscape = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onEscape); } };
+  document.addEventListener('keydown', onEscape);
+  overlay.querySelector('#dnd-city-input')?.focus();
 }
 
 function showDndModal() {
@@ -3853,10 +4122,17 @@ function bindSettings() {
     } catch (_) {}
   });
   document.getElementById('notif-dnd-at-night')?.addEventListener('change', async (e) => {
+    const enabled = !!e.target.checked;
     try {
-      state.notificationPrefs = await apiPatch('/api/notifications/prefs', { dnd_at_night: !!e.target.checked });
+      state.notificationPrefs = await apiPatch('/api/notifications/prefs', { dnd_at_night: enabled });
+      if (enabled && !getDndTimezone()) resolveDndTimezoneFromLocation().then(() => render());
     } catch (_) {}
   });
+  document.getElementById('notif-dnd-use-location')?.addEventListener('click', async () => {
+    const ok = await resolveDndTimezoneFromLocation();
+    if (ok) render();
+  });
+  document.getElementById('notif-dnd-enter-city')?.addEventListener('click', showDndCityModal);
   document.getElementById('open-password-modal')?.addEventListener('click', showPasswordModal);
   document.getElementById('sign-out-btn')?.addEventListener('click', async () => {
     await apiPost('/api/auth/logout');
@@ -3950,6 +4226,20 @@ function bindSettings() {
 
 function bindInbox() {
   document.getElementById('inbox-list')?.addEventListener('click', async (e) => {
+    const deleteBtn = e.target.closest('.inbox-item-delete');
+    if (deleteBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const inboxId = deleteBtn.dataset.inboxId;
+      if (!confirm(t('deleteMailConfirm'))) return;
+      try {
+        await apiDelete(`/api/inbox/${encodeURIComponent(inboxId)}`);
+        await loadInbox();
+        render();
+        bindInbox();
+      } catch (err) { alert(err.message || 'Failed to delete'); }
+      return;
+    }
     const acceptBtn = e.target.closest('.inbox-accept-fr');
     const rejectBtn = e.target.closest('.inbox-reject-fr');
     if (acceptBtn) {
