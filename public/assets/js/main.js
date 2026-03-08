@@ -3117,6 +3117,27 @@ function bindMain() {
       e.preventDefault();
       if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('composer-drag-over');
     });
+    dropZone.addEventListener('paste', (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.kind === 'file') {
+          if (!canSendFiles) {
+            e.preventDefault();
+            alert('Add as friend to send files');
+            return;
+          }
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            e.stopPropagation();
+            state._pendingFile = file;
+            render();
+          }
+          break;
+        }
+      }
+    });
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       e.stopPropagation();
