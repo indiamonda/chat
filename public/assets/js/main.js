@@ -636,9 +636,19 @@ function hideLinkPreview() {
 }
 
 function parseRoute() {
-  const path = getPath();
+  const pathname = window.location.pathname;
   const params = new URLSearchParams(window.location.search || '');
   const redirect = params.get('redirect') || null;
+
+  // Normalize group chat: only /chat/group/ is valid (trailing slash required, no /chat/group/index etc.)
+  if (pathname === '/chat/group' || (pathname.startsWith('/chat/group/') && pathname !== '/chat/group/')) {
+    const search = window.location.search || '';
+    if (window.location.pathname !== '/chat/group/' || window.location.search !== search) {
+      window.history.replaceState({}, '', '/chat/group/' + search);
+    }
+  }
+
+  const path = getPath();
   if (path === '/login') return { page: 'login', redirect };
   if (path === '/signup') return { page: 'signup', redirect };
   if (path === '/settings') return { page: 'settings', tab: params.get('tab') || 'profile' };
@@ -681,7 +691,7 @@ function authPath(page, redirectPath) {
 }
 
 /** Get redirect target from current URL, or default path. */
-function getRedirectOrDefault(defaultPath = '/chat/group') {
+function getRedirectOrDefault(defaultPath = '/chat/group/') {
   const params = new URLSearchParams(window.location.search || '');
   const r = params.get('redirect');
   return (r && r.startsWith('/')) ? r : defaultPath;
@@ -1471,7 +1481,7 @@ function renderMain() {
             ${panels.map(p => {
               const isChat = p === 'free_chat' || p === 'support';
               const hasNew = isChat && getNewCount('group', p) > 0;
-              return `<li><a href="/chat/group?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}"># ${escapeHtml(panelLabels[p] || p)}${hasNew ? '<span class="panel-list-badge panel-list-badge-dot" aria-label="New"></span>' : ''}</a></li>`;
+              return `<li><a href="/chat/group/?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}"># ${escapeHtml(panelLabels[p] || p)}${hasNew ? '<span class="panel-list-badge panel-list-badge-dot" aria-label="New"></span>' : ''}</a></li>`;
             }).join('')}
           </ul>
         </div>
@@ -1561,7 +1571,7 @@ function renderMain() {
           </a>
         </div>
         <nav class="left-bar-nav" aria-label="Main">
-          <a href="/chat/group" class="left-bar-item ${primaryNav === 'home' ? 'active' : ''}" title="Home (JimmyQrg group chat)">
+          <a href="/chat/group/" class="left-bar-item ${primaryNav === 'home' ? 'active' : ''}" title="Home (JimmyQrg group chat)">
             <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_HOME}</span>${hasNewGroupMessages() ? '<span class="left-bar-badge left-bar-badge-dot" aria-label="New messages"></span>' : ''}</span>
             <span class="left-bar-label">${t('home')}</span>
           </a>
@@ -2709,7 +2719,7 @@ function bindMain() {
         if (action === 'remove-account') removeAccount(senderId);
         if (action === 'solve') {
           state.supportMessageIdForSolve = msgId;
-          navigateTo('/chat/group?panel=problem');
+          navigateTo('/chat/group/?panel=problem');
         }
         if (action === 'reply') setState({ replyTo: msg });
       });
@@ -3701,7 +3711,7 @@ function renderInboxContent() {
 
 function applyRoute(route) {
   if (state.user && (route.page === 'login' || route.page === 'signup')) {
-    navigateTo('/chat/group');
+    navigateTo('/chat/group/');
     return;
   }
   if (!state.user && (route.page === 'login' || route.page === 'signup')) {
@@ -4278,7 +4288,7 @@ function bindInbox() {
     bindInbox();
     try {
       const extra = extraStr ? JSON.parse(extraStr) : {};
-      if (extra.panel === 'problem_solving') navigateTo('/chat/group?panel=problem');
+      if (extra.panel === 'problem_solving') navigateTo('/chat/group/?panel=problem');
     } catch (_) {}
   });
 }
