@@ -3126,7 +3126,7 @@ async function init() {
   } catch (err) {
     if (err?.status === 401 && typeof window !== 'undefined' && window.self !== window.top) {
       state.user = null;
-      state.authError = 'App is in an iframe but the session cookie was not sent. Set ALLOW_IFRAME=true on the server (e.g. fly secrets set ALLOW_IFRAME=true -a jchat) so the session cookie uses SameSite=None.';
+      state.authError = 'App is in an iframe but the session cookie was not sent. Ensure the server allows iframe embedding (ALLOW_IFRAME is not "false") and the app is served over HTTPS. Some browsers block third-party cookies in iframes.';
       navigateTo(authPath('login', getPath()));
       return;
     }

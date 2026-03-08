@@ -3430,47 +3430,51 @@ select:focus {
   color: var(--purple-bright);
 }
 
-/* Language blocks in messages (markdown, html, latex, raw) */
+/* Language blocks in messages (markdown, html, latex, raw) – no extra box, inherit theme */
 .language-block-html {
   margin: 0.5em 0;
-  padding: 0.5rem;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
   overflow-x: auto;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .language-block-html p,
 .language-block-html div,
 .language-block-html span {
   margin: 0.25em 0;
+  color: inherit;
+}
+
+.language-block-html a {
+  color: var(--accent);
 }
 
 .language-block-latex {
   margin: 0.5em 0;
-  padding: 0.75rem;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
   overflow-x: auto;
   text-align: center;
+  color: inherit;
+}
+
+.language-block-latex .katex,
+.language-block-latex .katex * {
+  color: inherit !important;
 }
 
 .language-block-latex pre,
 .language-block-error {
   margin: 0;
-  padding: 0.5rem;
-  background: var(--bg-deep);
-  border-radius: 6px;
-  font-size: 0.9rem;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: inherit;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.language-block-latex code,
-.language-block-error {
   color: var(--text-dim);
+  text-align: left;
 }
 
 .language-block-raw {

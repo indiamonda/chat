@@ -45,7 +45,7 @@ The app reads config from environment variables. **On Fly.io you set sensitive v
 | PORT, HOST | Fly sets | No | Server bind. |
 | DATA_DIR | Fly volume mount | No | Default `/data` on Fly (volume); `./data` locally. |
 | ASSET_VERSION | Optional | No | Cache-bust for assets. |
-| ALLOW_IFRAME | Fly: Secrets (if needed) | No | `true` if app runs in an iframe. |
+| ALLOW_IFRAME | Optional | No | Default allows iframe embedding (SameSite=None). Set `false` to disable. |
 | COOKIE_SECURE | Fly: Secrets (if needed) | No | `true` to force secure cookies. |
 
 ## Live app

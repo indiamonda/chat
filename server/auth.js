@@ -23,10 +23,10 @@ export function sessionMiddleware() {
     saveUninitialized: false,
     rolling: true,
     cookie: {
-      /* When ALLOW_IFRAME=true: SameSite=None; Secure so the session cookie is sent when the app is embedded in an iframe on another site. Required for iframe embedding (e.g. fly secrets set ALLOW_IFRAME=true). */
-      secure: process.env.COOKIE_INSECURE === 'true' ? false : (process.env.NODE_ENV === 'production' || process.env.ALLOW_IFRAME === 'true' || process.env.COOKIE_SECURE === 'true'),
+      /* SameSite=None; Secure by default so the session cookie is sent when the app is embedded in an iframe. Set ALLOW_IFRAME=false to use SameSite=Lax instead. */
+      sameSite: process.env.ALLOW_IFRAME === 'false' ? 'lax' : 'none',
+      secure: process.env.COOKIE_INSECURE === 'true' ? false : (process.env.ALLOW_IFRAME === 'false' ? process.env.NODE_ENV === 'production' : true),
       maxAge: SEVEN_DAYS_MS,
-      sameSite: process.env.ALLOW_IFRAME === 'true' ? 'none' : 'lax',
       httpOnly: true,
     },
   });
