@@ -1203,6 +1203,7 @@ function renderChatArea() {
   const replyPreview = state.replyTo ? getReplyPreview(state.replyTo) : null;
 
   return `
+    <div class="chat-area">
     <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
       ${list.length === 0 ? '<div class="messages-empty">No messages yet.</div>' : renderMessagesWithTimestamps(list, roomType, roomId)}
     </div>
@@ -1234,6 +1235,7 @@ function renderChatArea() {
       </div>
     </div>
     ` : ''}
+    </div>
   `;
 }
 
