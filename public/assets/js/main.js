@@ -23,6 +23,7 @@ let state = {
   replyTo: null,
   inbox: [],
   friend_ids: [],
+  blocked_ids: [],
   supportMessageIdForSolve: null,
   leftBarExpanded: typeof localStorage !== 'undefined' && localStorage.getItem('leftBarExpanded') === '1',
   panelSearchOpen: false,
@@ -42,6 +43,7 @@ let state = {
   _recordingRecorder: null,
   _recordingChunks: [],
   commandMode: typeof localStorage !== 'undefined' && localStorage.getItem('commandMode') === '1',
+  notificationPrefs: null,
 };
 if (typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('lang', state.language || 'en');
 
@@ -114,6 +116,17 @@ const STRINGS = {
     users: 'Users',
     recalled: 'Recalled',
     timeout: 'Time out',
+    block: 'Block',
+    unblock: 'Unblock',
+    blocked: 'Blocked',
+    notifications: 'Notifications',
+    notificationsDesc: 'Desktop notifications for messages and mail.',
+    notifyMails: 'Mail (inbox)',
+    notifyDm: 'Private messages',
+    notifyGroup: 'Group messages',
+    doNotDisturb: 'Do not disturb',
+    dndUntil: 'Until',
+    scrollToBottom: 'Scroll to bottom',
   },
   zh: {
     general: '通用',
@@ -182,6 +195,17 @@ const STRINGS = {
     users: '用户',
     recalled: '已撤回',
     timeout: '超时',
+    block: '屏蔽',
+    unblock: '取消屏蔽',
+    blocked: '已屏蔽',
+    notifications: '通知',
+    notificationsDesc: '桌面通知，用于消息和邮件。',
+    notifyMails: '邮件（收件箱）',
+    notifyDm: '私信',
+    notifyGroup: '群组消息',
+    doNotDisturb: '勿扰模式',
+    dndUntil: '直到',
+    scrollToBottom: '滚动到底部',
   },
   ja: {
     general: '一般',
@@ -447,6 +471,62 @@ function interceptLinks(container) {
   });
 }
 
+const LINK_PREVIEW_DELAY_MS = 500;
+let linkPreviewTimer = null;
+let linkPreviewEl = null;
+let linkPreviewAbort = null;
+
+function bindLinkPreview(container) {
+  if (!container) return;
+  container.addEventListener('mouseenter', (e) => {
+    const a = e.target.closest('a[href^="http"]');
+    if (!a || a.closest('.link-preview-popover')) return;
+    const href = a.getAttribute('href')?.trim();
+    if (!href) return;
+    linkPreviewTimer = setTimeout(async () => {
+      linkPreviewTimer = null;
+      linkPreviewAbort = new AbortController();
+      try {
+        const data = await apiGet(`/api/link-preview?url=${encodeURIComponent(href)}`);
+        if (!data.title && !data.description && !data.image) return;
+        hideLinkPreview();
+        linkPreviewEl = document.createElement('div');
+        linkPreviewEl.className = 'link-preview-popover';
+        linkPreviewEl.innerHTML = `
+          ${data.image ? `<img src="${escapeHtml(data.image)}" alt="" class="link-preview-img" />` : ''}
+          <div class="link-preview-body">
+            ${data.title ? `<div class="link-preview-title">${escapeHtml(data.title)}</div>` : ''}
+            ${data.description ? `<div class="link-preview-desc">${escapeHtml(data.description.slice(0, 200))}${data.description.length > 200 ? '…' : ''}</div>` : ''}
+          </div>
+        `;
+        document.body.appendChild(linkPreviewEl);
+        const rect = a.getBoundingClientRect();
+        linkPreviewEl.style.left = `${rect.left}px`;
+        linkPreviewEl.style.top = `${rect.top - 8}px`;
+        linkPreviewEl.style.transform = 'translateY(-100%)';
+        linkPreviewEl.addEventListener('mouseleave', () => hideLinkPreview());
+      } catch (_) {}
+    }, LINK_PREVIEW_DELAY_MS);
+  }, true);
+  container.addEventListener('mouseleave', (e) => {
+    const a = e.target.closest('a[href^="http"]');
+    if (a && !e.relatedTarget?.closest?.('.link-preview-popover')) {
+      if (linkPreviewTimer) {
+        clearTimeout(linkPreviewTimer);
+        linkPreviewTimer = null;
+      }
+      hideLinkPreview();
+    }
+  }, true);
+}
+
+function hideLinkPreview() {
+  if (linkPreviewEl) {
+    linkPreviewEl.remove();
+    linkPreviewEl = null;
+  }
+}
+
 function parseRoute() {
   const path = getPath();
   const params = new URLSearchParams(window.location.search || '');
@@ -582,16 +662,23 @@ export async function loadGroup() {
 }
 
 export async function loadMessages(roomType, roomId) {
-  const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
-  const { messages } = await apiGet(path);
   const key = roomKey(roomType, roomId);
-  state.messages[key] = messages || [];
-  const list = state.messages[key];
-  if (currentRoomKey() === key && list.length) {
-    const maxAt = Math.max(...list.map(m => m.created_at || 0));
-    state.lastSeenByRoom[key] = Math.max(state.lastSeenByRoom[key] || 0, maxAt);
+  state._loadingMessages = state._loadingMessages || {};
+  state._loadingMessages[key] = true;
+  setState({});
+  try {
+    const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
+    const { messages } = await apiGet(path);
+    state.messages[key] = messages || [];
+    const list = state.messages[key];
+    if (currentRoomKey() === key && list.length) {
+      const maxAt = Math.max(...list.map(m => m.created_at || 0));
+      state.lastSeenByRoom[key] = Math.max(state.lastSeenByRoom[key] || 0, maxAt);
+    }
+    return list;
+  } finally {
+    state._loadingMessages[key] = false;
   }
-  return list;
 }
 
 export async function loadDoc(docKey) {
@@ -631,11 +718,80 @@ export async function loadFriends() {
   }
 }
 
+export async function loadBlocks() {
+  try {
+    const { blocked_ids } = await apiGet('/api/blocks');
+    state.blocked_ids = blocked_ids || [];
+    return state.blocked_ids;
+  } catch {
+    state.blocked_ids = [];
+    return [];
+  }
+}
+
+export async function loadNotificationPrefs() {
+  try {
+    const prefs = await apiGet('/api/notifications/prefs');
+    state.notificationPrefs = prefs;
+    return prefs;
+  } catch {
+    state.notificationPrefs = null;
+    return null;
+  }
+}
+
+function maybeAskNotificationPermission() {
+  if (!('Notification' in window) || Notification.permission !== 'default') return;
+  const asked = localStorage.getItem('notification_asked');
+  if (asked === '1') return;
+  const enabled = state.notificationPrefs?.enabled;
+  if (enabled) return;
+  const ok = confirm('Would you like to receive desktop notifications from this chat app on this device? (You can change this in Settings → Notifications)');
+  localStorage.setItem('notification_asked', '1');
+  if (ok) {
+    Notification.requestPermission().then((perm) => {
+      if (perm === 'granted') {
+        apiPatch('/api/notifications/prefs', { enabled: true }).then(() => {
+          state.notificationPrefs = { ...(state.notificationPrefs || {}), enabled: true };
+        }).catch(() => {});
+      }
+    });
+  }
+}
+
+function shouldShowNotification(trigger, fromUserId) {
+  const prefs = state.notificationPrefs;
+  if (!prefs?.enabled) return false;
+  if (document.hasFocus?.() && document.visibilityState === 'visible') return false;
+  const now = Date.now();
+  if (prefs.dnd_until && now < prefs.dnd_until) return false;
+  if (trigger === 'mail' && !prefs.notify_mails) return false;
+  if (trigger === 'dm' && !prefs.notify_dm) return false;
+  if (trigger === 'group' && !prefs.notify_group) return false;
+  if (trigger === 'dm' && fromUserId) {
+    if (prefs.dm_allow_list?.length && !prefs.dm_allow_list.includes(fromUserId)) return false;
+    if (prefs.dm_block_list?.length && prefs.dm_block_list.includes(fromUserId)) return false;
+  }
+  return true;
+}
+
+function showDesktopNotification(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    new Notification(title || 'JimmyQrg Chat', { body: body || '', icon: '/assets/favicon.ico' });
+  } catch (_) {}
+}
+
+function isBlocked(userId) {
+  return state.blocked_ids && state.blocked_ids.includes(userId);
+}
+
 function isFriend(userId) {
   return state.friend_ids && state.friend_ids.includes(userId);
 }
 
 export function addMessageLocal(msg) {
+  if (isBlocked(msg.sender_id)) return;
   const key = roomKey(msg.room_type, msg.room_id);
   if (!state.messages[key]) state.messages[key] = [];
   if (state.messages[key].some(m => m.id === msg.id)) return;
@@ -716,7 +872,15 @@ function connectSocket() {
   s.on('disconnect', () => {
     _connectSocketScheduled = false;
   });
-  s.on('message', (msg) => addMessageLocal(msg));
+  s.on('message', (msg) => {
+    addMessageLocal(msg);
+    const trigger = msg.room_type === 'dm' ? 'dm' : 'group';
+    if (shouldShowNotification(trigger, msg.sender_id)) {
+      const from = msg.display_name || msg.username || 'Someone';
+      const preview = (msg.content || '').slice(0, 80);
+      showDesktopNotification(`${from}: ${trigger === 'dm' ? 'Private message' : 'Group'}`, preview || '(attachment)');
+    }
+  });
   s.on('message:recalled', ({ id }) => {
     const m = findMessageInState(id);
     if (m) removeMessageContent(id, m.room_type, m.room_id);
@@ -727,7 +891,12 @@ function connectSocket() {
   });
   s.on('message:liked', ({ id, likes }) => {
     const m = findMessageInState(id);
-    if (m) updateMessageLocal(id, m.room_type, m.room_id, { likes });
+    if (m) {
+      updateMessageLocal(id, m.room_type, m.room_id, { likes });
+      if (m.sender_id === state.user?.id && shouldShowNotification('group', null)) {
+        showDesktopNotification('JimmyQrg Chat', 'Someone liked your message');
+      }
+    }
   });
   s.on('message:deleted', ({ id }) => {
     const m = findMessageInState(id);
@@ -737,7 +906,12 @@ function connectSocket() {
     alert('You have been kicked from the group.');
     window.location.reload();
   });
-  s.on('inbox:item', () => loadInbox().then(render));
+  s.on('inbox:item', (item) => {
+    if (shouldShowNotification('mail', null)) {
+      showDesktopNotification(item?.title || 'New mail', item?.body || '');
+    }
+    loadInbox().then(render);
+  });
   state.socket = s;
 }
 
@@ -960,6 +1134,7 @@ function bindAuth(isSignup) {
             await loadGroup();
             await loadUsers();
             await loadFriends();
+            await loadBlocks();
             setTimeout(() => connectSocket(), 200);
           navigateTo(getRedirectOrDefault());
         } catch (e) {
@@ -988,6 +1163,7 @@ function bindAuth(isSignup) {
           await loadGroup();
           await loadUsers();
           await loadFriends();
+          await loadBlocks();
           setTimeout(() => connectSocket(), 200);
           navigateTo(getRedirectOrDefault());
         } catch (e) {
@@ -1070,7 +1246,7 @@ function renderMain() {
           </div>
           <ul class="panel-list-ul" id="panel-user-list">
             ${(function() {
-              const users = (state.users || []).filter(u => u.id !== state.user?.id);
+              const users = (state.users || []).filter(u => u.id !== state.user?.id && !isBlocked(u.id));
               const convId = (uid) => state.convByUserId[uid];
               const lastMessageAt = (uid) => { const fromApi = state.lastMessageAtByUserId?.[uid]; if (fromApi != null) return fromApi; const c = convId(uid); if (!c) return 0; const list = state.messages['dm:' + c]; return list?.length ? Math.max(...list.map(m => m.created_at || 0)) : 0; };
               const newCount = (uid) => { const c = convId(uid); return c ? getNewCount('dm', c) : 0; };
@@ -1113,6 +1289,7 @@ function renderMain() {
           <h3 class="panel-list-title">${t('settings')}</h3>
           <a href="/settings?tab=general" class="panel-tab ${route.tab === 'general' ? 'active' : ''}">${t('general')}</a>
           <a href="/settings?tab=profile" class="panel-tab ${(route.tab || 'profile') === 'profile' ? 'active' : ''}">${t('profile')}</a>
+          <a href="/settings?tab=notifications" class="panel-tab ${route.tab === 'notifications' ? 'active' : ''}">${t('notifications')}</a>
           <a href="/settings?tab=account" class="panel-tab ${route.tab === 'account' ? 'active' : ''}">${t('account')}</a>
         </div>
         ` : ''}
@@ -1212,11 +1389,30 @@ function renderChatArea() {
   const list = state.messages[key] || [];
   const replyPreview = state.replyTo ? getReplyPreview(state.replyTo) : null;
 
+  const loading = state._loadingMessages?.[key];
+  const emptyContent = loading
+    ? Array(5).fill(0).map((_, i) => `
+      <div class="message-skeleton" key="${i}">
+        <div class="message-skeleton-avatar"></div>
+        <div class="message-skeleton-body">
+          <div class="message-skeleton-line message-skeleton-line-short"></div>
+          <div class="message-skeleton-line"></div>
+          <div class="message-skeleton-line message-skeleton-line-medium"></div>
+        </div>
+      </div>
+    `).join('')
+    : list.length === 0
+      ? '<div class="messages-empty">No messages yet.</div>'
+      : renderMessagesWithTimestamps(list, roomType, roomId);
+
   return `
     <div class="chat-area">
     <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
-      ${list.length === 0 ? '<div class="messages-empty">No messages yet.</div>' : renderMessagesWithTimestamps(list, roomType, roomId)}
+      ${emptyContent}
     </div>
+    <button type="button" class="scroll-to-bottom" aria-label="Scroll to bottom" title="Scroll to bottom" style="display:none">
+      <span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></span>
+    </button>
     ${(roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm' ? `
     <div class="composer ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
       ${replyPreview ? `
@@ -1793,6 +1989,7 @@ async function showProfileModal(userId) {
   try {
     const { profile } = await apiGet(`/api/users/${encodeURIComponent(userId)}/profile`);
     const friend = isFriend(userId);
+    const blocked = isBlocked(userId);
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay profile-modal-overlay';
     overlay.innerHTML = `
@@ -1808,12 +2005,34 @@ async function showProfileModal(userId) {
         <div class="profile-modal-actions">
           <button type="button" class="btn-primary profile-btn-message">Send Message</button>
           ${!friend ? `<button type="button" class="btn-secondary profile-btn-friend-request">Send Friend Request</button>` : ''}
+          <button type="button" class="btn-secondary profile-btn-block" data-blocked="${blocked}">${blocked ? t('unblock') : t('block')}</button>
         </div>
       </div>
     `;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
     overlay.querySelector('.profile-modal-close')?.addEventListener('click', () => overlay.remove());
     overlay.querySelector('.profile-btn-message')?.addEventListener('click', () => { overlay.remove(); navigateTo(`/chat/${encodeURIComponent(userId)}`); });
+    const blockBtn = overlay.querySelector('.profile-btn-block');
+    if (blockBtn) {
+      blockBtn.addEventListener('click', async () => {
+        try {
+          const blocked = blockBtn.dataset.blocked === 'true';
+          if (blocked) {
+            await apiDelete(`/api/blocks/${encodeURIComponent(userId)}`);
+            state.blocked_ids = (state.blocked_ids || []).filter(id => id !== userId);
+            blockBtn.textContent = t('block');
+            blockBtn.dataset.blocked = 'false';
+          } else {
+            await apiPost('/api/blocks', { user_id: userId });
+            state.blocked_ids = [...(state.blocked_ids || []), userId];
+            blockBtn.textContent = t('unblock');
+            blockBtn.dataset.blocked = 'true';
+          }
+        } catch (err) {
+          alert(err.message || 'Failed');
+        }
+      });
+    }
     const frBtn = overlay.querySelector('.profile-btn-friend-request');
     if (frBtn) {
       frBtn.addEventListener('click', async () => {
@@ -2069,11 +2288,23 @@ function bindMain() {
   document.getElementById('cancel-reply')?.addEventListener('click', () => setState({ replyTo: null }));
 
   const wrap = document.querySelector('.messages-wrap');
+  const scrollBtn = document.querySelector('.scroll-to-bottom');
   const roomType = wrap?.dataset.roomType;
   const roomId = wrap?.dataset.roomId;
   if (wrap && roomType && roomId) {
     requestAnimationFrame(() => {
       wrap.scrollTop = wrap.scrollHeight;
+    });
+    function updateScrollToBottomVisibility() {
+      if (!scrollBtn) return;
+      const threshold = 80;
+      const nearBottom = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < threshold;
+      scrollBtn.style.display = nearBottom ? 'none' : 'flex';
+    }
+    wrap.addEventListener('scroll', updateScrollToBottomVisibility);
+    updateScrollToBottomVisibility();
+    scrollBtn?.addEventListener('click', () => {
+      wrap.scrollTo({ top: wrap.scrollHeight, behavior: 'smooth' });
     });
     wrap.addEventListener('contextmenu', (e) => {
       const msgEl = e.target.closest('.message[data-msg-id]');
@@ -2911,6 +3142,29 @@ function renderSettingsContent() {
         <button type="submit">${t('save')}</button>
       </form>
       ` : ''}
+      ${tab === 'notifications' ? `
+      <div class="settings-notifications">
+        <h3 class="settings-section-title">${t('notifications')}</h3>
+        <p class="settings-account-desc">${t('notificationsDesc')}</p>
+        <div class="settings-form">
+          <label class="settings-checkbox-label">
+            <input type="checkbox" id="notif-enabled" ${state.notificationPrefs?.enabled ? 'checked' : ''} />
+            <span>Enable desktop notifications</span>
+          </label>
+          <div id="notif-triggers" class="notif-triggers" style="${state.notificationPrefs?.enabled ? '' : 'opacity:0.5;pointer-events:none'}">
+            <label class="settings-checkbox-label"><input type="checkbox" id="notif-mails" ${state.notificationPrefs?.notify_mails !== false ? 'checked' : ''} /><span>${t('notifyMails')}</span></label>
+            <label class="settings-checkbox-label"><input type="checkbox" id="notif-dm" ${state.notificationPrefs?.notify_dm !== false ? 'checked' : ''} /><span>${t('notifyDm')}</span></label>
+            <label class="settings-checkbox-label"><input type="checkbox" id="notif-group" ${state.notificationPrefs?.notify_group !== false ? 'checked' : ''} /><span>${t('notifyGroup')}</span></label>
+          </div>
+          <div id="notif-dnd" class="notif-dnd" style="${state.notificationPrefs?.enabled ? '' : 'opacity:0.5;pointer-events:none'}">
+            <h4 class="settings-section-title">${t('doNotDisturb')}</h4>
+            <label>${t('dndUntil')}</label>
+            <input type="datetime-local" id="notif-dnd-until" value="${state.notificationPrefs?.dnd_until ? new Date(state.notificationPrefs.dnd_until).toISOString().slice(0, 16) : ''}" />
+            <button type="button" id="notif-dnd-clear" class="btn-small">Clear</button>
+          </div>
+        </div>
+      </div>
+      ` : ''}
       ${tab === 'account' ? `
       <div class="settings-account">
         <div class="settings-account-block">
@@ -3071,6 +3325,7 @@ async function init() {
   const appEl = document.getElementById('app');
   if (appEl) {
     interceptLinks(appEl);
+    bindLinkPreview(appEl);
     // Delegated listeners for expand/toggle: update state + toggle class on existing DOM (no setState)
     // so first click works and CSS transition/animation run on the same element
     appEl.addEventListener('click', (e) => {
@@ -3134,9 +3389,12 @@ async function init() {
   try {
     await loadGroup();
     await loadUsers();
+    await loadBlocks();
     await loadInbox();
     await loadFriends();
+    await loadNotificationPrefs();
     connectSocket();
+    maybeAskNotificationPermission();
 
     const path = getPath();
     if (path === '/' || path === '') {
@@ -3234,6 +3492,46 @@ function bindSettings() {
     if (document.documentElement) document.documentElement.setAttribute('lang', lang);
     setState({});
     render();
+  });
+  document.getElementById('notif-enabled')?.addEventListener('change', async (e) => {
+    const enabled = !!e.target.checked;
+    try {
+      const prefs = await apiPatch('/api/notifications/prefs', { enabled });
+      state.notificationPrefs = prefs;
+      document.getElementById('notif-triggers')?.style.setProperty('opacity', enabled ? '1' : '0.5');
+      document.getElementById('notif-triggers')?.style.setProperty('pointer-events', enabled ? 'auto' : 'none');
+      document.getElementById('notif-dnd')?.style.setProperty('opacity', enabled ? '1' : '0.5');
+      document.getElementById('notif-dnd')?.style.setProperty('pointer-events', enabled ? 'auto' : 'none');
+      if (enabled) Notification.requestPermission();
+    } catch (_) {}
+  });
+  document.getElementById('notif-mails')?.addEventListener('change', async (e) => {
+    try {
+      state.notificationPrefs = await apiPatch('/api/notifications/prefs', { notify_mails: !!e.target.checked });
+    } catch (_) {}
+  });
+  document.getElementById('notif-dm')?.addEventListener('change', async (e) => {
+    try {
+      state.notificationPrefs = await apiPatch('/api/notifications/prefs', { notify_dm: !!e.target.checked });
+    } catch (_) {}
+  });
+  document.getElementById('notif-group')?.addEventListener('change', async (e) => {
+    try {
+      state.notificationPrefs = await apiPatch('/api/notifications/prefs', { notify_group: !!e.target.checked });
+    } catch (_) {}
+  });
+  document.getElementById('notif-dnd-until')?.addEventListener('change', async (e) => {
+    const val = e.target.value;
+    const ts = val ? new Date(val).getTime() : null;
+    try {
+      state.notificationPrefs = await apiPatch('/api/notifications/prefs', { dnd_until: ts });
+    } catch (_) {}
+  });
+  document.getElementById('notif-dnd-clear')?.addEventListener('click', async () => {
+    document.getElementById('notif-dnd-until').value = '';
+    try {
+      state.notificationPrefs = await apiPatch('/api/notifications/prefs', { dnd_until: null });
+    } catch (_) {}
   });
   document.getElementById('open-password-modal')?.addEventListener('click', showPasswordModal);
   document.getElementById('sign-out-btn')?.addEventListener('click', async () => {

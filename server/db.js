@@ -72,6 +72,39 @@ try {
   `);
 } catch (_) {}
 
+// Blocked users (blocker_id blocks blocked_id)
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS blocked_users (
+      user_id TEXT NOT NULL,
+      blocked_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, blocked_id),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (blocked_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_blocked_users_user ON blocked_users(user_id);
+  `);
+} catch (_) {}
+
+// Notification preferences
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_notification_prefs (
+      user_id TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      notify_mails INTEGER NOT NULL DEFAULT 1,
+      notify_dm INTEGER NOT NULL DEFAULT 1,
+      notify_group INTEGER NOT NULL DEFAULT 1,
+      dm_allow_list TEXT,
+      dm_block_list TEXT,
+      dnd_until INTEGER,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+} catch (_) {}
+
 const USERNAME_RE = /^[a-z0-9]+$/;
 export function validateUsername(username) {
   return typeof username === 'string' && USERNAME_RE.test(username) && username.length >= 1 && username.length <= 32;

@@ -16,6 +16,8 @@ import docsRoutes from './routes/docs.js';
 import inboxRoutes from './routes/inbox.js';
 import adminRoutes from './routes/admin.js';
 import friendsRoutes, { areFriends } from './routes/friends.js';
+import blocksRoutes, { isBlocked } from './routes/blocks.js';
+import notificationsRoutes, { getPrefs as getNotificationPrefs } from './routes/notifications.js';
 import { randomUUID } from 'node:crypto';
 
 function createInboxForNewMessage(messageId, content, replyToId, senderId, roomType, roomId) {
@@ -28,6 +30,9 @@ function createInboxForNewMessage(messageId, content, replyToId, senderId, roomT
     if (r) toNotify.add(r.id);
   });
   toNotify.delete(senderId);
+  for (const uid of [...toNotify]) {
+    if (isBlocked(uid, senderId)) toNotify.delete(uid);
+  }
   const now = Date.now();
   const insert = db.prepare(`
     INSERT INTO inbox (id, user_id, type, title, body, related_id, related_extra, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -122,15 +127,50 @@ app.use('/api/docs', docsRoutes);
 app.use('/api/inbox', inboxRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/friends', friendsRoutes);
+app.use('/api/blocks', blocksRoutes);
+app.use('/api/notifications', notificationsRoutes);
+
+/** Link preview: fetch URL and return og:title, og:description, og:image. Requires auth. */
+app.get('/api/link-preview', requireAuth, async (req, res) => {
+  const url = (req.query.url || '').trim();
+  if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+    return res.status(400).json({ error: 'Invalid URL' });
+  }
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const resp = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'JimmyQrg-Chat-Preview/1' },
+      redirect: 'follow'
+    });
+    clearTimeout(timeout);
+    const html = await resp.text();
+    const title = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1]
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i)?.[1]
+      || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim();
+    const desc = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)?.[1]
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:description["']/i)?.[1]
+      || html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)?.[1]
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i)?.[1];
+    const image = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1]
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1];
+    res.json({ title: title || null, description: desc || null, image: image || null, url });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Failed to fetch preview' });
+  }
+});
 
 app.get('/api/group', requireAuth, (req, res) => {
   res.json({ id: GROUP_ID, panels: PANELS });
 });
 
 app.get('/api/rooms/:roomType/:roomId/messages', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
   const { roomType, roomId } = req.params;
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
   const before = req.query.before ? parseInt(req.query.before, 10) : Date.now();
+  const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(user.id).map(r => r.blocked_id);
   const rows = db.prepare(`
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
            u.username, u.display_name, u.avatar_url
@@ -139,12 +179,14 @@ app.get('/api/rooms/:roomType/:roomId/messages', requireAuth, (req, res) => {
     WHERE m.room_type = ? AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
     ORDER BY m.created_at DESC
     LIMIT ?
-  `).all(roomType, roomId, before, limit);
+  `).all(roomType, roomId, before, limit * 2);
+  const filtered = blockedIds.length ? rows.filter(r => !blockedIds.includes(r.sender_id)) : rows;
+  const limited = filtered.slice(0, limit);
   const likes = db.prepare(`
     SELECT message_id, COUNT(*) as c FROM message_likes GROUP BY message_id
   `).all();
   const likeMap = Object.fromEntries(likes.map(l => [l.message_id, l.c]));
-  const out = rows.reverse().map(r => ({
+  const out = limited.reverse().map(r => ({
     ...r,
     likes: likeMap[r.id] || 0,
     edit_history: r.edit_history ? JSON.parse(r.edit_history) : null
@@ -226,6 +268,7 @@ app.delete('/api/messages/:id/like', requireAuth, (req, res) => {
 // List current user's conversations (for DM list order and conv mapping)
 app.get('/api/conversations', requireAuth, (req, res) => {
   const me = getCurrentUser(req);
+  const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(me.id).map(r => r.blocked_id);
   const rows = db.prepare(`
     SELECT c.id AS conversation_id,
            CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END AS other_user_id,
@@ -234,7 +277,8 @@ app.get('/api/conversations', requireAuth, (req, res) => {
     WHERE c.user1_id = ? OR c.user2_id = ?
     ORDER BY last_message_at DESC
   `).all(me.id, me.id, me.id);
-  res.json({ conversations: rows });
+  const filtered = blockedIds.length ? rows.filter(r => !blockedIds.includes(r.other_user_id)) : rows;
+  res.json({ conversations: filtered });
 });
 
 // Private conversation: get or create
@@ -258,9 +302,10 @@ app.get('/api/conversations/:convId/messages', requireAuth, (req, res) => {
   const me = getCurrentUser(req);
   const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(req.params.convId);
   if (!conv || (conv.user1_id !== me.id && conv.user2_id !== me.id)) return res.status(404).json({ error: 'Not found' });
+  const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(me.id).map(r => r.blocked_id);
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
   const before = req.query.before ? parseInt(req.query.before, 10) : Date.now();
-  const rows = db.prepare(`
+  let rows = db.prepare(`
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
            u.username, u.display_name, u.avatar_url
     FROM messages m
@@ -268,10 +313,12 @@ app.get('/api/conversations/:convId/messages', requireAuth, (req, res) => {
     WHERE m.room_type = 'dm' AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
     ORDER BY m.created_at DESC
     LIMIT ?
-  `).all(req.params.convId, before, limit);
+  `).all(req.params.convId, before, blockedIds.length ? limit * 2 : limit);
+  if (blockedIds.length) rows = rows.filter(r => !blockedIds.includes(r.sender_id));
+  const limited = rows.slice(0, limit);
   const likes = db.prepare('SELECT message_id, COUNT(*) as c FROM message_likes GROUP BY message_id').all();
   const likeMap = Object.fromEntries(likes.map(l => [l.message_id, l.c]));
-  const out = rows.reverse().map(r => ({ ...r, likes: likeMap[r.id] || 0, edit_history: r.edit_history ? JSON.parse(r.edit_history) : null }));
+  const out = limited.reverse().map(r => ({ ...r, likes: likeMap[r.id] || 0, edit_history: r.edit_history ? JSON.parse(r.edit_history) : null }));
   res.json({ messages: out });
 });
 
