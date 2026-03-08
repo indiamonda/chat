@@ -8,6 +8,11 @@ const EDITABLE_DOCS = ['problem_solving', 'rules', 'announcements'];
 
 const PORTAL_ANNOUNCEMENT_URL = 'https://jimmyqrg.github.io/?directly=1';
 
+/** Grep: check if portal HTML contains the announcement sections. */
+function portalHasAnnouncementContent(html) {
+  return /✨\s*Latest updates:[\s\S]*?<ul>|⏱️\s*History[\s\S]*?<ul>/i.test(html);
+}
+
 /** Parse "Latest updates" and "History" list items from portal announcement HTML. Returns array of item strings (e.g. "Added Stickman Arena"). */
 function parsePortalAnnouncementItems(html) {
   const items = [];
@@ -62,6 +67,7 @@ router.post('/announcements/sync', requireAuth, async (req, res) => {
   try {
     const resp = await fetch(PORTAL_ANNOUNCEMENT_URL, { headers: { 'User-Agent': 'JimmyQrg-Chat-Sync/1' } });
     const html = await resp.text();
+    if (!portalHasAnnouncementContent(html)) return res.json({ synced: false, reason: 'no_portal_content' });
     const portalItems = parsePortalAnnouncementItems(html);
     if (!portalItems.length) return res.json({ synced: false, reason: 'no_content' });
 
