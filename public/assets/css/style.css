@@ -681,6 +681,7 @@ select:focus {
 .app-shell-inner {
   order: 1;
   flex: 1;
+  min-height: 0;
   display: flex;
   min-width: 0;
   overflow: hidden;
@@ -1102,6 +1103,7 @@ select:focus {
 
 .main-content {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1139,6 +1141,7 @@ select:focus {
 
 .main-content-body {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1148,6 +1151,8 @@ select:focus {
 .main-content-body .chat-area {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -1155,6 +1160,8 @@ select:focus {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .main-content-body .chat-area .composer {
