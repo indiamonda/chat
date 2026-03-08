@@ -2074,6 +2074,7 @@ select:focus {
   width: 100%;
   height: 100%;
   stroke: currentColor;
+  fill: currentColor;
 }
 .icon.icon-sm {
   width: 1rem;

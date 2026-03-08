@@ -1912,14 +1912,24 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
         if (row) {
           const backGroup = row.querySelector('.media-popup-step-group');
           const fwdGroup = row.querySelectorAll('.media-popup-step-group')[1];
-          if (backGroup) backGroup.innerHTML = opts.map(s => `<button type="button" class="media-popup-step" data-sec="${s}">−${s}s</button>`).join('');
-          if (fwdGroup) fwdGroup.innerHTML = opts.map(s => `<button type="button" class="media-popup-step-fwd" data-sec="${s}">+${s}s</button>`).join('');
+          if (backGroup) backGroup.innerHTML = opts.map(s => `<button type="button" class="media-popup-step" data-sec="${s}" title="Back ${s}s" aria-label="Back ${s}s"><span class="icon icon-sm">${ICON_REWIND}</span><span class="media-popup-step-sec">${s}</span></button>`).join('');
+          if (fwdGroup) fwdGroup.innerHTML = opts.map(s => `<button type="button" class="media-popup-step-fwd" data-sec="${s}" title="Forward ${s}s" aria-label="Forward ${s}s"><span class="icon icon-sm">${ICON_FORWARD}</span><span class="media-popup-step-sec">${s}</span></button>`).join('');
           [...(row.querySelectorAll('.media-popup-step'))].forEach(btn => btn.addEventListener('click', () => { vid.currentTime = Math.max(0, vid.currentTime - parseInt(btn.dataset.sec, 10)); }));
           [...(row.querySelectorAll('.media-popup-step-fwd'))].forEach(btn => btn.addEventListener('click', () => { vid.currentTime = Math.min(vid.duration, vid.currentTime + parseInt(btn.dataset.sec, 10)); }));
         }
       });
-      vid.addEventListener('play', () => { const b = overlay.querySelector('.media-popup-play'); if (b) b.textContent = 'Pause'; });
-      vid.addEventListener('pause', () => { const b = overlay.querySelector('.media-popup-play'); if (b) b.textContent = 'Play'; });
+      vid.addEventListener('play', () => {
+        const b = overlay.querySelector('.media-popup-play');
+        const icon = b?.querySelector('.media-popup-play-icon');
+        if (icon) icon.innerHTML = ICON_PAUSE;
+        if (b) b.setAttribute('aria-label', 'Pause');
+      });
+      vid.addEventListener('pause', () => {
+        const b = overlay.querySelector('.media-popup-play');
+        const icon = b?.querySelector('.media-popup-play-icon');
+        if (icon) icon.innerHTML = ICON_PLAY;
+        if (b) b.setAttribute('aria-label', 'Play');
+      });
       overlay._imageShowUI = null;
       overlay._imageHideUI = null;
     } else {
@@ -1983,7 +1993,7 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
     }
   };
   overlay.querySelector('.media-popup-close')?.addEventListener('click', close);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.classList.contains('media-popup-close')) close(); });
+  overlay.addEventListener('click', (e) => { if (e.target === overlay || e.target.closest('.media-popup-close')) close(); });
   document.addEventListener('keydown', onKey);
   setMedia(initialMsg);
   if (isVideo) {
