@@ -1157,11 +1157,13 @@ select:focus {
 }
 
 .main-content-body .chat-area .messages-wrap {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  display: block;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .main-content-body .chat-area .composer {
@@ -1550,23 +1552,26 @@ select:focus {
 }
 
 .messages-wrap {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 0.5rem;
+  display: block;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+.messages-wrap > *:last-child {
+  margin-bottom: 0;
 }
 
 .message-timestamp,
 .message-system {
-  align-self: center;
   text-align: center;
   padding: 0.35rem 0;
   background: none;
   border: none;
+  margin-bottom: 0.5rem;
 }
 
 .message-timestamp {
@@ -1615,6 +1620,7 @@ select:focus {
   max-width: 100%;
   position: relative;
   gap: 0 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .message-row .message {

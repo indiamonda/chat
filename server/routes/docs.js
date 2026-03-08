@@ -24,16 +24,25 @@ function parsePortalAnnouncementItems(html) {
   return items.filter(Boolean);
 }
 
-/** Extract items from jchat's latest announcement entry. E.g. "**MM/DD/YYYY** Added Amenda, Potato." -> ["Amenda", "Potato"]. */
-function parseJchatLatestItems(content) {
-  const title = '# Announcements';
-  let rest = content.startsWith(title) ? content.slice(title.length).trim() : content.trim();
-  if (!rest) return [];
-  const firstEntry = rest.split(/\n\n+/)[0] || rest.split('\n')[0] || '';
-  const addedMatch = firstEntry.match(/\*\*[\d/]+\*\*\s*(?:Added\s+)?([^.]+)/i);
+/** Extract items from a single jchat announcement entry. E.g. "**MM/DD/YYYY** Added Amenda, Potato." -> ["Amenda", "Potato"]. */
+function parseJchatEntryItems(entry) {
+  const addedMatch = entry.match(/\*\*[\d/]+\*\*\s*(?:Added\s+)?([^.]+)/i);
   if (!addedMatch) return [];
   const list = addedMatch[1].replace(/^Added\s+/i, '').replace(/\.$/, '').trim();
   return list.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+/** Extract items from the first N entries in jchat announcements (newest first). Default 5 entries. */
+function parseJchatEntriesItems(content, limit = 5) {
+  const title = '# Announcements';
+  let rest = content.startsWith(title) ? content.slice(title.length).trim() : content.trim();
+  if (!rest) return [];
+  const entries = rest.split(/\n\n+/).slice(0, limit);
+  const allItems = [];
+  for (const entry of entries) {
+    allItems.push(...parseJchatEntryItems(entry));
+  }
+  return [...new Set(allItems)];
 }
 
 /** Check if portal item matches any jchat item. E.g. "Added Amenda the Adventurer" matches jchat "Amenda". */
@@ -60,7 +69,7 @@ router.post('/announcements/sync', requireAuth, async (req, res) => {
       SELECT id, content FROM doc_versions WHERE doc_key = 'announcements' ORDER BY created_at DESC LIMIT 1
     `).get();
     const currentContent = row?.content || '';
-    const jchatItems = parseJchatLatestItems(currentContent);
+    const jchatItems = parseJchatEntriesItems(currentContent, 5);
 
     const newItems = portalItems.filter(p => !itemMatches(p, jchatItems));
     if (!newItems.length) return res.json({ synced: false, reason: 'already_present' });
