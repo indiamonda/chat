@@ -1494,11 +1494,11 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
-/** Parse $ [\]language="name" ... \$ blocks. Returns array of { type: 'text'|'block', content, language? }. Accepts both $ language="LaTeX" and $\language="LaTeX". */
+/** Parse $ [\] [ ](language|lang)=[ ]"name" ... \$ blocks. Supports $\language=, $\ lang=, $\ language =, etc. */
 function parseLanguageBlocks(str) {
   if (str == null || str === '') return [{ type: 'text', content: '' }];
   const s = String(str);
-  const re = /\$\s*\\?language\s*=\s*"([^"]+)"\s*\n([\s\S]*?)\\\$/g;
+  const re = /\$\s*\\?\s*(?:language|lang)\s*=\s*"([^"]+)"\s*\n([\s\S]*?)\\\$/g;
   const segments = [];
   let lastEnd = 0;
   let m;
@@ -1506,7 +1506,9 @@ function parseLanguageBlocks(str) {
     if (m.index > lastEnd) {
       segments.push({ type: 'text', content: s.slice(lastEnd, m.index) });
     }
-    segments.push({ type: 'block', language: m[1].trim().toLowerCase(), content: m[2].replace(/\n$/, '') });
+    let lang = m[1].trim().toLowerCase();
+    if (lang === 'md') lang = 'markdown';
+    segments.push({ type: 'block', language: lang, content: m[2].replace(/\n$/, '') });
     lastEnd = re.lastIndex;
   }
   if (lastEnd < s.length) {
