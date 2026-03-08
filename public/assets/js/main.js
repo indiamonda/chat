@@ -1723,7 +1723,7 @@ function renderMain() {
             ${panels.map(p => {
               const isChat = p === 'free_chat' || p === 'support';
               const hasNew = isChat && getNewCount('group', p) > 0;
-              return `<li><a href="/chat/group/?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}"># ${escapeHtml(panelLabels[p] || p)}${hasNew ? '<span class="panel-list-badge panel-list-badge-dot" aria-label="New"></span>' : ''}</a></li>`;
+              return `<li><a href="/chat/group/?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}"><span class="panel-list-hash">#</span> ${escapeHtml(panelLabels[p] || p)}${hasNew ? '<span class="panel-list-badge panel-list-badge-dot" aria-label="New"></span>' : ''}</a></li>`;
             }).join('')}
           </ul>
         </div>
