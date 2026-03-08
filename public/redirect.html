@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Open link</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 2rem;
+      font-family: system-ui, sans-serif;
+      background: #1a1225;
+      color: #e9e0f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .box {
+      max-width: 420px;
+      width: 100%;
+      padding: 1.5rem;
+      background: #251a35;
+      border: 1px solid #2d2240;
+      border-radius: 12px;
+    }
+    h2 { margin: 0 0 1rem; font-size: 1.1rem; }
+    .url {
+      word-break: break-all;
+      padding: 0.75rem;
+      background: #120c1a;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      margin-bottom: 1.25rem;
+      color: #a78bb8;
+    }
+    .actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      border: none;
+      font-family: inherit;
+    }
+    .btn-go {
+      background: #8b5cf6;
+      color: #fff;
+    }
+    .btn-go:hover { background: #6d28d9; }
+    .btn-back {
+      background: transparent;
+      color: #a78bb8;
+      border: 1px solid #2d2240;
+    }
+    .btn-back:hover { background: #2d2240; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>Do you want to go to this link?</h2>
+    <div class="url" id="url-display"></div>
+    <div class="actions">
+      <button type="button" class="btn-go" id="btn-go">Go to this link</button>
+      <button type="button" class="btn-back" id="btn-back">Go back</button>
+    </div>
+  </div>
+  <script>
+    (function() {
+      const params = new URLSearchParams(location.search);
+      const url = params.get('url') || '';
+      const urlDisplay = document.getElementById('url-display');
+      const btnGo = document.getElementById('btn-go');
+      const btnBack = document.getElementById('btn-back');
+
+      urlDisplay.textContent = url || '(no URL)';
+
+      if (/utm_source=chatgpt/i.test(url)) {
+        setTimeout(function() { alert('You came from ChatGPT didn\'t you?'); }, 100);
+      }
+
+      btnGo.addEventListener('click', function() {
+        if (url && /^https?:\/\//i.test(url)) {
+          window.location.href = url;
+        } else {
+          window.close();
+        }
+      });
+
+      btnBack.addEventListener('click', function() {
+        const comefrom = params.get('comefrom') || '/';
+        window.location.href = comefrom.startsWith('/') ? comefrom : '/';
+      });
+    })();
+  </script>
+</body>
+</html>

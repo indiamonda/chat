@@ -408,6 +408,16 @@ function interceptLinks(container) {
       }
       return;
     }
+    const linkifyA = e.target.closest('a.linkify-link');
+    if (linkifyA) {
+      e.preventDefault();
+      e.stopPropagation();
+      const href = linkifyA.getAttribute('href');
+      const comefrom = getPath();
+      const u = `/redirect.html?url=${encodeURIComponent(href || '')}&comefrom=${encodeURIComponent(comefrom)}`;
+      window.open(u, '_blank', 'noopener');
+      return;
+    }
     const a = e.target.closest('a[href^="/"]');
     if (!a || a.hasAttribute('target') || a.getAttribute('href').startsWith('/api')) return;
     e.preventDefault();
@@ -1639,28 +1649,29 @@ function markdownToHtml(md) {
     const safeHref = (u) => u.replace(/"/g, '&quot;');
     // Linkify only plain text: split by existing <a>...</a>, process each text part, rejoin (avoids double-linking)
     const linkTag = /<a\s[^>]*>.*?<\/a>/g;
+    const linkifyClass = ' class="linkify-link"';
     const linkifyPlainOnly = (text) => {
       if (!text) return text;
       return text
         .replace(/(?<![\/">])(www\.[^\s<>"']+)/g, (_, url) =>
-          `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`)
+          `<a href="${safeHref('https://' + url)}"${linkifyClass} target="_blank" rel="noopener">${url}</a>`)
         .replace(/\b([a-zA-Z0-9][-a-zA-Z0-9_]*\.github\.io(?:\/[^\s<>"']*)?)/g, (_, url) =>
-          `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`)
+          `<a href="${safeHref('https://' + url)}"${linkifyClass} target="_blank" rel="noopener">${url}</a>`)
         .replace(/\b(localhost(?::\d+)?(?:\/[^\s<>"']*)?)/gi, (_, u) =>
-          `<a href="${safeHref('https://' + u)}" target="_blank" rel="noopener">${u}</a>`)
+          `<a href="${safeHref('https://' + u)}"${linkifyClass} target="_blank" rel="noopener">${u}</a>`)
         .replace(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?(?:\/[^\s<>"']*)?)/g, (_, u) =>
-          `<a href="${safeHref('https://' + u)}" target="_blank" rel="noopener">${u}</a>`)
+          `<a href="${safeHref('https://' + u)}"${linkifyClass} target="_blank" rel="noopener">${u}</a>`)
         .replace(/\b((?:[a-zA-Z0-9][-a-zA-Z0-9_]*\.)+[a-zA-Z0-9][-a-zA-Z0-9_]*(?::\d+)?(?:\/?[^\s<>"']*)?)\b/g, (_, url) => {
           const tldMatch = url.match(/\.(com|org|net|io|co|edu|gov|dev|app|ai|site|xyz|test|local|internal)(?:\/|:\d+|\?|#|$)/i);
           if (!tldMatch) return url;
           if (url === 'github.io') return url;
-          return `<a href="${safeHref('https://' + url)}" target="_blank" rel="noopener">${url}</a>`;
+          return `<a href="${safeHref('https://' + url)}"${linkifyClass} target="_blank" rel="noopener">${url}</a>`;
         });
     };
     const linkifyOne = (text) => {
       if (!text) return text;
       const withScheme = text.replace(/(https?:\/\/[^\s<>"']+)/g, (_, url) =>
-        `<a href="${safeHref(url)}" target="_blank" rel="noopener">${url}</a>`);
+        `<a href="${safeHref(url)}"${linkifyClass} target="_blank" rel="noopener">${url}</a>`);
       const parts = withScheme.split(linkTag);
       const links = withScheme.match(linkTag) || [];
       let out = linkifyPlainOnly(parts[0]);

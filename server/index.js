@@ -88,7 +88,7 @@ app.use((req, res, next) => {
 // Serve SPA HTML with cache-busting for all document routes (before static so "/" gets it too)
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-  if (req.path.startsWith('/api') || req.path.startsWith('/assets') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
+  if (req.path === '/redirect.html' || req.path.startsWith('/api') || req.path.startsWith('/assets') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
   try {
     const p = join(publicDir, 'index.html');
     if (!existsSync(p)) return next();
