@@ -37,6 +37,7 @@ html[data-theme="jimmyqrg"] {
   --accent: #c084fc;
   --text: #e9e0f5;
   --text-dim: #a78bb8;
+  --text-muted: #8b7a9e;
   --star: rgba(196, 181, 255, 0.15);
   --glow: rgba(139, 92, 246, 0.3);
   --border-width: 1px;
@@ -60,6 +61,7 @@ html[data-theme="simple"] {
   --accent: #2e7d32;
   --text: #1a237e;
   --text-dim: #5c6bc0;
+  --text-muted: #7986cb;
   --star: rgba(25, 118, 210, 0.12);
   --glow: rgba(25, 118, 210, 0.25);
   --border-width: 1px;
@@ -95,6 +97,7 @@ html[data-theme="comic"] {
   --accent: #ff8c00;
   --text: #1a1a1a;
   --text-dim: #4d4d4d;
+  --text-muted: #666666;
   --star: rgba(0, 0, 0, 0.06);
   --glow: rgba(255, 140, 0, 0.2);
   --border-width: 3px;
@@ -525,6 +528,7 @@ select:focus {
   min-height: 78px;
 }
 .auth-ani-25 { animation: authBounceIn 0.6s ease-out 0.5s both; }
+.auth-ani-26 { animation: authFadeIn 0.35s ease-out 0.55s both; }
 .auth-box::before {
   content: '';
   position: absolute;
@@ -1073,6 +1077,12 @@ select:focus {
   background: var(--bg-main);
   color: var(--text);
   font-size: 0.9rem;
+}
+
+.panel-list-users .panel-list-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .panel-tabs {
@@ -2559,6 +2569,10 @@ select:focus {
   margin-bottom: 0.5rem;
 }
 
+.settings-notifications {
+  margin-top: 0.5rem;
+}
+
 .settings-form-message[data-type="success"] {
   color: var(--purple-bright);
 }
@@ -2834,7 +2848,8 @@ select:focus {
   gap: 0.75rem;
 }
 
-.modal-overlay {
+.modal-overlay,
+.profile-modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.6);
@@ -3159,8 +3174,10 @@ select:focus {
 .admin-recalled-item { padding: 0.75rem; border: var(--border-width) solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
 .admin-recalled-content { margin: 0.25rem 0 0; color: var(--text-dim); font-size: 0.9rem; }
 .admin-recalled-time { font-size: 0.85rem; color: var(--text-dim); margin-left: 0.5rem; }
+.admin-timeout-list { margin-top: 1rem; }
 .admin-timeout-ul { list-style: none; padding: 0; margin: 0; }
 .admin-timeout-item { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.6rem; border: var(--border-width) solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
+.admin-timeout-item .admin-timeout-release { margin-left: auto; }
 .admin-timeout-meta { font-size: 0.85rem; color: var(--text-dim); }
 .admin-timeout-locked { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0; }
 
