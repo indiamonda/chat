@@ -107,13 +107,14 @@ router.post('/delete-account-permanently', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-// Delete message (permanent; no "recalled" notice)
+// Delete message (permanent; no "recalled" notice). Cannot delete jimmyqrg's messages.
 router.post('/messages/:id/delete', requireAuth, (req, res) => {
   const admin = assertAllowed(req, res);
   if (admin === undefined) return;
   if (!canDeleteMessages(admin)) return res.status(403).json({ error: 'Not allowed to delete messages' });
-  const msg = db.prepare('SELECT id FROM messages WHERE id = ?').get(req.params.id);
+  const msg = db.prepare('SELECT id, sender_id FROM messages WHERE id = ?').get(req.params.id);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
+  if (msg.sender_id === 'jimmyqrg') return res.status(403).json({ error: 'Cannot delete jimmyqrg\'s messages' });
   db.prepare('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE id = ?').run('deleted', req.params.id);
   res.json({ ok: true });
 });

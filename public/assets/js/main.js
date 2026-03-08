@@ -129,6 +129,10 @@ const STRINGS = {
     doNotDisturb: 'Do not disturb',
     dndUntil: 'Until',
     scrollToBottom: 'Scroll to bottom',
+    notifModalTitle: 'Desktop notifications',
+    notifModalDesc: 'Would you like to receive desktop notifications from this chat app on this device? You can change this later in Settings → Notifications.',
+    notifModalAllow: 'Enable notifications',
+    notifModalDecline: 'Not now',
   },
   zh: {
     general: '通用',
@@ -208,6 +212,10 @@ const STRINGS = {
     doNotDisturb: '勿扰模式',
     dndUntil: '直到',
     scrollToBottom: '滚动到底部',
+    notifModalTitle: '桌面通知',
+    notifModalDesc: '是否要在此设备上接收此聊天应用的桌面通知？您可以在设置 → 通知中稍后更改。',
+    notifModalAllow: '启用通知',
+    notifModalDecline: '暂不',
   },
   ja: {
     general: '一般',
@@ -276,6 +284,10 @@ const STRINGS = {
     users: 'ユーザー',
     recalled: '取り消し',
     timeout: 'タイムアウト',
+    notifModalTitle: 'デスクトップ通知',
+    notifModalDesc: 'このチャットアプリのデスクトップ通知をこのデバイスで受け取りますか？設定 → 通知で後から変更できます。',
+    notifModalAllow: '通知を有効にする',
+    notifModalDecline: '後で',
   },
   ko: {
     general: '일반',
@@ -344,6 +356,10 @@ const STRINGS = {
     users: '사용자',
     recalled: '취소됨',
     timeout: '타임아웃',
+    notifModalTitle: '데스크톱 알림',
+    notifModalDesc: '이 채팅 앱의 데스크톱 알림을 이 기기에서 받으시겠습니까? 설정 → 알림에서 나중에 변경할 수 있습니다.',
+    notifModalAllow: '알림 사용',
+    notifModalDecline: '나중에',
   },
 };
 
@@ -749,15 +765,32 @@ export async function loadNotificationPrefs() {
   }
 }
 
-function maybeAskNotificationPermission() {
+function showNotificationPermissionModal() {
   if (!('Notification' in window) || Notification.permission !== 'default') return;
   const asked = localStorage.getItem('notification_asked');
   if (asked === '1') return;
-  const enabled = state.notificationPrefs?.enabled;
-  if (enabled) return;
-  const ok = confirm('Would you like to receive desktop notifications from this chat app on this device? (You can change this in Settings → Notifications)');
-  localStorage.setItem('notification_asked', '1');
-  if (ok) {
+  if (state.notificationPrefs?.enabled) return;
+  const existing = document.getElementById('notif-permission-modal');
+  if (existing) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'notif-permission-modal';
+  overlay.className = 'notif-permission-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'notif-permission-title');
+  overlay.innerHTML = `
+    <div class="notif-permission-modal">
+      <h2 id="notif-permission-title" class="notif-permission-title">${t('notifModalTitle')}</h2>
+      <p class="notif-permission-desc">${t('notifModalDesc')}</p>
+      <div class="notif-permission-actions">
+        <button type="button" class="btn-primary notif-permission-allow" id="notif-permission-allow">${t('notifModalAllow')}</button>
+        <button type="button" class="btn-secondary notif-permission-decline" id="notif-permission-decline">${t('notifModalDecline')}</button>
+      </div>
+    </div>
+  `;
+  overlay.querySelector('#notif-permission-allow').addEventListener('click', () => {
+    localStorage.setItem('notification_asked', '1');
+    overlay.remove();
     Notification.requestPermission().then((perm) => {
       if (perm === 'granted') {
         apiPatch('/api/notifications/prefs', { enabled: true }).then(() => {
@@ -765,7 +798,35 @@ function maybeAskNotificationPermission() {
         }).catch(() => {});
       }
     });
+  });
+  overlay.querySelector('#notif-permission-decline').addEventListener('click', () => {
+    localStorage.setItem('notification_asked', '1');
+    overlay.remove();
+  });
+  document.body.appendChild(overlay);
+}
+
+function maybeAskNotificationPermission() {
+  showNotificationPermissionModal();
+}
+
+function shouldShowNotifPermissionModal() {
+  return ('Notification' in window) && Notification.permission === 'default' &&
+    localStorage.getItem('notification_asked') !== '1' && !state.notificationPrefs?.enabled;
+}
+
+function ensureNotificationPermissionModalVisible() {
+  if (!shouldShowNotifPermissionModal()) return;
+  const existing = document.getElementById('notif-permission-modal');
+  if (existing) {
+    const style = getComputedStyle(existing);
+    if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) < 0.01) {
+      existing.remove();
+      showNotificationPermissionModal();
+    }
+    return;
   }
+  showNotificationPermissionModal();
 }
 
 function shouldShowNotification(trigger, fromUserId) {
@@ -2358,8 +2419,8 @@ function bindMain() {
         items.push({ label: 'Recall', action: 'recall' });
         items.push({ label: 'Edit', action: 'edit' });
       }
-      if (state.user?.can_delete_messages) items.push({ label: 'Delete (admin)', action: 'delete', danger: true });
-      if (state.user?.can_kick) items.push({ label: 'Remove account', action: 'remove-account' });
+      if (state.user?.can_delete_messages && senderId !== 'jimmyqrg') items.push({ label: 'Delete (admin)', action: 'delete', danger: true });
+      if (state.user?.can_kick && senderId !== 'jimmyqrg') items.push({ label: 'Remove account', action: 'remove-account' });
       if (canSolve) items.push({ label: 'Solve', action: 'solve' });
       const fileRef = parseFileRef(msg.content, msg.msg_type);
       if (fileRef) items.push({ label: 'Get file id', action: 'get-file-id' });
@@ -2598,12 +2659,17 @@ function bindMain() {
         form.append('msg_type', state._pendingFile.type.startsWith('image/') ? 'image' : state._pendingFile.type.startsWith('video/') ? 'video' : state._pendingFile.type.startsWith('audio/') ? 'audio' : 'file');
         if (reply_to_id) form.append('reply_to_id', reply_to_id);
         const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
-        fetch(path, { method: 'POST', credentials: 'include', body: form }).then(() => {
-          state._pendingFile = null;
-          setState({ replyTo: null });
-          input.value = '';
-          if (roomType === 'dm') loadMessages('dm', roomId).then(render);
-        }).catch(console.error).finally(done);
+        fetch(path, { method: 'POST', credentials: 'include', body: form })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data?.message) addMessageLocal(data.message);
+            state._pendingFile = null;
+            setState({ replyTo: null });
+            input.value = '';
+            if (roomType === 'dm') loadMessages('dm', roomId).then(render);
+          })
+          .catch(console.error)
+          .finally(done);
         return;
       }
       state.socket?.emit('message:send', { roomType, roomId, content: text, reply_to_id }, (res) => {
@@ -2774,10 +2840,27 @@ function bindMain() {
         return;
       }
       const file = e.dataTransfer.files?.[0];
-      if (file) {
-        state._pendingFile = file;
-        render();
-      }
+      if (!file) return;
+      const roomType = state.dmUserId ? 'dm' : 'group';
+      const roomId = state.dmUserId ? state.convId : state.panel;
+      const reply_to_id = state.replyTo?.id || null;
+      const msgType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file';
+      const form = new FormData();
+      form.append('file', file);
+      form.append('content', '');
+      form.append('msg_type', msgType);
+      if (reply_to_id) form.append('reply_to_id', reply_to_id);
+      const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
+      state._sendingMessage = true;
+      fetch(path, { method: 'POST', credentials: 'include', body: form })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.message) addMessageLocal(data.message);
+          setState({ replyTo: null });
+          if (roomType === 'dm') loadMessages('dm', roomId).then(render);
+        })
+        .catch(console.error)
+        .finally(() => { state._sendingMessage = false; });
     });
   }
 
@@ -3030,7 +3113,7 @@ function renderAdminContent() {
                     ${canManage ? `<button type="button" class="btn-small" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}">${u.is_allowed ? 'Remove from list' : 'Add to list'}</button>` : ''}
                     ${state.user?.can_kick ? (u.deleted_at
                       ? `<button type="button" class="btn-small" data-action="restore" data-user-id="${u.id}">Restore</button>
-                         <button type="button" class="btn-small btn-danger" data-action="delete-permanently" data-user-id="${u.id}">Delete permanently</button>`
+                         ${state.user?.id === 'jimmyqrg' ? `<button type="button" class="btn-small btn-danger" data-action="delete-permanently" data-user-id="${u.id}">Delete permanently</button>` : ''}`
                       : `<button type="button" class="btn-small btn-danger" data-action="remove-account" data-user-id="${u.id}">Remove account</button>
                          <button type="button" class="btn-small" data-action="blacklist" data-user-id="${u.id}" data-blacklisted="${(state.adminBlacklistedIds || []).includes(u.id) ? '1' : '0'}">${(state.adminBlacklistedIds || []).includes(u.id) ? 'Unblacklist' : 'Blacklist'}</button>`) : ''}
                   </div>
@@ -3516,6 +3599,13 @@ async function init() {
     await loadNotificationPrefs();
     connectSocket();
     maybeAskNotificationPermission();
+    if (!window._notifModalCheckBound) {
+      window._notifModalCheckBound = true;
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') ensureNotificationPermissionModalVisible();
+      });
+      setInterval(ensureNotificationPermissionModalVisible, 10000);
+    }
 
     const path = getPath();
     if (path === '/' || path === '') {

@@ -551,8 +551,9 @@ io.on('connection', (socket) => {
 
   socket.on('message:delete', (msgId, ack) => {
     if (!canDeleteMessages(socket.user)) return ack?.({ error: 'Not allowed' });
-    const msg = db.prepare('SELECT id, room_type, room_id FROM messages WHERE id = ?').get(msgId);
+    const msg = db.prepare('SELECT id, room_type, room_id, sender_id FROM messages WHERE id = ?').get(msgId);
     if (!msg) return ack?.({ error: 'Not found' });
+    if (msg.sender_id === 'jimmyqrg') return ack?.({ error: 'Cannot delete jimmyqrg\'s messages' });
     db.prepare('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE id = ?').run('deleted', msgId);
     if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:deleted', { id: msgId });
     else io.to(`group:${GROUP_ID}`).emit('message:deleted', { id: msgId });
