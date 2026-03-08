@@ -22,6 +22,9 @@ primary_region = 'iad'
   min_machines_running = 1
   processes = ["app"]
 
+  [http_service.http_options]
+  idle_timeout = 600
+
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'

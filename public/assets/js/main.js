@@ -150,6 +150,65 @@ const STRINGS = {
     notifModalDesc: 'Would you like to receive desktop notifications from this chat app on this device? You can change this later in Settings → Notifications.',
     notifModalAllow: 'Enable notifications',
     notifModalDecline: 'Not now',
+    adminSendToInbox: 'Send to inbox',
+    adminSendToInboxDesc: 'Send a message to a specific user\'s inbox.',
+    adminBroadcast: 'Broadcast to all',
+    adminBroadcastDesc: 'Send a message to every user\'s inbox.',
+    adminTimeoutUser: 'Time out user',
+    adminTimeoutDurationDesc: 'Prevent a user from sending messages in the JimmyQrg group chat for a set time.',
+    adminTimeoutUserDesc: 'Prevent a user from sending messages in the JimmyQrg group chat.',
+    adminSelectUser: 'Select user',
+    adminTitle: 'Title',
+    adminBody: 'Body',
+    adminMessageBody: 'Message body',
+    adminDuration: 'Duration',
+    adminDurationPlaceholder: 'e.g. 5 minute, 1 hour, forever',
+    adminOnlyICanRelease: 'Only I can release',
+    adminNoPermissions: 'You have no action permissions. Ask an admin to grant Send mail, Broadcast, or Time out.',
+    adminRecalledMessages: 'Recalled messages',
+    adminRecalledDesc: 'Messages that were recalled by users in the group chat.',
+    adminUsersSection: 'Users',
+    adminUsersDesc: 'Add users to the admin list here. After adding someone, set what they are allowed to do (e.g. send mail, broadcast, edit docs).',
+    adminPermSendMail: 'Send mail',
+    adminPermBroadcast: 'Broadcast',
+    adminPermEditDocs: 'Edit docs',
+    adminPermRemoveAccount: 'Remove account',
+    adminPermDeleteMessages: 'Delete messages',
+    adminPermManageUsers: 'Manage users',
+    adminPermTimeout: 'Time out',
+    adminRoleAdmin: 'Admin',
+    adminRoleDeleted: 'Deleted',
+    adminRoleOnList: 'On admin list',
+    adminRoleMember: 'Member',
+    adminRemoveFromList: 'Remove from list',
+    adminAddToList: 'Add to list',
+    adminRestore: 'Restore',
+    adminDeletePermanently: 'Delete permanently',
+    adminRemoveAccount: 'Remove account',
+    adminBlacklist: 'Blacklist',
+    adminUnblacklist: 'Unblacklist',
+    adminDeleteAccountTitle: 'Delete account permanently',
+    adminDeleteAccountDesc: 'This will remove the user from the user list, remove them from private chat lists, and clear all data about them. This cannot be undone.',
+    adminDeleteGroupMessages: 'Delete messages in group chat also',
+    adminDeleteAdmin: 'Delete (admin)',
+    adminRemoveAccountConfirm: 'Remove this account? The user will not be able to log in. Messages stay. You can restore later.',
+    replyToMessage: 'Reply to message',
+    recall: 'Recall',
+    edit: 'Edit',
+    solve: 'Solve',
+    getFileId: 'Get file id',
+    copy: 'Copy',
+    reply: 'Reply',
+    mentionDeletedUsers: 'Note: You\'re mentioning user(s) whose accounts have been deleted: ',
+    adminNoRecalledMessages: 'No recalled messages.',
+    adminFailedToLoad: 'Failed to load.',
+    adminSent: 'Sent.',
+    adminBroadcastSent: 'Broadcast sent.',
+    adminNoActiveTimeouts: 'No active timeouts.',
+    adminTimeoutUntil: 'until ',
+    adminTimeoutForever: 'forever',
+    adminTimeoutLocked: '(locked)',
+    adminRelease: 'Release',
   },
   zh: {
     general: '通用',
@@ -220,7 +279,7 @@ const STRINGS = {
     action: '操作',
     users: '用户',
     recalled: '已撤回',
-    timeout: '超时',
+    timeout: '禁言',
     block: '屏蔽',
     unblock: '取消屏蔽',
     blocked: '已屏蔽',
@@ -250,6 +309,65 @@ const STRINGS = {
     notifModalDesc: '是否要在此设备上接收此聊天应用的桌面通知？您可以在设置 → 通知中稍后更改。',
     notifModalAllow: '启用通知',
     notifModalDecline: '暂不',
+    adminSendToInbox: '发送到收件箱',
+    adminSendToInboxDesc: '向指定用户的收件箱发送消息。',
+    adminBroadcast: '广播给所有人',
+    adminBroadcastDesc: '向所有用户的收件箱发送消息。',
+    adminTimeoutUser: '禁言用户',
+    adminTimeoutDurationDesc: '在一段时间内禁止该用户在 JimmyQrg 群聊中发送消息。',
+    adminTimeoutUserDesc: '禁止该用户在 JimmyQrg 群聊中发送消息。',
+    adminSelectUser: '选择用户',
+    adminTitle: '标题',
+    adminBody: '正文',
+    adminMessageBody: '消息正文',
+    adminDuration: '时长',
+    adminDurationPlaceholder: '例如：5 分钟、1 小时、永久',
+    adminOnlyICanRelease: '仅我可解除',
+    adminNoPermissions: '您没有操作权限。请让管理员授予发送邮件、广播或禁言权限。',
+    adminRecalledMessages: '已撤回的消息',
+    adminRecalledDesc: '群聊中用户已撤回的消息记录。',
+    adminUsersSection: '用户',
+    adminUsersDesc: '在此添加管理员。添加后，可设置其权限（如发邮件、广播、编辑文档等）。',
+    adminPermSendMail: '发邮件',
+    adminPermBroadcast: '广播',
+    adminPermEditDocs: '编辑文档',
+    adminPermRemoveAccount: '移除账号',
+    adminPermDeleteMessages: '删除消息',
+    adminPermManageUsers: '管理用户',
+    adminPermTimeout: '禁言',
+    adminRoleAdmin: '管理员',
+    adminRoleDeleted: '已删除',
+    adminRoleOnList: '在管理员列表中',
+    adminRoleMember: '成员',
+    adminRemoveFromList: '移出列表',
+    adminAddToList: '加入列表',
+    adminRestore: '恢复',
+    adminDeletePermanently: '永久删除',
+    adminRemoveAccount: '移除账号',
+    adminBlacklist: '拉黑',
+    adminUnblacklist: '取消拉黑',
+    adminDeleteAccountTitle: '永久删除账号',
+    adminDeleteAccountDesc: '将把该用户从用户列表中移除，从私聊列表中移除，并清除其所有数据。此操作不可撤销。',
+    adminDeleteGroupMessages: '同时删除群聊中的消息',
+    adminDeleteAdmin: '删除（管理员）',
+    adminRemoveAccountConfirm: '确定要移除此账号吗？用户将无法登录。消息会保留，之后可恢复。',
+    replyToMessage: '回复消息',
+    recall: '撤回',
+    edit: '编辑',
+    solve: '标记已解决',
+    getFileId: '获取文件 ID',
+    copy: '复制',
+    reply: '回复',
+    mentionDeletedUsers: '提示：您正在提及已删除账号的用户：',
+    adminNoRecalledMessages: '暂无已撤回的消息。',
+    adminFailedToLoad: '加载失败。',
+    adminSent: '已发送。',
+    adminBroadcastSent: '广播已发送。',
+    adminNoActiveTimeouts: '暂无禁言中的用户。',
+    adminTimeoutUntil: '至 ',
+    adminTimeoutForever: '永久',
+    adminTimeoutLocked: '（仅我可解除）',
+    adminRelease: '解除',
   },
   ja: {
     general: '一般',
@@ -344,6 +462,65 @@ const STRINGS = {
     notifModalDesc: 'このチャットアプリのデスクトップ通知をこのデバイスで受け取りますか？設定 → 通知で後から変更できます。',
     notifModalAllow: '通知を有効にする',
     notifModalDecline: '後で',
+    adminSendToInbox: '受信トレイに送信',
+    adminSendToInboxDesc: '特定のユーザーの受信トレイにメッセージを送信します。',
+    adminBroadcast: '全員に一斉送信',
+    adminBroadcastDesc: '全ユーザーの受信トレイにメッセージを送信します。',
+    adminTimeoutUser: 'ユーザーをミュート',
+    adminTimeoutDurationDesc: '指定時間、JimmyQrg グループチャットでメッセージを送信できなくします。',
+    adminTimeoutUserDesc: 'JimmyQrg グループチャットでメッセージを送信できなくします。',
+    adminSelectUser: 'ユーザーを選択',
+    adminTitle: 'タイトル',
+    adminBody: '本文',
+    adminMessageBody: 'メッセージ本文',
+    adminDuration: '期間',
+    adminDurationPlaceholder: '例：5分、1時間、永久',
+    adminOnlyICanRelease: '解除は自分だけ',
+    adminNoPermissions: '操作権限がありません。管理者にメール送信・一斉送信・ミュートの権限を付与してもらってください。',
+    adminRecalledMessages: '取り消されたメッセージ',
+    adminRecalledDesc: 'グループチャットでユーザーが取り消したメッセージの記録。',
+    adminUsersSection: 'ユーザー',
+    adminUsersDesc: 'ここで管理者を追加します。追加後、許可する操作（メール送信、一斉送信、ドキュメント編集など）を設定できます。',
+    adminPermSendMail: 'メール送信',
+    adminPermBroadcast: '一斉送信',
+    adminPermEditDocs: 'ドキュメント編集',
+    adminPermRemoveAccount: 'アカウント削除',
+    adminPermDeleteMessages: 'メッセージ削除',
+    adminPermManageUsers: 'ユーザー管理',
+    adminPermTimeout: 'ミュート',
+    adminRoleAdmin: '管理者',
+    adminRoleDeleted: '削除済み',
+    adminRoleOnList: '管理者リストに登録',
+    adminRoleMember: 'メンバー',
+    adminRemoveFromList: 'リストから削除',
+    adminAddToList: 'リストに追加',
+    adminRestore: '復元',
+    adminDeletePermanently: '完全に削除',
+    adminRemoveAccount: 'アカウント削除',
+    adminBlacklist: 'ブラックリスト',
+    adminUnblacklist: 'ブラックリスト解除',
+    adminDeleteAccountTitle: 'アカウントを完全に削除',
+    adminDeleteAccountDesc: 'ユーザーをユーザーリストから削除し、プライベートチャットリストから削除し、関連するすべてのデータを消去します。元に戻せません。',
+    adminDeleteGroupMessages: 'グループチャットのメッセージも削除',
+    adminDeleteAdmin: '削除（管理者）',
+    adminRemoveAccountConfirm: 'このアカウントを削除しますか？ユーザーはログインできなくなります。メッセージは残り、後で復元できます。',
+    replyToMessage: 'メッセージに返信',
+    recall: '取り消す',
+    edit: '編集',
+    solve: '解決済みにする',
+    getFileId: 'ファイルIDを取得',
+    copy: 'コピー',
+    reply: '返信',
+    mentionDeletedUsers: '注意：削除済みアカウントのユーザーをメンションしています：',
+    adminNoRecalledMessages: '取り消されたメッセージはありません。',
+    adminFailedToLoad: '読み込みに失敗しました。',
+    adminSent: '送信しました。',
+    adminBroadcastSent: '一斉送信しました。',
+    adminNoActiveTimeouts: 'ミュート中のユーザーはいません。',
+    adminTimeoutUntil: 'まで ',
+    adminTimeoutForever: '永久',
+    adminTimeoutLocked: '（解除は自分だけ）',
+    adminRelease: '解除',
     block: 'ブロック',
     unblock: 'ブロック解除',
     blocked: 'ブロック済み',
@@ -450,6 +627,65 @@ const STRINGS = {
     notifModalDesc: '이 채팅 앱의 데스크톱 알림을 이 기기에서 받으시겠습니까? 설정 → 알림에서 나중에 변경할 수 있습니다.',
     notifModalAllow: '알림 사용',
     notifModalDecline: '나중에',
+    adminSendToInbox: '받은편지함으로 보내기',
+    adminSendToInboxDesc: '특정 사용자의 받은편지함에 메시지를 보냅니다.',
+    adminBroadcast: '전체 공지',
+    adminBroadcastDesc: '모든 사용자의 받은편지함에 메시지를 보냅니다.',
+    adminTimeoutUser: '사용자 채팅 금지',
+    adminTimeoutDurationDesc: '지정한 시간 동안 JimmyQrg 그룹 채팅에서 메시지 전송을 막습니다.',
+    adminTimeoutUserDesc: 'JimmyQrg 그룹 채팅에서 메시지 전송을 막습니다.',
+    adminSelectUser: '사용자 선택',
+    adminTitle: '제목',
+    adminBody: '본문',
+    adminMessageBody: '메시지 본문',
+    adminDuration: '기간',
+    adminDurationPlaceholder: '예: 5분, 1시간, 영구',
+    adminOnlyICanRelease: '해제는 본인만 가능',
+    adminNoPermissions: '작업 권한이 없습니다. 관리자에게 메일 발송, 공지, 채팅 금지 권한을 요청하세요.',
+    adminRecalledMessages: '취소된 메시지',
+    adminRecalledDesc: '그룹 채팅에서 사용자가 취소한 메시지 기록입니다.',
+    adminUsersSection: '사용자',
+    adminUsersDesc: '여기서 관리자를 추가합니다. 추가 후 허용할 작업(메일 발송, 공지, 문서 편집 등)을 설정하세요.',
+    adminPermSendMail: '메일 발송',
+    adminPermBroadcast: '공지',
+    adminPermEditDocs: '문서 편집',
+    adminPermRemoveAccount: '계정 삭제',
+    adminPermDeleteMessages: '메시지 삭제',
+    adminPermManageUsers: '사용자 관리',
+    adminPermTimeout: '채팅 금지',
+    adminRoleAdmin: '관리자',
+    adminRoleDeleted: '삭제됨',
+    adminRoleOnList: '관리자 목록',
+    adminRoleMember: '멤버',
+    adminRemoveFromList: '목록에서 제거',
+    adminAddToList: '목록에 추가',
+    adminRestore: '복원',
+    adminDeletePermanently: '영구 삭제',
+    adminRemoveAccount: '계정 삭제',
+    adminBlacklist: '차단 목록',
+    adminUnblacklist: '차단 해제',
+    adminDeleteAccountTitle: '계정 영구 삭제',
+    adminDeleteAccountDesc: '사용자를 사용자 목록에서 제거하고, 개인 채팅 목록에서 제거하며, 관련 데이터를 모두 삭제합니다. 되돌릴 수 없습니다.',
+    adminDeleteGroupMessages: '그룹 채팅 메시지도 삭제',
+    adminDeleteAdmin: '삭제(관리자)',
+    adminRemoveAccountConfirm: '이 계정을 삭제하시겠습니까? 사용자는 로그인할 수 없습니다. 메시지는 유지되며 나중에 복원할 수 있습니다.',
+    replyToMessage: '메시지에 답장',
+    recall: '취소',
+    edit: '편집',
+    solve: '해결됨으로 표시',
+    getFileId: '파일 ID 가져오기',
+    copy: '복사',
+    reply: '답장',
+    mentionDeletedUsers: '참고: 삭제된 계정의 사용자를 멘션하고 있습니다: ',
+    adminNoRecalledMessages: '취소된 메시지가 없습니다.',
+    adminFailedToLoad: '로드에 실패했습니다.',
+    adminSent: '전송되었습니다.',
+    adminBroadcastSent: '공지가 전송되었습니다.',
+    adminNoActiveTimeouts: '채팅 금지 중인 사용자가 없습니다.',
+    adminTimeoutUntil: '까지 ',
+    adminTimeoutForever: '영구',
+    adminTimeoutLocked: '(해제는 본인만)',
+    adminRelease: '해제',
   },
 };
 
@@ -1106,7 +1342,13 @@ function connectSocket() {
     state.socket.disconnect();
     state.socket = null;
   }
-  const s = io({ withCredentials: true });
+  const s = io({
+    withCredentials: true,
+    transports: ['polling', 'websocket'],
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000,
+    timeout: 20000,
+  });
   s.on('connect', () => {
     _connectSocketScheduled = false;
     if (state.dmUserId && state.convId) s.emit('dm:join', state.convId, () => {});
@@ -1943,7 +2185,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
   const displayContent = versions[versionIndex];
   const mediaContext = { mediaIds: context.mediaIds || [], currentIndex: context.mediaIndex ?? -1 };
   const content = isFileMessage ? renderFileBlock(m, mediaContext) : renderMessageContent(displayContent || '');
-  const replyBlock = m.reply_to_id ? `<div class="message-reply-preview" data-reply-to="${m.reply_to_id}">Reply to message</div>` : '';
+  const replyBlock = m.reply_to_id ? `<div class="message-reply-preview" data-reply-to="${m.reply_to_id}">${t('replyToMessage')}</div>` : '';
   const likeCount = (m.likes || 0) > 0 ? `<span class="message-like-count">${m.likes}</span>` : '';
   const likeIcon = `<button type="button" class="message-like-btn" data-msg-id="${m.id}" title="Like" aria-label="Like"><span class="message-like-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span></button>`;
 
@@ -2016,7 +2258,7 @@ function renderDocArea() {
     <div class="doc-panel" data-doc-key="${docKey}">
       ${canEdit ? `
       <div class="doc-toolbar">
-        <button type="button" id="start-doc-edit" class="doc-edit-btn">Edit</button>
+        <button type="button" id="start-doc-edit" class="doc-edit-btn">${t('edit')}</button>
       </div>
       ` : ''}
       <div class="doc-view doc-markdown">${markdownToHtml(content)}</div>
@@ -2685,16 +2927,16 @@ function bindMain() {
 
       const items = [];
       if (isOwn && canRecallEdit) {
-        items.push({ label: 'Recall', action: 'recall' });
-        items.push({ label: 'Edit', action: 'edit' });
+        items.push({ label: t('recall'), action: 'recall' });
+        items.push({ label: t('edit'), action: 'edit' });
       }
-      if (state.user?.can_delete_messages && senderId !== 'jimmyqrg') items.push({ label: 'Delete (admin)', action: 'delete', danger: true });
-      if (state.user?.can_kick && senderId !== 'jimmyqrg') items.push({ label: 'Remove account', action: 'remove-account' });
-      if (canSolve) items.push({ label: 'Solve', action: 'solve' });
+      if (state.user?.can_delete_messages && senderId !== 'jimmyqrg') items.push({ label: t('adminDeleteAdmin'), action: 'delete', danger: true });
+      if (state.user?.can_kick && senderId !== 'jimmyqrg') items.push({ label: t('adminRemoveAccount'), action: 'remove-account' });
+      if (canSolve) items.push({ label: t('solve'), action: 'solve' });
       const fileRef = parseFileRef(msg.content, msg.msg_type);
-      if (fileRef) items.push({ label: 'Get file id', action: 'get-file-id' });
-      items.push({ label: 'Copy', action: 'copy' });
-      items.push({ label: 'Reply', action: 'reply' });
+      if (fileRef) items.push({ label: t('getFileId'), action: 'get-file-id' });
+      items.push({ label: t('copy'), action: 'copy' });
+      items.push({ label: t('reply'), action: 'reply' });
 
       showContextMenu(e.clientX, e.clientY, items, (action) => {
         if (action === 'get-file-id' && fileRef) {
@@ -2921,7 +3163,7 @@ function bindMain() {
       const contentToCheck = text || '';
       const mentionedDeleted = roomType === 'group' ? getMentionedDeletedUsers(contentToCheck) : [];
       if (mentionedDeleted.length) {
-        alert(`Note: You're mentioning user(s) whose accounts have been deleted: ${mentionedDeleted.join(', ')}.`);
+        alert(t('mentionDeletedUsers') + mentionedDeleted.join(', '));
       }
 
       state._sendingMessage = true;
@@ -3239,7 +3481,7 @@ function startInlineEdit(msg) {
 }
 
 async function removeAccount(userId) {
-  if (!confirm('Remove this account? The user will not be able to log in. Messages stay. You can restore later.')) return;
+  if (!confirm(t('adminRemoveAccountConfirm'))) return;
   try {
     await apiPost('/api/admin/remove-account', { user_id: userId });
     await loadUsers();
@@ -3263,12 +3505,12 @@ function showDeletePermanentlyModal(userId) {
   overlay.innerHTML = `
     <div class="modal profile-modal admin-delete-modal">
       <button type="button" class="profile-modal-close" aria-label="Close">&times;</button>
-      <h3>Delete account permanently</h3>
-      <p>This will remove the user from the user list, remove them from private chat lists, and clear all data about them. This cannot be undone.</p>
-      <label class="admin-delete-msgs-label"><input type="checkbox" id="admin-delete-msgs-cb" checked /> Delete messages in group chat also</label>
+      <h3>${t('adminDeleteAccountTitle')}</h3>
+      <p>${t('adminDeleteAccountDesc')}</p>
+      <label class="admin-delete-msgs-label"><input type="checkbox" id="admin-delete-msgs-cb" checked /> ${t('adminDeleteGroupMessages')}</label>
       <div class="admin-delete-modal-actions">
-        <button type="button" class="btn-small" id="admin-delete-cancel">Cancel</button>
-        <button type="button" class="btn-small btn-danger" id="admin-delete-confirm">Delete permanently</button>
+        <button type="button" class="btn-small" id="admin-delete-cancel">${t('cancel')}</button>
+        <button type="button" class="btn-small btn-danger" id="admin-delete-confirm">${t('adminDeletePermanently')}</button>
       </div>
     </div>
   `;
@@ -3321,88 +3563,88 @@ function renderAdminContent() {
           ${adminTab === 'action' ? `
           ${state.user?.can_send_inbox ? `
           <div class="admin-section">
-            <h2 class="admin-section-title">Send to inbox</h2>
-            <p class="admin-section-desc">Send a message to a specific user's inbox.</p>
+            <h2 class="admin-section-title">${t('adminSendToInbox')}</h2>
+            <p class="admin-section-desc">${t('adminSendToInboxDesc')}</p>
             <div class="admin-form">
-              <label>User</label>
+              <label>${t('users')}</label>
               <select id="admin-inbox-user">
-                <option value="">Select user</option>
+                <option value="">${t('adminSelectUser')}</option>
                 ${otherUsers.map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
               </select>
-              <label>Title</label>
-              <input type="text" id="admin-inbox-title" placeholder="Title" />
-              <label>Body</label>
-              <textarea id="admin-inbox-body" placeholder="Message body" rows="4"></textarea>
-              <button type="button" id="admin-inbox-send" class="btn-primary">Send</button>
+              <label>${t('adminTitle')}</label>
+              <input type="text" id="admin-inbox-title" placeholder="${t('adminTitle')}" />
+              <label>${t('adminBody')}</label>
+              <textarea id="admin-inbox-body" placeholder="${t('adminMessageBody')}" rows="4"></textarea>
+              <button type="button" id="admin-inbox-send" class="btn-primary">${t('send')}</button>
             </div>
           </div>
           ` : ''}
           ${state.user?.can_broadcast ? `
           <div class="admin-section">
-            <h2 class="admin-section-title">Broadcast to all</h2>
-            <p class="admin-section-desc">Send a message to every user's inbox.</p>
+            <h2 class="admin-section-title">${t('adminBroadcast')}</h2>
+            <p class="admin-section-desc">${t('adminBroadcastDesc')}</p>
             <div class="admin-form">
-              <label>Title</label>
-              <input type="text" id="admin-broadcast-title" placeholder="Title" />
-              <label>Body</label>
-              <textarea id="admin-broadcast-body" placeholder="Message body" rows="4"></textarea>
-              <button type="button" id="admin-broadcast-send" class="btn-primary">Broadcast</button>
+              <label>${t('adminTitle')}</label>
+              <input type="text" id="admin-broadcast-title" placeholder="${t('adminTitle')}" />
+              <label>${t('adminBody')}</label>
+              <textarea id="admin-broadcast-body" placeholder="${t('adminMessageBody')}" rows="4"></textarea>
+              <button type="button" id="admin-broadcast-send" class="btn-primary">${t('adminPermBroadcast')}</button>
             </div>
           </div>
           ` : ''}
           ${state.user?.can_timeout ? `
           <div class="admin-section">
-            <h2 class="admin-section-title">Time out user</h2>
-            <p class="admin-section-desc">Prevent a user from sending messages in the JimmyQrg group chat for a set time.</p>
+            <h2 class="admin-section-title">${t('adminTimeoutUser')}</h2>
+            <p class="admin-section-desc">${t('adminTimeoutDurationDesc')}</p>
             <div class="admin-form">
-              <label>User</label>
+              <label>${t('users')}</label>
               <select id="admin-timeout-user">
-                <option value="">Select user</option>
+                <option value="">${t('adminSelectUser')}</option>
                 ${otherUsers.filter(u => u.id !== 'jimmyqrg').map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
               </select>
-              <label>Duration</label>
-              <input type="text" id="admin-timeout-duration" placeholder="e.g. 5 minute, 1 hour, forever" />
-              ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked" /> Only I can release</label>` : ''}
-              <button type="button" id="admin-timeout-submit" class="btn-primary">Time out</button>
+              <label>${t('adminDuration')}</label>
+              <input type="text" id="admin-timeout-duration" placeholder="${t('adminDurationPlaceholder')}" />
+              ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked" /> ${t('adminOnlyICanRelease')}</label>` : ''}
+              <button type="button" id="admin-timeout-submit" class="btn-primary">${t('adminPermTimeout')}</button>
             </div>
             <div id="admin-timeout-list" class="admin-timeout-list"></div>
           </div>
           ` : ''}
-          ${!state.user?.can_send_inbox && !state.user?.can_broadcast && !state.user?.can_timeout ? '<p class="admin-section-desc">You have no action permissions. Ask an admin to grant Send mail, Broadcast, or Time out.</p>' : ''}
+          ${!state.user?.can_send_inbox && !state.user?.can_broadcast && !state.user?.can_timeout ? `<p class="admin-section-desc">${t('adminNoPermissions')}</p>` : ''}
           ` : ''}
           ${adminTab === 'recalled' ? `
           <div class="admin-section">
-            <h2 class="admin-section-title">Recalled messages</h2>
-            <p class="admin-section-desc">Messages that were recalled by users in the group chat.</p>
+            <h2 class="admin-section-title">${t('adminRecalledMessages')}</h2>
+            <p class="admin-section-desc">${t('adminRecalledDesc')}</p>
             <div id="admin-recalled-list" class="admin-recalled-list"></div>
           </div>
           ` : ''}
           ${adminTab === 'timeout' ? `
           <div class="admin-section">
-            <h2 class="admin-section-title">Time out user</h2>
-            <p class="admin-section-desc">Prevent a user from sending messages in the JimmyQrg group chat.</p>
+            <h2 class="admin-section-title">${t('adminTimeoutUser')}</h2>
+            <p class="admin-section-desc">${t('adminTimeoutUserDesc')}</p>
             <div class="admin-form">
-              <label>User</label>
+              <label>${t('users')}</label>
               <select id="admin-timeout-user-tab">
-                <option value="">Select user</option>
+                <option value="">${t('adminSelectUser')}</option>
                 ${otherUsers.filter(u => u.id !== 'jimmyqrg').map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
               </select>
-              <label>Duration</label>
-              <input type="text" id="admin-timeout-duration-tab" placeholder="e.g. 5 minute, 1 hour, forever" />
-              ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked-tab" /> Only I can release</label>` : ''}
-              <button type="button" id="admin-timeout-submit-tab" class="btn-primary">Time out</button>
+              <label>${t('adminDuration')}</label>
+              <input type="text" id="admin-timeout-duration-tab" placeholder="${t('adminDurationPlaceholder')}" />
+              ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked-tab" /> ${t('adminOnlyICanRelease')}</label>` : ''}
+              <button type="button" id="admin-timeout-submit-tab" class="btn-primary">${t('adminPermTimeout')}</button>
             </div>
             <div id="admin-timeout-list-tab" class="admin-timeout-list"></div>
           </div>
           ` : ''}
           ${adminTab === 'users' ? `
           <div class="admin-section">
-            <h2 class="admin-section-title">Users</h2>
-            <p class="admin-section-desc">Add users to the admin list here. After adding someone, set what they are allowed to do (e.g. send mail, broadcast, edit docs).</p>
+            <h2 class="admin-section-title">${t('adminUsersSection')}</h2>
+            <p class="admin-section-desc">${t('adminUsersDesc')}</p>
             <div class="admin-users-list" id="admin-user-list">
               ${users.map(u => {
                 const canManage = state.user?.can_manage_users;
-                const permLabels = { can_send_inbox: 'Send mail', can_broadcast: 'Broadcast', can_edit_docs: 'Edit docs', can_kick: 'Remove account', can_delete_messages: 'Delete messages', can_manage_users: 'Manage users', can_timeout: 'Time out' };
+                const permLabels = { can_send_inbox: t('adminPermSendMail'), can_broadcast: t('adminPermBroadcast'), can_edit_docs: t('adminPermEditDocs'), can_kick: t('adminPermRemoveAccount'), can_delete_messages: t('adminPermDeleteMessages'), can_manage_users: t('adminPermManageUsers'), can_timeout: t('adminPermTimeout') };
                 const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout'];
                 const isAdmin = u.id === 'jimmyqrg';
                 const showPerms = canManage && !isAdmin && u.is_allowed;
@@ -3413,16 +3655,16 @@ function renderAdminContent() {
                   <img src="${avSrcU}" data-fallback="${defAvU.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="admin-user-avatar" />
                   <div class="admin-user-info">
                     <span class="admin-user-name">${escapeHtml(u.display_name || u.username)}</span>
-                    <span class="admin-user-meta">${isAdmin ? 'Admin' : u.deleted_at ? 'Deleted' : (u.is_allowed ? 'On admin list' : 'Member')}</span>
+                    <span class="admin-user-meta">${isAdmin ? t('adminRoleAdmin') : u.deleted_at ? t('adminRoleDeleted') : (u.is_allowed ? t('adminRoleOnList') : t('adminRoleMember'))}</span>
                   </div>
                   ${!isAdmin ? `
                   <div class="admin-user-actions">
-                    ${canManage ? `<button type="button" class="btn-small" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}">${u.is_allowed ? 'Remove from list' : 'Add to list'}</button>` : ''}
+                    ${canManage ? `<button type="button" class="btn-small" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}">${u.is_allowed ? t('adminRemoveFromList') : t('adminAddToList')}</button>` : ''}
                     ${state.user?.can_kick ? (u.deleted_at
-                      ? `<button type="button" class="btn-small" data-action="restore" data-user-id="${u.id}">Restore</button>
-                         ${state.user?.id === 'jimmyqrg' ? `<button type="button" class="btn-small btn-danger" data-action="delete-permanently" data-user-id="${u.id}">Delete permanently</button>` : ''}`
-                      : `<button type="button" class="btn-small btn-danger" data-action="remove-account" data-user-id="${u.id}">Remove account</button>
-                         <button type="button" class="btn-small" data-action="blacklist" data-user-id="${u.id}" data-blacklisted="${(state.adminBlacklistedIds || []).includes(u.id) ? '1' : '0'}">${(state.adminBlacklistedIds || []).includes(u.id) ? 'Unblacklist' : 'Blacklist'}</button>`) : ''}
+                      ? `<button type="button" class="btn-small" data-action="restore" data-user-id="${u.id}">${t('adminRestore')}</button>
+                         ${state.user?.id === 'jimmyqrg' ? `<button type="button" class="btn-small btn-danger" data-action="delete-permanently" data-user-id="${u.id}">${t('adminDeletePermanently')}</button>` : ''}`
+                      : `<button type="button" class="btn-small btn-danger" data-action="remove-account" data-user-id="${u.id}">${t('adminRemoveAccount')}</button>
+                         <button type="button" class="btn-small" data-action="blacklist" data-user-id="${u.id}" data-blacklisted="${(state.adminBlacklistedIds || []).includes(u.id) ? '1' : '0'}">${(state.adminBlacklistedIds || []).includes(u.id) ? t('adminUnblacklist') : t('adminBlacklist')}</button>`) : ''}
                   </div>
                   ${showPerms ? `
                   <div class="admin-user-perms">
@@ -3445,7 +3687,7 @@ async function loadAdminRecalled() {
   try {
     const { messages } = await apiGet('/api/admin/recalled-messages');
     el.innerHTML = messages.length === 0
-      ? '<p class="admin-section-desc">No recalled messages.</p>'
+      ? `<p class="admin-section-desc">${t('adminNoRecalledMessages')}</p>`
       : `<ul class="admin-recalled-ul">${messages.map(m => `
         <li class="admin-recalled-item">
           <strong>${escapeHtml(m.display_name || m.username || 'Unknown user')}</strong>
@@ -3454,7 +3696,7 @@ async function loadAdminRecalled() {
         </li>
       `).join('')}</ul>`;
   } catch (err) {
-    el.innerHTML = '<p class="admin-section-desc">Failed to load.</p>';
+    el.innerHTML = `<p class="admin-section-desc">${t('adminFailedToLoad')}</p>`;
   }
 }
 
@@ -3474,18 +3716,18 @@ async function loadAdminTimeouts() {
   try {
     const { timeouts } = await apiGet('/api/admin/timeouts');
     const html = timeouts.length === 0
-      ? '<p class="admin-section-desc">No active timeouts.</p>'
-      : `<ul class="admin-timeout-ul">${timeouts.map(t => `
+      ? `<p class="admin-section-desc">${t('adminNoActiveTimeouts')}</p>`
+      : `<ul class="admin-timeout-ul">${timeouts.map(to => `
         <li class="admin-timeout-item">
-          <span>${escapeHtml(t.display_name || t.username)}</span>
-          <span class="admin-timeout-meta">${t.expires_at ? 'until ' + formatTime(t.expires_at) : 'forever'} ${t.locked_release ? '(locked)' : ''}</span>
-          ${(!t.locked_release || state.user?.id === 'jimmyqrg') ? `<button type="button" class="btn-small admin-timeout-release" data-timeout-id="${t.id}">Release</button>` : ''}
+          <span>${escapeHtml(to.display_name || to.username)}</span>
+          <span class="admin-timeout-meta">${to.expires_at ? t('adminTimeoutUntil') + formatTime(to.expires_at) : t('adminTimeoutForever')} ${to.locked_release ? t('adminTimeoutLocked') : ''}</span>
+          ${(!to.locked_release || state.user?.id === 'jimmyqrg') ? `<button type="button" class="btn-small admin-timeout-release" data-timeout-id="${to.id}">${t('adminRelease')}</button>` : ''}
         </li>
       `).join('')}</ul>`;
     if (el) el.innerHTML = html;
     if (elTab) elTab.innerHTML = html;
   } catch (err) {
-    listEl.innerHTML = '<p class="admin-section-desc">Failed to load.</p>';
+    listEl.innerHTML = `<p class="admin-section-desc">${t('adminFailedToLoad')}</p>`;
   }
 }
 
@@ -3497,7 +3739,7 @@ function bindAdmin() {
     const userId = document.getElementById('admin-timeout-user')?.value;
     const duration = document.getElementById('admin-timeout-duration')?.value?.trim();
     const locked = document.getElementById('admin-timeout-locked')?.checked;
-    if (!userId) { alert('Select a user'); return; }
+    if (!userId) { alert(t('adminSelectUser')); return; }
     try {
       await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked });
       document.getElementById('admin-timeout-duration').value = '';
@@ -3508,7 +3750,7 @@ function bindAdmin() {
     const userId = document.getElementById('admin-timeout-user-tab')?.value;
     const duration = document.getElementById('admin-timeout-duration-tab')?.value?.trim();
     const locked = document.getElementById('admin-timeout-locked-tab')?.checked;
-    if (!userId) { alert('Select a user'); return; }
+    if (!userId) { alert(t('adminSelectUser')); return; }
     try {
       await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked });
       document.getElementById('admin-timeout-duration-tab').value = '';
@@ -3579,10 +3821,10 @@ function bindAdmin() {
     const to = document.getElementById('admin-inbox-user')?.value;
     const title = document.getElementById('admin-inbox-title')?.value ?? '';
     const body = document.getElementById('admin-inbox-body')?.value ?? '';
-    if (!to) { alert('Select a user'); return; }
+    if (!to) { alert(t('adminSelectUser')); return; }
     try {
       await apiPost('/api/inbox/send', { to_user_id: to, title, body });
-      alert('Sent.');
+      alert(t('adminSent'));
     } catch (e) { alert(e.message); }
   });
   document.getElementById('admin-broadcast-send')?.addEventListener('click', async () => {
@@ -3590,7 +3832,7 @@ function bindAdmin() {
     const body = document.getElementById('admin-broadcast-body')?.value ?? '';
     try {
       await apiPost('/api/inbox/broadcast', { title, body });
-      alert('Broadcast sent.');
+      alert(t('adminBroadcastSent'));
     } catch (e) { alert(e.message); }
   });
 }

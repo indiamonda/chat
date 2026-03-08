@@ -434,7 +434,12 @@ app.use((err, req, res, next) => {
   res.status(500).type('html').send('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Error</title></head><body><h1>Something went wrong</h1><p>Please try again later.</p></body></html>');
 });
 
-const io = new Server(httpServer, { cors: { origin: true } });
+const io = new Server(httpServer, {
+  cors: { origin: true },
+  pingInterval: 20000,
+  pingTimeout: 10000,
+  connectTimeout: 45000,
+});
 app.set('io', io);
 
 io.use((socket, next) => {
