@@ -127,7 +127,14 @@ const STRINGS = {
     notifyDm: 'Private messages',
     notifyGroup: 'Group messages',
     doNotDisturb: 'Do not disturb',
-    dndUntil: 'Until',
+    dndSet: 'Set',
+    dndCancel: 'Cancel',
+    dndDays: 'Days',
+    dndHours: 'Hours',
+    dndMinutes: 'Minutes',
+    dndSeconds: 'Seconds',
+    dndEndNow: 'End DND now',
+    dndAtNight: 'Do not disturb at night',
     scrollToBottom: 'Scroll to bottom',
     notifModalTitle: 'Desktop notifications',
     notifModalDesc: 'Would you like to receive desktop notifications from this chat app on this device? You can change this later in Settings → Notifications.',
@@ -210,7 +217,14 @@ const STRINGS = {
     notifyDm: '私信',
     notifyGroup: '群组消息',
     doNotDisturb: '勿扰模式',
-    dndUntil: '直到',
+    dndSet: '设置',
+    dndCancel: '取消',
+    dndDays: '天',
+    dndHours: '小时',
+    dndMinutes: '分钟',
+    dndSeconds: '秒',
+    dndEndNow: '立即结束勿扰',
+    dndAtNight: '夜间勿扰',
     scrollToBottom: '滚动到底部',
     notifModalTitle: '桌面通知',
     notifModalDesc: '是否要在此设备上接收此聊天应用的桌面通知？您可以在设置 → 通知中稍后更改。',
@@ -284,6 +298,21 @@ const STRINGS = {
     users: 'ユーザー',
     recalled: '取り消し',
     timeout: 'タイムアウト',
+    notifications: '通知',
+    notificationsDesc: 'メッセージとメールのデスクトップ通知。',
+    notifyMails: 'メール（受信トレイ）',
+    notifyDm: 'プライベートメッセージ',
+    notifyGroup: 'グループメッセージ',
+    doNotDisturb: 'おやすみモード',
+    dndSet: '設定',
+    dndCancel: 'キャンセル',
+    dndDays: '日',
+    dndHours: '時間',
+    dndMinutes: '分',
+    dndSeconds: '秒',
+    dndEndNow: 'おやすみモードを終了',
+    dndAtNight: '夜間おやすみモード',
+    scrollToBottom: '一番下へ',
     notifModalTitle: 'デスクトップ通知',
     notifModalDesc: 'このチャットアプリのデスクトップ通知をこのデバイスで受け取りますか？設定 → 通知で後から変更できます。',
     notifModalAllow: '通知を有効にする',
@@ -356,6 +385,21 @@ const STRINGS = {
     users: '사용자',
     recalled: '취소됨',
     timeout: '타임아웃',
+    notifications: '알림',
+    notificationsDesc: '메시지 및 메일용 데스크톱 알림.',
+    notifyMails: '메일(받은편지함)',
+    notifyDm: '개인 메시지',
+    notifyGroup: '그룹 메시지',
+    doNotDisturb: '방해 금지',
+    dndSet: '설정',
+    dndCancel: '취소',
+    dndDays: '일',
+    dndHours: '시간',
+    dndMinutes: '분',
+    dndSeconds: '초',
+    dndEndNow: '방해 금지 종료',
+    dndAtNight: '야간 방해 금지',
+    scrollToBottom: '맨 아래로',
     notifModalTitle: '데스크톱 알림',
     notifModalDesc: '이 채팅 앱의 데스크톱 알림을 이 기기에서 받으시겠습니까? 설정 → 알림에서 나중에 변경할 수 있습니다.',
     notifModalAllow: '알림 사용',
@@ -829,12 +873,24 @@ function ensureNotificationPermissionModalVisible() {
   showNotificationPermissionModal();
 }
 
+function isNightTime() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const hour = parseInt(new Date().toLocaleString('en-US', { timeZone: tz, hour: 'numeric', hour12: false }), 10);
+    return hour >= 22 || hour < 7;
+  } catch (_) {
+    const hour = new Date().getHours();
+    return hour >= 22 || hour < 7;
+  }
+}
+
 function shouldShowNotification(trigger, fromUserId) {
   const prefs = state.notificationPrefs;
   if (!prefs?.enabled) return false;
   if (document.hasFocus?.() && document.visibilityState === 'visible') return false;
   const now = Date.now();
   if (prefs.dnd_until && now < prefs.dnd_until) return false;
+  if (prefs.dnd_at_night && isNightTime()) return false;
   if (trigger === 'mail' && !prefs.notify_mails) return false;
   if (trigger === 'dm' && !prefs.notify_dm) return false;
   if (trigger === 'group' && !prefs.notify_group) return false;
@@ -3375,9 +3431,13 @@ function renderSettingsContent() {
           </div>
           <div id="notif-dnd" class="notif-dnd" style="${state.notificationPrefs?.enabled ? '' : 'opacity:0.5;pointer-events:none'}">
             <h4 class="settings-section-title">${t('doNotDisturb')}</h4>
-            <label>${t('dndUntil')}</label>
-            <input type="datetime-local" id="notif-dnd-until" value="${state.notificationPrefs?.dnd_until ? new Date(state.notificationPrefs.dnd_until).toISOString().slice(0, 16) : ''}" />
-            <button type="button" id="notif-dnd-clear" class="btn-small">Clear</button>
+            ${state.notificationPrefs?.dnd_until && Date.now() < state.notificationPrefs.dnd_until
+              ? `<button type="button" id="notif-dnd-end-now" class="btn-small btn-danger">${t('dndEndNow')}</button>`
+              : `<button type="button" id="notif-dnd-open" class="btn-secondary">${t('doNotDisturb')}</button>`}
+            <label class="settings-checkbox-label" style="margin-top:0.5rem;display:block">
+              <input type="checkbox" id="notif-dnd-at-night" ${state.notificationPrefs?.dnd_at_night ? 'checked' : ''} />
+              <span>${t('dndAtNight')}</span>
+            </label>
           </div>
         </div>
       </div>
@@ -3639,6 +3699,45 @@ async function init() {
   }
 }
 
+function showDndModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal dnd-modal" style="max-width: 320px;">
+      <h3>${t('doNotDisturb')}</h3>
+      <div class="dnd-modal-inputs">
+        <label><span>${t('dndDays')}</span><input type="number" id="dnd-days" min="0" value="0" /></label>
+        <label><span>${t('dndHours')}</span><input type="number" id="dnd-hours" min="0" value="0" /></label>
+        <label><span>${t('dndMinutes')}</span><input type="number" id="dnd-minutes" min="0" value="0" /></label>
+        <label><span>${t('dndSeconds')}</span><input type="number" id="dnd-seconds" min="0" value="0" /></label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="dnd-modal-cancel" class="modal-close">${t('dndCancel')}</button>
+        <button type="button" id="dnd-modal-set" class="btn-primary">${t('dndSet')}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.querySelector('#dnd-modal-cancel')?.addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#dnd-modal-set')?.addEventListener('click', async () => {
+    const days = Math.max(0, parseInt(overlay.querySelector('#dnd-days')?.value || '0', 10));
+    const hours = Math.max(0, parseInt(overlay.querySelector('#dnd-hours')?.value || '0', 10));
+    const minutes = Math.max(0, parseInt(overlay.querySelector('#dnd-minutes')?.value || '0', 10));
+    const seconds = Math.max(0, parseInt(overlay.querySelector('#dnd-seconds')?.value || '0', 10));
+    const totalMs = (days * 86400 + hours * 3600 + minutes * 60 + seconds) * 1000;
+    if (totalMs <= 0) { overlay.remove(); return; }
+    const dnd_until = Date.now() + totalMs;
+    try {
+      state.notificationPrefs = await apiPatch('/api/notifications/prefs', { dnd_until });
+      overlay.remove();
+      render();
+    } catch (_) {}
+  });
+  const onEscape = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onEscape); } };
+  document.addEventListener('keydown', onEscape);
+}
+
 function showPasswordModal() {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -3746,17 +3845,16 @@ function bindSettings() {
       state.notificationPrefs = await apiPatch('/api/notifications/prefs', { notify_group: !!e.target.checked });
     } catch (_) {}
   });
-  document.getElementById('notif-dnd-until')?.addEventListener('change', async (e) => {
-    const val = e.target.value;
-    const ts = val ? new Date(val).getTime() : null;
-    try {
-      state.notificationPrefs = await apiPatch('/api/notifications/prefs', { dnd_until: ts });
-    } catch (_) {}
-  });
-  document.getElementById('notif-dnd-clear')?.addEventListener('click', async () => {
-    document.getElementById('notif-dnd-until').value = '';
+  document.getElementById('notif-dnd-open')?.addEventListener('click', showDndModal);
+  document.getElementById('notif-dnd-end-now')?.addEventListener('click', async () => {
     try {
       state.notificationPrefs = await apiPatch('/api/notifications/prefs', { dnd_until: null });
+      render();
+    } catch (_) {}
+  });
+  document.getElementById('notif-dnd-at-night')?.addEventListener('change', async (e) => {
+    try {
+      state.notificationPrefs = await apiPatch('/api/notifications/prefs', { dnd_at_night: !!e.target.checked });
     } catch (_) {}
   });
   document.getElementById('open-password-modal')?.addEventListener('click', showPasswordModal);

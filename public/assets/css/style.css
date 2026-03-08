@@ -2564,9 +2564,26 @@ select:focus {
 .notif-dnd {
   margin-top: 1rem;
 }
-.notif-dnd input[type="datetime-local"] {
-  margin-right: 0.5rem;
-  margin-bottom: 0.5rem;
+.dnd-modal-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+.dnd-modal-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+.dnd-modal-inputs input {
+  padding: 0.5rem 0.6rem;
+  border: var(--border-width) solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-main);
+  color: var(--text);
+  font-size: 1rem;
 }
 
 .settings-notifications {

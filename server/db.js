@@ -99,11 +99,13 @@ try {
       dm_allow_list TEXT,
       dm_block_list TEXT,
       dnd_until INTEGER,
+      dnd_at_night INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id)
     )
   `);
 } catch (_) {}
+try { db.exec('ALTER TABLE user_notification_prefs ADD COLUMN dnd_at_night INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
 
 // Blacklist: blacklisted user cannot access group chat, only DM with jimmyqrg or allowed users
 try {

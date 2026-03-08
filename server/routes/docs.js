@@ -37,8 +37,8 @@ function parseJchatEntryItems(entry) {
   return list.split(',').map(s => s.trim()).filter(Boolean);
 }
 
-/** Extract items from the first N entries in jchat announcements (newest first). Default 5 entries. */
-function parseJchatEntriesItems(content, limit = 5) {
+/** Extract items from the first N entries in jchat announcements (newest first). Default 7 entries. */
+function parseJchatEntriesItems(content, limit = 7) {
   const title = '# Announcements';
   let rest = content.startsWith(title) ? content.slice(title.length).trim() : content.trim();
   if (!rest) return [];
@@ -75,7 +75,7 @@ router.post('/announcements/sync', requireAuth, async (req, res) => {
       SELECT id, content FROM doc_versions WHERE doc_key = 'announcements' ORDER BY created_at DESC LIMIT 1
     `).get();
     const currentContent = row?.content || '';
-    const jchatItems = parseJchatEntriesItems(currentContent, 5);
+    const jchatItems = parseJchatEntriesItems(currentContent, 7);
 
     const newItems = portalItems.filter(p => !itemMatches(p, jchatItems));
     if (!newItems.length) return res.json({ synced: false, reason: 'already_present' });
