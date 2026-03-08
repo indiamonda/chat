@@ -8,8 +8,8 @@ const EDITABLE_DOCS = ['problem_solving', 'rules', 'announcements'];
 
 const PORTAL_ANNOUNCEMENT_URL = 'https://jimmyqrg.github.io/?directly=1';
 
-/** Parse "Latest updates" and "History" list items from portal announcement HTML. Returns single paragraph. */
-function parsePortalAnnouncement(html) {
+/** Parse "Latest updates" and "History" list items from portal announcement HTML. Returns array of item strings (e.g. "Added Stickman Arena"). */
+function parsePortalAnnouncementItems(html) {
   const items = [];
   const latestMatch = html.match(/✨\s*Latest updates:[\s\S]*?<ul>([\s\S]*?)<\/ul>/i);
   if (latestMatch) {
@@ -21,34 +21,56 @@ function parsePortalAnnouncement(html) {
     const lis = historyMatch[1].match(/<li>([\s\S]*?)<\/li>/g) || [];
     lis.forEach(li => items.push(li.replace(/<\/?li>/g, '').replace(/<b>|<\/b>/gi, '**').replace(/<[^>]+>/g, '').trim()));
   }
-  return items.filter(Boolean).join('. ');
+  return items.filter(Boolean);
 }
 
-/** Sync announcements doc with portal: fetch portal, parse latest, prepend if missing. */
+/** Extract items from jchat's latest announcement entry. E.g. "**MM/DD/YYYY** Added Amenda, Potato." -> ["Amenda", "Potato"]. */
+function parseJchatLatestItems(content) {
+  const title = '# Announcements';
+  let rest = content.startsWith(title) ? content.slice(title.length).trim() : content.trim();
+  if (!rest) return [];
+  const firstEntry = rest.split(/\n\n+/)[0] || rest.split('\n')[0] || '';
+  const addedMatch = firstEntry.match(/\*\*[\d/]+\*\*\s*(?:Added\s+)?([^.]+)/i);
+  if (!addedMatch) return [];
+  const list = addedMatch[1].replace(/^Added\s+/i, '').replace(/\.$/, '').trim();
+  return list.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+/** Check if portal item matches any jchat item. E.g. "Added Amenda the Adventurer" matches jchat "Amenda". */
+function itemMatches(portalItem, jchatItems) {
+  const content = portalItem.replace(/^(Added|Updated|Fixed)\s+/i, '').trim().toLowerCase();
+  const firstWord = content.split(/\s+/)[0] || '';
+  return jchatItems.some(j => {
+    const jn = j.toLowerCase().trim();
+    return content.includes(jn) || jn.includes(firstWord) || jn.includes(content);
+  });
+}
+
+/** Sync announcements doc with portal: only add NEW items not already in jchat. */
 router.post('/announcements/sync', requireAuth, async (req, res) => {
   const user = getCurrentUser(req);
   if (!canEditDocs(user)) return res.status(403).json({ error: 'Not allowed to edit' });
   try {
     const resp = await fetch(PORTAL_ANNOUNCEMENT_URL, { headers: { 'User-Agent': 'JimmyQrg-Chat-Sync/1' } });
     const html = await resp.text();
-    const content = parsePortalAnnouncement(html);
-    if (!content) return res.json({ synced: false, reason: 'no_content' });
+    const portalItems = parsePortalAnnouncementItems(html);
+    if (!portalItems.length) return res.json({ synced: false, reason: 'no_content' });
+
+    const row = db.prepare(`
+      SELECT id, content FROM doc_versions WHERE doc_key = 'announcements' ORDER BY created_at DESC LIMIT 1
+    `).get();
+    const currentContent = row?.content || '';
+    const jchatItems = parseJchatLatestItems(currentContent);
+
+    const newItems = portalItems.filter(p => !itemMatches(p, jchatItems));
+    if (!newItems.length) return res.json({ synced: false, reason: 'already_present' });
 
     const now = new Date();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
     const yyyy = now.getFullYear();
     const dateLine = `**${mm}/${dd}/${yyyy}**`;
-    const newEntry = `${dateLine} ${content}`;
-
-    const row = db.prepare(`
-      SELECT id, content FROM doc_versions WHERE doc_key = 'announcements' ORDER BY created_at DESC LIMIT 1
-    `).get();
-    const currentContent = row?.content || '';
-
-    if (currentContent.includes(newEntry)) {
-      return res.json({ synced: false, reason: 'already_present' });
-    }
+    const newEntry = `${dateLine} ${newItems.join(', ')}`;
 
     const title = '# Announcements\n\n';
     const rest = currentContent.startsWith(title) ? currentContent.slice(title.length) : currentContent;
