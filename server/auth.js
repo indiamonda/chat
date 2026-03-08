@@ -105,9 +105,10 @@ export async function login(usernameOrEmail, password) {
   const input = (usernameOrEmail || '').trim().toLowerCase();
   const pass = (password || '').trim();
   const u = db.prepare(
-    'SELECT id, username, display_name, avatar_url, email, password_hash, is_allowed FROM users WHERE LOWER(username) = ? OR (email IS NOT NULL AND LOWER(email) = ?)'
+    'SELECT id, username, display_name, avatar_url, email, password_hash, is_allowed, deleted_at FROM users WHERE LOWER(username) = ? OR (email IS NOT NULL AND LOWER(email) = ?)'
   ).get(input, input);
   if (!u) return { error: 'Invalid credentials' };
+  if (u.deleted_at != null) return { error: 'This account has been deleted.' };
   const isPlaceholder = u.password_hash === PLACEHOLDER_PASSWORD || (String(u.password_hash || '').includes('placeholder'));
   let validPassword = false;
   if (isPlaceholder) {

@@ -24,6 +24,8 @@ let state = {
   inbox: [],
   friend_ids: [],
   blocked_ids: [],
+  blacklisted: false,
+  adminBlacklistedIds: [],
   supportMessageIdForSolve: null,
   leftBarExpanded: typeof localStorage !== 'undefined' && localStorage.getItem('leftBarExpanded') === '1',
   panelSearchOpen: false,
@@ -670,12 +672,19 @@ export async function loadMessages(roomType, roomId) {
     const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
     const { messages } = await apiGet(path);
     state.messages[key] = messages || [];
+    state.blacklisted = false;
     const list = state.messages[key];
     if (currentRoomKey() === key && list.length) {
       const maxAt = Math.max(...list.map(m => m.created_at || 0));
       state.lastSeenByRoom[key] = Math.max(state.lastSeenByRoom[key] || 0, maxAt);
     }
     return list;
+  } catch (err) {
+    if (roomType === 'group' && err?.status === 403 && /blacklist/i.test(err?.message || '')) {
+      state.blacklisted = true;
+      state.messages[key] = [];
+    }
+    throw err;
   } finally {
     state._loadingMessages[key] = false;
   }
@@ -784,6 +793,22 @@ function showDesktopNotification(title, body) {
 
 function isBlocked(userId) {
   return state.blocked_ids && state.blocked_ids.includes(userId);
+}
+
+function isUserDeleted(userId) {
+  const u = (state.users || []).find(x => x.id === userId);
+  return u && u.deleted_at != null;
+}
+
+/** Returns usernames of deleted users mentioned in content (excluding @All). */
+function getMentionedDeletedUsers(content) {
+  if (!content || typeof content !== 'string') return [];
+  const mentioned = [...(content.matchAll(/\@([a-z0-9]+)/gi) || [])].map(m => m[1].toLowerCase());
+  const deleted = [];
+  for (const u of (state.users || [])) {
+    if (u.deleted_at != null && mentioned.includes((u.username || '').toLowerCase())) deleted.push(u.display_name || u.username || u.id);
+  }
+  return deleted;
 }
 
 function isFriend(userId) {
@@ -902,8 +927,8 @@ function connectSocket() {
     const m = findMessageInState(id);
     if (m) removeMessageLocal(id, m.room_type, m.room_id);
   });
-  s.on('kicked', () => {
-    alert('You have been kicked from the group.');
+  s.on('account_removed', () => {
+    alert('Your account has been removed.');
     window.location.reload();
   });
   s.on('inbox:item', (item) => {
@@ -1390,30 +1415,38 @@ function renderChatArea() {
   const replyPreview = state.replyTo ? getReplyPreview(state.replyTo) : null;
 
   const loading = state._loadingMessages?.[key];
-  const emptyContent = loading
-    ? Array(5).fill(0).map((_, i) => `
-      <div class="message-skeleton" key="${i}">
-        <div class="message-skeleton-avatar"></div>
-        <div class="message-skeleton-body">
-          <div class="message-skeleton-line message-skeleton-line-short"></div>
-          <div class="message-skeleton-line"></div>
-          <div class="message-skeleton-line message-skeleton-line-medium"></div>
+  const accessDenied = roomType === 'group' && state.blacklisted;
+  const emptyContent = accessDenied
+    ? '<div class="messages-access-denied">Access denied. You are blacklisted from group chat. You can only private chat with JimmyQrg or allowed users.</div>'
+    : loading
+      ? Array(5).fill(0).map((_, i) => `
+        <div class="message-skeleton" key="${i}">
+          <div class="message-skeleton-avatar"></div>
+          <div class="message-skeleton-body">
+            <div class="message-skeleton-line message-skeleton-line-short"></div>
+            <div class="message-skeleton-line"></div>
+            <div class="message-skeleton-line message-skeleton-line-medium"></div>
+          </div>
         </div>
-      </div>
-    `).join('')
-    : list.length === 0
-      ? '<div class="messages-empty">No messages yet.</div>'
-      : renderMessagesWithTimestamps(list, roomType, roomId);
+      `).join('')
+      : list.length === 0
+        ? '<div class="messages-empty">No messages yet.</div>'
+        : renderMessagesWithTimestamps(list, roomType, roomId);
+
+  const deletedUserBanner = roomType === 'dm' && state.dmUserId && isUserDeleted(state.dmUserId)
+    ? '<div class="deleted-user-banner">This account has been deleted.</div>'
+    : '';
 
   return `
     <div class="chat-area">
+    ${deletedUserBanner}
     <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
       ${emptyContent}
     </div>
     <button type="button" class="scroll-to-bottom" aria-label="Scroll to bottom" title="Scroll to bottom" style="display:none">
       <span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></span>
     </button>
-    ${(roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm' ? `
+    ${!accessDenied && ((roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm') ? `
     <div class="composer ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
       ${replyPreview ? `
         <div class="composer-reply">
@@ -2326,7 +2359,7 @@ function bindMain() {
         items.push({ label: 'Edit', action: 'edit' });
       }
       if (state.user?.can_delete_messages) items.push({ label: 'Delete (admin)', action: 'delete', danger: true });
-      if (state.user?.can_kick) items.push({ label: 'Kick user', action: 'kick' });
+      if (state.user?.can_kick) items.push({ label: 'Remove account', action: 'remove-account' });
       if (canSolve) items.push({ label: 'Solve', action: 'solve' });
       const fileRef = parseFileRef(msg.content, msg.msg_type);
       if (fileRef) items.push({ label: 'Get file id', action: 'get-file-id' });
@@ -2353,7 +2386,7 @@ function bindMain() {
         else if (action === 'delete') {
           if (confirm('Are you sure you want to delete this message?')) state.socket?.emit('message:delete', msgId, () => {});
         }
-        if (action === 'kick') kickUser(senderId);
+        if (action === 'remove-account') removeAccount(senderId);
         if (action === 'solve') {
           state.supportMessageIdForSolve = msgId;
           navigateTo('/chat/group?panel=problem');
@@ -2541,8 +2574,14 @@ function bindMain() {
         }
       }
 
-      state._sendingMessage = true;
       const reply_to_id = state.replyTo?.id || null;
+      const contentToCheck = text || '';
+      const mentionedDeleted = roomType === 'group' ? getMentionedDeletedUsers(contentToCheck) : [];
+      if (mentionedDeleted.length) {
+        alert(`Note: You're mentioning user(s) whose accounts have been deleted: ${mentionedDeleted.join(', ')}.`);
+      }
+
+      state._sendingMessage = true;
       const canSendFiles = roomType === 'dm' ? isFriend(state.dmUserId) : true;
       const done = () => { state._sendingMessage = false; };
       if (state._pendingFile) {
@@ -2809,13 +2848,78 @@ function startInlineEdit(msg) {
   setState({ editingMessageId: msg.id });
 }
 
-function kickUser(userId) {
-  fetch('/api/admin/kick', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId }),
-  }).then(r => r.json()).then(() => {}).catch(console.error);
+async function removeAccount(userId) {
+  if (!confirm('Remove this account? The user will not be able to log in. Messages stay. You can restore later.')) return;
+  try {
+    await apiPost('/api/admin/remove-account', { user_id: userId });
+    await loadUsers();
+    render();
+    bindAdmin();
+  } catch (err) { alert(err.message); }
+}
+
+async function restoreAccount(userId) {
+  try {
+    await apiPost('/api/admin/restore-account', { user_id: userId });
+    await loadUsers();
+    render();
+    bindAdmin();
+  } catch (err) { alert(err.message); }
+}
+
+function showDeletePermanentlyModal(userId) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay profile-modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal profile-modal admin-delete-modal">
+      <button type="button" class="profile-modal-close" aria-label="Close">&times;</button>
+      <h3>Delete account permanently</h3>
+      <p>This will remove the user from the user list, remove them from private chat lists, and clear all data about them. This cannot be undone.</p>
+      <label class="admin-delete-msgs-label"><input type="checkbox" id="admin-delete-msgs-cb" checked /> Delete messages in group chat also</label>
+      <div class="admin-delete-modal-actions">
+        <button type="button" class="btn-small" id="admin-delete-cancel">Cancel</button>
+        <button type="button" class="btn-small btn-danger" id="admin-delete-confirm">Delete permanently</button>
+      </div>
+    </div>
+  `;
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay || e.target.closest('.profile-modal-close') || e.target.id === 'admin-delete-cancel') overlay.remove();
+  });
+  overlay.querySelector('#admin-delete-confirm')?.addEventListener('click', async () => {
+    const cb = overlay.querySelector('#admin-delete-msgs-cb');
+    overlay.remove();
+    try {
+      await apiPost('/api/admin/delete-account-permanently', { user_id: userId, delete_group_messages: cb?.checked !== false });
+      await loadUsers();
+      render();
+      bindAdmin();
+    } catch (err) { alert(err.message); }
+  });
+  document.body.appendChild(overlay);
+}
+
+async function deleteAccountPermanently(userId, deleteGroupMessages = true) {
+  try {
+    await apiPost('/api/admin/delete-account-permanently', { user_id: userId, delete_group_messages: deleteGroupMessages });
+    await loadUsers();
+    render();
+    bindAdmin();
+  } catch (err) { alert(err.message); }
+}
+
+async function toggleBlacklist(userId, isBlacklisted) {
+  try {
+    if (isBlacklisted) {
+      await apiDelete(`/api/admin/blacklist/${userId}`);
+    } else {
+      await apiPost('/api/admin/blacklist', { user_id: userId });
+    }
+    state.adminBlacklistedIds = isBlacklisted
+      ? (state.adminBlacklistedIds || []).filter(id => id !== userId)
+      : [...(state.adminBlacklistedIds || []), userId];
+    render();
+    bindAdmin();
+  } catch (err) { alert(err.message); }
 }
 
 function renderAdminContent() {
@@ -2908,7 +3012,7 @@ function renderAdminContent() {
             <div class="admin-users-list" id="admin-user-list">
               ${users.map(u => {
                 const canManage = state.user?.can_manage_users;
-                const permLabels = { can_send_inbox: 'Send mail', can_broadcast: 'Broadcast', can_edit_docs: 'Edit docs', can_kick: 'Kick users', can_delete_messages: 'Delete messages', can_manage_users: 'Manage users', can_timeout: 'Time out' };
+                const permLabels = { can_send_inbox: 'Send mail', can_broadcast: 'Broadcast', can_edit_docs: 'Edit docs', can_kick: 'Remove account', can_delete_messages: 'Delete messages', can_manage_users: 'Manage users', can_timeout: 'Time out' };
                 const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout'];
                 const isAdmin = u.id === 'jimmyqrg';
                 const showPerms = canManage && !isAdmin && u.is_allowed;
@@ -2919,12 +3023,16 @@ function renderAdminContent() {
                   <img src="${avSrcU}" data-fallback="${defAvU.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="admin-user-avatar" />
                   <div class="admin-user-info">
                     <span class="admin-user-name">${escapeHtml(u.display_name || u.username)}</span>
-                    <span class="admin-user-meta">${isAdmin ? 'Admin' : (u.is_allowed ? 'On admin list' : 'Member')}</span>
+                    <span class="admin-user-meta">${isAdmin ? 'Admin' : u.deleted_at ? 'Deleted' : (u.is_allowed ? 'On admin list' : 'Member')}</span>
                   </div>
                   ${!isAdmin ? `
                   <div class="admin-user-actions">
                     ${canManage ? `<button type="button" class="btn-small" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}">${u.is_allowed ? 'Remove from list' : 'Add to list'}</button>` : ''}
-                    ${state.user?.can_kick ? `<button type="button" class="btn-small btn-danger" data-action="kick" data-user-id="${u.id}">Kick</button>` : ''}
+                    ${state.user?.can_kick ? (u.deleted_at
+                      ? `<button type="button" class="btn-small" data-action="restore" data-user-id="${u.id}">Restore</button>
+                         <button type="button" class="btn-small btn-danger" data-action="delete-permanently" data-user-id="${u.id}">Delete permanently</button>`
+                      : `<button type="button" class="btn-small btn-danger" data-action="remove-account" data-user-id="${u.id}">Remove account</button>
+                         <button type="button" class="btn-small" data-action="blacklist" data-user-id="${u.id}" data-blacklisted="${(state.adminBlacklistedIds || []).includes(u.id) ? '1' : '0'}">${(state.adminBlacklistedIds || []).includes(u.id) ? 'Unblacklist' : 'Blacklist'}</button>`) : ''}
                   </div>
                   ${showPerms ? `
                   <div class="admin-user-perms">
@@ -2958,6 +3066,14 @@ async function loadAdminRecalled() {
   } catch (err) {
     el.innerHTML = '<p class="admin-section-desc">Failed to load.</p>';
   }
+}
+
+async function loadAdminBlacklist() {
+  if (!state.user?.can_kick) return;
+  try {
+    const { blacklisted_ids } = await apiGet('/api/admin/blacklist');
+    state.adminBlacklistedIds = blacklisted_ids || [];
+  } catch (_) { state.adminBlacklistedIds = []; }
 }
 
 async function loadAdminTimeouts() {
@@ -3041,7 +3157,10 @@ function bindAdmin() {
     const btn = e.target.closest('button[data-action]');
     if (btn) {
       const userId = btn.dataset.userId;
-      if (btn.dataset.action === 'kick') kickUser(userId);
+      if (btn.dataset.action === 'remove-account') removeAccount(userId);
+      if (btn.dataset.action === 'restore') restoreAccount(userId);
+      if (btn.dataset.action === 'delete-permanently') showDeletePermanentlyModal(userId);
+      if (btn.dataset.action === 'blacklist') toggleBlacklist(userId, btn.dataset.blacklisted === '1');
       if (btn.dataset.action === 'allowed') {
         const allowed = btn.dataset.allowed !== '1';
         try {
@@ -3238,8 +3357,10 @@ function applyRoute(route) {
       return;
     }
     setState({ panel: '', dmUserId: null });
-    render();
-    bindAdmin();
+    loadAdminBlacklist().then(() => {
+      render();
+      bindAdmin();
+    });
     return;
   }
   if (route.page === 'chat') {

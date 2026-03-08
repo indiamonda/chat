@@ -7,7 +7,7 @@ import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
 import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages, canTimeout } from './auth.js';
-import { db, GROUP_ID, PANELS } from './db.js';
+import { db, GROUP_ID, PANELS, isBlacklisted, isUserDeleted } from './db.js';
 import { upload } from './upload.js';
 import { getUploadUrl, getFileRef } from './upload.js';
 import authRoutes from './routes/auth.js';
@@ -168,6 +168,9 @@ app.get('/api/group', requireAuth, (req, res) => {
 app.get('/api/rooms/:roomType/:roomId/messages', requireAuth, (req, res) => {
   const user = getCurrentUser(req);
   const { roomType, roomId } = req.params;
+  if (roomType === 'group' && isBlacklisted(user.id)) {
+    return res.status(403).json({ error: 'Access denied. You are blacklisted from group chat.' });
+  }
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
   const before = req.query.before ? parseInt(req.query.before, 10) : Date.now();
   const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(user.id).map(r => r.blocked_id);
@@ -409,12 +412,13 @@ io.use((socket, next) => {
     if (!userId) return next(new Error('Not authenticated'));
     socket.userId = userId;
     try {
-      socket.user = db.prepare('SELECT id, username, display_name, avatar_url, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_timeout FROM users WHERE id = ?').get(userId);
+      socket.user = db.prepare('SELECT id, username, display_name, avatar_url, deleted_at, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_timeout FROM users WHERE id = ?').get(userId);
     } catch (e) {
       console.error('Socket user lookup error:', e);
       return next(new Error('User not found'));
     }
     if (!socket.user) return next(new Error('User not found'));
+    if (socket.user.deleted_at != null) return next(new Error('Account has been deleted'));
     socket.user.is_allowed = !!socket.user.is_allowed;
     socket.user.can_send_inbox = !!socket.user.can_send_inbox;
     socket.user.can_broadcast = !!socket.user.can_broadcast;
@@ -426,11 +430,6 @@ io.use((socket, next) => {
   });
 });
 
-function isKicked(userId) {
-  const row = db.prepare('SELECT id FROM kicked WHERE user_id = ? AND room_type = ? AND room_id = ?').get(userId, 'group', GROUP_ID);
-  return !!row;
-}
-
 function isTimedOut(userId) {
   const now = Date.now();
   const row = db.prepare(
@@ -440,13 +439,10 @@ function isTimedOut(userId) {
 }
 
 io.on('connection', (socket) => {
-  if (isKicked(socket.userId)) {
-    socket.emit('kicked', {});
-    socket.disconnect(true);
-    return;
-  }
-  socket.join(`group:${GROUP_ID}`);
   socket.join(`user:${socket.userId}`);
+  if (!isBlacklisted(socket.userId)) {
+    socket.join(`group:${GROUP_ID}`);
+  }
 
   socket.on('dm:join', (convId, ack) => {
     const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(convId);
@@ -464,6 +460,10 @@ io.on('connection', (socket) => {
       const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(roomId);
       if (!conv || (conv.user1_id !== socket.userId && conv.user2_id !== socket.userId)) return ack?.({ error: 'Forbidden' });
       const otherId = conv.user1_id === socket.userId ? conv.user2_id : conv.user1_id;
+      if (isBlacklisted(socket.userId)) {
+        const other = db.prepare('SELECT id, is_allowed FROM users WHERE id = ?').get(otherId);
+        if (!other || (other.id !== 'jimmyqrg' && !other.is_allowed)) return ack?.({ error: 'Access denied. Blacklisted users can only DM with JimmyQrg or allowed users.' });
+      }
       if (!areFriends(socket.userId, otherId)) {
         const myCount = db.prepare('SELECT COUNT(*) as c FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?').get('dm', roomId, socket.userId).c;
         const otherCount = db.prepare('SELECT COUNT(*) as c FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?').get('dm', roomId, otherId).c;
@@ -483,8 +483,11 @@ io.on('connection', (socket) => {
       io.to(`dm:${roomId}`).emit('message', msg);
       return ack?.({ message: msg });
     }
-    if (roomType === 'group' && !['free_chat', 'support'].includes(roomId)) return ack?.({ error: 'Invalid panel' });
-    if (roomType === 'group' && isTimedOut(socket.userId)) return ack?.({ error: 'You are timed out from group chat' });
+    if (roomType === 'group') {
+      if (isBlacklisted(socket.userId)) return ack?.({ error: 'Access denied. You are blacklisted from group chat.' });
+      if (!['free_chat', 'support'].includes(roomId)) return ack?.({ error: 'Invalid panel' });
+      if (isTimedOut(socket.userId)) return ack?.({ error: 'You are timed out from group chat' });
+    }
     db.prepare(`
       INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -556,13 +559,14 @@ io.on('connection', (socket) => {
     ack?.({ ok: true });
   });
 
-  socket.on('kick', (userId, ack) => {
+  socket.on('remove-account', (userId, ack) => {
     if (!canKick(socket.user)) return ack?.({ error: 'Not allowed' });
-    if (userId === 'jimmyqrg') return ack?.({ error: 'Cannot kick jimmyqrg' });
-    db.prepare(`
-      INSERT INTO kicked (id, user_id, room_type, room_id, kicked_by, created_at) VALUES (?, ?, 'group', ?, ?, ?)
-    `).run(randomUUID(), userId, GROUP_ID, socket.userId, Date.now());
-    io.to(`user:${userId}`).emit('kicked', {});
+    if (userId === 'jimmyqrg') return ack?.({ error: 'Cannot remove jimmyqrg' });
+    const target = db.prepare('SELECT id, deleted_at FROM users WHERE id = ?').get(userId);
+    if (!target) return ack?.({ error: 'User not found' });
+    if (target.deleted_at) return ack?.({ error: 'Account already removed' });
+    db.prepare('UPDATE users SET deleted_at = ? WHERE id = ?').run(Date.now(), userId);
+    io.to(`user:${userId}`).emit('account_removed', {});
     ack?.({ ok: true });
   });
 

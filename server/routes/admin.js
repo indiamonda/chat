@@ -11,19 +11,99 @@ function assertAllowed(req, res) {
   return user;
 }
 
-// Kick user from group (we store kick record; socket layer will disconnect/not allow rejoin until logic says so)
-router.post('/kick', requireAuth, (req, res) => {
+// List blacklisted user ids
+router.get('/blacklist', requireAuth, (req, res) => {
   const admin = assertAllowed(req, res);
   if (admin === undefined) return;
-  if (!canKick(admin)) return res.status(403).json({ error: 'Not allowed to kick' });
+  const rows = db.prepare('SELECT user_id FROM blacklist').all();
+  res.json({ blacklisted_ids: rows.map(r => r.user_id) });
+});
+
+// Blacklist user – blacklisted user cannot access group chat, only DM with jimmyqrg or allowed users
+router.post('/blacklist', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (!canKick(admin)) return res.status(403).json({ error: 'Not allowed' });
   const { user_id } = req.body || {};
   if (!user_id) return res.status(400).json({ error: 'user_id required' });
-  if (user_id === 'jimmyqrg') return res.status(403).json({ error: 'Cannot kick jimmyqrg' });
-  const id = randomUUID();
-  db.prepare(`
-    INSERT INTO kicked (id, user_id, room_type, room_id, kicked_by, created_at)
-    VALUES (?, ?, 'group', ?, ?, ?)
-  `).run(id, user_id, GROUP_ID, admin.id, Date.now());
+  if (user_id === 'jimmyqrg') return res.status(403).json({ error: 'Cannot blacklist jimmyqrg' });
+  const target = db.prepare('SELECT id FROM users WHERE id = ?').get(user_id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  db.prepare('INSERT OR REPLACE INTO blacklist (user_id, created_by, created_at) VALUES (?, ?, ?)')
+    .run(user_id, admin.id, Date.now());
+  res.json({ ok: true });
+});
+
+router.delete('/blacklist/:userId', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (!canKick(admin)) return res.status(403).json({ error: 'Not allowed' });
+  db.prepare('DELETE FROM blacklist WHERE user_id = ?').run(req.params.userId);
+  res.json({ ok: true });
+});
+
+// Remove account (soft delete) – user cannot log in, messages stay, can be restored
+router.post('/remove-account', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (!canKick(admin)) return res.status(403).json({ error: 'Not allowed' });
+  const { user_id } = req.body || {};
+  if (!user_id) return res.status(400).json({ error: 'user_id required' });
+  if (user_id === 'jimmyqrg') return res.status(403).json({ error: 'Cannot remove jimmyqrg' });
+  const target = db.prepare('SELECT id, deleted_at FROM users WHERE id = ?').get(user_id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (target.deleted_at) return res.status(400).json({ error: 'Account already removed' });
+  db.prepare('UPDATE users SET deleted_at = ? WHERE id = ?').run(Date.now(), user_id);
+  const io = req.app.get('io');
+  if (io) io.to(`user:${user_id}`).emit('account_removed', {});
+  res.json({ ok: true });
+});
+
+// Restore removed account
+router.post('/restore-account', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (!canKick(admin)) return res.status(403).json({ error: 'Not allowed' });
+  const { user_id } = req.body || {};
+  if (!user_id) return res.status(400).json({ error: 'user_id required' });
+  const target = db.prepare('SELECT id, deleted_at FROM users WHERE id = ?').get(user_id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (!target.deleted_at) return res.status(400).json({ error: 'Account is not removed' });
+  db.prepare('UPDATE users SET deleted_at = NULL WHERE id = ?').run(user_id);
+  res.json({ ok: true });
+});
+
+// Permanently delete account – removes user and optionally their group messages. Only jimmyqrg can do this.
+router.post('/delete-account-permanently', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (admin.id !== 'jimmyqrg') return res.status(403).json({ error: 'Only jimmyqrg can permanently delete accounts' });
+  const { user_id, delete_group_messages } = req.body || {};
+  if (!user_id) return res.status(400).json({ error: 'user_id required' });
+  if (user_id === 'jimmyqrg') return res.status(403).json({ error: 'Cannot delete jimmyqrg' });
+  const target = db.prepare('SELECT id FROM users WHERE id = ?').get(user_id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  const delGroupMsgs = delete_group_messages !== false; // default true
+  if (delGroupMsgs) {
+    db.prepare('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE room_type = ? AND room_id = ? AND sender_id = ?')
+      .run('deleted', 'group', GROUP_ID, user_id);
+  }
+  db.prepare('DELETE FROM blacklist WHERE user_id = ?').run(user_id);
+  db.prepare('DELETE FROM blocked_users WHERE user_id = ? OR blocked_id = ?').run(user_id, user_id);
+  db.prepare('DELETE FROM friendships WHERE user1_id = ? OR user2_id = ?').run(user_id, user_id);
+  db.prepare('DELETE FROM friend_request_log WHERE from_id = ? OR to_id = ?').run(user_id, user_id);
+  db.prepare('DELETE FROM message_likes WHERE user_id = ?').run(user_id);
+  db.prepare('DELETE FROM inbox WHERE user_id = ?').run(user_id);
+  db.prepare('DELETE FROM user_notification_prefs WHERE user_id = ?').run(user_id);
+  const convs = db.prepare('SELECT id FROM conversations WHERE user1_id = ? OR user2_id = ?').all(user_id, user_id);
+  for (const c of convs) {
+    db.prepare('DELETE FROM messages WHERE room_type = ? AND room_id = ?').run('dm', c.id);
+    db.prepare('DELETE FROM conversations WHERE id = ?').run(c.id);
+  }
+  db.prepare('DELETE FROM kicked WHERE user_id = ?').run(user_id);
+  db.prepare('DELETE FROM group_timeouts WHERE user_id = ?').run(user_id);
+  db.prepare('DELETE FROM doc_versions WHERE editor_id = ?').run(user_id);
+  db.prepare('DELETE FROM users WHERE id = ?').run(user_id);
   res.json({ ok: true });
 });
 

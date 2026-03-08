@@ -11,12 +11,13 @@ router.get('/', requireAuth, (req, res) => {
   const canSeeAllowed = me?.is_allowed;
   const canSeePerms = canManageUsers(me);
   const list = db.prepare(`
-    SELECT id, username, display_name, avatar_url${canSeeAllowed ? ', is_allowed' : ''}${canSeePerms ? `, ${PERM_COLS}` : ''}
+    SELECT id, username, display_name, avatar_url, deleted_at${canSeeAllowed ? ', is_allowed' : ''}${canSeePerms ? `, ${PERM_COLS}` : ''}
     FROM users
     ORDER BY username
   `).all();
   const users = list.map(u => {
     const out = { ...u };
+    out.deleted_at = u.deleted_at || null;
     if (!canSeeAllowed) delete out.is_allowed;
     else out.is_allowed = !!u.is_allowed;
     if (canSeePerms) {

@@ -105,6 +105,22 @@ try {
   `);
 } catch (_) {}
 
+// Blacklist: blacklisted user cannot access group chat, only DM with jimmyqrg or allowed users
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS blacklist (
+      user_id TEXT PRIMARY KEY,
+      created_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  `);
+} catch (_) {}
+
+// users.deleted_at: soft delete (timestamp) or null (active). Permanently deleted users are removed from DB.
+try { db.exec('ALTER TABLE users ADD COLUMN deleted_at INTEGER'); } catch (_) {}
+
 const USERNAME_RE = /^[a-z0-9]+$/;
 export function validateUsername(username) {
   return typeof username === 'string' && USERNAME_RE.test(username) && username.length >= 1 && username.length <= 32;
@@ -112,3 +128,15 @@ export function validateUsername(username) {
 
 export const GROUP_ID = 'JimmyQrg';
 export const PANELS = ['announcements', 'free_chat', 'support', 'problem_solving', 'rules'];
+
+export function isBlacklisted(userId) {
+  if (!userId) return false;
+  const row = db.prepare('SELECT 1 FROM blacklist WHERE user_id = ?').get(userId);
+  return !!row;
+}
+
+export function isUserDeleted(userId) {
+  if (!userId) return false;
+  const row = db.prepare('SELECT deleted_at FROM users WHERE id = ?').get(userId);
+  return row && row.deleted_at != null;
+}
