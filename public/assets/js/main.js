@@ -47,7 +47,17 @@ let state = {
   _recordingChunks: [],
   commandMode: typeof localStorage !== 'undefined' && localStorage.getItem('commandMode') === '1',
   notificationPrefs: null,
+  drafts: {},
 };
+
+if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+  try {
+    const rawDrafts = localStorage.getItem('chat_drafts_v1');
+    if (rawDrafts) state.drafts = JSON.parse(rawDrafts) || {};
+  } catch (_) {
+    state.drafts = {};
+  }
+}
 
 if (typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('lang', state.language || 'en');
 
@@ -1227,6 +1237,34 @@ const URL_TO_PANEL = { chat: 'free_chat', support: 'support', problem: 'problem_
 
 function roomKey(roomType, roomId) {
   return `${roomType}:${roomId}`;
+}
+
+function getDraftKey(roomType, roomId) {
+  return roomId ? roomKey(roomType, roomId) : null;
+}
+
+function saveDraft(roomType, roomId, text) {
+  const key = getDraftKey(roomType, roomId);
+  if (!key || typeof window === 'undefined' || typeof localStorage === 'undefined') return;
+  state.drafts = state.drafts || {};
+  if (!text) {
+    delete state.drafts[key];
+  } else {
+    state.drafts[key] = text;
+  }
+  try {
+    localStorage.setItem('chat_drafts_v1', JSON.stringify(state.drafts));
+  } catch (_) {}
+}
+
+function getDraft(roomType, roomId) {
+  const key = getDraftKey(roomType, roomId);
+  if (!key) return '';
+  return (state.drafts && state.drafts[key]) || '';
+}
+
+function clearDraft(roomType, roomId) {
+  saveDraft(roomType, roomId, '');
 }
 
 function currentRoomKey() {
@@ -2449,7 +2487,7 @@ function renderChatArea() {
     <div class="composer composer-profile-view ${!isFriend(route.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${isFriend(route.dmUserId)}">
       <div class="composer-row">
         <div class="composer-input-wrap">
-          <textarea id="composer-input" placeholder="Message…" rows="1"></textarea>
+          <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(getDraft('dm', route.dmUserId))}</textarea>
           <div class="composer-actions">
             <button type="button" id="composer-mic" title="Record voice message" ${!isFriend(route.dmUserId) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
             <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
@@ -2518,7 +2556,7 @@ function renderChatArea() {
       ` : ''}
       <div class="composer-row">
         <div class="composer-input-wrap">
-          <textarea id="composer-input" placeholder="Message…" rows="1"></textarea>
+          <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(getDraft(roomType, roomId))}</textarea>
           <div class="composer-actions">
             ${roomType === 'group' ? `<button type="button" id="composer-command-mode" class="composer-command-btn ${state.commandMode ? 'composer-command-btn-on' : ''}" title="${state.commandMode ? 'Command mode on (e.g. /games, /wordle, /file &lt;id&gt;)' : 'Command mode off (send as text)'}" aria-label="Toggle command mode" aria-pressed="${state.commandMode}"><span class="icon" aria-hidden="true">${ICON_COMMAND}</span></button>` : ''}
             <button type="button" id="composer-mic" title="Record voice message" ${(roomType === 'dm' && !isFriend(state.dmUserId)) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
@@ -3752,6 +3790,7 @@ function bindMain() {
         setState({ replyTo: null });
         input.value = '';
         resizeComposerInput();
+        clearDraft(roomType, roomId);
       });
     };
     sendBtn.addEventListener('click', send);
@@ -3762,7 +3801,12 @@ function bindMain() {
         send();
       }
     });
-    input.addEventListener('input', resizeComposerInput);
+    input.addEventListener('input', () => {
+      resizeComposerInput();
+      const roomType = state.dmUserId ? 'dm' : 'group';
+      const roomId = state.dmUserId ? state.convId : state.panel;
+      saveDraft(roomType, roomId, input.value);
+    });
     requestAnimationFrame(resizeComposerInput);
   }
 
