@@ -4272,12 +4272,6 @@ function bindAdmin() {
   });
 
   document.getElementById('admin-user-list')?.addEventListener('click', async (e) => {
-    const card = e.target.closest('.admin-user-card');
-    if (card && !e.target.closest('button')) {
-      const userId = card.dataset.userId;
-      if (userId) showProfileModal(userId);
-      return;
-    }
     const btn = e.target.closest('button[data-action]');
     if (btn) {
       const userId = btn.dataset.userId;
