@@ -49,8 +49,8 @@ let state = {
 };
 if (typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('lang', state.language || 'en');
 
-/** Hardcoded UI strings (no Google Translate). */
-const STRINGS = {
+/** Fallback strings until data.json loads. Full translations in /assets/translation/data.json */
+const DEFAULT_STRINGS = {
   en: {
     general: 'General',
     profile: 'Profile',
@@ -209,9 +209,27 @@ const STRINGS = {
     adminTimeoutForever: 'forever',
     adminTimeoutLocked: '(locked)',
     adminRelease: 'Release',
-  },
-  zh: {
-    general: '通用',
+  }
+};
+let STRINGS = { ...DEFAULT_STRINGS };
+
+async function loadTranslationData() {
+  try {
+    const r = await fetch('/assets/translation/data.json');
+    const data = await r.json();
+    if (data.strings) STRINGS = data.strings;
+    if (data.languages) state.languageOptions = data.languages;
+    setState({});
+  } catch (e) { console.warn('Failed to load translations', e); }
+}
+
+function t(key) {
+  const lang = state.language || 'en';
+  const strings = STRINGS[lang] || STRINGS.en;
+  return strings[key] != null ? strings[key] : (STRINGS.en[key] != null ? STRINGS.en[key] : key);
+}
+
+const _REMOVED_TRANSLATIONS = {
     profile: '个人资料',
     account: '账号',
     settings: '设置',
