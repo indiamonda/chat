@@ -146,6 +146,60 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Collections: saved messages per user
+app.get('/api/collections', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  const rows = db.prepare(`
+    SELECT c.id, c.message_id, c.room_type, c.room_id, c.sender_id, c.sender_username, c.sender_display_name,
+           c.content_snapshot, c.msg_type, c.message_created_at, c.created_at
+    FROM message_collections c
+    WHERE c.user_id = ?
+    ORDER BY c.created_at DESC
+  `).all(user.id);
+  res.json({ items: rows });
+});
+
+app.post('/api/collections', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  const { message_id } = req.body || {};
+  if (!message_id) return res.status(400).json({ error: 'message_id required' });
+  const msg = db.prepare(`
+    SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.created_at,
+           u.username, u.display_name
+    FROM messages m
+    LEFT JOIN users u ON u.id = m.sender_id
+    WHERE m.id = ? AND m.deleted_by_admin = 0
+  `).get(message_id);
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO message_collections (id, user_id, message_id, room_type, room_id, sender_id,
+      sender_username, sender_display_name, content_snapshot, msg_type, message_created_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    user.id,
+    msg.id,
+    msg.room_type,
+    msg.room_id,
+    msg.sender_id,
+    msg.username || null,
+    msg.display_name || null,
+    msg.content || '',
+    msg.msg_type || 'text',
+    msg.created_at,
+    now
+  );
+  res.status(201).json({ ok: true, id });
+});
+
+app.delete('/api/collections/:id', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  db.prepare('DELETE FROM message_collections WHERE id = ? AND user_id = ?').run(req.params.id, user.id);
+  res.json({ ok: true });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/docs', docsRoutes);

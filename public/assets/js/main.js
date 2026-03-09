@@ -244,6 +244,10 @@ const DEFAULT_STRINGS = {
     adminTimeoutForever: 'forever',
     adminTimeoutLocked: '(locked)',
     adminRelease: 'Release',
+    collections: 'Collections',
+    noCollections: 'No saved messages yet.',
+    addToCollection: 'Add to collection',
+    addedToCollection: 'Added to collections',
   }
 };
 let STRINGS = { ...DEFAULT_STRINGS };
@@ -1444,6 +1448,7 @@ function parseRoute() {
   if (path === '/signup') return { page: 'signup', redirect };
   if (path === '/settings') return { page: 'settings', tab: params.get('tab') || 'profile' };
   if (path === '/inbox') return { page: 'inbox' };
+  if (path === '/collections') return { page: 'collections' };
   if (path === '/manage' || path === '/manage/') return { page: 'admin', adminTab: params.get('tab') || 'action' };
   if (path === '/chat') return { page: 'chat', section: 'dms' }; // DM user list, no conversation selected
   const chatMatch = path.match(/^\/chat\/([^/]+)$/);
@@ -1464,6 +1469,7 @@ function getPrimaryNav(route) {
   if (route.page === 'admin') return 'admin';
   if (route.page === 'settings') return 'settings';
   if (route.page === 'inbox') return 'inbox';
+  if (route.page === 'collections') return 'collections';
   if (route.page === 'chat') return route.group ? 'home' : 'chat';
   return 'home';
 }
@@ -1609,6 +1615,12 @@ export async function loadInbox() {
   const { items } = await apiGet('/api/inbox');
   state.inbox = items || [];
   return state.inbox;
+}
+
+export async function loadCollections() {
+  const { items } = await apiGet('/api/collections');
+  state.collections = items || [];
+  return state.collections;
 }
 
 /** Load conversation list so DM list order (last chat time > new count > alpha) and per-user badges work. */
@@ -2347,6 +2359,11 @@ function renderMain() {
           <h3 class="panel-list-title">${t('inbox')}</h3>
         </div>
         ` : ''}
+        ${primaryNav === 'collections' ? `
+        <div class="panel-tabs">
+          <h3 class="panel-list-title">${t('collections')}</h3>
+        </div>
+        ` : ''}
         </div>
       </div>
 
@@ -2355,6 +2372,7 @@ function renderMain() {
           ${primaryNav === 'home' ? (isGroup && (state.panel === 'free_chat' || state.panel === 'support') ? renderChatArea() : isGroup && isDocPanel ? renderDocArea() : `<div class="empty-state">${t('selectPanel')}</div>`) : ''}
           ${primaryNav === 'chat' ? (state.dmUserId ? renderChatArea() : `<div class="empty-state"><i class="fas fa-comments empty-state-icon" aria-hidden="true"></i><span>${t('selectConversation')}</span></div>`) : ''}
           ${primaryNav === 'inbox' ? renderInboxContent() : ''}
+          ${primaryNav === 'collections' ? renderCollectionsContent() : ''}
           ${primaryNav === 'admin' ? renderAdminContent() : ''}
           ${primaryNav === 'settings' ? renderSettingsContent() : ''}
         </div>
@@ -2379,6 +2397,10 @@ function renderMain() {
           <a href="/inbox" class="left-bar-item ${primaryNav === 'inbox' ? 'active' : ''}" title="${t('inbox')}">
             <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_INBOX}</span>${(function(){ const n = getUnreadInboxCount(); return n > 0 ? `<span class="left-bar-badge left-bar-badge-count" aria-label="${n} unread">${n > 99 ? '99+' : n}</span>` : ''; })()}</span>
             <span class="left-bar-label">${t('inbox')}</span>
+          </a>
+          <a href="/collections" class="left-bar-item ${primaryNav === 'collections' ? 'active' : ''}" title="${t('collections')}">
+            <span class="left-bar-icon" aria-hidden="true">${ICON_COLLECTION}</span>
+            <span class="left-bar-label">${t('collections')}</span>
           </a>
           ${state.user?.is_allowed ? `
           <a href="/manage" class="left-bar-item ${primaryNav === 'admin' ? 'active' : ''}" title="Admin">
@@ -2419,6 +2441,7 @@ const ICON_CHAT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24
 const ICON_INBOX = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>';
 const ICON_ADMIN = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
 const ICON_SETTINGS = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+const ICON_COLLECTION = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" ry="2"/><path d="M7 8h10"/><path d="M7 12h6"/><path d="M7 16h4"/></svg>';
 const ICON_CHEVRON_RIGHT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
 const ICON_CHEVRON_LEFT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
 const ICON_SEARCH = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
@@ -3496,6 +3519,7 @@ function bindMain() {
         items.push({ label: t('edit'), action: 'edit' });
       }
       if (isOwn) items.push({ label: t('delete'), action: 'delete', danger: true });
+      items.push({ label: t('addToCollection'), action: 'add-to-collection' });
       if (state.user?.can_delete_messages && !isOwn && senderId !== 'jimmyqrg') items.push({ label: t('adminDeleteAdmin'), action: 'delete', danger: true });
       if (state.user?.can_kick && senderId !== 'jimmyqrg') items.push({ label: t('adminRemoveAccount'), action: 'remove-account' });
       if (canSolve) items.push({ label: t('solve'), action: 'solve' });
@@ -3523,6 +3547,10 @@ function bindMain() {
         } else if (action === 'edit') startInlineEdit(msg);
         else if (action === 'delete') {
           if (confirm('Are you sure you want to delete this message?')) state.socket?.emit('message:delete', msgId, () => {});
+        } else if (action === 'add-to-collection') {
+          apiPost('/api/collections', { message_id: msgId }).then(() => {
+            showToast(t('addedToCollection') || 'Added to collection', 'success');
+          }).catch((err) => showToast(err.message || 'Failed to add to collection'));
         }
         if (action === 'remove-account') removeAccount(senderId);
         if (action === 'solve') {
@@ -4576,7 +4604,37 @@ function renderInboxContent() {
               ` : ''}
           </div>
             <button type="button" class="inbox-item-delete" data-inbox-id="${item.id}" title="${t('delete')}" aria-label="${t('delete')}"><i class="fas fa-trash-alt" aria-hidden="true"></i></button>
+              </div>
+            `).join('')}
+          </div>
         </div>
+  `;
+}
+
+function renderCollectionsContent() {
+  const items = state.collections || [];
+  if (!items.length) {
+    return `
+      <div class="collections-page">
+        <h2>${t('collections')}</h2>
+        <div class="collections-empty">${t('noCollections')}</div>
+      </div>
+    `;
+  }
+  return `
+    <div class="collections-page">
+      <h2>${t('collections')}</h2>
+      <div class="collections-list">
+        ${items.map((c) => `
+          <div class="collection-item" data-id="${c.id}" data-message-id="${c.message_id}">
+            <div class="collection-meta">
+              <div class="collection-sender">${escapeHtml(c.sender_display_name || c.sender_username || c.sender_id || '')}</div>
+              <div class="collection-date">${escapeHtml(formatTimestampForDivider(c.message_created_at || c.created_at))}</div>
+            </div>
+            <div class="collection-body">${escapeHtml((c.content_snapshot || '').slice(0, 200))}${(c.content_snapshot || '').length > 200 ? '…' : ''}</div>
+            <button type="button" class="btn-small collection-open" data-message-id="${c.message_id}">${t('open')}</button>
+            <button type="button" class="btn-small collection-remove" data-id="${c.id}">${t('delete')}</button>
+          </div>
         `).join('')}
       </div>
     </div>
@@ -4776,6 +4834,16 @@ async function init() {
           const icon = btn.querySelector('.left-bar-icon');
           if (icon) icon.innerHTML = ICON_CHEVRON_RIGHT;
         }
+      }
+      const collectionsRemove = e.target.closest('.collection-remove');
+      if (collectionsRemove) {
+        e.preventDefault();
+        const id = collectionsRemove.dataset.id;
+        if (!id) return;
+        apiDelete(`/api/collections/${encodeURIComponent(id)}`).then(() => {
+          state.collections = (state.collections || []).filter(c => c.id !== id);
+          setState({});
+        }).catch((err) => showToast(err.message || 'Failed to remove from collection'));
       }
     });
   }

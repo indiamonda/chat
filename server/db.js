@@ -142,3 +142,27 @@ export function isUserDeleted(userId) {
   const row = db.prepare('SELECT deleted_at FROM users WHERE id = ?').get(userId);
   return row && row.deleted_at != null;
 }
+
+// Saved message collections (per-user saved messages for quick access)
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS message_collections (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      room_type TEXT NOT NULL,
+      room_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      sender_username TEXT,
+      sender_display_name TEXT,
+      content_snapshot TEXT,
+      msg_type TEXT,
+      message_created_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (message_id) REFERENCES messages(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_collections_user_created ON message_collections(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_collections_message ON message_collections(message_id);
+  `);
+} catch (_) {}

@@ -3416,6 +3416,51 @@ input[type="checkbox"]:checked::after {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+
+.collections-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem;
+}
+.collections-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.collection-item {
+  border-radius: 10px;
+  border: var(--border-width) solid var(--border);
+  background: var(--bg-panel);
+  padding: 0.75rem 0.9rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem 1rem;
+}
+.collection-meta {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.collection-sender {
+  font-weight: 600;
+  color: var(--text);
+}
+.collection-date {
+  opacity: 0.85;
+}
+.collection-body {
+  grid-column: 1 / -1;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+.collection-open,
+.collection-remove {
+  align-self: center;
+}
+.collections-empty {
+  margin-top: 1.5rem;
+  color: var(--text-dim);
+}
 .admin-timeout-ul { list-style: none; padding: 0; margin: 0; }
 .admin-timeout-item { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.6rem; border: var(--border-width) solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
 .admin-timeout-item .admin-timeout-release { margin-left: auto; }
