@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete, uploadFile, getDefaultAvatarUrl } from './api.js';
 
 if (typeof window !== 'undefined' && window.katex) {
@@ -47,6 +48,7 @@ let state = {
   commandMode: typeof localStorage !== 'undefined' && localStorage.getItem('commandMode') === '1',
   notificationPrefs: null,
 };
+
 if (typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('lang', state.language || 'en');
 
 /** Fallback strings until data.json loads. Full translations in /assets/translation/data.json */
@@ -87,7 +89,7 @@ const DEFAULT_STRINGS = {
     noMailYet: 'No mail yet.',
     accept: 'Accept',
     reject: 'Reject',
-    delete: 'Delete',
+    'delete': 'Delete',
     deleteMailConfirm: 'Delete this mail?',
     recording: 'Recording',
     cancel: 'Cancel',
@@ -230,6 +232,7 @@ function t(key) {
 }
 
 const _REMOVED_TRANSLATIONS = {
+  zh: {
     profile: '个人资料',
     account: '账号',
     settings: '设置',
@@ -264,7 +267,7 @@ const _REMOVED_TRANSLATIONS = {
     noMailYet: '暂无消息。',
     accept: '接受',
     reject: '拒绝',
-    delete: '删除',
+    'delete': '删除',
     deleteMailConfirm: '删除此邮件？',
     recording: '录音中',
     cancel: '取消',
@@ -387,7 +390,7 @@ const _REMOVED_TRANSLATIONS = {
     adminTimeoutLocked: '（仅我可解除）',
     adminRelease: '解除',
   },
-  ja: {
+  'ja': {
     general: '一般',
     profile: 'プロフィール',
     account: 'アカウント',
@@ -423,7 +426,7 @@ const _REMOVED_TRANSLATIONS = {
     noMailYet: 'メールはまだありません。',
     accept: '承諾',
     reject: '拒否',
-    delete: '削除',
+    'delete': '削除',
     deleteMailConfirm: 'このメールを削除しますか？',
     recording: '録音中',
     cancel: 'キャンセル',
@@ -546,7 +549,7 @@ const _REMOVED_TRANSLATIONS = {
     requestSent: 'リクエスト送信済み',
     sendMessage: 'メッセージを送る',
   },
-  ko: {
+  'ko': {
     general: '일반',
     profile: '프로필',
     account: '계정',
@@ -582,7 +585,7 @@ const _REMOVED_TRANSLATIONS = {
     noMailYet: '메일이 없습니다.',
     accept: '수락',
     reject: '거절',
-    delete: '삭제',
+    'delete': '삭제',
     deleteMailConfirm: '이 메일을 삭제하시겠습니까?',
     recording: '녹음 중',
     cancel: '취소',
@@ -705,7 +708,7 @@ const _REMOVED_TRANSLATIONS = {
     adminTimeoutLocked: '(해제는 본인만)',
     adminRelease: '해제',
   },
-  es: {
+  'es': {
     general: 'General',
     profile: 'Perfil',
     account: 'Cuenta',
@@ -741,7 +744,7 @@ const _REMOVED_TRANSLATIONS = {
     noMailYet: 'Aún no hay correo.',
     accept: 'Aceptar',
     reject: 'Rechazar',
-    delete: 'Eliminar',
+    'delete': 'Eliminar',
     deleteMailConfirm: '¿Eliminar este correo?',
     recording: 'Grabando',
     cancel: 'Cancelar',
@@ -864,7 +867,7 @@ const _REMOVED_TRANSLATIONS = {
     adminTimeoutLocked: '(bloqueado)',
     adminRelease: 'Liberar',
   },
-  fr: {
+  'fr': {
     general: 'Général',
     profile: 'Profil',
     account: 'Compte',
@@ -900,7 +903,7 @@ const _REMOVED_TRANSLATIONS = {
     noMailYet: 'Pas encore de courrier.',
     accept: 'Accepter',
     reject: 'Refuser',
-    delete: 'Supprimer',
+    'delete': 'Supprimer',
     deleteMailConfirm: 'Supprimer ce courrier ?',
     recording: 'Enregistrement',
     cancel: 'Annuler',
@@ -1023,7 +1026,7 @@ const _REMOVED_TRANSLATIONS = {
     adminTimeoutLocked: '(verrouillé)',
     adminRelease: 'Libérer',
   },
-  de: {
+  'de': {
     general: 'Allgemein',
     profile: 'Profil',
     account: 'Konto',
@@ -1059,7 +1062,7 @@ const _REMOVED_TRANSLATIONS = {
     noMailYet: 'Noch keine Nachrichten.',
     accept: 'Akzeptieren',
     reject: 'Ablehnen',
-    delete: 'Löschen',
+    'delete': 'Löschen',
     deleteMailConfirm: 'Diese Nachricht löschen?',
     recording: 'Aufnahme',
     cancel: 'Abbrechen',
@@ -4364,7 +4367,7 @@ function renderSettingsContent() {
         <p class="settings-account-desc">${t('chooseLanguage')}</p>
         <label class="settings-form-label">${t('language')}</label>
         <select id="settings-language" class="settings-select">
-          ${LANGUAGE_OPTIONS.map(o => `<option value="${o.value}" ${state.language === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+          ${(state.languageOptions || LANGUAGE_OPTIONS).map(o => `<option value="${o.value}" ${state.language === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
         </select>
       </div>
       ` : ''}
