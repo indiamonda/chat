@@ -2014,11 +2014,19 @@ select:focus {
 }
 
 .message-content blockquote {
-  margin: 0.35em 0;
-  padding-left: 1em;
-  border-left: 3px solid var(--border);
+  margin: 0.5em 0;
+  padding: 0.5em 0.75em 0.5em 1rem;
+  border-left: 4px solid var(--purple-dim);
+  background: var(--star);
+  border-radius: 0 6px 6px 0;
   color: var(--text-dim);
+  font-style: italic;
 }
+.message-content blockquote p {
+  margin: 0.25em 0;
+}
+.message-content blockquote p:first-child { margin-top: 0; }
+.message-content blockquote p:last-child { margin-bottom: 0; }
 
 .message-content ul,
 .message-content ol {
@@ -2815,12 +2823,34 @@ input[type="checkbox"]:checked::after {
   color: var(--purple-bright);
 }
 
-.inbox-empty {
+.inbox-empty,
+.inbox-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
   text-align: center;
-  padding: 2rem;
+  padding: 2.5rem 2rem;
   color: var(--text-dim);
   font-size: 0.95rem;
   animation: fadeIn 0.4s var(--ease) forwards;
+}
+.inbox-empty-icon,
+.inbox-loading-spinner {
+  font-size: 2rem;
+  color: var(--purple-dim);
+}
+.inbox-loading-spinner {
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--purple);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .inbox-item {
@@ -3356,6 +3386,15 @@ input[type="checkbox"]:checked::after {
 .admin-recalled-content { margin: 0.25rem 0 0; color: var(--text-dim); font-size: 0.9rem; }
 .admin-recalled-time { font-size: 0.85rem; color: var(--text-dim); margin-left: 0.5rem; }
 .admin-timeout-list { margin-top: 1rem; }
+.admin-loading { display: flex; align-items: center; gap: 0.5rem; color: var(--text-dim); }
+.admin-loading-spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--purple);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
 .admin-timeout-ul { list-style: none; padding: 0; margin: 0; }
 .admin-timeout-item { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.6rem; border: var(--border-width) solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
 .admin-timeout-item .admin-timeout-release { margin-left: auto; }
@@ -3823,6 +3862,65 @@ input[type="checkbox"]:checked::after {
   font-size: 0.85rem;
   color: var(--text-dim);
   line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Toast notifications */
+.toast-container {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: min(90vw, 360px);
+  pointer-events: none;
+}
+.toast {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  cursor: pointer;
+  animation: toast-in 0.2s ease-out;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toast--dismissed {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.toast--error {
+  background: var(--bg-panel);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: var(--text);
+}
+.toast--success {
+  background: var(--bg-panel);
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  color: var(--text);
+}
+.toast--info {
+  background: var(--bg-panel);
+  border: 1px solid var(--purple-dim);
+  color: var(--text);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* File content modal */

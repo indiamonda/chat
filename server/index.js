@@ -21,6 +21,30 @@ import notificationsRoutes, { getPrefs as getNotificationPrefs } from './routes/
 import { randomUUID } from 'node:crypto';
 import tzLookup from 'tz-lookup';
 
+/** Anti-spam: if user sent 2+ same messages in a short window, block for 5s. jimmyqrg excluded. */
+const SPAM_INTERVAL_MS = 10000;
+const SPAM_COOLDOWN_MS = 5000;
+const spamBlockedUntil = new Map();
+
+function checkSpam(userId, roomType, roomId, content) {
+  if (userId === 'jimmyqrg') return false;
+  const now = Date.now();
+  if (spamBlockedUntil.get(userId) > now) return true;
+  const lastTwo = db.prepare(`
+    SELECT content, created_at FROM messages
+    WHERE room_type = ? AND room_id = ? AND sender_id = ? AND deleted_by_admin = 0
+    ORDER BY created_at DESC LIMIT 2
+  `).all(roomType, roomId, userId);
+  if (lastTwo.length < 2) return false;
+  const sameContent = lastTwo.every((m) => m.content === content);
+  const oldestAt = lastTwo[lastTwo.length - 1].created_at;
+  if (sameContent && now - oldestAt <= SPAM_INTERVAL_MS) {
+    spamBlockedUntil.set(userId, now + SPAM_COOLDOWN_MS);
+    return true;
+  }
+  return false;
+}
+
 function createInboxForNewMessage(messageId, content, replyToId, senderId, roomType, roomId) {
   const toNotify = new Set();
   if (/\@All\b/i.test(content || '')) {
@@ -251,6 +275,9 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
       msgType = mt.startsWith('image/') ? 'image' : mt.startsWith('video/') ? 'video' : mt.startsWith('audio/') ? 'audio' : 'file';
     }
   }
+  if (checkSpam(user.id, roomType, roomId, finalContent)) {
+    return res.status(429).json({ error: 'NO SPAMMING!' });
+  }
   const id = randomUUID();
   const now = Date.now();
   db.prepare(`
@@ -379,6 +406,9 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
       msgType = mt.startsWith('image/') ? 'image' : mt.startsWith('video/') ? 'video' : mt.startsWith('audio/') ? 'audio' : 'file';
     }
   }
+  if (checkSpam(user.id, 'dm', req.params.convId, finalContent)) {
+    return res.status(429).json({ error: 'NO SPAMMING!' });
+  }
   const id = randomUUID();
   const now = Date.now();
   db.prepare(`
@@ -499,9 +529,9 @@ io.on('connection', (socket) => {
   socket.on('message:send', (payload, ack) => {
     const { roomType, roomId, content, msg_type, reply_to_id } = payload || {};
     if (!roomType || !roomId) return ack?.({ error: 'roomType and roomId required' });
-    const id = randomUUID();
-    const now = Date.now();
+    const textContent = content || '';
     if (roomType === 'dm') {
+      if (checkSpam(socket.userId, 'dm', roomId, textContent)) return ack?.({ error: 'NO SPAMMING!' });
       const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(roomId);
       if (!conv || (conv.user1_id !== socket.userId && conv.user2_id !== socket.userId)) return ack?.({ error: 'Forbidden' });
       const otherId = conv.user1_id === socket.userId ? conv.user2_id : conv.user1_id;
@@ -516,6 +546,8 @@ io.on('connection', (socket) => {
         if (myCount >= 10) return ack?.({ error: 'Add as friend to send more messages' });
         if ((msg_type && msg_type !== 'text') || (payload && payload.msg_type && payload.msg_type !== 'text')) return ack?.({ error: 'Add as friend to send files' });
       }
+      const id = randomUUID();
+      const now = Date.now();
       db.prepare(`
         INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
         VALUES (?, 'dm', ?, ?, ?, ?, ?, ?, ?)
@@ -529,10 +561,13 @@ io.on('connection', (socket) => {
       return ack?.({ message: msg });
     }
     if (roomType === 'group') {
+      if (checkSpam(socket.userId, 'group', roomId, textContent)) return ack?.({ error: 'NO SPAMMING!' });
       if (isBlacklisted(socket.userId)) return ack?.({ error: 'Access denied. You are blacklisted from group chat.' });
       if (!['free_chat', 'support'].includes(roomId)) return ack?.({ error: 'Invalid panel' });
       if (isTimedOut(socket.userId)) return ack?.({ error: 'You are timed out from group chat' });
     }
+    const id = randomUUID();
+    const now = Date.now();
     db.prepare(`
       INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

@@ -51,6 +51,29 @@ let state = {
 
 if (typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('lang', state.language || 'en');
 
+/** Toast notifications (replacement for alert). type: 'error' | 'success' | 'info' */
+function showToast(message, type = 'error') {
+  if (typeof document === 'undefined') return;
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'toast-container';
+    container.setAttribute('aria-live', 'polite');
+    document.body.appendChild(container);
+  }
+  const el = document.createElement('div');
+  el.className = `toast toast--${type}`;
+  el.textContent = message;
+  container.appendChild(el);
+  const dismiss = () => {
+    el.classList.add('toast--dismissed');
+    setTimeout(() => el.remove(), 200);
+  };
+  setTimeout(dismiss, 4000);
+  el.addEventListener('click', dismiss);
+}
+
 /** Fallback strings until data.json loads. Full translations in /assets/translation/data.json */
 const DEFAULT_STRINGS = {
   en: {
@@ -1326,13 +1349,15 @@ function bindLinkPreview(container) {
         const data = await apiGet(`/api/link-preview?url=${encodeURIComponent(href)}`);
         if (!data.title && !data.description && !data.image) return;
         hideLinkPreview();
+        const descLimit = 320;
+        const desc = data.description ? escapeHtml(data.description.slice(0, descLimit)) + (data.description.length > descLimit ? '…' : '') : '';
         linkPreviewEl = document.createElement('div');
         linkPreviewEl.className = 'link-preview-popover';
         linkPreviewEl.innerHTML = `
           ${data.image ? `<img src="${escapeHtml(data.image)}" alt="" class="link-preview-img" />` : ''}
           <div class="link-preview-body">
             ${data.title ? `<div class="link-preview-title">${escapeHtml(data.title)}</div>` : ''}
-            ${data.description ? `<div class="link-preview-desc">${escapeHtml(data.description.slice(0, 200))}${data.description.length > 200 ? '…' : ''}</div>` : ''}
+            ${desc ? `<div class="link-preview-desc">${desc}</div>` : ''}
           </div>
         `;
         document.body.appendChild(linkPreviewEl);
@@ -1888,7 +1913,7 @@ function connectSocket() {
     if (m) removeMessageLocal(id, m.room_type, m.room_id);
   });
   s.on('account_removed', () => {
-    alert('Your account has been removed.');
+    showToast('Your account has been removed.');
     window.location.reload();
   });
   s.on('inbox:item', (item) => {
@@ -2431,7 +2456,7 @@ function renderChatArea() {
             <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
           </div>
         </div>
-        <button type="button" class="composer-send" id="send-btn">Send</button>
+        <button type="button" class="composer-send" id="send-btn" ${state._spamBlockedUntil && Date.now() < state._spamBlockedUntil ? 'disabled' : ''}>Send</button>
       </div>
     </div>
     `}
@@ -2501,7 +2526,7 @@ function renderChatArea() {
             <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
           </div>
         </div>
-        <button type="button" class="composer-send" id="send-btn">Send</button>
+        <button type="button" class="composer-send" id="send-btn" ${state._spamBlockedUntil && Date.now() < state._spamBlockedUntil ? 'disabled' : ''}>Send</button>
       </div>
     </div>
     ` : ''}
@@ -3111,7 +3136,7 @@ async function showProfileModal(userId) {
             blockBtn.dataset.blocked = 'true';
           }
         } catch (err) {
-          alert(err.message || 'Failed');
+          showToast(err.message || 'Failed');
         }
       });
     }
@@ -3123,13 +3148,13 @@ async function showProfileModal(userId) {
           frBtn.textContent = t('requestSent');
           frBtn.disabled = true;
         } catch (err) {
-          alert(err.message || 'Failed to send friend request');
+          showToast(err.message || 'Failed to send friend request');
         }
       });
     }
     document.body.appendChild(overlay);
   } catch (err) {
-    alert(err.message || 'Could not load profile');
+    showToast(err.message || 'Could not load profile');
   }
 }
 
@@ -3333,7 +3358,7 @@ async function openFileContentModal(url) {
     document.addEventListener('keydown', onEscape);
     document.body.appendChild(overlay);
   } catch (e) {
-    alert('Could not load file content');
+    showToast('Could not load file content');
   }
 }
 
@@ -3379,14 +3404,14 @@ function bindMain() {
             await apiPost('/api/friends/request', { to_user_id: userId });
             await loadFriends();
             render();
-          } catch (err) { alert(err.message || 'Failed to send friend request'); }
+          } catch (err) { showToast(err.message || 'Failed to send friend request'); }
         } else if (action === 'block') {
           try {
             await apiPost('/api/blocks', { user_id: userId });
             state.blocked_ids = [...(state.blocked_ids || []), userId];
             await loadFriends();
             render();
-          } catch (err) { alert(err.message); }
+          } catch (err) { showToast(err.message); }
         }
       });
     });
@@ -3638,20 +3663,20 @@ function bindMain() {
           apiPost('/api/inbox/request-admin').then(() => {
             input.value = '';
             resizeComposerInput();
-          }).catch((err) => alert(err.message || 'Request failed'));
+          }).catch((err) => showToast(err.message || 'Request failed'));
           return;
         }
         if (cmd === '/file') {
           const fileId = text.slice(5).trimStart();
           if (!fileId) {
-            alert('Usage: /file <file_id>');
+            showToast('Usage: /file <file_id>');
             return;
           }
           state._sendingMessage = true;
       const reply_to_id = state.replyTo?.id || null;
             state.socket?.emit('message:send', { roomType, roomId, content: `/file ${fileId}`, msg_type: 'file', reply_to_id }, (res) => {
             state._sendingMessage = false;
-            if (res?.error) { alert(res.error); return; }
+            if (res?.error) { showToast(res.error); return; }
             if (res?.message) addMessageLocal(res.message);
             setState({ replyTo: null });
             input.value = '';
@@ -3662,10 +3687,14 @@ function bindMain() {
       }
 
       const reply_to_id = state.replyTo?.id || null;
+      if (state._spamBlockedUntil && Date.now() < state._spamBlockedUntil) {
+        showToast('NO SPAMMING!');
+        return;
+      }
       const contentToCheck = text || '';
       const mentionedDeleted = roomType === 'group' ? getMentionedDeletedUsers(contentToCheck) : [];
       if (mentionedDeleted.length) {
-        alert(t('mentionDeletedUsers') + mentionedDeleted.join(', '));
+        showToast(t('mentionDeletedUsers') + mentionedDeleted.join(', '));
       }
 
       state._sendingMessage = true;
@@ -3673,7 +3702,7 @@ function bindMain() {
       const done = () => { state._sendingMessage = false; };
       if (state._pendingFile) {
         if (!canSendFiles) {
-          alert('Add as friend to send files');
+          showToast('Add as friend to send files');
           state._pendingFile = null;
           render();
           state._sendingMessage = false;
@@ -3688,6 +3717,14 @@ function bindMain() {
         fetch(path, { method: 'POST', credentials: 'include', body: form })
           .then((r) => r.json())
           .then((data) => {
+            if (data?.error) {
+              showToast(data.error);
+              if (data.error === 'NO SPAMMING!') {
+                state._spamBlockedUntil = Date.now() + 5000;
+                setState({});
+                setTimeout(() => { state._spamBlockedUntil = null; setState({}); }, 5000);
+              }
+            }
             if (data?.message) addMessageLocal(data.message);
           state._pendingFile = null;
           setState({ replyTo: null });
@@ -3702,7 +3739,12 @@ function bindMain() {
       state.socket?.emit('message:send', { roomType, roomId, content: text, reply_to_id }, (res) => {
         done();
         if (res?.error) {
-          alert(res.error);
+          showToast(res.error);
+          if (res.error === 'NO SPAMMING!') {
+            state._spamBlockedUntil = Date.now() + 5000;
+            setState({});
+            setTimeout(() => { state._spamBlockedUntil = null; setState({}); }, 5000);
+          }
           return;
         }
         if (res?.message) addMessageLocal(res.message);
@@ -3733,7 +3775,7 @@ function bindMain() {
   }
   document.getElementById('attach-file')?.addEventListener('click', () => {
     if (!canSendFiles) {
-      alert('Add as friend to send files');
+      showToast('Add as friend to send files');
       return;
     }
     document.getElementById('file-input')?.click();
@@ -3822,6 +3864,14 @@ function bindMain() {
     if (reply_to_id) form.append('reply_to_id', reply_to_id);
     const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
     fetch(path, { method: 'POST', credentials: 'include', body: form }).then((r) => r.json()).then((data) => {
+      if (data?.error) {
+        showToast(data.error);
+        if (data.error === 'NO SPAMMING!') {
+          state._spamBlockedUntil = Date.now() + 5000;
+          setState({});
+          setTimeout(() => { state._spamBlockedUntil = null; setState({}); }, 5000);
+        }
+      }
       if (data.message) addMessageLocal(data.message);
       setState({ replyTo: null });
       if (roomType === 'dm') loadMessages('dm', roomId).then(render);
@@ -3868,7 +3918,7 @@ function bindMain() {
         if (item.kind === 'file') {
           if (!canSendFiles) {
             e.preventDefault();
-            alert('Add as friend to send files');
+            showToast('Add as friend to send files');
             return;
           }
           const file = item.getAsFile();
@@ -3887,7 +3937,7 @@ function bindMain() {
       e.stopPropagation();
       dropZone.classList.remove('composer-drag-over');
       if (!canSendFiles) {
-        alert('Add as friend to send files');
+        showToast('Add as friend to send files');
         return;
       }
       const file = e.dataTransfer.files?.[0];
@@ -3906,6 +3956,14 @@ function bindMain() {
       fetch(path, { method: 'POST', credentials: 'include', body: form })
         .then((r) => r.json())
         .then((data) => {
+          if (data?.error) {
+            showToast(data.error);
+            if (data.error === 'NO SPAMMING!') {
+              state._spamBlockedUntil = Date.now() + 5000;
+              setState({});
+              setTimeout(() => { state._spamBlockedUntil = null; setState({}); }, 5000);
+            }
+          }
           if (data?.message) addMessageLocal(data.message);
           setState({ replyTo: null });
           if (roomType === 'dm') loadMessages('dm', roomId).then(render);
@@ -3932,7 +3990,7 @@ function bindMain() {
         state.editingDocKey = null;
         setState({});
       } catch (e) {
-        alert(e.message);
+        showToast(e.message);
       }
     });
   }
@@ -3989,7 +4047,7 @@ async function removeAccount(userId) {
     await loadUsers();
     render();
     bindAdmin();
-  } catch (err) { alert(err.message); }
+  } catch (err) { showToast(err.message); }
 }
 
 async function restoreAccount(userId) {
@@ -3998,7 +4056,7 @@ async function restoreAccount(userId) {
     await loadUsers();
     render();
     bindAdmin();
-  } catch (err) { alert(err.message); }
+  } catch (err) { showToast(err.message); }
 }
 
 function showDeletePermanentlyModal(userId) {
@@ -4027,7 +4085,7 @@ function showDeletePermanentlyModal(userId) {
       await loadUsers();
       render();
       bindAdmin();
-    } catch (err) { alert(err.message); }
+    } catch (err) { showToast(err.message); }
   });
   document.body.appendChild(overlay);
 }
@@ -4038,7 +4096,7 @@ async function deleteAccountPermanently(userId, deleteGroupMessages = true) {
     await loadUsers();
     render();
     bindAdmin();
-  } catch (err) { alert(err.message); }
+  } catch (err) { showToast(err.message); }
 }
 
 async function toggleBlacklist(userId, isBlacklisted) {
@@ -4053,7 +4111,7 @@ async function toggleBlacklist(userId, isBlacklisted) {
       : [...(state.adminBlacklistedIds || []), userId];
     render();
     bindAdmin();
-  } catch (err) { alert(err.message); }
+  } catch (err) { showToast(err.message); }
 }
 
 function renderAdminContent() {
@@ -4234,6 +4292,13 @@ async function loadAdminTimeouts() {
 }
 
 function bindAdmin() {
+  const loadingHtml = `<p class="admin-section-desc admin-loading"><span class="admin-loading-spinner" aria-hidden="true"></span> ${t('loading')}</p>`;
+  const recalledEl = document.getElementById('admin-recalled-list');
+  const timeoutEl = document.getElementById('admin-timeout-list');
+  const timeoutElTab = document.getElementById('admin-timeout-list-tab');
+  if (recalledEl) recalledEl.innerHTML = loadingHtml;
+  if (timeoutEl) timeoutEl.innerHTML = loadingHtml;
+  if (timeoutElTab) timeoutElTab.innerHTML = loadingHtml;
   loadAdminRecalled();
   loadAdminTimeouts();
 
@@ -4241,23 +4306,23 @@ function bindAdmin() {
     const userId = document.getElementById('admin-timeout-user')?.value;
     const duration = document.getElementById('admin-timeout-duration')?.value?.trim();
     const locked = document.getElementById('admin-timeout-locked')?.checked;
-    if (!userId) { alert(t('adminSelectUser')); return; }
+    if (!userId) { showToast(t('adminSelectUser')); return; }
     try {
       await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked });
       document.getElementById('admin-timeout-duration').value = '';
       loadAdminTimeouts();
-    } catch (err) { alert(err.message); }
+    } catch (err) { showToast(err.message); }
   });
   document.getElementById('admin-timeout-submit-tab')?.addEventListener('click', async () => {
     const userId = document.getElementById('admin-timeout-user-tab')?.value;
     const duration = document.getElementById('admin-timeout-duration-tab')?.value?.trim();
     const locked = document.getElementById('admin-timeout-locked-tab')?.checked;
-    if (!userId) { alert(t('adminSelectUser')); return; }
+    if (!userId) { showToast(t('adminSelectUser')); return; }
     try {
       await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked });
       document.getElementById('admin-timeout-duration-tab').value = '';
       loadAdminTimeouts();
-    } catch (err) { alert(err.message); }
+    } catch (err) { showToast(err.message); }
   });
 
   document.querySelector('.admin-timeout-list')?.closest('.admin-section')?.addEventListener('click', async (e) => {
@@ -4267,7 +4332,7 @@ function bindAdmin() {
       try {
         await apiPost(`/api/admin/timeout/${id}/release`, {});
         loadAdminTimeouts();
-      } catch (err) { alert(err.message); }
+      } catch (err) { showToast(err.message); }
     }
   });
   document.getElementById('admin-timeout-list-tab')?.closest('.admin-section')?.addEventListener('click', async (e) => {
@@ -4277,7 +4342,7 @@ function bindAdmin() {
       try {
         await apiPost(`/api/admin/timeout/${id}/release`, {});
         loadAdminTimeouts();
-      } catch (err) { alert(err.message); }
+      } catch (err) { showToast(err.message); }
     }
   });
 
@@ -4296,7 +4361,7 @@ function bindAdmin() {
         await loadUsers();
           render();
           bindAdmin();
-      } catch (err) { alert(err.message); }
+      } catch (err) { showToast(err.message); }
       }
     }
   });
@@ -4311,25 +4376,25 @@ function bindAdmin() {
       await loadUsers();
       render();
       bindAdmin();
-    } catch (err) { alert(err.message); }
+    } catch (err) { showToast(err.message); }
   });
   document.getElementById('admin-inbox-send')?.addEventListener('click', async () => {
     const to = document.getElementById('admin-inbox-user')?.value;
     const title = document.getElementById('admin-inbox-title')?.value ?? '';
     const body = document.getElementById('admin-inbox-body')?.value ?? '';
-    if (!to) { alert(t('adminSelectUser')); return; }
+    if (!to) { showToast(t('adminSelectUser')); return; }
     try {
       await apiPost('/api/inbox/send', { to_user_id: to, title, body });
-      alert(t('adminSent'));
-    } catch (e) { alert(e.message); }
+      showToast(t('adminSent'), 'success');
+    } catch (e) { showToast(e.message); }
   });
   document.getElementById('admin-broadcast-send')?.addEventListener('click', async () => {
     const title = document.getElementById('admin-broadcast-title')?.value ?? '';
     const body = document.getElementById('admin-broadcast-body')?.value ?? '';
     try {
       await apiPost('/api/inbox/broadcast', { title, body });
-      alert(t('adminBroadcastSent'));
-    } catch (e) { alert(e.message); }
+      showToast(t('adminBroadcastSent'), 'success');
+    } catch (e) { showToast(e.message); }
   });
 }
 
@@ -4441,13 +4506,18 @@ function renderSettingsContent() {
 }
 
 function renderInboxContent() {
+  const loading = state._loadingInbox === true;
+  const list = state.inbox || [];
+  const empty = !loading && list.length === 0;
   return `
         <div class="inbox-page">
       <h2>${t('inbox')}</h2>
           <div id="inbox-list">
-        ${(state.inbox || []).length === 0
-          ? `<div class="inbox-empty">${t('noMailYet')}</div>`
-          : (state.inbox || []).map(item => `
+        ${loading
+          ? `<div class="inbox-loading"><span class="inbox-loading-spinner" aria-hidden="true"></span><span>${t('loading')}</span></div>`
+          : empty
+          ? `<div class="inbox-empty"><span class="inbox-empty-icon" aria-hidden="true"><i class="fas fa-inbox"></i></span><span>${t('noMailYet')}</span></div>`
+          : list.map(item => `
           <div class="inbox-item ${item.read_at ? '' : 'unread'}" data-id="${item.id}" data-type="${escapeHtml(item.type)}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(item.related_extra || '')}">
             <div class="inbox-item-main">
                 <div class="type">${escapeHtml(item.type)}</div>
@@ -4484,11 +4554,15 @@ function applyRoute(route) {
     return;
   }
   if (route.page === 'inbox') {
-    setState({ panel: '', dmUserId: null });
-    loadInbox().then(() => { render(); bindInbox(); }).catch((err) => {
+    setState({ panel: '', dmUserId: null, _loadingInbox: true });
+    render();
+    loadInbox().then(() => { state._loadingInbox = false; setState({}); render(); bindInbox(); }).catch((err) => {
       console.warn('Load inbox failed', err);
+      state._loadingInbox = false;
+      setState({});
       render();
       bindInbox();
+      showToast(err.message || 'Failed to load inbox');
     });
     return;
   }
@@ -4944,7 +5018,7 @@ function bindSettings() {
       state.user._avatarVersion = Date.now();
       setState({});
     } catch (err) {
-      alert(err.message);
+      showToast(err.message);
     }
   });
 
@@ -5006,7 +5080,7 @@ function bindInbox() {
         await loadInbox();
         render();
         bindInbox();
-      } catch (err) { alert(err.message || 'Failed to delete'); }
+      } catch (err) { showToast(err.message || 'Failed to delete'); }
       return;
     }
     const acceptBtn = e.target.closest('.inbox-accept-fr');
@@ -5021,7 +5095,7 @@ function bindInbox() {
         await loadFriends();
         render();
         bindInbox();
-      } catch (err) { alert(err.message); }
+      } catch (err) { showToast(err.message); }
       return;
     }
     if (rejectBtn) {
@@ -5033,7 +5107,7 @@ function bindInbox() {
         await loadInbox();
         render();
         bindInbox();
-      } catch (err) { alert(err.message); }
+      } catch (err) { showToast(err.message); }
       return;
     }
     const item = e.target.closest('.inbox-item');
