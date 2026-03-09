@@ -3457,7 +3457,8 @@ function bindMain() {
         items.push({ label: t('recall'), action: 'recall' });
         items.push({ label: t('edit'), action: 'edit' });
       }
-      if (state.user?.can_delete_messages && senderId !== 'jimmyqrg') items.push({ label: t('adminDeleteAdmin'), action: 'delete', danger: true });
+      if (isOwn) items.push({ label: t('delete'), action: 'delete', danger: true });
+      if (state.user?.can_delete_messages && !isOwn && senderId !== 'jimmyqrg') items.push({ label: t('adminDeleteAdmin'), action: 'delete', danger: true });
       if (state.user?.can_kick && senderId !== 'jimmyqrg') items.push({ label: t('adminRemoveAccount'), action: 'remove-account' });
       if (canSolve) items.push({ label: t('solve'), action: 'solve' });
       const fileRef = parseFileRef(msg.content, msg.msg_type);
