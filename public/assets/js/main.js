@@ -2516,6 +2516,13 @@ const ICON_PREV = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24
 const ICON_NEXT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/><path d="M15 6v12"/></svg>';
 const ICON_REWIND = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
 const ICON_FORWARD = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>';
+const ICON_CLOSE = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+const ICON_ELLIPSIS_V = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>';
+const ICON_USERS = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+const ICON_SEARCH_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
+const ICON_TRASH = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
+const ICON_EXTERNAL = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>';
+const ICON_SEND = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
 
 function renderProfileView(userId) {
   const pv = state._profileView;
@@ -2580,7 +2587,7 @@ function renderChatArea() {
             <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
           </div>
         </div>
-        <button type="button" class="composer-send" id="send-btn" ${state._spamBlockedUntil && Date.now() < state._spamBlockedUntil ? 'disabled' : ''}>Send</button>
+        <button type="button" class="composer-send" id="send-btn" title="${t('send')}" ${state._spamBlockedUntil && Date.now() < state._spamBlockedUntil ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_SEND}</span></button>
       </div>
     </div>
     `}
@@ -2625,7 +2632,7 @@ function renderChatArea() {
       <div class="chat-main ${sidePanelOpen ? 'chat-main-with-side-panel' : ''}">
         <div class="chat-header">
           <div class="chat-header-title">${escapeHtml(getChatHeaderTitle(roomType, roomId))}</div>
-          <button type="button" class="chat-header-menu-btn" id="chat-header-menu-btn" title="${tx('more', 'More')}" aria-expanded="${sidePanelOpen}">...</button>
+          <button type="button" class="chat-header-menu-btn" id="chat-header-menu-btn" title="${tx('more', 'More')}" aria-expanded="${sidePanelOpen}"><span class="icon" aria-hidden="true">${ICON_ELLIPSIS_V}</span></button>
         </div>
         ${deletedUserBanner}
         <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
@@ -2638,8 +2645,8 @@ function renderChatArea() {
         <div class="composer ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
           ${replyPreview ? `
             <div class="composer-reply">
-              Replying to ${escapeHtml(replyPreview.sender)}: ${escapeHtml(replyPreview.content?.slice(0, 50) || '')}…
-              <button type="button" id="cancel-reply" class="cancel-reply-link">Cancel</button>
+              <span class="composer-reply-text">Replying to <strong>${escapeHtml(replyPreview.sender)}</strong>: ${escapeHtml(replyPreview.content?.slice(0, 50) || '')}…</span>
+              <button type="button" id="cancel-reply" class="cancel-reply-x" title="${t('cancel')}"><span class="icon" aria-hidden="true">${ICON_CLOSE}</span></button>
             </div>
           ` : ''}
           ${state._pendingFile ? `
@@ -2658,7 +2665,7 @@ function renderChatArea() {
                 <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
               </div>
             </div>
-            <button type="button" class="composer-send" id="send-btn" ${state._spamBlockedUntil && Date.now() < state._spamBlockedUntil ? 'disabled' : ''}>Send</button>
+            <button type="button" class="composer-send" id="send-btn" title="${t('send')}" ${state._spamBlockedUntil && Date.now() < state._spamBlockedUntil ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_SEND}</span></button>
           </div>
         </div>
         ` : ''}
@@ -2845,7 +2852,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
   const replyBlock = m.reply_to_id ? `<div class="message-reply-preview" data-reply-to="${m.reply_to_id}">${t('replyToMessage')}</div>` : '';
   const likeCount = (m.likes || 0) > 0 ? `<span class="message-like-count">${m.likes}</span>` : '';
   const likeIcon = `<button type="button" class="message-like-btn" data-msg-id="${m.id}" title="Like" aria-label="Like"><span class="message-like-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span></button>`;
-  const reactionPickerBtn = `<button type="button" class="message-reaction-picker-btn" data-msg-id="${m.id}" title="React" aria-label="React">+</button>`;
+  const reactionPickerBtn = `<button type="button" class="message-reaction-picker-btn" data-msg-id="${m.id}" title="React" aria-label="React"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg></span></button>`;
 
   const chevronLeft = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>`;
   const chevronRight = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>`;
@@ -3236,7 +3243,7 @@ async function showProfileModal(userId) {
     overlay.className = 'modal-overlay profile-modal-overlay';
     overlay.innerHTML = `
       <div class="modal profile-modal">
-        <button type="button" class="profile-modal-close" aria-label="Close">&times;</button>
+        <button type="button" class="profile-modal-close" aria-label="Close"><span class="icon" aria-hidden="true">${ICON_CLOSE}</span></button>
         <div class="profile-modal-scroll">
         <div class="profile-modal-header">
           <img src="${(profile.avatar_url && String(profile.avatar_url).trim()) ? profile.avatar_url : getDefaultAvatarUrl(profile.id)}" data-fallback="${getDefaultAvatarUrl(profile.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="profile-modal-avatar" />
@@ -3306,7 +3313,7 @@ function showWordleModal() {
   overlay.className = 'modal-overlay wordle-modal-overlay';
   overlay.innerHTML = `
     <div class="wordle-modal">
-      <button type="button" class="wordle-modal-close" aria-label="Close">&times;</button>
+      <button type="button" class="wordle-modal-close" aria-label="Close"><span class="icon" aria-hidden="true">${ICON_CLOSE}</span></button>
       <iframe src="https://jimmyqrg.github.io/wordle" title="Wordle" class="wordle-iframe"></iframe>
     </div>
   `;
@@ -3444,7 +3451,7 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
   const isVideo = kind === 'video';
   overlay.innerHTML = `
     <div class="media-popup">
-      <button type="button" class="media-popup-close" aria-label="Close">&times;</button>
+      <button type="button" class="media-popup-close" aria-label="Close"><span class="icon" aria-hidden="true">${ICON_CLOSE}</span></button>
       <div class="media-popup-content"></div>
       <div class="media-popup-image-overlay"></div>
       <div class="media-popup-controls"></div>
@@ -3489,9 +3496,9 @@ async function openFileContentModal(url) {
     overlay.className = 'modal-overlay file-content-modal-overlay';
     overlay.innerHTML = `
       <div class="modal file-content-modal">
-        <button type="button" class="file-content-modal-close" aria-label="Close">&times;</button>
+        <button type="button" class="file-content-modal-close" aria-label="Close"><span class="icon" aria-hidden="true">${ICON_CLOSE}</span></button>
         <pre class="file-content-modal-body">${escapeHtml(text)}</pre>
-        <a href="${escapeHtml(url).replace(/"/g, '&quot;')}" download class="file-content-modal-download">Download</a>
+        <a href="${escapeHtml(url).replace(/"/g, '&quot;')}" download class="file-content-modal-download"><span class="icon" aria-hidden="true">${ICON_DOWNLOAD}</span> Download</a>
       </div>
     `;
     const onEscape = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onEscape); } };
@@ -4342,7 +4349,7 @@ function showDeletePermanentlyModal(userId) {
   overlay.className = 'modal-overlay profile-modal-overlay';
   overlay.innerHTML = `
     <div class="modal profile-modal admin-delete-modal">
-      <button type="button" class="profile-modal-close" aria-label="Close">&times;</button>
+      <button type="button" class="profile-modal-close" aria-label="Close"><span class="icon" aria-hidden="true">${ICON_CLOSE}</span></button>
       <h3>${t('adminDeleteAccountTitle')}</h3>
       <p>${t('adminDeleteAccountDesc')}</p>
       <label class="admin-delete-msgs-label"><input type="checkbox" id="admin-delete-msgs-cb" checked /> ${t('adminDeleteGroupMessages')}</label>
@@ -4837,8 +4844,10 @@ function renderCollectionsContent() {
               <div class="collection-date">${escapeHtml(formatTimestampForDivider(c.message_created_at || c.created_at))}</div>
             </div>
             <div class="collection-body">${escapeHtml((c.content_snapshot || '').slice(0, 200))}${(c.content_snapshot || '').length > 200 ? '…' : ''}</div>
-            <button type="button" class="btn-small collection-open" data-message-id="${c.message_id}">${tx('open', 'Open')}</button>
-            <button type="button" class="btn-small collection-remove" data-id="${c.id}">${t('delete')}</button>
+            <div class="collection-actions">
+              <button type="button" class="icon-btn collection-open" data-message-id="${c.message_id}" title="${tx('open', 'Open')}"><span class="icon" aria-hidden="true">${ICON_EXTERNAL}</span></button>
+              <button type="button" class="icon-btn icon-btn-danger collection-remove" data-id="${c.id}" title="${t('delete')}"><span class="icon" aria-hidden="true">${ICON_TRASH}</span></button>
+            </div>
           </div>
         `).join('')}
       </div>
@@ -4909,10 +4918,10 @@ function renderChatSidePanel(roomType, roomId) {
     <aside class="chat-side-panel ${state._chatSidePanelOpen ? 'open' : ''}" id="chat-side-panel">
       <div class="chat-side-panel-header">
         <div class="chat-side-panel-tabs">
-          <button type="button" class="chat-side-panel-tab ${activeTab === 'users' ? 'active' : ''}" data-chat-side-tab="users">${tx('users', 'Users')}</button>
-          <button type="button" class="chat-side-panel-tab ${activeTab === 'search' ? 'active' : ''}" data-chat-side-tab="search">${tx('search', 'Search')}</button>
+          <button type="button" class="chat-side-panel-tab ${activeTab === 'users' ? 'active' : ''}" data-chat-side-tab="users"><span class="icon" aria-hidden="true">${ICON_USERS}</span> ${tx('users', 'Users')}</button>
+          <button type="button" class="chat-side-panel-tab ${activeTab === 'search' ? 'active' : ''}" data-chat-side-tab="search"><span class="icon" aria-hidden="true">${ICON_SEARCH_SM}</span> ${tx('search', 'Search')}</button>
         </div>
-        <button type="button" class="chat-side-panel-close" id="chat-side-panel-close" aria-label="Close">×</button>
+        <button type="button" class="chat-side-panel-close" id="chat-side-panel-close" aria-label="Close"><span class="icon" aria-hidden="true">${ICON_CLOSE}</span></button>
       </div>
       <div class="chat-side-panel-body">
         ${activeTab === 'search' ? renderChatSearchView(roomType, roomId) : renderChatUsersView()}
@@ -4931,7 +4940,7 @@ function renderChatSearchView(roomType, roomId) {
           <input type="search" id="chat-search-query" placeholder="${tx('searchMessages', 'Search messages')}" value="${escapeHtml(state._chatSearchQuery || '')}" />
           <input type="text" id="chat-search-filter" placeholder="${tx('searchFilterHint', 'e.g. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg')}" value="${escapeHtml(state._chatSearchFilter || '')}" />
         </div>
-        <button type="button" class="chat-search-run btn-small btn-primary">${tx('search', 'Search')}</button>
+        <button type="button" class="chat-search-run icon-btn" title="${tx('search', 'Search')}"><span class="icon" aria-hidden="true">${ICON_SEARCH_SM}</span></button>
       </div>
       <div class="chat-search-results">
         ${loading ? `<div class="chat-search-empty">${t('loading')}</div>` : ''}
