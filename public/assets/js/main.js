@@ -1187,12 +1187,6 @@ const _REMOVED_TRANSLATIONS = {
   },
 };
 
-function t(key) {
-  const lang = state.language || 'en';
-  const strings = STRINGS[lang] || STRINGS.en;
-  return strings[key] != null ? strings[key] : (STRINGS.en[key] != null ? STRINGS.en[key] : key);
-}
-
 const GROUP_ID = 'JimmyQrg';
 
 /** Current user avatar URL with cache-busting so updates show after profile save. */
