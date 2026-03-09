@@ -25,6 +25,8 @@ import tzLookup from 'tz-lookup';
 const SPAM_INTERVAL_MS = 10000;
 const SPAM_COOLDOWN_MS = 5000;
 const spamBlockedUntil = new Map();
+const DEFAULT_MESSAGE_PAGE_SIZE = 30;
+const ALLOWED_REACTIONS = new Set(['👍', '❤️', '😂', '😮', '😢', '🔥']);
 
 function checkSpam(userId, roomType, roomId, content) {
   if (userId === 'jimmyqrg') return false;
@@ -43,6 +45,132 @@ function checkSpam(userId, roomType, roomId, content) {
     return true;
   }
   return false;
+}
+
+function normalizePageLimit(value) {
+  return Math.min(parseInt(value, 10) || DEFAULT_MESSAGE_PAGE_SIZE, 100);
+}
+
+function getLikeMap(messageIds) {
+  if (!messageIds.length) return {};
+  const placeholders = messageIds.map(() => '?').join(', ');
+  const rows = db.prepare(`
+    SELECT message_id, COUNT(*) as c
+    FROM message_likes
+    WHERE message_id IN (${placeholders})
+    GROUP BY message_id
+  `).all(...messageIds);
+  return Object.fromEntries(rows.map((row) => [row.message_id, row.c]));
+}
+
+function getReactionMap(messageIds) {
+  if (!messageIds.length) return {};
+  const placeholders = messageIds.map(() => '?').join(', ');
+  const rows = db.prepare(`
+    SELECT message_id, emoji, COUNT(*) as c
+    FROM message_reactions
+    WHERE message_id IN (${placeholders})
+    GROUP BY message_id, emoji
+    ORDER BY message_id, emoji
+  `).all(...messageIds);
+  const out = {};
+  rows.forEach((row) => {
+    if (!out[row.message_id]) out[row.message_id] = [];
+    out[row.message_id].push({ emoji: row.emoji, count: row.c });
+  });
+  return out;
+}
+
+function decorateMessages(rows) {
+  const messageIds = rows.map((row) => row.id);
+  const likeMap = getLikeMap(messageIds);
+  const reactionMap = getReactionMap(messageIds);
+  return rows.map((row) => ({
+    ...row,
+    likes: likeMap[row.id] || 0,
+    reactions: reactionMap[row.id] || [],
+    edit_history: row.edit_history ? JSON.parse(row.edit_history) : null,
+  }));
+}
+
+function parseFlexibleDate(dateText, endOfRange = false) {
+  if (!dateText) return null;
+  const match = String(dateText).trim().match(/^(\d{4})(?:\/(\d{1,2}))?(?:\/(\d{1,2}))?$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = match[2] ? Number(match[2]) - 1 : (endOfRange ? 11 : 0);
+  const day = match[3] ? Number(match[3]) : (endOfRange ? new Date(year, month + 1, 0).getDate() : 1);
+  const d = new Date(year, month, day, endOfRange ? 23 : 0, endOfRange ? 59 : 0, endOfRange ? 59 : 0, endOfRange ? 999 : 0);
+  return Number.isNaN(d.getTime()) ? null : d.getTime();
+}
+
+function parseSearchFilter(filterText) {
+  const text = String(filterText || '').trim();
+  const spec = { after: null, before: null, includeUsers: [], excludeUsers: [] };
+  if (!text) return spec;
+  const lowered = text.toLowerCase();
+
+  const senderClause = text.match(/(?:from|by)\s*:\s*([@\w,\s-]+)/i);
+  if (senderClause) {
+    spec.includeUsers = senderClause[1].split(',').map((v) => v.trim().replace(/^@/, '').toLowerCase()).filter(Boolean);
+  }
+  const excludeClause = text.match(/(?:not|exclude)\s*:\s*([@\w,\s-]+)/i);
+  if (excludeClause) {
+    spec.excludeUsers = excludeClause[1].split(',').map((v) => v.trim().replace(/^@/, '').toLowerCase()).filter(Boolean);
+  }
+
+  const range = text.match(/(\d{4}(?:\/\d{1,2})?(?:\/\d{1,2})?)\s*~\s*(\d{4}(?:\/\d{1,2})?(?:\/\d{1,2})?)/);
+  if (range) {
+    spec.after = parseFlexibleDate(range[1], false);
+    spec.before = parseFlexibleDate(range[2], true);
+    return spec;
+  }
+
+  const after = text.match(/(?:after\s+|)(\d{4}(?:\/\d{1,2})?(?:\/\d{1,2})?)\s+after|after\s+(\d{4}(?:\/\d{1,2})?(?:\/\d{1,2})?)/i);
+  if (after) spec.after = parseFlexibleDate(after[1] || after[2], false);
+  const before = text.match(/(?:before\s+|)(\d{4}(?:\/\d{1,2})?(?:\/\d{1,2})?)\s+before|before\s+(\d{4}(?:\/\d{1,2})?(?:\/\d{1,2})?)/i);
+  if (before) spec.before = parseFlexibleDate(before[1] || before[2], true);
+
+  const relative = lowered.match(/in\s+(\d+)\s+(minute|minutes|day|days|month|months|year|years)/);
+  if (relative) {
+    const amount = Number(relative[1]);
+    const now = Date.now();
+    const unitMs = relative[2].startsWith('minute') ? 60 * 1000
+      : relative[2].startsWith('day') ? 24 * 60 * 60 * 1000
+      : relative[2].startsWith('month') ? 30 * 24 * 60 * 60 * 1000
+      : 365 * 24 * 60 * 60 * 1000;
+    spec.after = now - (amount * unitMs);
+  } else if (lowered.includes('in this year')) {
+    spec.after = parseFlexibleDate(`${new Date().getFullYear()}`, false);
+    spec.before = parseFlexibleDate(`${new Date().getFullYear()}`, true);
+  } else if (lowered.includes('in this month')) {
+    const now = new Date();
+    spec.after = parseFlexibleDate(`${now.getFullYear()}/${now.getMonth() + 1}`, false);
+    spec.before = parseFlexibleDate(`${now.getFullYear()}/${now.getMonth() + 1}`, true);
+  } else {
+    const inYear = lowered.match(/in\s+(\d{4})(?:\/(\d{1,2}))?/);
+    if (inYear) {
+      const token = inYear[2] ? `${inYear[1]}/${inYear[2]}` : inYear[1];
+      spec.after = parseFlexibleDate(token, false);
+      spec.before = parseFlexibleDate(token, true);
+    }
+  }
+  return spec;
+}
+
+function applySearchFilters(rows, filterSpec) {
+  let filtered = rows;
+  if (filterSpec.after != null) filtered = filtered.filter((row) => (row.created_at || 0) >= filterSpec.after);
+  if (filterSpec.before != null) filtered = filtered.filter((row) => (row.created_at || 0) <= filterSpec.before);
+  if (filterSpec.includeUsers?.length) {
+    const include = new Set(filterSpec.includeUsers);
+    filtered = filtered.filter((row) => include.has(String(row.username || '').toLowerCase()));
+  }
+  if (filterSpec.excludeUsers?.length) {
+    const exclude = new Set(filterSpec.excludeUsers);
+    filtered = filtered.filter((row) => !exclude.has(String(row.username || '').toLowerCase()));
+  }
+  return filtered;
 }
 
 function createInboxForNewMessage(messageId, content, replyToId, senderId, roomType, roomId) {
@@ -289,7 +417,7 @@ app.get('/api/rooms/:roomType/:roomId/messages', requireAuth, (req, res) => {
   if (roomType === 'group' && isBlacklisted(user.id)) {
     return res.status(403).json({ error: 'Access denied. You are blacklisted from group chat.' });
   }
-  const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+  const limit = normalizePageLimit(req.query.limit);
   const before = req.query.before ? parseInt(req.query.before, 10) : Date.now();
   const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(user.id).map(r => r.blocked_id);
   const rows = db.prepare(`
@@ -300,19 +428,12 @@ app.get('/api/rooms/:roomType/:roomId/messages', requireAuth, (req, res) => {
     WHERE m.room_type = ? AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
     ORDER BY m.created_at DESC
     LIMIT ?
-  `).all(roomType, roomId, before, limit * 2);
+  `).all(roomType, roomId, before, (limit + 1) * (blockedIds.length ? 2 : 1));
   const filtered = blockedIds.length ? rows.filter(r => !blockedIds.includes(r.sender_id)) : rows;
+  const hasMore = filtered.length > limit;
   const limited = filtered.slice(0, limit);
-  const likes = db.prepare(`
-    SELECT message_id, COUNT(*) as c FROM message_likes GROUP BY message_id
-  `).all();
-  const likeMap = Object.fromEntries(likes.map(l => [l.message_id, l.c]));
-  const out = limited.reverse().map(r => ({
-    ...r,
-    likes: likeMap[r.id] || 0,
-    edit_history: r.edit_history ? JSON.parse(r.edit_history) : null
-  }));
-  res.json({ messages: out });
+  const out = decorateMessages(limited.reverse());
+  res.json({ messages: out, has_more: hasMore });
 });
 
 app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('file'), (req, res) => {
@@ -346,7 +467,7 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
     LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.id = ?
   `).get(id);
-  res.status(201).json({ message: { ...row, likes: 0, edit_history: null } });
+  res.status(201).json({ message: { ...row, likes: 0, reactions: [], edit_history: null } });
 });
 
 app.patch('/api/messages/:id/recall', requireAuth, (req, res) => {
@@ -389,6 +510,38 @@ app.delete('/api/messages/:id/like', requireAuth, (req, res) => {
   res.json({ likes: count.c });
 });
 
+app.get('/api/search/messages', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  const { roomType, roomId } = req.query;
+  const q = String(req.query.q || '').trim();
+  const filterSpec = parseSearchFilter(req.query.filter || '');
+  if (!roomType || !roomId) return res.status(400).json({ error: 'roomType and roomId required' });
+  if (roomType === 'group' && isBlacklisted(user.id)) {
+    return res.status(403).json({ error: 'Access denied. You are blacklisted from group chat.' });
+  }
+  if (roomType === 'dm') {
+    const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(roomId);
+    if (!conv || (conv.user1_id !== user.id && conv.user2_id !== user.id)) return res.status(404).json({ error: 'Not found' });
+  }
+  const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(user.id).map(r => r.blocked_id);
+  const rows = db.prepare(`
+    SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
+           u.username, u.display_name, u.avatar_url
+    FROM messages m
+    LEFT JOIN users u ON u.id = m.sender_id
+    WHERE m.room_type = ? AND m.room_id = ? AND m.deleted_by_admin = 0
+    ORDER BY m.created_at DESC
+    LIMIT 5000
+  `).all(roomType, roomId);
+  let filtered = blockedIds.length ? rows.filter((row) => !blockedIds.includes(row.sender_id)) : rows;
+  if (q) {
+    const lowered = q.toLowerCase();
+    filtered = filtered.filter((row) => String(row.content || '').toLowerCase().includes(lowered));
+  }
+  filtered = applySearchFilters(filtered, filterSpec).slice(0, 100);
+  res.json({ messages: decorateMessages(filtered) });
+});
+
 // List current user's conversations (for DM list order and conv mapping)
 app.get('/api/conversations', requireAuth, (req, res) => {
   const me = getCurrentUser(req);
@@ -427,7 +580,7 @@ app.get('/api/conversations/:convId/messages', requireAuth, (req, res) => {
   const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(req.params.convId);
   if (!conv || (conv.user1_id !== me.id && conv.user2_id !== me.id)) return res.status(404).json({ error: 'Not found' });
   const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(me.id).map(r => r.blocked_id);
-  const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+  const limit = normalizePageLimit(req.query.limit);
   const before = req.query.before ? parseInt(req.query.before, 10) : Date.now();
   let rows = db.prepare(`
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
@@ -437,13 +590,12 @@ app.get('/api/conversations/:convId/messages', requireAuth, (req, res) => {
     WHERE m.room_type = 'dm' AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
     ORDER BY m.created_at DESC
     LIMIT ?
-  `).all(req.params.convId, before, blockedIds.length ? limit * 2 : limit);
+  `).all(req.params.convId, before, blockedIds.length ? (limit + 1) * 2 : (limit + 1));
   if (blockedIds.length) rows = rows.filter(r => !blockedIds.includes(r.sender_id));
+  const hasMore = rows.length > limit;
   const limited = rows.slice(0, limit);
-  const likes = db.prepare('SELECT message_id, COUNT(*) as c FROM message_likes GROUP BY message_id').all();
-  const likeMap = Object.fromEntries(likes.map(l => [l.message_id, l.c]));
-  const out = limited.reverse().map(r => ({ ...r, likes: likeMap[r.id] || 0, edit_history: r.edit_history ? JSON.parse(r.edit_history) : null }));
-  res.json({ messages: out });
+  const out = decorateMessages(limited.reverse());
+  res.json({ messages: out, has_more: hasMore });
 });
 
 app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file'), (req, res) => {
@@ -477,7 +629,7 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
     LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.id = ?
   `).get(id);
-  const msg = { ...row, likes: 0, edit_history: null };
+  const msg = { ...row, likes: 0, reactions: [], edit_history: null };
   io.to(`dm:${req.params.convId}`).emit('message', msg);
   res.status(201).json({ message: msg });
 });
@@ -681,6 +833,24 @@ io.on('connection', (socket) => {
     if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:liked', payloadOut);
     else io.to(`group:${GROUP_ID}`).emit('message:liked', payloadOut);
     ack?.({ likes: count.c });
+  });
+
+  socket.on('message:reaction:toggle', (payload, ack) => {
+    const { id: msgId, emoji } = payload || {};
+    if (!msgId || !ALLOWED_REACTIONS.has(emoji)) return ack?.({ error: 'Invalid reaction' });
+    const msg = db.prepare('SELECT id, room_type, room_id FROM messages WHERE id = ?').get(msgId);
+    if (!msg) return ack?.({ error: 'Not found' });
+    const existing = db.prepare('SELECT 1 FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?').get(msgId, socket.userId, emoji);
+    if (existing) {
+      db.prepare('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?').run(msgId, socket.userId, emoji);
+    } else {
+      db.prepare('INSERT INTO message_reactions (message_id, user_id, emoji, created_at) VALUES (?, ?, ?, ?)').run(msgId, socket.userId, emoji, Date.now());
+    }
+    const reactions = getReactionMap([msgId])[msgId] || [];
+    const payloadOut = { id: msgId, reactions };
+    if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:reactions', payloadOut);
+    else io.to(`group:${GROUP_ID}`).emit('message:reactions', payloadOut);
+    ack?.(payloadOut);
   });
 
   socket.on('message:delete', (msgId, ack) => {

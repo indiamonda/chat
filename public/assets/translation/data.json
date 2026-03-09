@@ -315,7 +315,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Collections",
+      "noCollections": "No saved messages yet.",
+      "addToCollection": "Save to collection",
+      "addedToCollection": "Message saved to collection.",
+      "searchMessages": "Search messages",
+      "searchFilterHint": "e.g. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "No messages found.",
+      "back": "Back",
+      "more": "More",
+      "search": "Search",
+      "open": "Open"
     },
     "zh": {
       "general": "通用",
@@ -474,7 +485,18 @@
       "adminTimeoutUntil": "至 ",
       "adminTimeoutForever": "永久",
       "adminTimeoutLocked": "（仅我可解除）",
-      "adminRelease": "解除"
+      "adminRelease": "解除",
+      "collections": "收藏",
+      "noCollections": "还没有收藏的消息。",
+      "addToCollection": "收藏这条消息",
+      "addedToCollection": "已收藏。",
+      "searchMessages": "搜索聊天记录",
+      "searchFilterHint": "例如：2026/5、2025/01/01~2025/02/01、from:@jimmyqrg",
+      "noSearchResults": "没有找到消息。",
+      "back": "返回",
+      "more": "更多",
+      "search": "搜索",
+      "open": "打开"
     },
     "ja": {
       "general": "一般",
@@ -633,7 +655,18 @@
       "blocked": "ブロック済み",
       "sendFriendRequest": "友達リクエストを送る",
       "requestSent": "リクエスト送信済み",
-      "sendMessage": "メッセージを送る"
+      "sendMessage": "メッセージを送る",
+      "collections": "コレクション",
+      "noCollections": "保存したメッセージはまだありません。",
+      "addToCollection": "コレクションに保存",
+      "addedToCollection": "コレクションに保存しました。",
+      "searchMessages": "メッセージを検索",
+      "searchFilterHint": "例: 2026/5、2025/01/01~2025/02/01、from:@jimmyqrg",
+      "noSearchResults": "メッセージが見つかりません。",
+      "back": "戻る",
+      "more": "その他",
+      "search": "検索",
+      "open": "開く"
     },
     "ko": {
       "general": "일반",
@@ -792,7 +825,18 @@
       "adminTimeoutUntil": "까지 ",
       "adminTimeoutForever": "영구",
       "adminTimeoutLocked": "(해제는 본인만)",
-      "adminRelease": "해제"
+      "adminRelease": "해제",
+      "collections": "컬렉션",
+      "noCollections": "저장한 메시지가 아직 없습니다.",
+      "addToCollection": "컬렉션에 저장",
+      "addedToCollection": "컬렉션에 저장되었습니다.",
+      "searchMessages": "메시지 검색",
+      "searchFilterHint": "예: 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "메시지를 찾을 수 없습니다.",
+      "back": "뒤로",
+      "more": "더보기",
+      "search": "검색",
+      "open": "열기"
     },
     "es": {
       "general": "General",
@@ -951,7 +995,18 @@
       "adminTimeoutUntil": "hasta ",
       "adminTimeoutForever": "para siempre",
       "adminTimeoutLocked": "(bloqueado)",
-      "adminRelease": "Liberar"
+      "adminRelease": "Liberar",
+      "collections": "Colecciones",
+      "noCollections": "Todavía no hay mensajes guardados.",
+      "addToCollection": "Guardar en la colección",
+      "addedToCollection": "Mensaje guardado en la colección.",
+      "searchMessages": "Buscar mensajes",
+      "searchFilterHint": "p. ej. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "No se encontraron mensajes.",
+      "back": "Atras",
+      "more": "Mas",
+      "search": "Buscar",
+      "open": "Abrir"
     },
     "fr": {
       "general": "Général",
@@ -1110,7 +1165,18 @@
       "adminTimeoutUntil": "jusqu'à ",
       "adminTimeoutForever": "pour toujours",
       "adminTimeoutLocked": "(verrouillé)",
-      "adminRelease": "Libérer"
+      "adminRelease": "Libérer",
+      "collections": "Collections",
+      "noCollections": "Aucun message enregistré pour le moment.",
+      "addToCollection": "Enregistrer dans la collection",
+      "addedToCollection": "Message enregistré dans la collection.",
+      "searchMessages": "Rechercher dans les messages",
+      "searchFilterHint": "ex. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Aucun message trouve.",
+      "back": "Retour",
+      "more": "Plus",
+      "search": "Rechercher",
+      "open": "Ouvrir"
     },
     "de": {
       "general": "Allgemein",
@@ -1269,7 +1335,18 @@
       "adminTimeoutUntil": "bis ",
       "adminTimeoutForever": "dauerhaft",
       "adminTimeoutLocked": "(gesperrt)",
-      "adminRelease": "Freigeben"
+      "adminRelease": "Freigeben",
+      "collections": "Sammlungen",
+      "noCollections": "Noch keine gespeicherten Nachrichten.",
+      "addToCollection": "In Sammlung speichern",
+      "addedToCollection": "In Sammlung gespeichert.",
+      "searchMessages": "Nachrichten suchen",
+      "searchFilterHint": "z. B. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Keine Nachrichten gefunden.",
+      "back": "Zurück",
+      "more": "Mehr",
+      "search": "Suchen",
+      "open": "Öffnen"
     },
     "zh-Hans": {
       "general": "通用",
@@ -1428,7 +1505,18 @@
       "adminTimeoutUntil": "至 ",
       "adminTimeoutForever": "永久",
       "adminTimeoutLocked": "（仅我可解除）",
-      "adminRelease": "解除"
+      "adminRelease": "解除",
+      "collections": "收藏",
+      "noCollections": "还没有收藏的消息。",
+      "addToCollection": "收藏这条消息",
+      "addedToCollection": "已收藏。",
+      "searchMessages": "搜索聊天记录",
+      "searchFilterHint": "例如：2026/5、2025/01/01~2025/02/01、from:@jimmyqrg",
+      "noSearchResults": "没有找到消息。",
+      "back": "返回",
+      "more": "更多",
+      "search": "搜索",
+      "open": "打开"
     },
     "zh-Hant": {
       "general": "通用",
@@ -1587,7 +1675,18 @@
       "adminTimeoutUntil": "至 ",
       "adminTimeoutForever": "永久",
       "adminTimeoutLocked": "（僅我可解除）",
-      "adminRelease": "解除"
+      "adminRelease": "解除",
+      "collections": "收藏",
+      "noCollections": "還沒有收藏的訊息。",
+      "addToCollection": "收藏這則訊息",
+      "addedToCollection": "已收藏。",
+      "searchMessages": "搜尋聊天記錄",
+      "searchFilterHint": "例如：2026/5、2025/01/01~2025/02/01、from:@jimmyqrg",
+      "noSearchResults": "找不到訊息。",
+      "back": "返回",
+      "more": "更多",
+      "search": "搜尋",
+      "open": "打開"
     },
     "hi": {
       "general": "सामान्य",
@@ -1746,7 +1845,18 @@
       "adminTimeoutUntil": "तक ",
       "adminTimeoutForever": "हमेशा के लिए",
       "adminTimeoutLocked": "(लॉक किया गया)",
-      "adminRelease": "रिलीज़ करें"
+      "adminRelease": "रिलीज़ करें",
+      "collections": "संग्रह",
+      "noCollections": "अभी तक कोई सहेजा गया संदेश नहीं है।",
+      "addToCollection": "संग्रह में सहेजें",
+      "addedToCollection": "संदेश संग्रह में सहेजा गया।",
+      "searchMessages": "संदेश खोजें",
+      "searchFilterHint": "जैसे 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "कोई संदेश नहीं मिला।",
+      "back": "वापस",
+      "more": "और",
+      "search": "खोजें",
+      "open": "खोलें"
     },
     "ar": {
       "general": "عام",
@@ -1905,7 +2015,18 @@
       "adminTimeoutUntil": "حتى ",
       "adminTimeoutForever": "للأبد",
       "adminTimeoutLocked": "(مقفل)",
-      "adminRelease": "إلغاء المنع"
+      "adminRelease": "إلغاء المنع",
+      "collections": "المحفوظات",
+      "noCollections": "لا توجد رسائل محفوظة بعد.",
+      "addToCollection": "حفظ الرسالة",
+      "addedToCollection": "تم حفظ الرسالة.",
+      "searchMessages": "البحث في الرسائل",
+      "searchFilterHint": "مثال: 2026/5، 2025/01/01~2025/02/01، from:@jimmyqrg",
+      "noSearchResults": "لم يتم العثور على رسائل.",
+      "back": "رجوع",
+      "more": "المزيد",
+      "search": "بحث",
+      "open": "فتح"
     },
     "bn": {
       "general": "General",
@@ -2064,7 +2185,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "সংগ্রহ",
+      "noCollections": "এখনও কোনো সংরক্ষিত বার্তা নেই।",
+      "addToCollection": "সংগ্রহে সংরক্ষণ করুন",
+      "addedToCollection": "বার্তাটি সংগ্রহে সংরক্ষিত হয়েছে।",
+      "searchMessages": "বার্তা খুঁজুন",
+      "searchFilterHint": "যেমন 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "কোনো বার্তা পাওয়া যায়নি।",
+      "back": "ফিরে যান",
+      "more": "আরও",
+      "search": "খুঁজুন",
+      "open": "খুলুন"
     },
     "pt": {
       "general": "Geral",
@@ -2223,7 +2355,18 @@
       "adminTimeoutUntil": "até ",
       "adminTimeoutForever": "para sempre",
       "adminTimeoutLocked": "(bloqueado)",
-      "adminRelease": "Liberar"
+      "adminRelease": "Liberar",
+      "collections": "Coleções",
+      "noCollections": "Ainda não há mensagens salvas.",
+      "addToCollection": "Salvar na coleção",
+      "addedToCollection": "Mensagem salva na coleção.",
+      "searchMessages": "Buscar mensagens",
+      "searchFilterHint": "ex.: 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Nenhuma mensagem encontrada.",
+      "back": "Voltar",
+      "more": "Mais",
+      "search": "Buscar",
+      "open": "Abrir"
     },
     "ru": {
       "general": "Общие",
@@ -2382,7 +2525,18 @@
       "adminTimeoutUntil": "до ",
       "adminTimeoutForever": "навсегда",
       "adminTimeoutLocked": "(заблокировано)",
-      "adminRelease": "Снять запрет"
+      "adminRelease": "Снять запрет",
+      "collections": "Коллекции",
+      "noCollections": "Сохранённых сообщений пока нет.",
+      "addToCollection": "Добавить в коллекцию",
+      "addedToCollection": "Сообщение добавлено в коллекцию.",
+      "searchMessages": "Поиск сообщений",
+      "searchFilterHint": "например: 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Сообщения не найдены.",
+      "back": "Назад",
+      "more": "Ещё",
+      "search": "Поиск",
+      "open": "Открыть"
     },
     "ur": {
       "general": "General",
@@ -2541,7 +2695,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "محفوظات",
+      "noCollections": "ابھی تک کوئی محفوظ شدہ پیغام نہیں ہے۔",
+      "addToCollection": "محفوظات میں محفوظ کریں",
+      "addedToCollection": "پیغام محفوظات میں محفوظ ہو گیا۔",
+      "searchMessages": "پیغامات تلاش کریں",
+      "searchFilterHint": "مثلاً 2026/5، 2025/01/01~2025/02/01، from:@jimmyqrg",
+      "noSearchResults": "کوئی پیغام نہیں ملا۔",
+      "back": "واپس",
+      "more": "مزید",
+      "search": "تلاش کریں",
+      "open": "کھولیں"
     },
     "id": {
       "general": "General",
@@ -2700,7 +2865,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Koleksi",
+      "noCollections": "Belum ada pesan yang disimpan.",
+      "addToCollection": "Simpan ke koleksi",
+      "addedToCollection": "Pesan disimpan ke koleksi.",
+      "searchMessages": "Cari pesan",
+      "searchFilterHint": "mis. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Tidak ada pesan yang ditemukan.",
+      "back": "Kembali",
+      "more": "Lainnya",
+      "search": "Cari",
+      "open": "Buka"
     },
     "sw": {
       "general": "General",
@@ -2859,7 +3035,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Makusanyo",
+      "noCollections": "Bado hakuna ujumbe uliohifadhiwa.",
+      "addToCollection": "Hifadhi kwenye mkusanyo",
+      "addedToCollection": "Ujumbe umehifadhiwa kwenye mkusanyo.",
+      "searchMessages": "Tafuta ujumbe",
+      "searchFilterHint": "mf. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Hakuna ujumbe uliopatikana.",
+      "back": "Rudi",
+      "more": "Zaidi",
+      "search": "Tafuta",
+      "open": "Fungua"
     },
     "tr": {
       "general": "General",
@@ -3018,7 +3205,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Koleksiyonlar",
+      "noCollections": "Henüz kaydedilmiş mesaj yok.",
+      "addToCollection": "Koleksiyona ekle",
+      "addedToCollection": "Mesaj koleksiyona eklendi.",
+      "searchMessages": "Mesajlarda ara",
+      "searchFilterHint": "örn. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Mesaj bulunamadı.",
+      "back": "Geri",
+      "more": "Daha fazla",
+      "search": "Ara",
+      "open": "Aç"
     },
     "vi": {
       "general": "General",
@@ -3177,7 +3375,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Bộ sưu tập",
+      "noCollections": "Chưa có tin nhắn nào được lưu.",
+      "addToCollection": "Lưu vào bộ sưu tập",
+      "addedToCollection": "Đã lưu vào bộ sưu tập.",
+      "searchMessages": "Tìm tin nhắn",
+      "searchFilterHint": "ví dụ: 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Không tìm thấy tin nhắn.",
+      "back": "Quay lại",
+      "more": "Thêm",
+      "search": "Tìm",
+      "open": "Mở"
     },
     "it": {
       "general": "General",
@@ -3336,7 +3545,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Raccolte",
+      "noCollections": "Non ci sono ancora messaggi salvati.",
+      "addToCollection": "Salva nella raccolta",
+      "addedToCollection": "Messaggio salvato nella raccolta.",
+      "searchMessages": "Cerca messaggi",
+      "searchFilterHint": "es. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Nessun messaggio trovato.",
+      "back": "Indietro",
+      "more": "Altro",
+      "search": "Cerca",
+      "open": "Apri"
     },
     "th": {
       "general": "General",
@@ -3495,7 +3715,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "คอลเลกชัน",
+      "noCollections": "ยังไม่มีข้อความที่บันทึกไว้",
+      "addToCollection": "บันทึกลงคอลเลกชัน",
+      "addedToCollection": "บันทึกข้อความลงคอลเลกชันแล้ว",
+      "searchMessages": "ค้นหาข้อความ",
+      "searchFilterHint": "เช่น 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "ไม่พบข้อความ",
+      "back": "กลับ",
+      "more": "เพิ่มเติม",
+      "search": "ค้นหา",
+      "open": "เปิด"
     },
     "pl": {
       "general": "General",
@@ -3654,7 +3885,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Kolekcje",
+      "noCollections": "Brak zapisanych wiadomości.",
+      "addToCollection": "Dodaj do kolekcji",
+      "addedToCollection": "Dodano do kolekcji.",
+      "searchMessages": "Szukaj wiadomości",
+      "searchFilterHint": "np. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Nie znaleziono wiadomości.",
+      "back": "Wstecz",
+      "more": "Więcej",
+      "search": "Szukaj",
+      "open": "Otwórz"
     },
     "uk": {
       "general": "General",
@@ -3813,7 +4055,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Колекції",
+      "noCollections": "Ще немає збережених повідомлень.",
+      "addToCollection": "Додати до колекції",
+      "addedToCollection": "Додано до колекції.",
+      "searchMessages": "Пошук повідомлень",
+      "searchFilterHint": "наприклад: 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Повідомлень не знайдено.",
+      "back": "Назад",
+      "more": "Ще",
+      "search": "Шукати",
+      "open": "Відкрити"
     },
     "nl": {
       "general": "General",
@@ -3972,7 +4225,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Collecties",
+      "noCollections": "Nog geen opgeslagen berichten.",
+      "addToCollection": "Aan collectie toevoegen",
+      "addedToCollection": "Aan collectie toegevoegd.",
+      "searchMessages": "Berichten zoeken",
+      "searchFilterHint": "bijv. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Geen berichten gevonden.",
+      "back": "Terug",
+      "more": "Meer",
+      "search": "Zoeken",
+      "open": "Openen"
     },
     "ro": {
       "general": "General",
@@ -4131,7 +4395,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Colecții",
+      "noCollections": "Încă nu există mesaje salvate.",
+      "addToCollection": "Adaugă la colecție",
+      "addedToCollection": "Adăugat în colecție.",
+      "searchMessages": "Caută mesaje",
+      "searchFilterHint": "ex. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Nu au fost găsite mesaje.",
+      "back": "Înapoi",
+      "more": "Mai multe",
+      "search": "Caută",
+      "open": "Deschide"
     },
     "sv": {
       "general": "General",
@@ -4290,7 +4565,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Samlingar",
+      "noCollections": "Inga sparade meddelanden än.",
+      "addToCollection": "Lägg till i samling",
+      "addedToCollection": "Tillagt i samling.",
+      "searchMessages": "Sök meddelanden",
+      "searchFilterHint": "t.ex. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Inga meddelanden hittades.",
+      "back": "Tillbaka",
+      "more": "Mer",
+      "search": "Sök",
+      "open": "Öppna"
     },
     "hu": {
       "general": "General",
@@ -4449,7 +4735,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Gyűjtemények",
+      "noCollections": "Még nincsenek mentett üzenetek.",
+      "addToCollection": "Hozzáadás a gyűjteményhez",
+      "addedToCollection": "Hozzáadva a gyűjteményhez.",
+      "searchMessages": "Üzenetek keresése",
+      "searchFilterHint": "pl. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Nincs találat.",
+      "back": "Vissza",
+      "more": "Több",
+      "search": "Keresés",
+      "open": "Megnyitás"
     },
     "el": {
       "general": "General",
@@ -4608,7 +4905,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Συλλογές",
+      "noCollections": "Δεν υπάρχουν αποθηκευμένα μηνύματα ακόμη.",
+      "addToCollection": "Προσθήκη στη συλλογή",
+      "addedToCollection": "Προστέθηκε στη συλλογή.",
+      "searchMessages": "Αναζήτηση μηνυμάτων",
+      "searchFilterHint": "π.χ. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Δεν βρέθηκαν μηνύματα.",
+      "back": "Πίσω",
+      "more": "Περισσότερα",
+      "search": "Αναζήτηση",
+      "open": "Άνοιγμα"
     },
     "he": {
       "general": "General",
@@ -4767,7 +5075,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "אוספים",
+      "noCollections": "אין עדיין הודעות שמורות.",
+      "addToCollection": "שמור לאוסף",
+      "addedToCollection": "ההודעה נשמרה באוסף.",
+      "searchMessages": "חיפוש בהודעות",
+      "searchFilterHint": "למשל: 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "לא נמצאו הודעות.",
+      "back": "חזרה",
+      "more": "עוד",
+      "search": "חיפוש",
+      "open": "פתח"
     },
     "fa": {
       "general": "General",
@@ -4926,7 +5245,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "مجموعه‌ها",
+      "noCollections": "هنوز هیچ پیام ذخیره‌شده‌ای ندارید.",
+      "addToCollection": "ذخیره در مجموعه",
+      "addedToCollection": "پیام در مجموعه ذخیره شد.",
+      "searchMessages": "جستجوی پیام‌ها",
+      "searchFilterHint": "مثلاً 2026/5، 2025/01/01~2025/02/01، from:@jimmyqrg",
+      "noSearchResults": "هیچ پیامی پیدا نشد.",
+      "back": "بازگشت",
+      "more": "بیشتر",
+      "search": "جستجو",
+      "open": "باز کردن"
     },
     "am": {
       "general": "General",
@@ -5085,7 +5415,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "ስብስቦች",
+      "noCollections": "እስካሁን የተቀመጡ መልዕክቶች የሉም።",
+      "addToCollection": "ወደ ስብስብ አክል",
+      "addedToCollection": "ወደ ስብስብ ተጨምሯል።",
+      "searchMessages": "መልዕክቶችን ፈልግ",
+      "searchFilterHint": "ለምሳሌ 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "ምንም መልዕክት አልተገኘም።",
+      "back": "ተመለስ",
+      "more": "ተጨማሪ",
+      "search": "ፈልግ",
+      "open": "ክፈት"
     },
     "ta": {
       "general": "General",
@@ -5244,7 +5585,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "தொகுப்புகள்",
+      "noCollections": "இன்னும் சேமித்த செய்திகள் இல்லை.",
+      "addToCollection": "தொகுப்பில் சேர்",
+      "addedToCollection": "தொகுப்பில் சேர்க்கப்பட்டது.",
+      "searchMessages": "செய்திகளைத் தேடு",
+      "searchFilterHint": "உதா. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "செய்திகள் எதுவும் கிடைக்கவில்லை.",
+      "back": "பின்",
+      "more": "மேலும்",
+      "search": "தேடு",
+      "open": "திற"
     },
     "te": {
       "general": "General",
@@ -5403,7 +5755,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "సేకరణలు",
+      "noCollections": "ఇంకా సేవ్ చేసిన సందేశాలు లేవు.",
+      "addToCollection": "సేకరణకు జోడించు",
+      "addedToCollection": "సేకరణకు జోడించబడింది.",
+      "searchMessages": "సందేశాలను వెతుకు",
+      "searchFilterHint": "ఉదా. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "ఏ సందేశాలు కనుగొనబడలేదు.",
+      "back": "వెనుకకు",
+      "more": "మరిన్ని",
+      "search": "వెతుకు",
+      "open": "తెరువు"
     },
     "mr": {
       "general": "General",
@@ -5562,7 +5925,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "संग्रह",
+      "noCollections": "अजून जतन केलेले संदेश नाहीत.",
+      "addToCollection": "संग्रहात जतन करा",
+      "addedToCollection": "संदेश संग्रहात जतन केला.",
+      "searchMessages": "संदेश शोधा",
+      "searchFilterHint": "उदा. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "कोणतेही संदेश सापडले नाहीत.",
+      "back": "मागे",
+      "more": "आणखी",
+      "search": "शोधा",
+      "open": "उघडा"
     },
     "pa": {
       "general": "General",
@@ -5721,7 +6095,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "ਸੰਗ੍ਰਹਿ",
+      "noCollections": "ਹਾਲੇ ਕੋਈ ਸੰਭਾਲੇ ਹੋਏ ਸੁਨੇਹੇ ਨਹੀਂ ਹਨ।",
+      "addToCollection": "ਸੰਗ੍ਰਹਿ ਵਿੱਚ ਸੰਭਾਲੋ",
+      "addedToCollection": "ਸੁਨੇਹਾ ਸੰਗ੍ਰਹਿ ਵਿੱਚ ਸੰਭਾਲਿਆ ਗਿਆ।",
+      "searchMessages": "ਸੁਨੇਹੇ ਖੋਜੋ",
+      "searchFilterHint": "ਜਿਵੇਂ 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "ਕੋਈ ਸੁਨੇਹਾ ਨਹੀਂ ਮਿਲਿਆ।",
+      "back": "ਵਾਪਸ",
+      "more": "ਹੋਰ",
+      "search": "ਖੋਜੋ",
+      "open": "ਖੋਲ੍ਹੋ"
     },
     "gu": {
       "general": "General",
@@ -5880,7 +6265,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "સંગ્રહો",
+      "noCollections": "હજુ સુધી કોઈ સાચવેલા સંદેશા નથી.",
+      "addToCollection": "સંગ્રહમાં સાચવો",
+      "addedToCollection": "સંદેશ સંગ્રહમાં સાચવાયો.",
+      "searchMessages": "સંદેશો શોધો",
+      "searchFilterHint": "જેમ કે 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "કોઈ સંદેશ મળ્યો નથી.",
+      "back": "પાછળ",
+      "more": "વધુ",
+      "search": "શોધો",
+      "open": "ખોલો"
     },
     "kn": {
       "general": "General",
@@ -6039,7 +6435,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "ಸಂಗ್ರಹಗಳು",
+      "noCollections": "ಇನ್ನೂ ಯಾವುದೇ ಉಳಿಸಿದ ಸಂದೇಶಗಳಿಲ್ಲ.",
+      "addToCollection": "ಸಂಗ್ರಹಕ್ಕೆ ಉಳಿಸಿ",
+      "addedToCollection": "ಸಂದೇಶವನ್ನು ಸಂಗ್ರಹಕ್ಕೆ ಉಳಿಸಲಾಗಿದೆ.",
+      "searchMessages": "ಸಂದೇಶಗಳನ್ನು ಹುಡುಕಿ",
+      "searchFilterHint": "ಉದಾ. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "ಯಾವುದೇ ಸಂದೇಶಗಳು ಕಂಡುಬಂದಿಲ್ಲ.",
+      "back": "ಹಿಂದೆ",
+      "more": "ಇನ್ನಷ್ಟು",
+      "search": "ಹುಡುಕಿ",
+      "open": "ತೆರೆಯಿರಿ"
     },
     "ml": {
       "general": "General",
@@ -6198,7 +6605,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "ശേഖരങ്ങൾ",
+      "noCollections": "ഇനിയും സേവ് ചെയ്ത സന്ദേശങ്ങളൊന്നുമില്ല.",
+      "addToCollection": "ശേഖരത്തിലേക്ക് ചേർക്കുക",
+      "addedToCollection": "ശേഖരത്തിലേക്ക് ചേർത്തു.",
+      "searchMessages": "സന്ദേശങ്ങൾ തിരയുക",
+      "searchFilterHint": "ഉദാ. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "സന്ദേശങ്ങളൊന്നും കണ്ടെത്തിയില്ല.",
+      "back": "തിരികെ",
+      "more": "കൂടുതൽ",
+      "search": "തിരയുക",
+      "open": "തുറക്കുക"
     },
     "jv": {
       "general": "General",
@@ -6357,7 +6775,18 @@
       "adminTimeoutUntil": "until ",
       "adminTimeoutForever": "forever",
       "adminTimeoutLocked": "(locked)",
-      "adminRelease": "Release"
+      "adminRelease": "Release",
+      "collections": "Koleksi",
+      "noCollections": "Durung ana pesen sing disimpen.",
+      "addToCollection": "Tambah menyang koleksi",
+      "addedToCollection": "Pesen ditambahake menyang koleksi.",
+      "searchMessages": "Goleki pesen",
+      "searchFilterHint": "umpamane 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg",
+      "noSearchResults": "Ora ana pesen sing ditemokake.",
+      "back": "Balik",
+      "more": "Liyane",
+      "search": "Goleki",
+      "open": "Bukak"
     }
   }
 }

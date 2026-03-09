@@ -48,6 +48,14 @@ let state = {
   commandMode: typeof localStorage !== 'undefined' && localStorage.getItem('commandMode') === '1',
   notificationPrefs: null,
   drafts: {},
+  collections: [],
+  _hasMoreMessages: {},
+  _loadingOlderMessages: {},
+  _chatSearchOpen: false,
+  _chatSearchQuery: '',
+  _chatSearchFilter: '',
+  _chatSearchResults: [],
+  _chatSearchLoading: false,
 };
 
 if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
@@ -248,6 +256,13 @@ const DEFAULT_STRINGS = {
     noCollections: 'No saved messages yet.',
     addToCollection: 'Add to collection',
     addedToCollection: 'Added to collections',
+    searchMessages: 'Search message',
+    searchFilterHint: 'e.g. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg',
+    noSearchResults: 'No messages found.',
+    back: 'Back',
+    more: 'More',
+    search: 'Search',
+    open: 'Open',
   }
 };
 let STRINGS = { ...DEFAULT_STRINGS };
@@ -266,6 +281,11 @@ function t(key) {
   const lang = state.language || 'en';
   const strings = STRINGS[lang] || STRINGS.en;
   return strings[key] != null ? strings[key] : (STRINGS.en[key] != null ? STRINGS.en[key] : key);
+}
+
+function tx(key, fallback) {
+  const value = t(key);
+  return value === key ? fallback : value;
 }
 
 const _REMOVED_TRANSLATIONS = {
@@ -1271,10 +1291,31 @@ function clearDraft(roomType, roomId) {
   saveDraft(roomType, roomId, '');
 }
 
+async function jumpToMessageInCurrentChat(msgId, createdAt, roomType, roomId) {
+  const key = roomKey(roomType, roomId);
+  let list = state.messages[key] || [];
+  let attempts = 0;
+  while (!list.some((m) => m.id === msgId) && state._hasMoreMessages?.[key] && attempts < 50) {
+    const oldest = list[0]?.created_at || createdAt || Date.now();
+    await loadMessagesPage(roomType, roomId, { appendTop: true, before: oldest });
+    list = state.messages[key] || [];
+    attempts += 1;
+  }
+  state._chatSearchOpen = false;
+  state._scrollToMessageId = msgId;
+  render();
+}
+
 function currentRoomKey() {
   const roomType = state.dmUserId ? 'dm' : 'group';
   const roomId = state.dmUserId ? state.convId : state.panel;
   return roomId ? roomKey(roomType, roomId) : null;
+}
+
+function getCurrentRoomContext() {
+  const roomType = state.dmUserId ? 'dm' : 'group';
+  const roomId = state.dmUserId ? state.convId : state.panel;
+  return roomId ? { roomType, roomId } : null;
 }
 
 function getNewCount(roomType, roomId) {
@@ -1578,13 +1619,29 @@ export async function loadGroup() {
 
 export async function loadMessages(roomType, roomId) {
   const key = roomKey(roomType, roomId);
+  return loadMessagesPage(roomType, roomId, { reset: true, key });
+}
+
+export async function loadMessagesPage(roomType, roomId, options = {}) {
+  const key = roomKey(roomType, roomId);
   state._loadingMessages = state._loadingMessages || {};
-  state._loadingMessages[key] = true;
+  state._loadingOlderMessages = state._loadingOlderMessages || {};
+  const isOlder = !!options.appendTop;
+  if (isOlder) state._loadingOlderMessages[key] = true;
+  else state._loadingMessages[key] = true;
   setState({});
   try {
-  const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
-  const { messages } = await apiGet(path);
-  state.messages[key] = messages || [];
+  const basePath = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
+  const params = new URLSearchParams();
+  params.set('limit', '30');
+  if (options.before) params.set('before', String(options.before));
+  const path = `${basePath}?${params.toString()}`;
+  const { messages, has_more } = await apiGet(path);
+  const nextMessages = messages || [];
+  if (isOlder) state.messages[key] = [...nextMessages, ...(state.messages[key] || [])];
+  else state.messages[key] = nextMessages;
+  state._hasMoreMessages = state._hasMoreMessages || {};
+  state._hasMoreMessages[key] = !!has_more;
     state.blacklisted = false;
     const list = state.messages[key];
     if (currentRoomKey() === key && list.length) {
@@ -1599,7 +1656,8 @@ export async function loadMessages(roomType, roomId) {
     }
     throw err;
   } finally {
-    state._loadingMessages[key] = false;
+    if (isOlder) state._loadingOlderMessages[key] = false;
+    else state._loadingMessages[key] = false;
   }
 }
 
@@ -1957,6 +2015,10 @@ function connectSocket() {
         showDesktopNotification('JimmyQrg Chat', 'Someone liked your message');
       }
     }
+  });
+  s.on('message:reactions', ({ id, reactions }) => {
+    const m = findMessageInState(id);
+    if (m) updateMessageLocal(id, m.room_type, m.room_id, { reactions: reactions || [] });
   });
   s.on('message:deleted', ({ id }) => {
     const m = findMessageInState(id);
@@ -2340,7 +2402,7 @@ function renderMain() {
         <div class="panel-tabs">
           <h3 class="panel-list-title">${t('admin')}</h3>
           <a href="/manage?tab=action" class="panel-tab ${(route.adminTab || 'action') === 'action' ? 'active' : ''}">${t('action')}</a>
-          <a href="/manage?tab=users" class="panel-tab ${route.adminTab === 'users' ? 'active' : ''}">${t('users')}</a>
+          <a href="/manage?tab=users" class="panel-tab ${route.adminTab === 'users' ? 'active' : ''}">${tx('users', 'Users')}</a>
           <a href="/manage?tab=recalled" class="panel-tab ${route.adminTab === 'recalled' ? 'active' : ''}">${t('recalled')}</a>
           <a href="/manage?tab=timeout" class="panel-tab ${route.adminTab === 'timeout' ? 'active' : ''}">${t('timeout')}</a>
         </div>
@@ -2361,7 +2423,7 @@ function renderMain() {
         ` : ''}
         ${primaryNav === 'collections' ? `
         <div class="panel-tabs">
-          <h3 class="panel-list-title">${t('collections')}</h3>
+          <h3 class="panel-list-title">${tx('collections', 'Collections')}</h3>
         </div>
         ` : ''}
         </div>
@@ -2398,9 +2460,9 @@ function renderMain() {
             <span class="left-bar-icon-wrap"><span class="left-bar-icon" aria-hidden="true">${ICON_INBOX}</span>${(function(){ const n = getUnreadInboxCount(); return n > 0 ? `<span class="left-bar-badge left-bar-badge-count" aria-label="${n} unread">${n > 99 ? '99+' : n}</span>` : ''; })()}</span>
             <span class="left-bar-label">${t('inbox')}</span>
           </a>
-          <a href="/collections" class="left-bar-item ${primaryNav === 'collections' ? 'active' : ''}" title="${t('collections')}">
+          <a href="/collections" class="left-bar-item ${primaryNav === 'collections' ? 'active' : ''}" title="${tx('collections', 'Collections')}">
             <span class="left-bar-icon" aria-hidden="true">${ICON_COLLECTION}</span>
-            <span class="left-bar-label">${t('collections')}</span>
+            <span class="left-bar-label">${tx('collections', 'Collections')}</span>
           </a>
           ${state.user?.is_allowed ? `
           <a href="/manage" class="left-bar-item ${primaryNav === 'admin' ? 'active' : ''}" title="Admin">
@@ -2530,6 +2592,9 @@ function renderChatArea() {
   const key = roomKey(roomType, state.dmUserId ? state.convId : state.panel);
   const list = state.messages[key] || [];
   const replyPreview = state.replyTo ? getReplyPreview(state.replyTo) : null;
+  const hasMore = !!state._hasMoreMessages?.[key];
+  const loadingOlder = !!state._loadingOlderMessages?.[key];
+  const searchOpen = !!state._chatSearchOpen;
 
   const loading = state._loadingMessages?.[key];
   const accessDenied = roomType === 'group' && state.blacklisted;
@@ -2556,9 +2621,16 @@ function renderChatArea() {
 
   return `
     <div class="chat-area">
+    <div class="chat-header">
+      <div class="chat-header-title">${escapeHtml(getChatHeaderTitle(roomType, roomId))}</div>
+      <button type="button" class="chat-header-menu-btn" id="chat-header-menu-btn" title="${tx('more', 'More')}">...</button>
+    </div>
     ${deletedUserBanner}
     <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
-      ${emptyContent}
+      ${searchOpen
+        ? renderChatSearchView(roomType, roomId)
+        : `${loadingOlder ? '<div class="messages-loading-older">Loading more…</div>' : ''}${hasMore && !loadingOlder ? '<div class="messages-load-more-hint">Scroll up to load more</div>' : ''}${emptyContent}`
+      }
     </div>
     <button type="button" class="scroll-to-bottom" aria-label="Scroll to bottom" title="Scroll to bottom" style="display:none">
       <span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></span>
@@ -2740,6 +2812,12 @@ function renderMessagesWithTimestamps(list, roomType, roomId) {
 function renderMessage(m, roomType, roomId, context = {}) {
   const isOwn = m.sender_id === state.user?.id;
   const isFileMessage = !!parseFileRef(m.content, m.msg_type);
+  const reactionSummary = (m.reactions || []).map((r) => `
+    <button type="button" class="message-reaction-chip" data-msg-id="${m.id}" data-emoji="${escapeHtml(r.emoji)}">
+      <span class="message-reaction-emoji">${escapeHtml(r.emoji)}</span>
+      <span class="message-reaction-count">${r.count}</span>
+    </button>
+  `).join('');
 
   if (m.deleted_by_admin) {
     return `
@@ -2766,6 +2844,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
   const replyBlock = m.reply_to_id ? `<div class="message-reply-preview" data-reply-to="${m.reply_to_id}">${t('replyToMessage')}</div>` : '';
   const likeCount = (m.likes || 0) > 0 ? `<span class="message-like-count">${m.likes}</span>` : '';
   const likeIcon = `<button type="button" class="message-like-btn" data-msg-id="${m.id}" title="Like" aria-label="Like"><span class="message-like-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span></button>`;
+  const reactionPickerBtn = `<button type="button" class="message-reaction-picker-btn" data-msg-id="${m.id}" title="React" aria-label="React">+</button>`;
 
   const chevronLeft = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>`;
   const chevronRight = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>`;
@@ -2801,10 +2880,12 @@ function renderMessage(m, roomType, roomId, context = {}) {
         <div class="message-body">
         ${replyBlock}
           ${contentBlock}
+          ${reactionSummary ? `<div class="message-reactions">${reactionSummary}</div>` : ''}
         </div>
       </div>
       <div class="message-like-wrap">
         ${editHistoryUI}
+        ${reactionPickerBtn}
         ${likeIcon}
         ${likeCount}
       </div>
@@ -3479,6 +3560,25 @@ function bindMain() {
   }
 
   document.getElementById('cancel-reply')?.addEventListener('click', () => setState({ replyTo: null }));
+  document.getElementById('chat-header-menu-btn')?.addEventListener('click', (e) => {
+    showContextMenu(e.clientX, e.clientY, [
+      { label: tx('searchMessages', 'Search message'), action: 'search' },
+      { label: tx('users', 'Users'), action: 'users' },
+    ], (action) => {
+      if (action === 'search') {
+        state._chatSearchOpen = true;
+        state._chatSearchResults = [];
+        render();
+      } else if (action === 'users') {
+        state.panelColumnExpanded = true;
+        state.panelSearchOpen = true;
+        render();
+        requestAnimationFrame(() => {
+          document.getElementById('panel-user-search')?.focus();
+        });
+      }
+    });
+  });
 
   const wrap = document.querySelector('.messages-wrap');
   const scrollBtn = document.querySelector('.scroll-to-bottom');
@@ -3486,7 +3586,22 @@ function bindMain() {
   const roomId = wrap?.dataset.roomId;
   if (wrap && roomType && roomId) {
     requestAnimationFrame(() => {
-      wrap.scrollTop = wrap.scrollHeight;
+      const preserve = state._preserveScrollAfterPrepend;
+      const key = roomKey(roomType, roomId);
+      if (state._scrollToMessageId) {
+        const row = document.querySelector(`.message-row[data-msg-id="${state._scrollToMessageId}"]`);
+        if (row) {
+          row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          row.classList.add('message-row-highlight');
+          setTimeout(() => row.classList.remove('message-row-highlight'), 1800);
+        }
+        state._scrollToMessageId = null;
+      } else if (preserve && preserve.key === key) {
+        wrap.scrollTop = wrap.scrollHeight - preserve.prevHeight;
+        state._preserveScrollAfterPrepend = null;
+      } else {
+        wrap.scrollTop = wrap.scrollHeight;
+      }
     });
     function updateScrollToBottomVisibility() {
       if (!scrollBtn) return;
@@ -3494,7 +3609,24 @@ function bindMain() {
       const nearBottom = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < threshold;
       scrollBtn.style.display = nearBottom ? 'none' : 'flex';
     }
-    wrap.addEventListener('scroll', updateScrollToBottomVisibility);
+    wrap.addEventListener('scroll', async () => {
+      updateScrollToBottomVisibility();
+      if (state._chatSearchOpen) return;
+      const key = roomKey(roomType, roomId);
+      if (!state._hasMoreMessages?.[key] || state._loadingOlderMessages?.[key]) return;
+      if (wrap.scrollTop > 40) return;
+      const list = state.messages[key] || [];
+      const oldest = list[0]?.created_at;
+      if (!oldest) return;
+      try {
+        state._preserveScrollAfterPrepend = { key, prevHeight: wrap.scrollHeight };
+        await loadMessagesPage(roomType, roomId, { appendTop: true, before: oldest });
+        render();
+      } catch (err) {
+        state._preserveScrollAfterPrepend = null;
+        showToast(err.message || 'Failed to load older messages');
+      }
+    });
     updateScrollToBottomVisibility();
     scrollBtn?.addEventListener('click', () => {
       wrap.scrollTo({ top: wrap.scrollHeight, behavior: 'smooth' });
@@ -3519,7 +3651,7 @@ function bindMain() {
         items.push({ label: t('edit'), action: 'edit' });
       }
       if (isOwn) items.push({ label: t('delete'), action: 'delete', danger: true });
-      items.push({ label: t('addToCollection'), action: 'add-to-collection' });
+      items.push({ label: tx('addToCollection', 'Add to collection'), action: 'add-to-collection' });
       if (state.user?.can_delete_messages && !isOwn && senderId !== 'jimmyqrg') items.push({ label: t('adminDeleteAdmin'), action: 'delete', danger: true });
       if (state.user?.can_kick && senderId !== 'jimmyqrg') items.push({ label: t('adminRemoveAccount'), action: 'remove-account' });
       if (canSolve) items.push({ label: t('solve'), action: 'solve' });
@@ -3549,7 +3681,7 @@ function bindMain() {
           if (confirm('Are you sure you want to delete this message?')) state.socket?.emit('message:delete', msgId, () => {});
         } else if (action === 'add-to-collection') {
           apiPost('/api/collections', { message_id: msgId }).then(() => {
-            showToast(t('addedToCollection') || 'Added to collection', 'success');
+            showToast(tx('addedToCollection', 'Added to collection'), 'success');
           }).catch((err) => showToast(err.message || 'Failed to add to collection'));
         }
         if (action === 'remove-account') removeAccount(senderId);
@@ -3562,7 +3694,74 @@ function bindMain() {
     });
   }
 
+  document.querySelector('.chat-search-back')?.addEventListener('click', () => {
+    state._chatSearchOpen = false;
+    render();
+  });
+  const runSearch = async () => {
+    const roomTypeNow = state.dmUserId ? 'dm' : 'group';
+    const roomIdNow = state.dmUserId ? state.convId : state.panel;
+    state._chatSearchQuery = document.getElementById('chat-search-query')?.value || '';
+    state._chatSearchFilter = document.getElementById('chat-search-filter')?.value || '';
+    state._chatSearchLoading = true;
+    render();
+    try {
+      const params = new URLSearchParams({
+        roomType: roomTypeNow,
+        roomId: roomIdNow,
+        q: state._chatSearchQuery || '',
+        filter: state._chatSearchFilter || '',
+      });
+      const { messages } = await apiGet(`/api/search/messages?${params.toString()}`);
+      state._chatSearchResults = messages || [];
+    } catch (err) {
+      showToast(err.message || 'Search failed');
+      state._chatSearchResults = [];
+    } finally {
+      state._chatSearchLoading = false;
+      render();
+    }
+  };
+  document.querySelector('.chat-search-run')?.addEventListener('click', runSearch);
+  document.getElementById('chat-search-query')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runSearch();
+    }
+  });
+  document.querySelector('.chat-search-results')?.addEventListener('click', async (e) => {
+    const result = e.target.closest('.chat-search-result[data-msg-id]');
+    if (!result) return;
+    const msgId = result.dataset.msgId;
+    const room = getCurrentRoomContext();
+    const msg = (state._chatSearchResults || []).find((m) => m.id === msgId);
+    if (!msg || !room) return;
+    try {
+      await jumpToMessageInCurrentChat(msgId, msg.created_at, room.roomType, room.roomId);
+    } catch (err) {
+      showToast(err.message || 'Could not jump to message');
+    }
+  });
+
   wrap?.addEventListener('click', (e) => {
+    const reactionChip = e.target.closest('.message-reaction-chip');
+    if (reactionChip) {
+      e.preventDefault();
+      e.stopPropagation();
+      state.socket?.emit('message:reaction:toggle', { id: reactionChip.dataset.msgId, emoji: reactionChip.dataset.emoji }, () => {});
+      return;
+    }
+    const reactionPickerBtn = e.target.closest('.message-reaction-picker-btn');
+    if (reactionPickerBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const msgId = reactionPickerBtn.dataset.msgId;
+      const emojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'].map((emoji) => ({ label: emoji, action: emoji }));
+      showContextMenu(e.clientX, e.clientY, emojis, (emoji) => {
+        state.socket?.emit('message:reaction:toggle', { id: msgId, emoji }, () => {});
+      });
+      return;
+    }
     const videoEl = e.target.closest('.message-file-video');
     if (videoEl && !e.target.closest('a')) {
       e.preventDefault();
@@ -4616,14 +4815,14 @@ function renderCollectionsContent() {
   if (!items.length) {
     return `
       <div class="collections-page">
-        <h2>${t('collections')}</h2>
-        <div class="collections-empty">${t('noCollections')}</div>
+        <h2>${tx('collections', 'Collections')}</h2>
+        <div class="collections-empty">${tx('noCollections', 'No saved messages yet.')}</div>
       </div>
     `;
   }
   return `
     <div class="collections-page">
-      <h2>${t('collections')}</h2>
+      <h2>${tx('collections', 'Collections')}</h2>
       <div class="collections-list">
         ${items.map((c) => `
           <div class="collection-item" data-id="${c.id}" data-message-id="${c.message_id}">
@@ -4632,8 +4831,47 @@ function renderCollectionsContent() {
               <div class="collection-date">${escapeHtml(formatTimestampForDivider(c.message_created_at || c.created_at))}</div>
             </div>
             <div class="collection-body">${escapeHtml((c.content_snapshot || '').slice(0, 200))}${(c.content_snapshot || '').length > 200 ? '…' : ''}</div>
-            <button type="button" class="btn-small collection-open" data-message-id="${c.message_id}">${t('open')}</button>
+            <button type="button" class="btn-small collection-open" data-message-id="${c.message_id}">${tx('open', 'Open')}</button>
             <button type="button" class="btn-small collection-remove" data-id="${c.id}">${t('delete')}</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function getChatHeaderTitle(roomType, roomId) {
+  if (roomType === 'group') {
+    const labels = { free_chat: t('freeChat'), support: t('support') };
+    return labels[roomId] || roomId;
+  }
+  const other = (state.users || []).find((u) => u.id === state.dmUserId);
+  return other?.display_name || other?.username || t('chat');
+}
+
+function renderChatSearchView(roomType, roomId) {
+  const results = state._chatSearchResults || [];
+  const loading = !!state._chatSearchLoading;
+  return `
+    <div class="chat-search-view" data-room-type="${roomType}" data-room-id="${roomId}">
+      <div class="chat-search-top">
+        <button type="button" class="chat-search-back btn-small">${tx('back', 'Back')}</button>
+        <div class="chat-search-fields">
+          <input type="search" id="chat-search-query" placeholder="${tx('searchMessages', 'Search messages')}" value="${escapeHtml(state._chatSearchQuery || '')}" />
+          <input type="text" id="chat-search-filter" placeholder="${tx('searchFilterHint', 'e.g. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg')}" value="${escapeHtml(state._chatSearchFilter || '')}" />
+        </div>
+        <button type="button" class="chat-search-run btn-small btn-primary">${tx('search', 'Search')}</button>
+      </div>
+      <div class="chat-search-results">
+        ${loading ? `<div class="chat-search-empty">${t('loading')}</div>` : ''}
+        ${!loading && !results.length ? `<div class="chat-search-empty">${tx('noSearchResults', 'No messages found.')}</div>` : ''}
+        ${results.map((m) => `
+          <div class="chat-search-result" data-msg-id="${m.id}">
+            <div class="chat-search-result-meta">
+              <strong>${escapeHtml(m.display_name || m.username || 'Unknown user')}</strong>
+              <span>${escapeHtml(formatTimestampForDivider(m.created_at))}</span>
+            </div>
+            <div class="chat-search-result-body">${escapeHtml((m.content || '').slice(0, 300))}${(m.content || '').length > 300 ? '…' : ''}</div>
           </div>
         `).join('')}
       </div>
@@ -4669,6 +4907,16 @@ function applyRoute(route) {
     });
     return;
   }
+  if (route.page === 'collections') {
+    setState({ panel: '', dmUserId: null });
+    loadCollections().then(() => {
+      render();
+    }).catch((err) => {
+      showToast(err.message || 'Failed to load collections');
+      render();
+    });
+    return;
+  }
   if (route.page === 'admin') {
     if (!state.user?.is_allowed) {
           navigateTo(getRedirectOrDefault());
@@ -4682,6 +4930,9 @@ function applyRoute(route) {
     return;
   }
   if (route.page === 'chat') {
+    state._chatSearchOpen = false;
+    state._chatSearchLoading = false;
+    state._chatSearchResults = [];
     state.panel = route.panel || 'free_chat';
     state.editingDocKey = null;
     state.dmUserId = route.dmUserId || null;
@@ -4844,6 +5095,21 @@ async function init() {
           state.collections = (state.collections || []).filter(c => c.id !== id);
           setState({});
         }).catch((err) => showToast(err.message || 'Failed to remove from collection'));
+        return;
+      }
+      const collectionsOpen = e.target.closest('.collection-open');
+      if (collectionsOpen) {
+        e.preventDefault();
+        const messageId = collectionsOpen.dataset.messageId;
+        const item = (state.collections || []).find((c) => c.message_id === messageId);
+        if (!item) return;
+        if (item.room_type === 'dm') {
+          const otherId = state.convIdToUserId?.[item.room_id];
+          if (otherId) navigateTo(`/chat/${encodeURIComponent(otherId)}`);
+          else showToast('Open the DM from Chats first');
+        } else {
+          navigateTo(`/chat/group/?panel=${encodeURIComponent(PANEL_TO_URL[item.room_id] || item.room_id)}`);
+        }
       }
     });
   }
