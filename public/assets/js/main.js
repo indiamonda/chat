@@ -1513,9 +1513,9 @@ export async function loadMessages(roomType, roomId) {
   state._loadingMessages[key] = true;
   setState({});
   try {
-    const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
-    const { messages } = await apiGet(path);
-    state.messages[key] = messages || [];
+  const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
+  const { messages } = await apiGet(path);
+  state.messages[key] = messages || [];
     state.blacklisted = false;
     const list = state.messages[key];
     if (currentRoomKey() === key && list.length) {
@@ -1918,7 +1918,7 @@ function render() {
       authTransition(app, state.authPrevSignup, isSignup, authError, redirect);
     } else {
       app.innerHTML = renderAuth(isSignup, authError, redirect);
-      bindAuth(isSignup);
+    bindAuth(isSignup);
     }
     state.authPrevSignup = isSignup;
     return;
@@ -1944,7 +1944,7 @@ function renderAuth(isSignup = false, initialError = '', redirect = null) {
             <input class="auth-ani-11" name="login_identifier" type="text" autocomplete="username" placeholder="${t('usernameOrEmail')}" />
             <label class="auth-ani-12">${t('password')}</label>
             <input class="auth-ani-13" name="login_password" type="password" autocomplete="current-password" />
-          </div>
+        </div>
           <div id="auth-fields-register" class="auth-ani-14" style="display:${isSignup ? 'block' : 'none'}">
             <label class="auth-ani-15">${t('displayName')}</label>
             <input class="auth-ani-16" name="display_name" type="text" autocomplete="name" placeholder="${t('displayName')}" />
@@ -2168,11 +2168,11 @@ async function doLogin(isRegister, body) {
   let res;
   try {
     res = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
   } catch (err) {
     throw new Error(err.message || 'Network error. Please check your connection.');
   }
@@ -2218,14 +2218,14 @@ function renderMain() {
               return `<li><a href="/chat/group/?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}"><span class="panel-list-hash">#</span> ${escapeHtml(panelLabels[p] || p)}${hasNew ? '<span class="panel-list-badge panel-list-badge-dot" aria-label="New"></span>' : ''}</a></li>`;
             }).join('')}
           </ul>
-        </div>
+          </div>
         ` : ''}
         ${primaryNav === 'chat' ? `
         <div class="panel-list panel-list-users">
           <div class="panel-list-header">
             <h3 class="panel-list-title">${t('chat')}</h3>
             <button type="button" class="panel-search-btn" id="panel-search-btn" title="Search users">${ICON_SEARCH}</button>
-          </div>
+        </div>
           <div class="panel-search-bar ${state.panelSearchOpen ? 'open' : ''}" id="panel-search-bar">
             <input type="search" id="panel-user-search" placeholder="Search users…" />
           </div>
@@ -2260,7 +2260,7 @@ function renderMain() {
             })()}
           </ul>
         </div>
-        ` : ''}
+      ` : ''}
         ${primaryNav === 'admin' ? `
         <div class="panel-tabs">
           <h3 class="panel-list-title">${t('admin')}</h3>
@@ -2334,7 +2334,7 @@ function renderMain() {
             <span class="left-bar-label">${expanded ? t('collapse') : t('expand')}</span>
           </button>
         </div>
-      </aside>
+        </aside>
       ${state._recording ? `
       <div id="recording-overlay" class="recording-overlay">
         <div class="recording-overlay-backdrop"></div>
@@ -2707,13 +2707,13 @@ function renderMessage(m, roomType, roomId, context = {}) {
   const senderName = escapeHtml(m.display_name || m.username || 'Unknown user');
   return `
     <div class="message-row" data-msg-id="${m.id}">
-      <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
+    <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
         <div class="message-avatar-wrap" data-sender-id="${escapeHtml(m.sender_id || '')}" title="View profile" role="button" tabindex="0">
           <span class="message-sender">${senderName}</span>
           <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
         </div>
         <div class="message-body">
-          ${replyBlock}
+        ${replyBlock}
           ${contentBlock}
         </div>
       </div>
@@ -2733,7 +2733,7 @@ function renderDocArea() {
   const supportId = state.supportMessageIdForSolve || '';
   const content = state._docContent ?? '';
   if (isEditing) {
-    return `
+  return `
     <div class="doc-panel" data-doc-key="${docKey}">
       <div class="doc-toolbar">
         <button type="button" id="save-doc" class="doc-save">Save</button>
@@ -2959,9 +2959,19 @@ function markdownToHtml(md) {
       .replace(/`([^`]*)`/g, '<code>$1</code>')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
     const parts = withMarkdown.split(/(<a\s[^>]*>|<\/a>)/g);
+    let inAnchor = false;
     for (let i = 0; i < parts.length; i++) {
-      if (!/^<a\s|^<\/a>/.test(parts[i])) {
-        parts[i] = linkifyPlainText(parts[i]);
+      const part = parts[i];
+      if (/^<a\s/i.test(part)) {
+        inAnchor = true;
+        continue;
+      }
+      if (/^<\/a>/i.test(part)) {
+        inAnchor = false;
+        continue;
+      }
+      if (!inAnchor && part) {
+        parts[i] = linkifyPlainText(part);
       }
     }
     return parts.join('');
@@ -3638,7 +3648,7 @@ function bindMain() {
             return;
           }
           state._sendingMessage = true;
-          const reply_to_id = state.replyTo?.id || null;
+      const reply_to_id = state.replyTo?.id || null;
             state.socket?.emit('message:send', { roomType, roomId, content: `/file ${fileId}`, msg_type: 'file', reply_to_id }, (res) => {
             state._sendingMessage = false;
             if (res?.error) { alert(res.error); return; }
@@ -3679,11 +3689,11 @@ function bindMain() {
           .then((r) => r.json())
           .then((data) => {
             if (data?.message) addMessageLocal(data.message);
-            state._pendingFile = null;
-            setState({ replyTo: null });
-            input.value = '';
+          state._pendingFile = null;
+          setState({ replyTo: null });
+          input.value = '';
             resizeComposerInput();
-            if (roomType === 'dm') loadMessages('dm', roomId).then(render);
+          if (roomType === 'dm') loadMessages('dm', roomId).then(render);
           })
           .catch(console.error)
           .finally(done);
@@ -4059,17 +4069,17 @@ function renderAdminContent() {
             <p class="admin-section-desc">${t('adminSendToInboxDesc')}</p>
             <div class="admin-form">
               <label>${t('users')}</label>
-              <select id="admin-inbox-user">
+        <select id="admin-inbox-user">
                 <option value="">${t('adminSelectUser')}</option>
                 ${otherUsers.map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
-              </select>
+        </select>
               <label>${t('adminTitle')}</label>
               <input type="text" id="admin-inbox-title" placeholder="${t('adminTitle')}" />
               <label>${t('adminBody')}</label>
               <textarea id="admin-inbox-body" placeholder="${t('adminMessageBody')}" rows="4"></textarea>
               <button type="button" id="admin-inbox-send" class="btn-primary">${t('send')}</button>
-            </div>
-          </div>
+      </div>
+      </div>
           ` : ''}
           ${state.user?.can_broadcast ? `
           <div class="admin-section">
@@ -4081,7 +4091,7 @@ function renderAdminContent() {
               <label>${t('adminBody')}</label>
               <textarea id="admin-broadcast-body" placeholder="${t('adminMessageBody')}" rows="4"></textarea>
               <button type="button" id="admin-broadcast-send" class="btn-primary">${t('adminPermBroadcast')}</button>
-            </div>
+      </div>
           </div>
           ` : ''}
           ${state.user?.can_timeout ? `
@@ -4169,7 +4179,7 @@ function renderAdminContent() {
             </div>
           </div>
           ` : ''}
-        </div>
+    </div>
   `;
 }
 
@@ -4274,19 +4284,19 @@ function bindAdmin() {
   document.getElementById('admin-user-list')?.addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-action]');
     if (btn) {
-      const userId = btn.dataset.userId;
+    const userId = btn.dataset.userId;
       if (btn.dataset.action === 'remove-account') removeAccount(userId);
       if (btn.dataset.action === 'restore') restoreAccount(userId);
       if (btn.dataset.action === 'delete-permanently') showDeletePermanentlyModal(userId);
       if (btn.dataset.action === 'blacklist') toggleBlacklist(userId, btn.dataset.blacklisted === '1');
-      if (btn.dataset.action === 'allowed') {
-        const allowed = btn.dataset.allowed !== '1';
-        try {
-          await apiPost('/api/admin/users/' + userId + '/allowed', { allowed });
-          await loadUsers();
+    if (btn.dataset.action === 'allowed') {
+      const allowed = btn.dataset.allowed !== '1';
+      try {
+        await apiPost('/api/admin/users/' + userId + '/allowed', { allowed });
+        await loadUsers();
           render();
           bindAdmin();
-        } catch (err) { alert(err.message); }
+      } catch (err) { alert(err.message); }
       }
     }
   });
@@ -4340,7 +4350,7 @@ const LANGUAGE_OPTIONS = [
 function renderSettingsContent() {
   const tab = new URLSearchParams(window.location.search || '').get('tab') || 'profile';
   return `
-    <div class="settings-page">
+        <div class="settings-page">
       ${tab === 'general' ? `
       <div class="settings-general">
         <h3 class="settings-section-title">${t('theme')}</h3>
@@ -4357,10 +4367,10 @@ function renderSettingsContent() {
         <select id="settings-language" class="settings-select">
           ${(state.languageOptions || LANGUAGE_OPTIONS).map(o => `<option value="${o.value}" ${state.language === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
         </select>
-      </div>
+          </div>
       ` : ''}
       ${tab === 'profile' ? `
-      <form id="profile-form" class="settings-form">
+          <form id="profile-form" class="settings-form">
         <label>${t('avatar')}</label>
         <div class="settings-avatar-drop-zone" id="settings-avatar-drop-zone">
           <img src="${state._pendingAvatarObjectUrl || getCurrentUserAvatarUrl()}" data-fallback="${getDefaultAvatarUrl(state.user?.id).replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="avatar-preview" id="avatar-preview" />
@@ -4371,13 +4381,13 @@ function renderSettingsContent() {
           <input type="file" name="avatar" accept="image/*" class="file-input" />
         </label>
         <label>${t('displayName')}</label>
-        <input type="text" name="display_name" value="${escapeHtml(state.user?.display_name || '')}" />
+            <input type="text" name="display_name" value="${escapeHtml(state.user?.display_name || '')}" />
         <label>${t('description')}</label>
         <textarea name="description" rows="3" placeholder="${t('descriptionPlaceholder')}">${escapeHtml(state.user?.description || '')}</textarea>
         <label>${t('website')}</label>
         <input type="url" name="website" placeholder="https://..." value="${escapeHtml(state.user?.website || '')}" />
         <button type="submit">${t('save')}</button>
-      </form>
+          </form>
       ` : ''}
       ${tab === 'notifications' ? `
       <div class="settings-notifications">
@@ -4392,7 +4402,7 @@ function renderSettingsContent() {
             <label class="settings-checkbox-label"><input type="checkbox" id="notif-mails" ${state.notificationPrefs?.notify_mails !== false ? 'checked' : ''} /><span>${t('notifyMails')}</span></label>
             <label class="settings-checkbox-label"><input type="checkbox" id="notif-dm" ${state.notificationPrefs?.notify_dm !== false ? 'checked' : ''} /><span>${t('notifyDm')}</span></label>
             <label class="settings-checkbox-label"><input type="checkbox" id="notif-group" ${state.notificationPrefs?.notify_group !== false ? 'checked' : ''} /><span>${t('notifyGroup')}</span></label>
-          </div>
+        </div>
           <div id="notif-dnd" class="notif-dnd" style="${state.notificationPrefs?.enabled ? '' : 'opacity:0.5;pointer-events:none'}">
             <h4 class="settings-section-title">${t('doNotDisturb')}</h4>
             ${state.notificationPrefs?.dnd_until && Date.now() < state.notificationPrefs.dnd_until
@@ -4406,7 +4416,7 @@ function renderSettingsContent() {
             <div class="dnd-location-row" style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap">
               <button type="button" id="notif-dnd-use-location" class="btn-small">${t('dndUseLocation')}</button>
               <button type="button" id="notif-dnd-enter-city" class="btn-small">${t('dndEnterCity')}</button>
-            </div>
+      </div>
             ` : ''}
           </div>
         </div>
@@ -4432,26 +4442,26 @@ function renderSettingsContent() {
 
 function renderInboxContent() {
   return `
-    <div class="inbox-page">
+        <div class="inbox-page">
       <h2>${t('inbox')}</h2>
-      <div id="inbox-list">
+          <div id="inbox-list">
         ${(state.inbox || []).length === 0
           ? `<div class="inbox-empty">${t('noMailYet')}</div>`
           : (state.inbox || []).map(item => `
           <div class="inbox-item ${item.read_at ? '' : 'unread'}" data-id="${item.id}" data-type="${escapeHtml(item.type)}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(item.related_extra || '')}">
             <div class="inbox-item-main">
-              <div class="type">${escapeHtml(item.type)}</div>
-              <div class="title">${escapeHtml(item.title || '')}</div>
-              <div class="body">${escapeHtml(item.body || '')}</div>
+                <div class="type">${escapeHtml(item.type)}</div>
+                <div class="title">${escapeHtml(item.title || '')}</div>
+                <div class="body">${escapeHtml(item.body || '')}</div>
               ${item.type === 'friend_request' && !item.read_at ? `
               <div class="inbox-item-actions">
                 <button type="button" class="btn-small btn-primary inbox-accept-fr" data-inbox-id="${item.id}">${t('accept')}</button>
                 <button type="button" class="btn-small inbox-reject-fr" data-inbox-id="${item.id}">${t('reject')}</button>
               </div>
               ` : ''}
-            </div>
-            <button type="button" class="inbox-item-delete" data-inbox-id="${item.id}" title="${t('delete')}" aria-label="${t('delete')}"><i class="fas fa-trash-alt" aria-hidden="true"></i></button>
           </div>
+            <button type="button" class="inbox-item-delete" data-inbox-id="${item.id}" title="${t('delete')}" aria-label="${t('delete')}"><i class="fas fa-trash-alt" aria-hidden="true"></i></button>
+        </div>
         `).join('')}
       </div>
     </div>
@@ -4505,12 +4515,12 @@ function applyRoute(route) {
         render();
         return;
       }
-      if (route.dmUserId) {
+    if (route.dmUserId) {
         if (route.view === 'profile') {
           state._profileView = { userId: route.dmUserId, profile: null, loading: true, error: null };
           render();
-          apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
-            state.convId = conversation_id;
+      apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
+        state.convId = conversation_id;
             state.convByUserId[route.dmUserId] = conversation_id;
             state.convIdToUserId[conversation_id] = route.dmUserId;
             state.socket?.emit('dm:join', conversation_id, () => {});
@@ -4530,33 +4540,33 @@ function applyRoute(route) {
             state.convByUserId[route.dmUserId] = conversation_id;
             state.convIdToUserId[conversation_id] = route.dmUserId;
             return loadMessages('dm', conversation_id).then(() => {
-              state.socket?.emit('dm:join', conversation_id, () => {});
-              render();
+          state.socket?.emit('dm:join', conversation_id, () => {});
+          render();
             });
           }).catch((err) => {
             console.warn('Load conversation/messages failed', err);
             render();
           });
         }
-        return;
-      }
-      state.convId = null;
-      if (state.panel === 'free_chat' || state.panel === 'support') {
+      return;
+    }
+    state.convId = null;
+    if (state.panel === 'free_chat' || state.panel === 'support') {
         loadMessages('group', state.panel).then(() => { render(); }).catch((err) => {
           console.warn('Load messages failed', err);
           render();
         });
       } else if (state.panel === 'problem_solving' || state.panel === 'rules' || state.panel === 'announcements') {
         const loadPanelDoc = () => loadDoc(state.panel).then(({ doc }) => {
-          state._docContent = doc?.content ?? '';
-          render();
-        });
+        state._docContent = doc?.content ?? '';
+        render();
+      });
         if (state.panel === 'announcements') {
           apiPost('/api/docs/announcements/sync').then(() => loadPanelDoc(), () => loadPanelDoc());
-        } else {
+    } else {
           loadPanelDoc().catch((err) => {
             console.warn('Load doc failed', err);
-            render();
+      render();
           });
         }
       } else {
@@ -4664,13 +4674,13 @@ async function init() {
   }
 
   try {
-    await loadGroup();
-    await loadUsers();
+  await loadGroup();
+  await loadUsers();
     await loadBlocks();
     await loadInbox();
     await loadFriends();
     await loadNotificationPrefs();
-    connectSocket();
+  connectSocket();
     maybeAskNotificationPermission();
     if (!window._notifModalCheckBound) {
       window._notifModalCheckBound = true;
@@ -4680,12 +4690,12 @@ async function init() {
       setInterval(ensureNotificationPermissionModalVisible, 10000);
     }
 
-    const path = getPath();
-    if (path === '/' || path === '') {
+  const path = getPath();
+  if (path === '/' || path === '') {
       navigateTo(getRedirectOrDefault());
-      return;
-    }
-    applyRoute(route);
+    return;
+  }
+  applyRoute(route);
   } catch (err) {
     if (err?.status === 401 && typeof window !== 'undefined' && window.self !== window.top) {
       state.user = null;
