@@ -1,89 +1,258 @@
 # JimmyQrg Chat
 
-A single group chat app with Free Chat, Support, Problem Solving, and Rules panels. Users can send private messages, upload files, reply, like, @mention, and (if allowed) use admin features. Dark, out-of-space purple theme.
+JimmyQrg Chat is a real-time web chat app built around one shared group space plus direct messages. It combines normal chat, support conversations, editable reference pages, inbox notifications, and lightweight moderation tools in a single app.
 
-## Features
+## What This App Does
 
-- **Group "JimmyQrg"** with 4 panels:
-  - **Free Chat** & **Support** – chat
-  - **Problem Solving** & **Rules** – editable documents (allowed users only)
-- **Private messages** between users
-- **Default admin**: user `jimmyqrg` (password `changeme` – change after first login)
-- **Allowed users** can: kick users, delete messages (permanent), send to inbox, change other users’ authority (jimmyqrg cannot be demoted)
-- **All users**: upload images/videos/files, send voice messages, reply, like, recall/edit own messages within 2 minutes, edit history, change avatar and display name in profile
-- **@mentions**: `@username`, `@All`
-- **Inbox**: mentions, replies, admin messages, “your problem is solved” (when someone uses **Solve** on a Support message and edits Problem Solving)
-- **Solve flow**: allowed users can right‑click a Support message → **Solve** → edit Problem Solving → author of that Support message gets an inbox link to the update
+The app has two main communication modes:
 
-## Tech
+- **Group chat** for shared conversation
+- **Direct messages** for one-to-one chat between users
 
-- **Backend**: Node.js, Express, Socket.IO, SQLite (better-sqlite3), sessions
-- **Frontend**: Vanilla JS, space/purple dark theme
-- **Deploy**: fly.io (Dockerfile + volume for persistence)
+Inside the main group, users move between four panels:
 
-## Local setup
+- **Free Chat**: general discussion
+- **Support**: help requests and support conversations
+- **Problem Solving**: a shared editable page for documenting solutions
+- **Rules**: a shared editable page for group rules or reference material
 
-- **Node**: 18 or 20 LTS recommended (native module `better-sqlite3` may need build tools; on macOS install Xcode Command Line Tools).
-- **First run**:
+The chat experience is designed around persistent history, uploads, moderation, and searchable conversations.
+
+## Main Features
+
+### Messaging
+
+- Real-time group chat and direct messages
+- Replies, mentions, edit history, and message recall/edit for your own recent messages
+- Permanent deletion of your own messages
+- File uploads for images, video, audio, and other files
+- Voice messages
+- Emoji reactions on messages
+- Per-room message drafts saved locally
+- Full-text message search with filters
+- Incremental message loading as you scroll upward through older history
+
+### Organization
+
+- **Inbox** for mentions, replies, admin messages, and support updates
+- **Collections** to save important messages and reopen them later
+- Link previews for supported URLs
+- Desktop notification preferences and do-not-disturb settings
+
+### Moderation and admin tools
+
+- Admin/user permission system
+- Group timeouts for temporarily blocking a user from sending messages
+- Message deletion tools for moderators
+- Admin inbox sending and broadcast sending
+- Support workflow for marking a request as solved
+- Basic anti-spam protection for repeated duplicate messages
+
+## How The Main Workflows Work
+
+### Group panels
+
+- **Free Chat** and **Support** behave like message timelines.
+- **Problem Solving** and **Rules** behave like shared documents instead of normal chat feeds.
+
+### Inbox
+
+The inbox is the app’s notification center. Users receive inbox entries for:
+
+- mentions
+- replies
+- admin messages
+- support messages marked as solved, when the solution is written up in **Problem Solving**
+
+### Solve flow
+
+The support workflow is:
+
+1. A user posts in **Support**.
+2. A moderator or allowed user marks that message as solved.
+3. They update the **Problem Solving** page with the actual solution.
+4. The original user receives an inbox item linking them to that update.
+
+### Message search
+
+Search is scoped to the current chat. It is not limited to only the messages already loaded on screen.
+
+- Opening search from the chat header shows a query box and filter box.
+- The app loads recent messages first and older messages in pages of 30 while scrolling.
+- Search results are clickable and jump to the matching message in context.
+- Filters support time ranges and sender filters such as `from:@username`.
+
+### Collections
+
+Collections let users save messages they want to return to later.
+
+- Add a message to a collection from the message context menu.
+- Each saved item keeps enough information to show who sent it and when.
+- Opening a collection item returns you to the original chat/message context.
+
+### Anti-spam
+
+If a user sends more than two identical messages within a short window, the app temporarily blocks that user from sending for 5 seconds and shows `NO SPAMMING!`. The default `jimmyqrg` account is excluded from this rule.
+
+## Running Locally
+
+### Requirements
+
+- Node.js 18+
+- Build tools required by `better-sqlite3`
+- On macOS, install Xcode Command Line Tools if native builds fail
+
+### First-time setup
+
 ```bash
 npm install
 npm run init-db
 npm run dev
 ```
 
-- App: http://localhost:3000  
-- First admin login: `jimmyqrg` / `changeme`
+Open: [http://localhost:3000](http://localhost:3000)
 
-## Environment variables & secrets
+Default admin account:
 
-The app reads config from environment variables. **On Fly.io you set sensitive values (like the session secret) as Secrets** (Dashboard → your app → **Secrets**). Fly injects secrets as env vars; the app uses `process.env.SESSION_SECRET` etc.
+- Username: `jimmyqrg`
+- Password: `changeme`
 
-| Name | Where to set | Required | Description |
-|------|----------------|----------|-------------|
-| **SESSION_SECRET** | **Fly: Secrets** | **Yes (production)** | Signing secret for session cookies. In Fly dashboard: Secrets → add `SESSION_SECRET` with a long random value. Or CLI: `fly secrets set SESSION_SECRET="$(openssl rand -base64 32)"` |
-| NODE_ENV | Fly sets | No | `production` on Fly; enables secure cookies. |
-| PORT, HOST | Fly sets | No | Server bind. |
-| DATA_DIR | Fly volume mount | No | Default `/data` on Fly (volume); `./data` locally. |
-| ASSET_VERSION | Optional | No | Cache-bust for assets. |
-| ALLOW_IFRAME | Optional | No | Default allows iframe embedding (SameSite=None). Set `false` to disable. |
-| COOKIE_SECURE | Fly: Secrets (if needed) | No | `true` to force secure cookies. |
+Change this password immediately on first use.
 
-## Live app
+### Available scripts
 
-- **Production**: https://jchat.fly.dev
+- `npm run dev`: start the server in watch mode
+- `npm start`: start the server normally
+- `npm run init-db`: initialize the database schema
 
-## Deploy to fly.io
+## Data and Storage
 
-1. Install [flyctl](https://fly.io/docs/hands-on/install-flyctl/) and log in: `fly auth login`.
+This app stores data locally in SQLite.
 
-2. **Create a volume** (required for persistent DB, sessions, uploads — one machine for SQLite):
-   ```bash
-   fly volume create chat_data --region iad --size 1 -a jchat
-   ```
-   Use your app’s primary region (e.g. `iad` in fly.toml). If deploy fails with “needs volumes”, run this then deploy again.
+- Default local data directory: `./data`
+- Database file: `chat.db`
+- Uploaded files and other persistent data also live under the configured data directory
 
-3. Launch (first time; use existing app name if you already have one):
-   ```bash
-   fly launch --no-deploy
-   ```
-   Ensure `fly.toml` has the `[mounts]` section pointing at `chat_data` and that the app name matches.
+You can override the storage location with `DATA_DIR`.
 
-4. **Add secret** for session signing: in Fly dashboard go to your app → **Secrets** → add `SESSION_SECRET` with a long random value (e.g. from a password manager). Or via CLI: `fly secrets set SESSION_SECRET="$(openssl rand -base64 32)"`.
+## Configuration
+
+The app reads configuration from environment variables.
+
+| Name | Required | Description |
+|------|----------|-------------|
+| `SESSION_SECRET` | Yes in production | Secret used to sign session cookies |
+| `NODE_ENV` | No | Usually `production` in deployed environments |
+| `PORT` | No | HTTP server port |
+| `HOST` | No | HTTP server host |
+| `DATA_DIR` | No | Directory for the SQLite database and persistent files |
+| `ASSET_VERSION` | No | Optional cache-busting value for frontend assets |
+| `ALLOW_IFRAME` | No | Set to `false` to disable iframe embedding |
+| `COOKIE_SECURE` | No | Force secure cookies when needed |
+
+Example production secret:
+
+```bash
+export SESSION_SECRET="$(openssl rand -base64 32)"
+```
+
+## Project Structure
+
+This section is for developers who want to understand where the main pieces live before making changes.
+
+### Main entrypoints
+
+- `server/index.js`: Express server, Socket.IO setup, real-time events, API wiring, and message-related server logic
+- `public/assets/js/main.js`: primary frontend app logic, UI state, rendering, routing, chat interactions, and client-side behavior
+- `public/assets/js/api.js`: small frontend API helper layer
+- `server/db.js`: SQLite connection, schema creation, and lightweight migrations
+- `server/scripts/init-db.js`: database initialization script used by `npm run init-db`
+
+### Server routes
+
+Most HTTP features are split into focused route files under `server/routes/`:
+
+- `auth.js`: login/signup/session-related routes
+- `users.js`: profile and user data routes
+- `docs.js`: shared document content such as `Problem Solving` and `Rules`
+- `inbox.js`: inbox items and admin-delivered inbox messages
+- `admin.js`: moderation/admin actions
+- `friends.js`: friend requests, friendships, and DM-related access helpers
+- `blocks.js`: user blocking
+- `notifications.js`: desktop notification preferences and do-not-disturb settings
+
+### Frontend structure
+
+The frontend is mostly a single-page vanilla JavaScript app.
+
+- Routing and screen rendering are handled in `public/assets/js/main.js`
+- Most new chat features, such as search, drafts, collections, reactions, and pagination, are implemented in that same file
+- Styling lives in `public/assets/css/style.css`
+- Translations live in `public/assets/translation/data.json`
+
+### Data model
+
+The app uses SQLite for persistent storage. Key data includes:
+
+- users and sessions
+- messages and uploads
+- inbox items
+- friendships and blocks
+- message reactions
+- saved message collections
+- group timeouts and admin permissions
+
+If you are trying to trace how a feature works, start with the UI behavior in `public/assets/js/main.js`, then follow the related API route or Socket.IO handler in `server/index.js` or `server/routes/*.js`, and finally inspect the corresponding tables in `server/db.js`.
+
+## Deploying To Fly.io
+
+SQLite needs persistent disk storage, so deployment should use a volume.
+
+1. Install [flyctl](https://fly.io/docs/hands-on/install-flyctl/) and log in:
+
+```bash
+fly auth login
+```
+
+2. Create a persistent volume:
+
+```bash
+fly volume create chat_data --region iad --size 1 -a jchat
+```
+
+3. Initialize the Fly app if needed:
+
+```bash
+fly launch --no-deploy
+```
+
+4. Set the session secret:
+
+```bash
+fly secrets set SESSION_SECRET="$(openssl rand -base64 32)"
+```
 
 5. Deploy:
-   ```bash
-   fly deploy
-   ```
 
-6. Change the default `jimmyqrg` password after first login (e.g. via profile/settings if you add a “change password” flow, or by updating the DB).
+```bash
+fly deploy
+```
 
-If deploy fails with **"invalid config.guest.memory_mb, cannot exceed 2048 MiB"**, Fly limits VMs to 2048 MB. Scale down first:  
-`fly scale vm shared-cpu-1x --vm-memory 512 -a jchat`  
-then run `fly deploy` again.
+If Fly reports that memory exceeds the platform limit, scale down first:
 
-## Username rules
+```bash
+fly scale vm shared-cpu-1x --vm-memory 512 -a jchat
+```
 
-- Only lowercase letters and numbers.
+Then run `fly deploy` again.
+
+## Username Rules
+
+- Usernames may contain lowercase letters and numbers only.
+
+## Production
+
+- Live app: [https://jchat.fly.dev](https://jchat.fly.dev)
 
 ## License
 
