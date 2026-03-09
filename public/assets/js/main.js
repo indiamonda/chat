@@ -51,7 +51,8 @@ let state = {
   collections: [],
   _hasMoreMessages: {},
   _loadingOlderMessages: {},
-  _chatSearchOpen: false,
+  _chatSidePanelOpen: false,
+  _chatSidePanelTab: 'users',
   _chatSearchQuery: '',
   _chatSearchFilter: '',
   _chatSearchResults: [],
@@ -1301,7 +1302,7 @@ async function jumpToMessageInCurrentChat(msgId, createdAt, roomType, roomId) {
     list = state.messages[key] || [];
     attempts += 1;
   }
-  state._chatSearchOpen = false;
+  state._chatSidePanelOpen = false;
   state._scrollToMessageId = msgId;
   render();
 }
@@ -2594,7 +2595,7 @@ function renderChatArea() {
   const replyPreview = state.replyTo ? getReplyPreview(state.replyTo) : null;
   const hasMore = !!state._hasMoreMessages?.[key];
   const loadingOlder = !!state._loadingOlderMessages?.[key];
-  const searchOpen = !!state._chatSearchOpen;
+  const sidePanelOpen = !!state._chatSidePanelOpen;
 
   const loading = state._loadingMessages?.[key];
   const accessDenied = roomType === 'group' && state.blacklisted;
@@ -2621,48 +2622,48 @@ function renderChatArea() {
 
   return `
     <div class="chat-area">
-    <div class="chat-header">
-      <div class="chat-header-title">${escapeHtml(getChatHeaderTitle(roomType, roomId))}</div>
-      <button type="button" class="chat-header-menu-btn" id="chat-header-menu-btn" title="${tx('more', 'More')}">...</button>
-    </div>
-    ${deletedUserBanner}
-    <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
-      ${searchOpen
-        ? renderChatSearchView(roomType, roomId)
-        : `${loadingOlder ? '<div class="messages-loading-older">Loading more…</div>' : ''}${hasMore && !loadingOlder ? '<div class="messages-load-more-hint">Scroll up to load more</div>' : ''}${emptyContent}`
-      }
-    </div>
-    <button type="button" class="scroll-to-bottom" aria-label="Scroll to bottom" title="Scroll to bottom" style="display:none">
-      <span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></span>
-    </button>
-    ${!accessDenied && ((roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm') ? `
-    <div class="composer ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
-      ${replyPreview ? `
-        <div class="composer-reply">
-          Replying to ${escapeHtml(replyPreview.sender)}: ${escapeHtml(replyPreview.content?.slice(0, 50) || '')}…
-          <button type="button" id="cancel-reply" class="cancel-reply-link">Cancel</button>
+      <div class="chat-main ${sidePanelOpen ? 'chat-main-with-side-panel' : ''}">
+        <div class="chat-header">
+          <div class="chat-header-title">${escapeHtml(getChatHeaderTitle(roomType, roomId))}</div>
+          <button type="button" class="chat-header-menu-btn" id="chat-header-menu-btn" title="${tx('more', 'More')}" aria-expanded="${sidePanelOpen}">...</button>
         </div>
-      ` : ''}
-      ${state._pendingFile ? `
-        <div class="composer-pending-file" id="pending-file-indicator">
-          <span>Attached: ${escapeHtml(state._pendingFile.name)}</span>
-          <button type="button" id="clear-pending-file" title="Remove"><span class="icon icon-sm" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></button>
+        ${deletedUserBanner}
+        <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
+          ${loadingOlder ? '<div class="messages-loading-older">Loading more…</div>' : ''}${hasMore && !loadingOlder ? '<div class="messages-load-more-hint">Scroll up to load more</div>' : ''}${emptyContent}
         </div>
-      ` : ''}
-      <div class="composer-row">
-        <div class="composer-input-wrap">
-          <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(getDraft(roomType, roomId))}</textarea>
-          <div class="composer-actions">
-            ${roomType === 'group' ? `<button type="button" id="composer-command-mode" class="composer-command-btn ${state.commandMode ? 'composer-command-btn-on' : ''}" title="${state.commandMode ? 'Command mode on (e.g. /games, /wordle, /file &lt;id&gt;)' : 'Command mode off (send as text)'}" aria-label="Toggle command mode" aria-pressed="${state.commandMode}"><span class="icon" aria-hidden="true">${ICON_COMMAND}</span></button>` : ''}
-            <button type="button" id="composer-mic" title="Record voice message" ${(roomType === 'dm' && !isFriend(state.dmUserId)) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
-            <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
-            <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
+        <button type="button" class="scroll-to-bottom" aria-label="Scroll to bottom" title="Scroll to bottom" style="display:none">
+          <span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></span>
+        </button>
+        ${!accessDenied && ((roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm') ? `
+        <div class="composer ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
+          ${replyPreview ? `
+            <div class="composer-reply">
+              Replying to ${escapeHtml(replyPreview.sender)}: ${escapeHtml(replyPreview.content?.slice(0, 50) || '')}…
+              <button type="button" id="cancel-reply" class="cancel-reply-link">Cancel</button>
+            </div>
+          ` : ''}
+          ${state._pendingFile ? `
+            <div class="composer-pending-file" id="pending-file-indicator">
+              <span>Attached: ${escapeHtml(state._pendingFile.name)}</span>
+              <button type="button" id="clear-pending-file" title="Remove"><span class="icon icon-sm" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></button>
+            </div>
+          ` : ''}
+          <div class="composer-row">
+            <div class="composer-input-wrap">
+              <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(getDraft(roomType, roomId))}</textarea>
+              <div class="composer-actions">
+                ${roomType === 'group' ? `<button type="button" id="composer-command-mode" class="composer-command-btn ${state.commandMode ? 'composer-command-btn-on' : ''}" title="${state.commandMode ? 'Command mode on (e.g. /games, /wordle, /file &lt;id&gt;)' : 'Command mode off (send as text)'}" aria-label="Toggle command mode" aria-pressed="${state.commandMode}"><span class="icon" aria-hidden="true">${ICON_COMMAND}</span></button>` : ''}
+                <button type="button" id="composer-mic" title="Record voice message" ${(roomType === 'dm' && !isFriend(state.dmUserId)) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
+                <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
+                <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
+              </div>
+            </div>
+            <button type="button" class="composer-send" id="send-btn" ${state._spamBlockedUntil && Date.now() < state._spamBlockedUntil ? 'disabled' : ''}>Send</button>
           </div>
         </div>
-        <button type="button" class="composer-send" id="send-btn" ${state._spamBlockedUntil && Date.now() < state._spamBlockedUntil ? 'disabled' : ''}>Send</button>
+        ` : ''}
       </div>
-    </div>
-    ` : ''}
+      ${renderChatSidePanel(roomType, roomId)}
     </div>
   `;
 }
@@ -2752,7 +2753,7 @@ function renderFileBlock(msg, mediaContext) {
       <div class="message-file message-file-video" data-msg-id="${escapeHtml(msg.id)}" data-url="${safeUrl}"
            data-prev-media-id="${prevId || ''}" data-next-media-id="${nextId || ''}" role="button" tabindex="0">
         <video class="message-file-video-thumb" src="${safeUrl}" preload="metadata" muted playsinline></video>
-        <span class="message-file-video-play" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
+        <span class="message-file-video-play" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span>
         <a href="${safeUrl}" download class="message-file-download message-file-download-video" onclick="event.stopPropagation()" title="Download">${ICON_DOWNLOAD}</a>
       </div>`;
   }
@@ -3405,9 +3406,9 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
     } else {
       controlsEl.innerHTML = `
         <div class="media-popup-image-ui media-popup-controls-row" role="toolbar">
-          <button type="button" class="media-popup-prev" ${!prevId ? 'disabled' : ''} data-msg-id="${prevId}">Previous</button>
-          <button type="button" class="media-popup-next" ${!nextId ? 'disabled' : ''} data-msg-id="${nextId}">Next</button>
-          <a href="${safeUrl(u)}" download class="media-popup-download">${ICON_DOWNLOAD}</a>
+          <button type="button" class="media-popup-prev" ${!prevId ? 'disabled' : ''} data-msg-id="${prevId}" title="Previous" aria-label="Previous"><span class="icon icon-sm">${ICON_PREV}</span></button>
+          <button type="button" class="media-popup-next" ${!nextId ? 'disabled' : ''} data-msg-id="${nextId}" title="Next" aria-label="Next"><span class="icon icon-sm">${ICON_NEXT}</span></button>
+          <a href="${safeUrl(u)}" download class="media-popup-download" title="Download" aria-label="Download"><span class="icon icon-sm">${ICON_DOWNLOAD}</span></a>
         </div>
       `;
       controlsEl.classList.add('media-popup-image-ui');
@@ -3516,17 +3517,18 @@ function bindMain() {
     setState({ panelSearchOpen: !state.panelSearchOpen });
   });
 
-  const panelSearchInput = document.getElementById('panel-user-search');
-  const panelUserList = document.getElementById('panel-user-list');
-  if (panelSearchInput && panelUserList) {
-    panelSearchInput.addEventListener('input', () => {
-      const q = (panelSearchInput.value || '').trim().toLowerCase();
-      panelUserList.querySelectorAll('a.panel-list-link').forEach((a) => {
+  function bindUserListSearch(inputId, listId) {
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+    if (!input || !list) return;
+    input.addEventListener('input', () => {
+      const q = (input.value || '').trim().toLowerCase();
+      list.querySelectorAll('a.panel-list-link').forEach((a) => {
         const match = !q || (a.dataset.username || '').includes(q) || (a.dataset.display || '').includes(q);
         a.closest('li').style.display = match ? '' : 'none';
       });
     });
-    panelUserList.addEventListener('contextmenu', (e) => {
+    list.addEventListener('contextmenu', (e) => {
       const a = e.target.closest('a.panel-list-link[data-user-id]');
       if (!a) return;
       e.preventDefault();
@@ -3558,26 +3560,35 @@ function bindMain() {
       });
     });
   }
+  bindUserListSearch('panel-user-search', 'panel-user-list');
+  bindUserListSearch('chat-side-user-search', 'chat-side-user-list');
 
   document.getElementById('cancel-reply')?.addEventListener('click', () => setState({ replyTo: null }));
-  document.getElementById('chat-header-menu-btn')?.addEventListener('click', (e) => {
-    showContextMenu(e.clientX, e.clientY, [
-      { label: tx('searchMessages', 'Search message'), action: 'search' },
-      { label: tx('users', 'Users'), action: 'users' },
-    ], (action) => {
-      if (action === 'search') {
-        state._chatSearchOpen = true;
-        state._chatSearchResults = [];
-        render();
-      } else if (action === 'users') {
-        state.panelColumnExpanded = true;
-        state.panelSearchOpen = true;
-        render();
+  document.getElementById('chat-header-menu-btn')?.addEventListener('click', () => {
+    state._chatSidePanelOpen = !state._chatSidePanelOpen;
+    if (state._chatSidePanelOpen && !state._chatSidePanelTab) state._chatSidePanelTab = 'users';
+    render();
+    if (state._chatSidePanelOpen && state._chatSidePanelTab === 'users') {
+      requestAnimationFrame(() => {
+        document.getElementById('chat-side-user-search')?.focus();
+      });
+    }
+  });
+  document.querySelectorAll('[data-chat-side-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state._chatSidePanelOpen = true;
+      state._chatSidePanelTab = btn.dataset.chatSideTab || 'users';
+      render();
+      if (state._chatSidePanelTab === 'search') {
         requestAnimationFrame(() => {
-          document.getElementById('panel-user-search')?.focus();
+          document.getElementById('chat-search-query')?.focus();
         });
       }
     });
+  });
+  document.getElementById('chat-side-panel-close')?.addEventListener('click', () => {
+    state._chatSidePanelOpen = false;
+    render();
   });
 
   const wrap = document.querySelector('.messages-wrap');
@@ -3611,7 +3622,6 @@ function bindMain() {
     }
     wrap.addEventListener('scroll', async () => {
       updateScrollToBottomVisibility();
-      if (state._chatSearchOpen) return;
       const key = roomKey(roomType, roomId);
       if (!state._hasMoreMessages?.[key] || state._loadingOlderMessages?.[key]) return;
       if (wrap.scrollTop > 40) return;
@@ -3694,10 +3704,6 @@ function bindMain() {
     });
   }
 
-  document.querySelector('.chat-search-back')?.addEventListener('click', () => {
-    state._chatSearchOpen = false;
-    render();
-  });
   const runSearch = async () => {
     const roomTypeNow = state.dmUserId ? 'dm' : 'group';
     const roomIdNow = state.dmUserId ? state.convId : state.panel;
@@ -4849,13 +4855,78 @@ function getChatHeaderTitle(roomType, roomId) {
   return other?.display_name || other?.username || t('chat');
 }
 
+function renderChatUsersView() {
+  const users = (state.users || []).filter((u) => u.id !== state.user?.id && !isBlocked(u.id));
+  const convId = (uid) => state.convByUserId[uid];
+  const lastMessageAt = (uid) => {
+    const fromApi = state.lastMessageAtByUserId?.[uid];
+    if (fromApi != null) return fromApi;
+    const c = convId(uid);
+    if (!c) return 0;
+    const list = state.messages[`dm:${c}`];
+    return list?.length ? Math.max(...list.map((m) => m.created_at || 0)) : 0;
+  };
+  const newCount = (uid) => {
+    const c = convId(uid);
+    return c ? getNewCount('dm', c) : 0;
+  };
+  const name = (u) => (u.display_name || u.username || '').toLowerCase();
+  users.sort((a, b) => {
+    const at = lastMessageAt(a.id), bt = lastMessageAt(b.id);
+    if (bt !== at) return bt - at;
+    const an = newCount(a.id), bn = newCount(b.id);
+    if (bn !== an) return bn - an;
+    return name(a).localeCompare(name(b));
+  });
+  return `
+    <div class="chat-users-view">
+      <div class="chat-users-search">
+        <input type="search" id="chat-side-user-search" placeholder="${tx('users', 'Users')}…" />
+      </div>
+      <ul class="panel-list-ul chat-side-user-list" id="chat-side-user-list">
+        ${users.map((u) => {
+          const friend = isFriend(u.id);
+          const defAv = getDefaultAvatarUrl(u.id);
+          const avSrc = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : defAv;
+          const n = newCount(u.id);
+          const badge = n > 0 ? `<span class="panel-list-badge panel-list-badge-count" aria-label="${n} new">${n > 99 ? '99+' : n}</span>` : '';
+          const chatHref = `/chat/${encodeURIComponent(u.id)}${friend ? '' : '?view=profile'}`;
+          return `
+            <li><a href="${chatHref}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-user-id="${escapeHtml(u.id)}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml(name(u))}" data-friend="${friend ? '1' : '0'}">
+              <span class="panel-user-avatar-wrap" data-user-id="${escapeHtml(u.id)}" title="View profile"><img src="${avSrc}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="panel-user-avatar" /></span>
+              <span class="panel-list-link-text">${escapeHtml(u.display_name || u.username)}</span>${badge}
+            </a></li>
+          `;
+        }).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+function renderChatSidePanel(roomType, roomId) {
+  const activeTab = state._chatSidePanelTab || 'users';
+  return `
+    <aside class="chat-side-panel ${state._chatSidePanelOpen ? 'open' : ''}" id="chat-side-panel">
+      <div class="chat-side-panel-header">
+        <div class="chat-side-panel-tabs">
+          <button type="button" class="chat-side-panel-tab ${activeTab === 'users' ? 'active' : ''}" data-chat-side-tab="users">${tx('users', 'Users')}</button>
+          <button type="button" class="chat-side-panel-tab ${activeTab === 'search' ? 'active' : ''}" data-chat-side-tab="search">${tx('search', 'Search')}</button>
+        </div>
+        <button type="button" class="chat-side-panel-close" id="chat-side-panel-close" aria-label="Close">×</button>
+      </div>
+      <div class="chat-side-panel-body">
+        ${activeTab === 'search' ? renderChatSearchView(roomType, roomId) : renderChatUsersView()}
+      </div>
+    </aside>
+  `;
+}
+
 function renderChatSearchView(roomType, roomId) {
   const results = state._chatSearchResults || [];
   const loading = !!state._chatSearchLoading;
   return `
     <div class="chat-search-view" data-room-type="${roomType}" data-room-id="${roomId}">
       <div class="chat-search-top">
-        <button type="button" class="chat-search-back btn-small">${tx('back', 'Back')}</button>
         <div class="chat-search-fields">
           <input type="search" id="chat-search-query" placeholder="${tx('searchMessages', 'Search messages')}" value="${escapeHtml(state._chatSearchQuery || '')}" />
           <input type="text" id="chat-search-filter" placeholder="${tx('searchFilterHint', 'e.g. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg')}" value="${escapeHtml(state._chatSearchFilter || '')}" />
@@ -4930,7 +5001,8 @@ function applyRoute(route) {
     return;
   }
   if (route.page === 'chat') {
-    state._chatSearchOpen = false;
+    state._chatSidePanelOpen = false;
+    state._chatSidePanelTab = 'users';
     state._chatSearchLoading = false;
     state._chatSearchResults = [];
     state.panel = route.panel || 'free_chat';
