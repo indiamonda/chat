@@ -30,10 +30,19 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'ChatCode';
+  src: url('/assets/ttf/code.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Themes: JimmyQrg (default), Simple, Comic – fonts use local TTFs in /assets/ttf (plus system fallbacks) */
 :root,
 html[data-theme="jimmyqrg"] {
   --font-family: 'JimmyQrg', system-ui, sans-serif;
+  --font-code: 'ChatCode', ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
   --bg-deep: #0a0612;
   --bg-main: #120c1a;
   --bg-panel: #1a1225;
@@ -58,6 +67,7 @@ html[data-theme="jimmyqrg"] {
 /* Simple: formal, Roboto, light, blue & green */
 html[data-theme="simple"] {
   --font-family: 'Roboto', system-ui, sans-serif;
+  --font-code: 'ChatCode', ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
   --bg-deep: #e8f0f7;
   --bg-main: #ffffff;
   --bg-panel: #f5f9fc;
@@ -94,6 +104,7 @@ html[data-theme="simple"] body::after {
 /* Comic: hand-written, Nunito, light, white/black/orange, thicker lines */
 html[data-theme="comic"] {
   --font-family: 'JimmyComicLatin', 'JimmyComicChinese', system-ui, sans-serif;
+  --font-code: 'ChatCode', ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
   --bg-deep: #ffffff;
   --bg-main: #ffffff;
   --bg-panel: #fafafa;
@@ -2008,9 +2019,16 @@ select:focus {
   margin-bottom: 0;
 }
 
+.message-content code {
+  font-family: var(--font-code);
+}
 .message-content pre {
   margin: 0.35em 0;
   overflow-x: auto;
+  font-family: var(--font-code);
+}
+.message-content pre code {
+  font-family: var(--font-code);
 }
 
 .message-content blockquote {
@@ -2360,7 +2378,7 @@ select:focus {
 .doc-view pre {
   white-space: pre-wrap;
   word-break: break-word;
-  font-family: inherit;
+  font-family: var(--font-code);
 }
 
 .doc-markdown {
@@ -2408,6 +2426,7 @@ select:focus {
   padding: 0.15em 0.4em;
   border-radius: 4px;
   font-size: 0.9em;
+  font-family: var(--font-code);
 }
 
 .doc-markdown pre {
@@ -2417,11 +2436,13 @@ select:focus {
   padding: 1rem;
   margin: 0.75rem 0;
   overflow-x: auto;
+  font-family: var(--font-code);
 }
 
 .doc-markdown pre code {
   background: none;
   padding: 0;
+  font-family: var(--font-code);
 }
 
 .doc-markdown a {
@@ -4007,12 +4028,14 @@ input[type="checkbox"]:checked::after {
   border-radius: 8px;
   overflow-x: auto;
   font-size: 0.9rem;
+  font-family: var(--font-code);
 }
 
 .language-block-raw code {
   background: none;
   padding: 0;
   color: var(--text);
+  font-family: var(--font-code);
 }
 
 /* Inbox action buttons (inherit from btn-small) */
