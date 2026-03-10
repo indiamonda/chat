@@ -1,0 +1,10 @@
+{
+  "id": "star-gazer",
+  "name": "Star Gazer",
+  "author": "jimmyqrg",
+  "description": "A cosmic bubble with stars, gradients, and dreamy glow effects.",
+  "files": {
+    "other": "other.svg",
+    "own": "own.svg"
+  }
+}

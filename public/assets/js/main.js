@@ -3401,8 +3401,8 @@ function renderMessage(m, roomType, roomId, context = {}) {
   const senderName = escapeHtml(m.display_name || m.username || 'Unknown user');
   const cbStyle = escapeHtml(m.chatbox_style || 'default');
   const cbSvg = isOwn
-    ? `/assets/chatboxes/${cbStyle}/${state.theme}-own.svg`
-    : `/assets/chatboxes/${cbStyle}/${state.theme}.svg`;
+    ? `/assets/chatboxes/${cbStyle}/own.svg`
+    : `/assets/chatboxes/${cbStyle}/other.svg`;
   return `
     <div class="message-row" data-msg-id="${m.id}">
     <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
@@ -3410,7 +3410,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
           <span class="message-sender">${senderName}</span>
           <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
         </div>
-        <div class="message-body" style="border-image-source:url('${cbSvg}')">
+        <div class="message-body${isFileMessage ? ' message-body-file' : ''}"${isFileMessage ? '' : ` style="border-image-source:url('${cbSvg}')"`}>
         ${replyBlock}
           ${contentBlock}
           ${reactionSummary ? `<div class="message-reactions">${reactionSummary}</div>` : ''}
@@ -5360,14 +5360,6 @@ function renderSettingsContent() {
         <div class="settings-page">
       ${tab === 'general' ? `
       <div class="settings-general">
-        <h3 class="settings-section-title">${t('theme')}</h3>
-        <p class="settings-account-desc">${t('chooseTheme')}</p>
-        <label class="settings-form-label">${t('theme')}</label>
-        <select id="settings-theme" class="settings-select">
-          <option value="jimmyqrg" ${state.theme === 'jimmyqrg' ? 'selected' : ''}>JimmyQrg</option>
-          <option value="simple" ${state.theme === 'simple' ? 'selected' : ''}>Simple</option>
-          <option value="comic" ${state.theme === 'comic' ? 'selected' : ''}>Comic</option>
-        </select>
         <h3 class="settings-section-title">${t('systemLanguage')}</h3>
         <p class="settings-account-desc">${t('chooseLanguage')}</p>
         <label class="settings-form-label">${t('language')}</label>
@@ -5381,8 +5373,8 @@ function renderSettingsContent() {
             const active = (state.user?.chatbox_style || 'default') === style;
             return `<button type="button" class="chatbox-picker-item ${active ? 'active' : ''}" data-style="${style}">
               <div class="chatbox-picker-preview">
-                <div class="chatbox-preview-bubble chatbox-preview-other" style="border-image-source: url('/assets/chatboxes/${style}/${state.theme}.svg')"></div>
-                <div class="chatbox-preview-bubble chatbox-preview-own" style="border-image-source: url('/assets/chatboxes/${style}/${state.theme}-own.svg')"></div>
+                <div class="chatbox-preview-bubble chatbox-preview-other" style="border-image-source: url('/assets/chatboxes/${style}/other.svg')"></div>
+                <div class="chatbox-preview-bubble chatbox-preview-own" style="border-image-source: url('/assets/chatboxes/${style}/own.svg')"></div>
               </div>
               <span class="chatbox-picker-label">${escapeHtml(style)}</span>
             </button>`;
@@ -6052,13 +6044,6 @@ function showPasswordModal() {
 }
 
 function bindSettings() {
-  document.getElementById('settings-theme')?.addEventListener('change', (e) => {
-    const theme = e.target.value;
-    state.theme = theme;
-    if (typeof localStorage !== 'undefined') localStorage.setItem('theme', theme);
-    applyTheme(theme);
-    setState({});
-  });
   document.getElementById('chatbox-picker')?.addEventListener('click', async (e) => {
     const item = e.target.closest('.chatbox-picker-item');
     if (!item) return;

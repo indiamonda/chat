@@ -1,0 +1,10 @@
+{
+  "id": "default",
+  "name": "Default",
+  "author": "jimmyqrg",
+  "description": "Clean rounded bubble with a subtle purple glow.",
+  "files": {
+    "other": "other.svg",
+    "own": "own.svg"
+  }
+}
