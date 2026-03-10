@@ -1923,6 +1923,7 @@ select:focus {
 .message.message-system {
   max-width: none;
   padding: 0.35rem 0;
+  justify-content: center;
 }
 
 .message-timestamp .message-system-text,
