@@ -411,6 +411,19 @@ app.get('/api/group', requireAuth, (req, res) => {
   res.json({ id: GROUP_ID, panels: PANELS });
 });
 
+app.get('/api/rooms/:roomType/:roomId/pinned', requireAuth, (req, res) => {
+  const { roomType, roomId } = req.params;
+  const row = db.prepare(`
+    SELECT p.message_id, p.pinned_by, p.pinned_at, m.sender_id, m.content, m.msg_type, m.created_at,
+           u.username, u.display_name, u.avatar_url
+    FROM pinned_messages p
+    JOIN messages m ON m.id = p.message_id
+    LEFT JOIN users u ON u.id = m.sender_id
+    WHERE p.room_type = ? AND p.room_id = ? AND m.deleted_by_admin = 0 AND m.recalled_at IS NULL
+  `).get(roomType, roomId);
+  res.json({ pinned: row || null });
+});
+
 app.get('/api/rooms/:roomType/:roomId/messages', requireAuth, (req, res) => {
   const user = getCurrentUser(req);
   const { roomType, roomId } = req.params;
@@ -693,7 +706,7 @@ io.use((socket, next) => {
     if (!userId) return next(new Error('Not authenticated'));
     socket.userId = userId;
     try {
-      socket.user = db.prepare('SELECT id, username, display_name, avatar_url, deleted_at, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_timeout FROM users WHERE id = ?').get(userId);
+      socket.user = db.prepare('SELECT id, username, display_name, avatar_url, deleted_at, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_timeout, can_pin_messages FROM users WHERE id = ?').get(userId);
     } catch (e) {
       console.error('Socket user lookup error:', e);
       return next(new Error('User not found'));
@@ -707,6 +720,7 @@ io.use((socket, next) => {
     socket.user.can_kick = !!socket.user.can_kick;
     socket.user.can_delete_messages = !!socket.user.can_delete_messages;
     socket.user.can_timeout = !!socket.user.can_timeout;
+    socket.user.can_pin_messages = !!socket.user.can_pin_messages;
     next();
   });
 });

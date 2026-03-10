@@ -4,7 +4,7 @@ import { db, GROUP_ID } from '../db.js';
 import { upload } from '../upload.js';
 
 const router = Router();
-const PERM_COLS = 'can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_manage_users, can_timeout';
+const PERM_COLS = 'can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_manage_users, can_timeout, can_pin_messages';
 
 router.get('/', requireAuth, (req, res) => {
   const me = getCurrentUser(req);
@@ -28,6 +28,7 @@ router.get('/', requireAuth, (req, res) => {
       out.can_delete_messages = !!u.can_delete_messages;
       out.can_manage_users = !!u.can_manage_users;
       out.can_timeout = !!u.can_timeout;
+      out.can_pin_messages = !!u.can_pin_messages;
     } else {
       PERM_COLS.split(', ').forEach(c => delete out[c]);
     }

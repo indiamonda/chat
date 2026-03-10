@@ -683,7 +683,16 @@ select:focus {
   font-weight: 600;
   cursor: pointer;
   margin-top: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   transition: background 0.2s, transform 0.2s, box-shadow 0.2s ease;
+}
+.auth-box button[type="submit"] .icon {
+  width: 1.1em;
+  height: 1.1em;
+  flex-shrink: 0;
 }
 
 .auth-box .error {
@@ -2082,7 +2091,16 @@ select:focus {
   border-radius: 6px;
   cursor: pointer;
   border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   transition: background 0.15s ease, color 0.15s ease;
+}
+.message-edit-save .icon,
+.message-edit-cancel .icon {
+  width: 0.9em;
+  height: 0.9em;
+  flex-shrink: 0;
 }
 
 .message-edit-save {
@@ -2141,6 +2159,76 @@ select:focus {
   color: var(--text-dim);
   font-size: 0.9rem;
   text-align: center;
+}
+
+.pinned-message-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.pinned-message-banner:hover {
+  background: var(--bg-hover);
+}
+.pinned-message-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--purple-bright);
+  flex-shrink: 0;
+}
+.pinned-message-icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+.pinned-message-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.pinned-message-sender {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--purple-bright);
+}
+.pinned-message-text {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pinned-message-unpin {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.pinned-message-unpin:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+}
+.pinned-message-unpin .icon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+@keyframes messageHighlight {
+  0% { background: rgba(139, 92, 246, 0.25); }
+  100% { background: transparent; }
+}
+.message-highlight {
+  animation: messageHighlight 2s ease-out;
 }
 
 .message-skeleton {
@@ -2616,6 +2704,9 @@ select:focus {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 
@@ -2634,7 +2725,15 @@ select:focus {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   transition: background var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.doc-toolbar .icon {
+  width: 0.95em;
+  height: 0.95em;
+  flex-shrink: 0;
 }
 
 .doc-toolbar .doc-save:hover {
@@ -2871,7 +2970,15 @@ select:focus {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   transition: background var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+.settings-form button[type="submit"] .icon {
+  width: 0.95em;
+  height: 0.95em;
+  flex-shrink: 0;
 }
 
 .settings-form button[type="submit"]:hover {
@@ -3060,6 +3167,9 @@ input[type="checkbox"]:checked::after {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   transition: background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
@@ -3083,6 +3193,9 @@ input[type="checkbox"]:checked::after {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
@@ -3099,6 +3212,9 @@ input[type="checkbox"]:checked::after {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   transition: opacity var(--transition-fast), background var(--transition-fast);
 }
 
@@ -3114,7 +3230,18 @@ input[type="checkbox"]:checked::after {
   border: var(--border-width) solid var(--border);
   border-radius: 6px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+.btn-primary .icon,
+.btn-secondary .icon,
+.btn-danger .icon,
+.btn-small .icon {
+  width: 0.95em;
+  height: 0.95em;
+  flex-shrink: 0;
 }
 
 .btn-small:hover {
@@ -3595,7 +3722,15 @@ input[type="checkbox"]:checked::after {
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+.modal-actions .icon {
+  width: 0.95em;
+  height: 0.95em;
+  flex-shrink: 0;
 }
 
 .modal-actions .modal-close:hover {

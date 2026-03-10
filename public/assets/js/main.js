@@ -57,6 +57,7 @@ let state = {
   _chatSearchFilter: '',
   _chatSearchResults: [],
   _chatSearchLoading: false,
+  _pinnedMessage: {},
 };
 
 if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
@@ -1359,8 +1360,7 @@ function interceptLinks(container) {
       if (id) {
         e.preventDefault();
         e.stopPropagation();
-        if (id === state.user?.id) navigateTo('/settings?tab=profile');
-        else navigateTo(`/chat/${encodeURIComponent(id)}?view=profile`);
+        showProfileModal(id);
       }
       return;
     }
@@ -1370,8 +1370,7 @@ function interceptLinks(container) {
       if (id) {
         e.preventDefault();
         e.stopPropagation();
-        if (id === state.user?.id) navigateTo('/settings?tab=profile');
-        else navigateTo(`/chat/${encodeURIComponent(id)}?view=profile`);
+        showProfileModal(id);
       }
       return;
     }
@@ -1397,8 +1396,7 @@ function interceptLinks(container) {
       const id = messageAvatarWrap.dataset.senderId;
       if (id) {
         e.preventDefault();
-        if (id === state.user?.id) navigateTo('/settings?tab=profile');
-        else navigateTo(`/chat/${encodeURIComponent(id)}?view=profile`);
+        showProfileModal(id);
       }
       return;
     }
@@ -1407,8 +1405,7 @@ function interceptLinks(container) {
       const id = panelAvatarWrap.dataset.userId;
       if (id) {
         e.preventDefault();
-        if (id === state.user?.id) navigateTo('/settings?tab=profile');
-        else navigateTo(`/chat/${encodeURIComponent(id)}?view=profile`);
+        showProfileModal(id);
       }
     }
   });
@@ -1620,7 +1617,27 @@ export async function loadGroup() {
 
 export async function loadMessages(roomType, roomId) {
   const key = roomKey(roomType, roomId);
+  loadPinnedMessage(roomType, roomId);
   return loadMessagesPage(roomType, roomId, { reset: true, key });
+}
+
+async function loadPinnedMessage(roomType, roomId) {
+  try {
+    const { pinned } = await apiGet(`/api/rooms/${roomType}/${roomId}/pinned`);
+    const key = roomKey(roomType, roomId);
+    if (pinned) state._pinnedMessage[key] = pinned;
+    else delete state._pinnedMessage[key];
+  } catch (_) {}
+}
+
+function clearPinnedIfMatches(msgId) {
+  for (const key in state._pinnedMessage) {
+    if (state._pinnedMessage[key]?.message_id === msgId) {
+      delete state._pinnedMessage[key];
+      render();
+      return;
+    }
+  }
 }
 
 export async function loadMessagesPage(roomType, roomId, options = {}) {
@@ -1745,8 +1762,8 @@ function showNotificationPermissionModal() {
       <h2 id="notif-permission-title" class="notif-permission-title">${t('notifModalTitle')}</h2>
       <p class="notif-permission-desc">${t('notifModalDesc')}</p>
       <div class="notif-permission-actions">
-        <button type="button" class="btn-primary notif-permission-allow" id="notif-permission-allow">${t('notifModalAllow')}</button>
-        <button type="button" class="btn-secondary notif-permission-decline" id="notif-permission-decline">${t('notifModalDecline')}</button>
+        <button type="button" class="btn-primary notif-permission-allow" id="notif-permission-allow"><span class="icon" aria-hidden="true">${ICON_BELL_SM}</span>${t('notifModalAllow')}</button>
+        <button type="button" class="btn-secondary notif-permission-decline" id="notif-permission-decline"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>${t('notifModalDecline')}</button>
       </div>
     </div>
   `;
@@ -2003,6 +2020,7 @@ function connectSocket() {
   s.on('message:recalled', ({ id }) => {
     const m = findMessageInState(id);
     if (m) removeMessageContent(id, m.room_type, m.room_id);
+    clearPinnedIfMatches(id);
   });
   s.on('message:edited', ({ id, content, edit_history, updated_at }) => {
     const m = findMessageInState(id);
@@ -2024,10 +2042,21 @@ function connectSocket() {
   s.on('message:deleted', ({ id }) => {
     const m = findMessageInState(id);
     if (m) removeMessageLocal(id, m.room_type, m.room_id);
+    clearPinnedIfMatches(id);
   });
   s.on('account_removed', () => {
     showToast('Your account has been removed.');
     window.location.reload();
+  });
+  s.on('message:pinned', ({ room_type, room_id, pinned }) => {
+    if (pinned) {
+      state._pinnedMessage[roomKey(room_type, room_id)] = pinned;
+      render();
+    }
+  });
+  s.on('message:unpinned', ({ room_type, room_id }) => {
+    delete state._pinnedMessage[roomKey(room_type, room_id)];
+    render();
   });
   s.on('inbox:item', (item) => {
     if (shouldShowNotification('mail', null)) {
@@ -2096,7 +2125,7 @@ function renderAuth(isSignup = false, initialError = '', redirect = null) {
             <input class="auth-ani-24" name="confirm_password" type="password" autocomplete="new-password" placeholder="${t('confirmPassword')}" />
             <div id="auth-recaptcha-wrap" class="auth-recaptcha-wrap" aria-live="polite"></div>
           </div>
-          <button type="submit" id="auth-submit" class="auth-ani-25">${isSignup ? t('signUp') : t('login')}</button>
+          <button type="submit" id="auth-submit" class="auth-ani-25"><span class="icon" aria-hidden="true">${isSignup ? ICON_USER_PLUS_SM : ICON_LOG_IN_SM}</span>${isSignup ? t('signUp') : t('login')}</button>
           <p class="auth-switch auth-ani-26">
             ${isSignup ? t('alreadyHaveAccount') : t('noAccount')}
             <a href="${switchHref}" class="auth-switch-link">${isSignup ? t('logIn') : t('signUp')}</a>
@@ -2489,8 +2518,8 @@ function renderMain() {
         <div class="recording-overlay-content">
           <p class="recording-overlay-title">${t('recording')}</p>
           <div class="recording-overlay-actions">
-            <button type="button" id="recording-cancel" class="btn-secondary">${t('cancel')}</button>
-            <button type="button" id="recording-send" class="btn-primary">${t('send')}</button>
+            <button type="button" id="recording-cancel" class="btn-secondary"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>${t('cancel')}</button>
+            <button type="button" id="recording-send" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_SEND_SM}</span>${t('send')}</button>
           </div>
         </div>
       </div>
@@ -2523,6 +2552,31 @@ const ICON_SEARCH_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="18" heigh
 const ICON_TRASH = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
 const ICON_EXTERNAL = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>';
 const ICON_SEND = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
+const ICON_CHECK_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+const ICON_X_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+const ICON_EDIT_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
+const ICON_CHAT_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+const ICON_SEND_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
+const ICON_USER_PLUS_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>';
+const ICON_BAN_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>';
+const ICON_KEY_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.3 9.3"/><path d="m18.5 5.5 3 3"/></svg>';
+const ICON_LOG_OUT_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>';
+const ICON_LOG_IN_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></svg>';
+const ICON_MOON_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+const ICON_MAP_PIN_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>';
+const ICON_BUILDING_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/></svg>';
+const ICON_CLOCK_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+const ICON_MEGAPHONE_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 13v-2z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>';
+const ICON_UNLOCK_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>';
+const ICON_USER_MINUS_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="22" x2="16" y1="11" y2="11"/></svg>';
+const ICON_USER_CHECK_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>';
+const ICON_USER_X_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" x2="22" y1="8" y2="13"/><line x1="22" x2="17" y1="8" y2="13"/></svg>';
+const ICON_ROTATE_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
+const ICON_BELL_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>';
+const ICON_BELL_OFF_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.7 3A6 6 0 0 1 18 8c0 4.5 1.6 7 2.7 8.4"/><path d="M3 3l18 18"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><path d="M17 17H3s3-2 3-9c0-.7.1-1.4.3-2"/></svg>';
+const ICON_MAIL_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>';
+const ICON_SHIELD_X_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="9" x2="15" y1="9" y2="15"/><line x1="15" x2="9" y1="9" y2="15"/></svg>';
+const ICON_PIN_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>';
 
 function renderProfileView(userId) {
   const pv = state._profileView;
@@ -2627,6 +2681,21 @@ function renderChatArea() {
     ? '<div class="deleted-user-banner">This account has been deleted.</div>'
     : '';
 
+  const pinKey = roomKey(roomType, roomId);
+  const pinned = state._pinnedMessage?.[pinKey];
+  const pinnedText = pinned ? (pinned.msg_type && pinned.msg_type !== 'text'
+    ? `[${pinned.msg_type === 'image' ? 'Image' : pinned.msg_type === 'video' ? 'Video' : pinned.msg_type === 'audio' ? 'Audio' : 'File'}]`
+    : (pinned.content || '').slice(0, 120) + ((pinned.content || '').length > 120 ? '…' : '')) : '';
+  const pinnedBanner = pinned ? `
+    <div class="pinned-message-banner" data-msg-id="${escapeHtml(pinned.message_id)}">
+      <span class="pinned-message-icon" aria-hidden="true">${ICON_PIN_SM}</span>
+      <div class="pinned-message-body">
+        <span class="pinned-message-sender">${escapeHtml(pinned.display_name || pinned.username || '')}</span>
+        <span class="pinned-message-text">${escapeHtml(pinnedText)}</span>
+      </div>
+      ${state.user?.can_pin_messages ? `<button type="button" class="pinned-message-unpin" title="${tx('unpinMessage', 'Unpin message')}" aria-label="${tx('unpinMessage', 'Unpin message')}"><span class="icon" aria-hidden="true">${ICON_X_SM}</span></button>` : ''}
+    </div>` : '';
+
   return `
     <div class="chat-area">
       <div class="chat-main ${sidePanelOpen ? 'chat-main-with-side-panel' : ''}">
@@ -2634,6 +2703,7 @@ function renderChatArea() {
           <div class="chat-header-title">${escapeHtml(getChatHeaderTitle(roomType, roomId))}</div>
           <button type="button" class="chat-header-menu-btn" id="chat-header-menu-btn" title="${tx('more', 'More')}" aria-expanded="${sidePanelOpen}"><span class="icon" aria-hidden="true">${ICON_ELLIPSIS_V}</span></button>
         </div>
+        ${pinnedBanner}
         ${deletedUserBanner}
         <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
           ${loadingOlder ? '<div class="messages-loading-older">Loading more…</div>' : ''}${hasMore && !loadingOlder ? '<div class="messages-load-more-hint">Scroll up to load more</div>' : ''}${emptyContent}
@@ -2869,8 +2939,8 @@ function renderMessage(m, roomType, roomId, context = {}) {
     ? `<div class="message-edit-area">
         <textarea class="message-edit-input" data-msg-id="${m.id}" rows="3">${escapeHtml(m.content || '')}</textarea>
         <div class="message-edit-actions">
-          <button type="button" class="message-edit-save" data-msg-id="${m.id}">Save</button>
-          <button type="button" class="message-edit-cancel" data-msg-id="${m.id}">Cancel</button>
+          <button type="button" class="message-edit-save" data-msg-id="${m.id}"><span class="icon" aria-hidden="true">${ICON_CHECK_SM}</span>Save</button>
+          <button type="button" class="message-edit-cancel" data-msg-id="${m.id}"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>Cancel</button>
         </div>
       </div>`
     : `<div class="message-content message-content-file">${content}</div>`;
@@ -2911,8 +2981,8 @@ function renderDocArea() {
   return `
     <div class="doc-panel" data-doc-key="${docKey}">
       <div class="doc-toolbar">
-        <button type="button" id="save-doc" class="doc-save">Save</button>
-        <button type="button" id="cancel-doc-edit" class="doc-cancel">Cancel</button>
+        <button type="button" id="save-doc" class="doc-save"><span class="icon" aria-hidden="true">${ICON_CHECK_SM}</span>Save</button>
+        <button type="button" id="cancel-doc-edit" class="doc-cancel"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>Cancel</button>
       </div>
       <div class="doc-editor">
         <textarea id="doc-content" placeholder="${t('loading')}">${escapeHtml(content)}</textarea>
@@ -2925,7 +2995,7 @@ function renderDocArea() {
     <div class="doc-panel" data-doc-key="${docKey}">
       ${canEdit ? `
       <div class="doc-toolbar">
-        <button type="button" id="start-doc-edit" class="doc-edit-btn">${t('edit')}</button>
+        <button type="button" id="start-doc-edit" class="doc-edit-btn"><span class="icon" aria-hidden="true">${ICON_EDIT_SM}</span>${t('edit')}</button>
       </div>
       ` : ''}
       <div class="doc-view doc-markdown">${markdownToHtml(content)}</div>
@@ -3233,10 +3303,11 @@ function formatAudioTime(seconds) {
 }
 
 async function showProfileModal(userId) {
-  if (!userId || userId === state.user?.id) return;
+  if (!userId) return;
   document.querySelectorAll('.profile-modal-overlay').forEach((el) => el.remove());
   try {
     const { profile } = await apiGet(`/api/users/${encodeURIComponent(userId)}/profile`);
+    const isSelf = userId === state.user?.id;
     const friend = isFriend(userId);
     const blocked = isBlocked(userId);
     const overlay = document.createElement('div');
@@ -3252,11 +3323,11 @@ async function showProfileModal(userId) {
           ${profile.description ? `<p class="profile-modal-description">${escapeHtml(profile.description)}</p>` : ''}
           ${profile.website ? `<p class="profile-modal-website"><a href="${escapeHtml(profile.website)}" target="_blank" rel="noopener">${escapeHtml(profile.website)}</a></p>` : ''}
         </div>
-        <div class="profile-modal-actions">
-          <button type="button" class="btn-primary profile-btn-message">${t('sendMessage')}</button>
-          ${!friend ? `<button type="button" class="btn-secondary profile-btn-friend-request">${t('sendFriendRequest')}</button>` : ''}
-          <button type="button" class="btn-secondary profile-btn-block" data-blocked="${blocked}">${blocked ? t('unblock') : t('block')}</button>
-        </div>
+        ${!isSelf ? `<div class="profile-modal-actions">
+          <button type="button" class="btn-primary profile-btn-message"><span class="icon" aria-hidden="true">${ICON_CHAT_SM}</span>${t('sendMessage')}</button>
+          ${!friend ? `<button type="button" class="btn-secondary profile-btn-friend-request"><span class="icon" aria-hidden="true">${ICON_USER_PLUS_SM}</span>${t('sendFriendRequest')}</button>` : ''}
+          <button type="button" class="btn-secondary profile-btn-block" data-blocked="${blocked}"><span class="icon" aria-hidden="true">${ICON_BAN_SM}</span>${blocked ? t('unblock') : t('block')}</button>
+        </div>` : ''}
         </div>
       </div>
     `;
@@ -3569,8 +3640,30 @@ function bindMain() {
   }
   bindUserListSearch('panel-user-search', 'panel-user-list');
   bindUserListSearch('chat-side-user-search', 'chat-side-user-list');
+  document.getElementById('chat-side-user-list')?.addEventListener('click', (e) => {
+    const link = e.target.closest('.panel-list-link');
+    if (link) {
+      e.preventDefault();
+      e.stopPropagation();
+      const uid = link.dataset.userId;
+      if (uid) showProfileModal(uid);
+    }
+  });
 
   document.getElementById('cancel-reply')?.addEventListener('click', () => setState({ replyTo: null }));
+  document.querySelector('.pinned-message-banner')?.addEventListener('click', (e) => {
+    if (e.target.closest('.pinned-message-unpin')) return;
+    const msgId = e.currentTarget.dataset.msgId;
+    if (msgId) {
+      const el = document.querySelector(`.message[data-msg-id="${msgId}"]`);
+      if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('message-highlight'); setTimeout(() => el.classList.remove('message-highlight'), 2000); }
+    }
+  });
+  document.querySelector('.pinned-message-unpin')?.addEventListener('click', () => {
+    const roomType = state.dmUserId ? 'dm' : 'group';
+    const roomId = state.dmUserId ? state.convId : state.panel;
+    apiDelete(`/api/admin/pin/${roomType}/${roomId}`).catch((err) => showToast(err.message || 'Failed to unpin'));
+  });
   document.getElementById('chat-header-menu-btn')?.addEventListener('click', () => {
     state._chatSidePanelOpen = !state._chatSidePanelOpen;
     if (state._chatSidePanelOpen && !state._chatSidePanelTab) state._chatSidePanelTab = 'users';
@@ -3671,6 +3764,10 @@ function bindMain() {
       items.push({ label: tx('addToCollection', 'Add to collection'), action: 'add-to-collection' });
       if (state.user?.can_delete_messages && !isOwn && senderId !== 'jimmyqrg') items.push({ label: t('adminDeleteAdmin'), action: 'delete', danger: true });
       if (state.user?.can_kick && senderId !== 'jimmyqrg') items.push({ label: t('adminRemoveAccount'), action: 'remove-account' });
+      if (state.user?.can_pin_messages && roomType === 'group') {
+        const isPinned = state._pinnedMessage?.[roomKey(roomType, roomId)]?.message_id === msgId;
+        items.push({ label: isPinned ? tx('unpinMessage', 'Unpin message') : tx('pinMessage', 'Pin message'), action: isPinned ? 'unpin' : 'pin' });
+      }
       if (canSolve) items.push({ label: t('solve'), action: 'solve' });
       const fileRef = parseFileRef(msg.content, msg.msg_type);
       if (fileRef) items.push({ label: t('getFileId'), action: 'get-file-id' });
@@ -3700,6 +3797,12 @@ function bindMain() {
           apiPost('/api/collections', { message_id: msgId }).then(() => {
             showToast(tx('addedToCollection', 'Added to collection'), 'success');
           }).catch((err) => showToast(err.message || 'Failed to add to collection'));
+        }
+        if (action === 'pin') {
+          apiPost('/api/admin/pin', { message_id: msgId, room_type: roomType, room_id: roomId }).catch((err) => showToast(err.message || 'Failed to pin'));
+        }
+        if (action === 'unpin') {
+          apiDelete(`/api/admin/pin/${roomType}/${roomId}`).catch((err) => showToast(err.message || 'Failed to unpin'));
         }
         if (action === 'remove-account') removeAccount(senderId);
         if (action === 'solve') {
@@ -4354,8 +4457,8 @@ function showDeletePermanentlyModal(userId) {
       <p>${t('adminDeleteAccountDesc')}</p>
       <label class="admin-delete-msgs-label"><input type="checkbox" id="admin-delete-msgs-cb" checked /> ${t('adminDeleteGroupMessages')}</label>
       <div class="admin-delete-modal-actions">
-        <button type="button" class="btn-small" id="admin-delete-cancel">${t('cancel')}</button>
-        <button type="button" class="btn-small btn-danger" id="admin-delete-confirm">${t('adminDeletePermanently')}</button>
+        <button type="button" class="btn-small" id="admin-delete-cancel"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>${t('cancel')}</button>
+        <button type="button" class="btn-small btn-danger" id="admin-delete-confirm"><span class="icon" aria-hidden="true">${ICON_TRASH}</span>${t('adminDeletePermanently')}</button>
       </div>
     </div>
   `;
@@ -4420,7 +4523,7 @@ function renderAdminContent() {
               <input type="text" id="admin-inbox-title" placeholder="${t('adminTitle')}" />
               <label>${t('adminBody')}</label>
               <textarea id="admin-inbox-body" placeholder="${t('adminMessageBody')}" rows="4"></textarea>
-              <button type="button" id="admin-inbox-send" class="btn-primary">${t('send')}</button>
+              <button type="button" id="admin-inbox-send" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_MAIL_SM}</span>${t('send')}</button>
       </div>
       </div>
           ` : ''}
@@ -4433,7 +4536,7 @@ function renderAdminContent() {
               <input type="text" id="admin-broadcast-title" placeholder="${t('adminTitle')}" />
               <label>${t('adminBody')}</label>
               <textarea id="admin-broadcast-body" placeholder="${t('adminMessageBody')}" rows="4"></textarea>
-              <button type="button" id="admin-broadcast-send" class="btn-primary">${t('adminPermBroadcast')}</button>
+              <button type="button" id="admin-broadcast-send" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_MEGAPHONE_SM}</span>${t('adminPermBroadcast')}</button>
       </div>
           </div>
           ` : ''}
@@ -4450,7 +4553,7 @@ function renderAdminContent() {
               <label>${t('adminDuration')}</label>
               <input type="text" id="admin-timeout-duration" placeholder="${t('adminDurationPlaceholder')}" />
               ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked" /> ${t('adminOnlyICanRelease')}</label>` : ''}
-              <button type="button" id="admin-timeout-submit" class="btn-primary">${t('adminPermTimeout')}</button>
+              <button type="button" id="admin-timeout-submit" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_CLOCK_SM}</span>${t('adminPermTimeout')}</button>
             </div>
             <div id="admin-timeout-list" class="admin-timeout-list"></div>
           </div>
@@ -4477,7 +4580,7 @@ function renderAdminContent() {
               <label>${t('adminDuration')}</label>
               <input type="text" id="admin-timeout-duration-tab" placeholder="${t('adminDurationPlaceholder')}" />
               ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked-tab" /> ${t('adminOnlyICanRelease')}</label>` : ''}
-              <button type="button" id="admin-timeout-submit-tab" class="btn-primary">${t('adminPermTimeout')}</button>
+              <button type="button" id="admin-timeout-submit-tab" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_CLOCK_SM}</span>${t('adminPermTimeout')}</button>
             </div>
             <div id="admin-timeout-list-tab" class="admin-timeout-list"></div>
           </div>
@@ -4489,8 +4592,8 @@ function renderAdminContent() {
             <div class="admin-users-list" id="admin-user-list">
               ${users.map(u => {
                 const canManage = state.user?.can_manage_users;
-                const permLabels = { can_send_inbox: t('adminPermSendMail'), can_broadcast: t('adminPermBroadcast'), can_edit_docs: t('adminPermEditDocs'), can_kick: t('adminPermRemoveAccount'), can_delete_messages: t('adminPermDeleteMessages'), can_manage_users: t('adminPermManageUsers'), can_timeout: t('adminPermTimeout') };
-                const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout'];
+                const permLabels = { can_send_inbox: t('adminPermSendMail'), can_broadcast: t('adminPermBroadcast'), can_edit_docs: t('adminPermEditDocs'), can_kick: t('adminPermRemoveAccount'), can_delete_messages: t('adminPermDeleteMessages'), can_manage_users: t('adminPermManageUsers'), can_timeout: t('adminPermTimeout'), can_pin_messages: tx('adminPermPinMessages', 'Pin messages') };
+                const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages'];
                 const isAdmin = u.id === 'jimmyqrg';
                 const showPerms = canManage && !isAdmin && u.is_allowed;
                 const defAvU = getDefaultAvatarUrl(u.id);
@@ -4504,12 +4607,12 @@ function renderAdminContent() {
                   </div>
                   ${!isAdmin ? `
                   <div class="admin-user-actions">
-                    ${canManage ? `<button type="button" class="btn-small" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}">${u.is_allowed ? t('adminRemoveFromList') : t('adminAddToList')}</button>` : ''}
+                    ${canManage ? `<button type="button" class="btn-small" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}"><span class="icon" aria-hidden="true">${u.is_allowed ? ICON_USER_MINUS_SM : ICON_USER_CHECK_SM}</span>${u.is_allowed ? t('adminRemoveFromList') : t('adminAddToList')}</button>` : ''}
                     ${state.user?.can_kick ? (u.deleted_at
-                      ? `<button type="button" class="btn-small" data-action="restore" data-user-id="${u.id}">${t('adminRestore')}</button>
-                         ${state.user?.id === 'jimmyqrg' ? `<button type="button" class="btn-small btn-danger" data-action="delete-permanently" data-user-id="${u.id}">${t('adminDeletePermanently')}</button>` : ''}`
-                      : `<button type="button" class="btn-small btn-danger" data-action="remove-account" data-user-id="${u.id}">${t('adminRemoveAccount')}</button>
-                         <button type="button" class="btn-small" data-action="blacklist" data-user-id="${u.id}" data-blacklisted="${(state.adminBlacklistedIds || []).includes(u.id) ? '1' : '0'}">${(state.adminBlacklistedIds || []).includes(u.id) ? t('adminUnblacklist') : t('adminBlacklist')}</button>`) : ''}
+                      ? `<button type="button" class="btn-small" data-action="restore" data-user-id="${u.id}"><span class="icon" aria-hidden="true">${ICON_ROTATE_SM}</span>${t('adminRestore')}</button>
+                         ${state.user?.id === 'jimmyqrg' ? `<button type="button" class="btn-small btn-danger" data-action="delete-permanently" data-user-id="${u.id}"><span class="icon" aria-hidden="true">${ICON_TRASH}</span>${t('adminDeletePermanently')}</button>` : ''}`
+                      : `<button type="button" class="btn-small btn-danger" data-action="remove-account" data-user-id="${u.id}"><span class="icon" aria-hidden="true">${ICON_USER_X_SM}</span>${t('adminRemoveAccount')}</button>
+                         <button type="button" class="btn-small" data-action="blacklist" data-user-id="${u.id}" data-blacklisted="${(state.adminBlacklistedIds || []).includes(u.id) ? '1' : '0'}"><span class="icon" aria-hidden="true">${ICON_SHIELD_X_SM}</span>${(state.adminBlacklistedIds || []).includes(u.id) ? t('adminUnblacklist') : t('adminBlacklist')}</button>`) : ''}
                   </div>
                   ${showPerms ? `
                   <div class="admin-user-perms">
@@ -4566,7 +4669,7 @@ async function loadAdminTimeouts() {
         <li class="admin-timeout-item">
           <span>${escapeHtml(to.display_name || to.username)}</span>
           <span class="admin-timeout-meta">${to.expires_at ? t('adminTimeoutUntil') + formatTime(to.expires_at) : t('adminTimeoutForever')} ${to.locked_release ? t('adminTimeoutLocked') : ''}</span>
-          ${(!to.locked_release || state.user?.id === 'jimmyqrg') ? `<button type="button" class="btn-small admin-timeout-release" data-timeout-id="${to.id}">${t('adminRelease')}</button>` : ''}
+          ${(!to.locked_release || state.user?.id === 'jimmyqrg') ? `<button type="button" class="btn-small admin-timeout-release" data-timeout-id="${to.id}"><span class="icon" aria-hidden="true">${ICON_UNLOCK_SM}</span>${t('adminRelease')}</button>` : ''}
         </li>
       `).join('')}</ul>`;
     if (el) el.innerHTML = html;
@@ -4736,7 +4839,7 @@ function renderSettingsContent() {
         <textarea name="description" rows="3" placeholder="${t('descriptionPlaceholder')}">${escapeHtml(state.user?.description || '')}</textarea>
         <label>${t('website')}</label>
         <input type="url" name="website" placeholder="https://..." value="${escapeHtml(state.user?.website || '')}" />
-        <button type="submit">${t('save')}</button>
+        <button type="submit"><span class="icon" aria-hidden="true">${ICON_CHECK_SM}</span>${t('save')}</button>
           </form>
       ` : ''}
       ${tab === 'notifications' ? `
@@ -4756,16 +4859,16 @@ function renderSettingsContent() {
           <div id="notif-dnd" class="notif-dnd" style="${state.notificationPrefs?.enabled ? '' : 'opacity:0.5;pointer-events:none'}">
             <h4 class="settings-section-title">${t('doNotDisturb')}</h4>
             ${state.notificationPrefs?.dnd_until && Date.now() < state.notificationPrefs.dnd_until
-              ? `<button type="button" id="notif-dnd-end-now" class="btn-small btn-danger">${t('dndEndNow')}</button>`
-              : `<button type="button" id="notif-dnd-open" class="btn-secondary">${t('doNotDisturb')}</button>`}
+              ? `<button type="button" id="notif-dnd-end-now" class="btn-small btn-danger"><span class="icon" aria-hidden="true">${ICON_BELL_OFF_SM}</span>${t('dndEndNow')}</button>`
+              : `<button type="button" id="notif-dnd-open" class="btn-secondary"><span class="icon" aria-hidden="true">${ICON_MOON_SM}</span>${t('doNotDisturb')}</button>`}
             <label class="settings-checkbox-label" style="margin-top:0.5rem;display:block">
               <input type="checkbox" id="notif-dnd-at-night" ${state.notificationPrefs?.dnd_at_night ? 'checked' : ''} />
               <span>${t('dndAtNight')}</span>
             </label>
             ${state.notificationPrefs?.dnd_at_night ? `
             <div class="dnd-location-row" style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap">
-              <button type="button" id="notif-dnd-use-location" class="btn-small">${t('dndUseLocation')}</button>
-              <button type="button" id="notif-dnd-enter-city" class="btn-small">${t('dndEnterCity')}</button>
+              <button type="button" id="notif-dnd-use-location" class="btn-small"><span class="icon" aria-hidden="true">${ICON_MAP_PIN_SM}</span>${t('dndUseLocation')}</button>
+              <button type="button" id="notif-dnd-enter-city" class="btn-small"><span class="icon" aria-hidden="true">${ICON_BUILDING_SM}</span>${t('dndEnterCity')}</button>
       </div>
             ` : ''}
           </div>
@@ -4777,12 +4880,12 @@ function renderSettingsContent() {
         <div class="settings-account-block">
           <h3 class="settings-section-title">${t('password')}</h3>
           <p class="settings-account-desc">${t('changePasswordDesc')}</p>
-          <button type="button" id="open-password-modal" class="btn-secondary">${t('changePassword')}</button>
+          <button type="button" id="open-password-modal" class="btn-secondary"><span class="icon" aria-hidden="true">${ICON_KEY_SM}</span>${t('changePassword')}</button>
         </div>
         <div class="settings-account-block">
           <h3 class="settings-section-title">${t('signOut')}</h3>
           <p class="settings-account-desc">${t('signOutDesc')}</p>
-          <button type="button" id="sign-out-btn" class="btn-danger">${t('signOut')}</button>
+          <button type="button" id="sign-out-btn" class="btn-danger"><span class="icon" aria-hidden="true">${ICON_LOG_OUT_SM}</span>${t('signOut')}</button>
         </div>
       </div>
       ` : ''}
@@ -4810,8 +4913,8 @@ function renderInboxContent() {
                 <div class="body">${escapeHtml(item.body || '')}</div>
               ${item.type === 'friend_request' && !item.read_at ? `
               <div class="inbox-item-actions">
-                <button type="button" class="btn-small btn-primary inbox-accept-fr" data-inbox-id="${item.id}">${t('accept')}</button>
-                <button type="button" class="btn-small inbox-reject-fr" data-inbox-id="${item.id}">${t('reject')}</button>
+                <button type="button" class="btn-small btn-primary inbox-accept-fr" data-inbox-id="${item.id}"><span class="icon" aria-hidden="true">${ICON_CHECK_SM}</span>${t('accept')}</button>
+                <button type="button" class="btn-small inbox-reject-fr" data-inbox-id="${item.id}"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>${t('reject')}</button>
               </div>
               ` : ''}
           </div>
@@ -4865,7 +4968,7 @@ function getChatHeaderTitle(roomType, roomId) {
 }
 
 function renderChatUsersView() {
-  const users = (state.users || []).filter((u) => u.id !== state.user?.id && !isBlocked(u.id));
+  const users = (state.users || []).filter((u) => !isBlocked(u.id));
   const convId = (uid) => state.convByUserId[uid];
   const lastMessageAt = (uid) => {
     const fromApi = state.lastMessageAtByUserId?.[uid];
@@ -5250,8 +5353,8 @@ function showDndCityModal() {
       <p class="modal-hint">${t('dndCityHint')}</p>
       <input type="text" id="dnd-city-input" placeholder="${t('dndCityPlaceholder')}" style="width:100%;margin:0.5rem 0;padding:0.5rem;border:var(--border-width) solid var(--border);border-radius:6px;background:var(--bg-main);color:var(--text)" />
       <div class="modal-actions">
-        <button type="button" id="dnd-city-cancel" class="modal-close">${t('dndCancel')}</button>
-        <button type="button" id="dnd-city-ok" class="btn-primary">${t('dndSet')}</button>
+        <button type="button" id="dnd-city-cancel" class="modal-close"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>${t('dndCancel')}</button>
+        <button type="button" id="dnd-city-ok" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_CHECK_SM}</span>${t('dndSet')}</button>
       </div>
     </div>
   `;
@@ -5284,8 +5387,8 @@ function showDndModal() {
         <label><span>${t('dndSeconds')}</span><input type="number" id="dnd-seconds" min="0" value="0" /></label>
       </div>
       <div class="modal-actions">
-        <button type="button" id="dnd-modal-cancel" class="modal-close">${t('dndCancel')}</button>
-        <button type="button" id="dnd-modal-set" class="btn-primary">${t('dndSet')}</button>
+        <button type="button" id="dnd-modal-cancel" class="modal-close"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>${t('dndCancel')}</button>
+        <button type="button" id="dnd-modal-set" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_CHECK_SM}</span>${t('dndSet')}</button>
       </div>
     </div>
   `;
@@ -5326,8 +5429,8 @@ function showPasswordModal() {
         <input type="password" name="new_password_confirm" autocomplete="new-password" placeholder="${t('confirmNewPasswordPlaceholder')}" />
         <p id="password-modal-message" class="settings-form-message" aria-live="polite"></p>
         <div class="modal-actions">
-          <button type="button" id="password-modal-cancel" class="modal-close">${t('cancel')}</button>
-          <button type="submit" class="btn-primary">${t('changePassword')}</button>
+          <button type="button" id="password-modal-cancel" class="modal-close"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>${t('cancel')}</button>
+          <button type="submit" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_KEY_SM}</span>${t('changePassword')}</button>
         </div>
       </form>
     </div>

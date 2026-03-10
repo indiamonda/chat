@@ -12,7 +12,7 @@ if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 export const db = new Database(dbPath);
 
 // Ensure permission columns exist (migration for older DBs)
-const PERM_COLS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout'];
+const PERM_COLS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages'];
 for (const col of PERM_COLS) {
   try {
     db.exec(`ALTER TABLE users ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`);
@@ -137,6 +137,22 @@ try {
 
 // users.deleted_at: soft delete (timestamp) or null (active). Permanently deleted users are removed from DB.
 try { db.exec('ALTER TABLE users ADD COLUMN deleted_at INTEGER'); } catch (_) {}
+
+// Pinned messages: one pinned message per room
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pinned_messages (
+      room_type TEXT NOT NULL,
+      room_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      pinned_by TEXT NOT NULL,
+      pinned_at INTEGER NOT NULL,
+      PRIMARY KEY (room_type, room_id),
+      FOREIGN KEY (message_id) REFERENCES messages(id),
+      FOREIGN KEY (pinned_by) REFERENCES users(id)
+    )
+  `);
+} catch (_) {}
 
 const USERNAME_RE = /^[a-z0-9]+$/;
 export function validateUsername(username) {

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
-import { requireAuth, getCurrentUser, isAllowed, canManageUsers, canKick, canDeleteMessages, canTimeout } from '../auth.js';
+import { requireAuth, getCurrentUser, isAllowed, canManageUsers, canKick, canDeleteMessages, canTimeout, canPinMessages } from '../auth.js';
 import { db, GROUP_ID } from '../db.js';
 
 const router = Router();
@@ -132,7 +132,7 @@ router.post('/users/:id/allowed', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-const PERM_KEYS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout'];
+const PERM_KEYS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages'];
 
 // Set a user's permissions (only for users on admin list). Requires can_manage_users.
 router.patch('/users/:id/permissions', requireAuth, (req, res) => {
@@ -235,6 +235,35 @@ router.get('/timeouts', requireAuth, (req, res) => {
     ORDER BY t.created_at DESC
   `).all(GROUP_ID);
   res.json({ timeouts: rows });
+});
+
+// Pin message in a room – requires can_pin_messages
+router.post('/pin', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (!canPinMessages(admin)) return res.status(403).json({ error: 'Not allowed to pin messages' });
+  const { message_id, room_type, room_id } = req.body || {};
+  if (!message_id || !room_type || !room_id) return res.status(400).json({ error: 'message_id, room_type, room_id required' });
+  const msg = db.prepare('SELECT id, sender_id, content, msg_type, created_at FROM messages WHERE id = ? AND room_type = ? AND room_id = ? AND deleted_by_admin = 0 AND recalled_at IS NULL').get(message_id, room_type, room_id);
+  if (!msg) return res.status(404).json({ error: 'Message not found' });
+  db.prepare('INSERT OR REPLACE INTO pinned_messages (room_type, room_id, message_id, pinned_by, pinned_at) VALUES (?, ?, ?, ?, ?)').run(room_type, room_id, message_id, admin.id, Date.now());
+  const sender = db.prepare('SELECT username, display_name, avatar_url FROM users WHERE id = ?').get(msg.sender_id);
+  const pinned = { message_id: msg.id, sender_id: msg.sender_id, content: msg.content, msg_type: msg.msg_type, created_at: msg.created_at, username: sender?.username, display_name: sender?.display_name, pinned_by: admin.id, pinned_at: Date.now() };
+  const io = req.app.get('io');
+  if (io) io.to(`${room_type === 'dm' ? 'dm' : 'group'}:${room_id}`).emit('message:pinned', { room_type, room_id, pinned });
+  res.json({ ok: true, pinned });
+});
+
+// Unpin message in a room – requires can_pin_messages
+router.delete('/pin/:roomType/:roomId', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (!canPinMessages(admin)) return res.status(403).json({ error: 'Not allowed to unpin messages' });
+  const { roomType, roomId } = req.params;
+  db.prepare('DELETE FROM pinned_messages WHERE room_type = ? AND room_id = ?').run(roomType, roomId);
+  const io = req.app.get('io');
+  if (io) io.to(`${roomType === 'dm' ? 'dm' : 'group'}:${roomId}`).emit('message:unpinned', { room_type: roomType, room_id: roomId });
+  res.json({ ok: true });
 });
 
 export default router;
