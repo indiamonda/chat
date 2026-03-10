@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="120" viewBox="0 0 320 120" fill="none">
+  <defs>
+    <filter id="rough">
+      <feTurbulence type="turbulence" baseFrequency="0.04" numOctaves="4" result="noise"/>
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.5" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+  <path d="M14,3 Q3,3 3,14 L3,88 Q3,99 14,99 L22,99 L18,117 L42,99 L306,99 Q317,99 317,88 L317,14 Q317,3 306,3 Z"
+        fill="#ffffff" stroke="#222222" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" filter="url(#rough)"/>
+</svg>
