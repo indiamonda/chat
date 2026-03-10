@@ -4,6 +4,7 @@
   "author": "jimmyqrg",
   "description": "Clean rounded bubble with a subtle purple glow.",
   "type": "css",
+  "tail": "false",
   "files": {
     "other": "other.svg",
     "own": "own.svg"
