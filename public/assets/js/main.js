@@ -4950,6 +4950,7 @@ function showContextMenu(x, y, items, onSelect) {
   if (existing) existing.remove();
   const menu = document.createElement('div');
   menu.className = 'context-menu';
+  menu.style.visibility = 'hidden';
   menu.style.left = x + 'px';
   menu.style.top = y + 'px';
   items.forEach(({ label, action, danger }) => {
@@ -4960,6 +4961,15 @@ function showContextMenu(x, y, items, onSelect) {
     menu.appendChild(btn);
   });
   document.body.appendChild(menu);
+  const pad = 6;
+  const rect = menu.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  if (x + rect.width > vw - pad) x = Math.max(pad, vw - rect.width - pad);
+  if (y + rect.height > vh - pad) y = Math.max(pad, vh - rect.height - pad);
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+  menu.style.visibility = '';
   const close = () => { menu.remove(); document.removeEventListener('click', close); };
   setTimeout(() => document.addEventListener('click', close), 0);
 }
