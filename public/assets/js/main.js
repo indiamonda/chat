@@ -3399,6 +3399,10 @@ function renderMessage(m, roomType, roomId, context = {}) {
   const defaultAvatar = getDefaultAvatarUrl(m.sender_id);
   const avatarSrc = (m.avatar_url && String(m.avatar_url).trim()) ? m.avatar_url : defaultAvatar;
   const senderName = escapeHtml(m.display_name || m.username || 'Unknown user');
+  const cbStyle = escapeHtml(m.chatbox_style || 'default');
+  const cbSvg = isOwn
+    ? `/assets/chatboxes/${cbStyle}/${state.theme}-own.svg`
+    : `/assets/chatboxes/${cbStyle}/${state.theme}.svg`;
   return `
     <div class="message-row" data-msg-id="${m.id}">
     <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
@@ -3406,7 +3410,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
           <span class="message-sender">${senderName}</span>
           <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
         </div>
-        <div class="message-body">
+        <div class="message-body" style="border-image-source:url('${cbSvg}')">
         ${replyBlock}
           ${contentBlock}
           ${reactionSummary ? `<div class="message-reactions">${reactionSummary}</div>` : ''}
@@ -5370,6 +5374,20 @@ function renderSettingsContent() {
         <select id="settings-language" class="settings-select">
           ${(state.languageOptions || LANGUAGE_OPTIONS).map(o => `<option value="${o.value}" ${state.language === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
         </select>
+        <h3 class="settings-section-title">${tx('chatboxStyle', 'Chat Box Style')}</h3>
+        <p class="settings-account-desc">${tx('chatboxStyleDesc', 'Choose a chat box style visible to everyone.')}</p>
+        <div class="chatbox-picker" id="chatbox-picker">
+          ${['default'].map(style => {
+            const active = (state.user?.chatbox_style || 'default') === style;
+            return `<button type="button" class="chatbox-picker-item ${active ? 'active' : ''}" data-style="${style}">
+              <div class="chatbox-picker-preview">
+                <div class="chatbox-preview-bubble chatbox-preview-other" style="border-image-source: url('/assets/chatboxes/${style}/${state.theme}.svg')"></div>
+                <div class="chatbox-preview-bubble chatbox-preview-own" style="border-image-source: url('/assets/chatboxes/${style}/${state.theme}-own.svg')"></div>
+              </div>
+              <span class="chatbox-picker-label">${escapeHtml(style)}</span>
+            </button>`;
+          }).join('')}
+        </div>
           </div>
       ` : ''}
       ${tab === 'profile' ? `
@@ -6040,6 +6058,17 @@ function bindSettings() {
     if (typeof localStorage !== 'undefined') localStorage.setItem('theme', theme);
     applyTheme(theme);
     setState({});
+  });
+  document.getElementById('chatbox-picker')?.addEventListener('click', async (e) => {
+    const item = e.target.closest('.chatbox-picker-item');
+    if (!item) return;
+    const style = item.dataset.style;
+    try {
+      const { user } = await apiPatch('/api/users/profile', { chatbox_style: style });
+      if (state.user) state.user.chatbox_style = user.chatbox_style || 'default';
+      render();
+      bindSettings();
+    } catch (_) {}
   });
   document.getElementById('settings-language')?.addEventListener('change', (e) => {
     const lang = e.target.value;

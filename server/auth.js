@@ -59,13 +59,14 @@ function normalizeUser(u) {
     can_timeout: !!u.can_timeout,
     can_pin_messages: !!u.can_pin_messages,
     can_unlimited_edit_recall: !!u.can_unlimited_edit_recall,
+    chatbox_style: u.chatbox_style || 'default',
   };
 }
 
 export function getCurrentUser(req) {
   if (!req.session?.userId) return null;
   try {
-    const u = db.prepare(`SELECT id, username, display_name, avatar_url, email, description, is_allowed, ${PERM_COLS} FROM users WHERE id = ?`).get(req.session.userId);
+    const u = db.prepare(`SELECT id, username, display_name, avatar_url, chatbox_style, email, description, is_allowed, ${PERM_COLS} FROM users WHERE id = ?`).get(req.session.userId);
     return normalizeUser(u);
   } catch {
     return null;

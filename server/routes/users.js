@@ -11,7 +11,7 @@ router.get('/', requireAuth, (req, res) => {
   const canSeeAllowed = me?.is_allowed;
   const canSeePerms = canManageUsers(me);
   const list = db.prepare(`
-    SELECT id, username, display_name, avatar_url, deleted_at${canSeeAllowed ? ', is_allowed' : ''}${canSeePerms ? `, ${PERM_COLS}` : ''}
+    SELECT id, username, display_name, avatar_url, chatbox_style, deleted_at${canSeeAllowed ? ', is_allowed' : ''}${canSeePerms ? `, ${PERM_COLS}` : ''}
     FROM users
     ORDER BY username
   `).all();
@@ -46,7 +46,7 @@ router.get('/profile', requireAuth, (req, res) => {
 /** Public profile for viewing another user (id, username, display_name, avatar_url, website, profile_links). */
 router.get('/:id/profile', requireAuth, (req, res) => {
   const target = db.prepare(
-    'SELECT id, username, display_name, avatar_url, website, profile_links, description FROM users WHERE id = ?'
+    'SELECT id, username, display_name, avatar_url, chatbox_style, website, profile_links, description FROM users WHERE id = ?'
   ).get(req.params.id);
   if (!target) return res.status(404).json({ error: 'User not found' });
   const profile = {
@@ -56,7 +56,8 @@ router.get('/:id/profile', requireAuth, (req, res) => {
     avatar_url: target.avatar_url,
     website: target.website || null,
     profile_links: target.profile_links ? JSON.parse(target.profile_links) : null,
-    description: target.description || null
+    description: target.description || null,
+    chatbox_style: target.chatbox_style || 'default'
   };
   res.json({ profile });
 });
@@ -64,14 +65,15 @@ router.get('/:id/profile', requireAuth, (req, res) => {
 router.patch('/profile', requireAuth, upload.single('avatar'), (req, res) => {
   const user = getCurrentUser(req);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
-  const { display_name, website, profile_links, description } = req.body || {};
+  const { display_name, website, profile_links, description, chatbox_style } = req.body || {};
   let avatar_url = user.avatar_url;
   if (req.file) avatar_url = `/uploads/${req.file.filename}`;
   const name = typeof display_name === 'string' && display_name.trim() ? display_name.trim().slice(0, 64) : null;
   const web = typeof website === 'string' ? website.trim().slice(0, 512) : null;
   const links = profile_links != null ? (typeof profile_links === 'string' ? profile_links : JSON.stringify(profile_links)) : null;
   const desc = description !== undefined ? (typeof description === 'string' ? description.trim().slice(0, 1024) : null) : undefined;
-  if (name !== null || req.file || web !== null || links !== null || desc !== undefined) {
+  const cbStyle = typeof chatbox_style === 'string' ? chatbox_style.trim().slice(0, 64) : null;
+  if (name !== null || req.file || web !== null || links !== null || desc !== undefined || cbStyle !== null) {
     const updates = [];
     const values = [];
     if (name !== null) { updates.push('display_name = ?'); values.push(name); }
@@ -79,12 +81,13 @@ router.patch('/profile', requireAuth, upload.single('avatar'), (req, res) => {
     if (web !== null) { updates.push('website = ?'); values.push(web); }
     if (links !== null) { updates.push('profile_links = ?'); values.push(links); }
     if (desc !== undefined) { updates.push('description = ?'); values.push(desc); }
+    if (cbStyle !== null) { updates.push('chatbox_style = ?'); values.push(cbStyle); }
     if (updates.length) {
       values.push(user.id);
       db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
     }
   }
-  const updated = db.prepare('SELECT id, username, display_name, avatar_url, website, profile_links, description, is_allowed FROM users WHERE id = ?').get(user.id);
+  const updated = db.prepare('SELECT id, username, display_name, avatar_url, chatbox_style, website, profile_links, description, is_allowed FROM users WHERE id = ?').get(user.id);
   const out = { ...updated, is_allowed: !!updated.is_allowed };
   if (out.profile_links && typeof out.profile_links === 'string') out.profile_links = JSON.parse(out.profile_links);
   res.json({ user: out });

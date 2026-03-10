@@ -178,6 +178,7 @@ db.exec(`
 try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN website TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN profile_links TEXT'); } catch (_) {}
+try { db.exec("ALTER TABLE users ADD COLUMN chatbox_style TEXT DEFAULT 'default'"); } catch (_) {}
 const permCols = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall'];
 for (const col of permCols) {
   try { db.exec(`ALTER TABLE users ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`); } catch (_) {}

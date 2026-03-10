@@ -24,6 +24,7 @@ try { db.exec(`UPDATE users SET can_unlimited_edit_recall = 1 WHERE id = 'jimmyq
 try { db.exec('ALTER TABLE users ADD COLUMN website TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN profile_links TEXT'); } catch (_) {} // JSON array of {label, url}
 try { db.exec('ALTER TABLE users ADD COLUMN description TEXT'); } catch (_) {}
+try { db.exec("ALTER TABLE users ADD COLUMN chatbox_style TEXT DEFAULT 'default'"); } catch (_) {}
 
 // Friendships and friend-request rate limits
 try {
