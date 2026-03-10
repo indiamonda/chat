@@ -1930,10 +1930,11 @@ select:focus {
   margin-top: 0.15rem;
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s ease;
+  height: 28px;
 }
 
 .message-row:hover .message-like-wrap {
@@ -1950,31 +1951,29 @@ select:focus {
   justify-self: end;
 }
 
-.message-like-btn {
-  padding: 0.25rem;
+.message-like-btn,
+.message-reaction-picker-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   color: var(--text-dim);
   cursor: pointer;
   border-radius: 6px;
-  transition: color 0.15s ease, transform 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease;
 }
-
+.message-like-btn svg,
+.message-reaction-picker-btn svg {
+  width: 16px;
+  height: 16px;
+}
 .message-like-btn:hover {
   color: var(--accent);
-  transform: scale(1.1);
-}
-.message-reaction-picker-btn {
-  padding: 0.25rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--text-dim);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  background: var(--bg-hover);
 }
 .message-reaction-picker-btn:hover {
   background: var(--bg-hover);
@@ -2009,34 +2008,42 @@ select:focus {
 }
 
 .message-like-count {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--text-dim);
   min-width: 1.2em;
+  line-height: 28px;
 }
 
 .message-edit-history {
   display: flex;
   align-items: center;
-  gap: 0.15rem;
-  font-size: 0.75rem;
+  gap: 0;
+  height: 28px;
   color: var(--text-dim);
 }
 
 .message-edit-history-btn {
-  padding: 0.2rem;
+  width: 24px;
+  height: 28px;
+  padding: 0;
   background: none;
   border: none;
   color: var(--text-dim);
   cursor: pointer;
   border-radius: 4px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.message-edit-history-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .message-edit-history-btn:hover:not(:disabled) {
   color: var(--accent);
+  background: var(--bg-hover);
 }
 
 .message-edit-history-btn:disabled {
@@ -2045,8 +2052,10 @@ select:focus {
 }
 
 .message-edit-history-label {
-  min-width: 2.2em;
+  font-size: 0.72rem;
+  min-width: 2em;
   text-align: center;
+  line-height: 28px;
 }
 
 .message-edit-area {
@@ -4709,14 +4718,6 @@ input[type="checkbox"]:checked::after {
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-/* Message like count */
-.message-like-count {
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  min-width: 1.2em;
-  text-align: center;
 }
 
 /* ── Voice Chat Panel Entry ── */
