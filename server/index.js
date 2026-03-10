@@ -287,7 +287,7 @@ app.get('/api/chatbox-styles', (req, res) => {
         if (!existsSync(jsonPath)) return null;
         try {
           const meta = JSON.parse(readFileSync(jsonPath, 'utf8'));
-          return { id: e.name, name: meta.name || e.name, type: meta.type || 'svg', author: meta.author || null, description: meta.description || null };
+          return { id: e.name, name: meta.name || e.name, type: meta.type || 'svg', tail: meta.tail === 'true' || meta.tail === true, author: meta.author || null, description: meta.description || null };
         } catch { return null; }
       })
       .filter(Boolean)

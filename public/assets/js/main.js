@@ -3403,9 +3403,13 @@ function renderMessage(m, roomType, roomId, context = {}) {
   const cbStyle = m.chatbox_style || 'default';
   const cbMeta = state._chatboxStyles.find(s => s.id === cbStyle);
   const useSvgBubble = !isFileMessage && cbMeta?.type === 'svg';
+  const hasTail = cbMeta?.tail;
   const cbSvg = useSvgBubble
     ? `/assets/chatboxes/${escapeHtml(cbStyle)}/${isOwn ? 'own' : 'other'}.svg`
     : '';
+  const bodyClasses = ['message-body'];
+  if (isFileMessage) bodyClasses.push('message-body-file');
+  if (useSvgBubble && hasTail) bodyClasses.push('message-body-tail');
   return `
     <div class="message-row" data-msg-id="${m.id}">
     <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
@@ -3413,7 +3417,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
           <span class="message-sender">${senderName}</span>
           <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
         </div>
-        <div class="message-body${isFileMessage ? ' message-body-file' : ''}"${useSvgBubble ? ` style="border-image-source:url('${cbSvg}')"` : ''}>
+        <div class="${bodyClasses.join(' ')}"${useSvgBubble ? ` style="border-image-source:url('${cbSvg}')"` : ''}>
         ${replyBlock}
           ${contentBlock}
           ${reactionSummary ? `<div class="message-reactions">${reactionSummary}</div>` : ''}

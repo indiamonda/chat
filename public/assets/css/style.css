@@ -2420,6 +2420,11 @@ select:focus {
   filter: brightness(1.15);
 }
 
+.message-body-tail {
+  padding-bottom: 1.2rem;
+  margin-bottom: 0.3rem;
+}
+
 /* Chatbox picker in settings */
 .chatbox-picker {
   display: flex;
