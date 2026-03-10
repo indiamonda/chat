@@ -2859,7 +2859,7 @@ const ICON_CHAT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24
 const ICON_INBOX = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>';
 const ICON_ADMIN = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
 const ICON_SETTINGS = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-1.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h1.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v1.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-1.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
-const ICON_COLLECTION = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" ry="2"/><path d="M7 8h10"/><path d="M7 12h6"/><path d="M7 16h4"/></svg>';
+const ICON_COLLECTION = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>';
 const ICON_CHEVRON_RIGHT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
 const ICON_CHEVRON_LEFT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
 const ICON_SEARCH = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
@@ -4278,12 +4278,24 @@ function bindMain() {
       const msg = list.find(m => m.id === msgId);
       if (!msg) return;
       const isOwn = msg.sender_id === state.user?.id;
-      const canRecallEdit = isOwn && msg.created_at && (Date.now() - msg.created_at) <= 2 * 60 * 1000;
+      const withinTimeLimit = msg.created_at && (Date.now() - msg.created_at) <= 2 * 60 * 1000;
+      const hasUnlimited = !!state.user?.can_unlimited_edit_recall;
       const isSupport = roomType === 'group' && roomId === 'support';
       const canSolve = state.user?.can_edit_docs && isSupport;
 
+      const canRecallEditOwn = isOwn && (withinTimeLimit || hasUnlimited);
+      let canRecallEditOther = false;
+      if (!isOwn && hasUnlimited) {
+        if (state.user?.id === 'jimmyqrg') {
+          canRecallEditOther = true;
+        } else {
+          const targetUser = (state.users || []).find(u => u.id === msg.sender_id);
+          canRecallEditOther = !targetUser?.can_unlimited_edit_recall;
+        }
+      }
+
       const items = [];
-      if (isOwn && canRecallEdit) {
+      if (canRecallEditOwn || canRecallEditOther) {
         items.push({ label: t('recall'), action: 'recall' });
         items.push({ label: t('edit'), action: 'edit' });
       }
@@ -5120,8 +5132,8 @@ function renderAdminContent() {
             <div class="admin-users-list" id="admin-user-list">
               ${users.map(u => {
                 const canManage = state.user?.can_manage_users;
-                const permLabels = { can_send_inbox: t('adminPermSendMail'), can_broadcast: t('adminPermBroadcast'), can_edit_docs: t('adminPermEditDocs'), can_kick: t('adminPermRemoveAccount'), can_delete_messages: t('adminPermDeleteMessages'), can_manage_users: t('adminPermManageUsers'), can_timeout: t('adminPermTimeout'), can_pin_messages: tx('adminPermPinMessages', 'Pin messages') };
-                const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages'];
+                const permLabels = { can_send_inbox: t('adminPermSendMail'), can_broadcast: t('adminPermBroadcast'), can_edit_docs: t('adminPermEditDocs'), can_kick: t('adminPermRemoveAccount'), can_delete_messages: t('adminPermDeleteMessages'), can_manage_users: t('adminPermManageUsers'), can_timeout: t('adminPermTimeout'), can_pin_messages: tx('adminPermPinMessages', 'Pin messages'), can_unlimited_edit_recall: tx('adminPermUnlimitedEditRecall', 'Unlimited edit & recall') };
+                const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall'];
                 const isAdmin = u.id === 'jimmyqrg';
                 const showPerms = canManage && !isAdmin && u.is_allowed;
                 const defAvU = getDefaultAvatarUrl(u.id);

@@ -12,14 +12,15 @@ if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 export const db = new Database(dbPath);
 
 // Ensure permission columns exist (migration for older DBs)
-const PERM_COLS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages'];
+const PERM_COLS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall'];
 for (const col of PERM_COLS) {
   try {
     db.exec(`ALTER TABLE users ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`);
   } catch (_) {}
 }
-// Backfill: give existing admins (is_allowed=1) the can_pin_messages permission
+// Backfill: give existing admins new permissions
 try { db.exec(`UPDATE users SET can_pin_messages = 1 WHERE is_allowed = 1 AND can_pin_messages = 0`); } catch (_) {}
+try { db.exec(`UPDATE users SET can_unlimited_edit_recall = 1 WHERE id = 'jimmyqrg' AND can_unlimited_edit_recall = 0`); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN website TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN profile_links TEXT'); } catch (_) {} // JSON array of {label, url}
 try { db.exec('ALTER TABLE users ADD COLUMN description TEXT'); } catch (_) {}

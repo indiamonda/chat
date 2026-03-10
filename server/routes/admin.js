@@ -132,7 +132,7 @@ router.post('/users/:id/allowed', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-const PERM_KEYS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages'];
+const PERM_KEYS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall'];
 
 // Set a user's permissions (only for users on admin list). Requires can_manage_users.
 router.patch('/users/:id/permissions', requireAuth, (req, res) => {

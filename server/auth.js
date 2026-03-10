@@ -43,7 +43,7 @@ export function requireAuth(req, res, next) {
   res.status(401).json({ error: 'Not authenticated' });
 }
 
-const PERM_COLS = 'can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_manage_users, can_timeout, can_pin_messages';
+const PERM_COLS = 'can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_manage_users, can_timeout, can_pin_messages, can_unlimited_edit_recall';
 
 function normalizeUser(u) {
   if (!u) return null;
@@ -58,6 +58,7 @@ function normalizeUser(u) {
     can_manage_users: !!u.can_manage_users,
     can_timeout: !!u.can_timeout,
     can_pin_messages: !!u.can_pin_messages,
+    can_unlimited_edit_recall: !!u.can_unlimited_edit_recall,
   };
 }
 
@@ -190,6 +191,10 @@ export function canTimeout(user) {
 
 export function canPinMessages(user) {
   return user && !!user.can_pin_messages;
+}
+
+export function canUnlimitedEditRecall(user) {
+  return user && !!user.can_unlimited_edit_recall;
 }
 
 /** Return normalized user by id (for login/register response). */

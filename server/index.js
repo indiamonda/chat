@@ -6,7 +6,7 @@ import express from 'express';
 import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
-import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages, canTimeout } from './auth.js';
+import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages, canTimeout, canUnlimitedEditRecall } from './auth.js';
 import { db, GROUP_ID, PANELS, isBlacklisted, isUserDeleted } from './db.js';
 import { upload } from './upload.js';
 import { getUploadUrl, getFileRef } from './upload.js';
@@ -491,8 +491,16 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
 app.patch('/api/messages/:id/recall', requireAuth, (req, res) => {
   const user = getCurrentUser(req);
   const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id);
-  if (!msg || msg.sender_id !== user.id) return res.status(403).json({ error: 'Forbidden' });
-  if (!canRecallOrEdit(msg)) return res.status(400).json({ error: 'Recall only within 2 minutes' });
+  if (!msg) return res.status(404).json({ error: 'Not found' });
+  const isOwn = msg.sender_id === user.id;
+  const hasUnlimited = canUnlimitedEditRecall(user);
+  if (isOwn) {
+    if (!hasUnlimited && !canRecallOrEdit(msg)) return res.status(400).json({ error: 'Recall only within 2 minutes' });
+  } else {
+    if (!hasUnlimited) return res.status(403).json({ error: 'Forbidden' });
+    const target = db.prepare('SELECT can_unlimited_edit_recall FROM users WHERE id = ?').get(msg.sender_id);
+    if (target?.can_unlimited_edit_recall && user.id !== 'jimmyqrg') return res.status(403).json({ error: 'Forbidden' });
+  }
   db.prepare('UPDATE messages SET recalled_at = ? WHERE id = ?').run(Date.now(), msg.id);
   res.json({ ok: true });
 });
@@ -500,8 +508,16 @@ app.patch('/api/messages/:id/recall', requireAuth, (req, res) => {
 app.patch('/api/messages/:id/edit', requireAuth, (req, res) => {
   const user = getCurrentUser(req);
   const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(req.params.id);
-  if (!msg || msg.sender_id !== user.id) return res.status(403).json({ error: 'Forbidden' });
-  if (!canRecallOrEdit(msg)) return res.status(400).json({ error: 'Edit only within 2 minutes' });
+  if (!msg) return res.status(404).json({ error: 'Not found' });
+  const isOwn = msg.sender_id === user.id;
+  const hasUnlimited = canUnlimitedEditRecall(user);
+  if (isOwn) {
+    if (!hasUnlimited && !canRecallOrEdit(msg)) return res.status(400).json({ error: 'Edit only within 2 minutes' });
+  } else {
+    if (!hasUnlimited) return res.status(403).json({ error: 'Forbidden' });
+    const target = db.prepare('SELECT can_unlimited_edit_recall FROM users WHERE id = ?').get(msg.sender_id);
+    if (target?.can_unlimited_edit_recall && user.id !== 'jimmyqrg') return res.status(403).json({ error: 'Forbidden' });
+  }
   const { content } = req.body || {};
   const history = (msg.edit_history ? JSON.parse(msg.edit_history) : []).concat([{ content: msg.content, at: msg.updated_at }]);
   const newContent = typeof content === 'string' ? content : msg.content;
@@ -711,7 +727,7 @@ io.use((socket, next) => {
     if (!userId) return next(new Error('Not authenticated'));
     socket.userId = userId;
     try {
-      socket.user = db.prepare('SELECT id, username, display_name, avatar_url, deleted_at, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_timeout, can_pin_messages FROM users WHERE id = ?').get(userId);
+      socket.user = db.prepare('SELECT id, username, display_name, avatar_url, deleted_at, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_timeout, can_pin_messages, can_unlimited_edit_recall FROM users WHERE id = ?').get(userId);
     } catch (e) {
       console.error('Socket user lookup error:', e);
       return next(new Error('User not found'));
@@ -726,6 +742,7 @@ io.use((socket, next) => {
     socket.user.can_delete_messages = !!socket.user.can_delete_messages;
     socket.user.can_timeout = !!socket.user.can_timeout;
     socket.user.can_pin_messages = !!socket.user.can_pin_messages;
+    socket.user.can_unlimited_edit_recall = !!socket.user.can_unlimited_edit_recall;
     next();
   });
 });
@@ -833,8 +850,16 @@ io.on('connection', (socket) => {
 
   socket.on('message:recall', (msgId, ack) => {
     const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId);
-    if (!msg || msg.sender_id !== socket.userId) return ack?.({ error: 'Forbidden' });
-    if (!canRecallOrEdit(msg)) return ack?.({ error: 'Only within 2 minutes' });
+    if (!msg) return ack?.({ error: 'Not found' });
+    const isOwn = msg.sender_id === socket.userId;
+    const hasUnlimited = canUnlimitedEditRecall(socket.user);
+    if (isOwn) {
+      if (!hasUnlimited && !canRecallOrEdit(msg)) return ack?.({ error: 'Only within 2 minutes' });
+    } else {
+      if (!hasUnlimited) return ack?.({ error: 'Forbidden' });
+      const target = db.prepare('SELECT can_unlimited_edit_recall FROM users WHERE id = ?').get(msg.sender_id);
+      if (target?.can_unlimited_edit_recall && socket.userId !== 'jimmyqrg') return ack?.({ error: 'Forbidden' });
+    }
     db.prepare('UPDATE messages SET recalled_at = ? WHERE id = ?').run(Date.now(), msgId);
     if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:recalled', { id: msgId });
     else io.to(`group:${GROUP_ID}`).emit('message:recalled', { id: msgId });
@@ -844,8 +869,16 @@ io.on('connection', (socket) => {
   socket.on('message:edit', (payload, ack) => {
     const { id: msgId, content } = payload || {};
     const msg = db.prepare('SELECT * FROM messages WHERE id = ?').get(msgId);
-    if (!msg || msg.sender_id !== socket.userId) return ack?.({ error: 'Forbidden' });
-    if (!canRecallOrEdit(msg)) return ack?.({ error: 'Only within 2 minutes' });
+    if (!msg) return ack?.({ error: 'Not found' });
+    const isOwn = msg.sender_id === socket.userId;
+    const hasUnlimited = canUnlimitedEditRecall(socket.user);
+    if (isOwn) {
+      if (!hasUnlimited && !canRecallOrEdit(msg)) return ack?.({ error: 'Only within 2 minutes' });
+    } else {
+      if (!hasUnlimited) return ack?.({ error: 'Forbidden' });
+      const target = db.prepare('SELECT can_unlimited_edit_recall FROM users WHERE id = ?').get(msg.sender_id);
+      if (target?.can_unlimited_edit_recall && socket.userId !== 'jimmyqrg') return ack?.({ error: 'Forbidden' });
+    }
     const history = (msg.edit_history ? JSON.parse(msg.edit_history) : []).concat([{ content: msg.content, at: msg.updated_at }]);
     const newContent = typeof content === 'string' ? content : msg.content;
     const now = Date.now();
