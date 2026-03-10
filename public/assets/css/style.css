@@ -1303,8 +1303,8 @@ select:focus {
 
   /* Panel column: narrow strip by default, overlay when expanded */
   .panel-column {
-    width: 48px;
-    min-width: 48px;
+    width: 36px;
+    min-width: 36px;
     flex-shrink: 0;
     overflow: visible;
     position: relative;
@@ -1318,7 +1318,7 @@ select:focus {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 48px;
+    width: 36px;
     height: 100%;
     flex-shrink: 0;
     background: var(--bg-panel);
@@ -1336,8 +1336,8 @@ select:focus {
   }
 
   .panel-column-toggle .left-bar-icon {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
   }
 
   .panel-column-content {
@@ -1371,8 +1371,11 @@ select:focus {
   .panel-column-expanded .panel-column-overlay {
     display: block;
     position: fixed;
-    inset: 0;
-    z-index: 299;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 56px;
+    z-index: -1;
     background: rgba(0, 0, 0, 0.3);
     cursor: pointer;
   }
