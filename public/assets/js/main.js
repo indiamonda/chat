@@ -70,6 +70,7 @@ let state = {
   _voiceSidePanel: null,
   _voiceChatMessages: [],
   _voiceParticipantCount: 0,
+  _chatboxStyles: [],
 };
 
 if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
@@ -5366,17 +5367,17 @@ function renderSettingsContent() {
         <select id="settings-language" class="settings-select">
           ${(state.languageOptions || LANGUAGE_OPTIONS).map(o => `<option value="${o.value}" ${state.language === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
         </select>
-        <h3 class="settings-section-title">${tx('chatboxStyle', 'Chat Box Style')}</h3>
-        <p class="settings-account-desc">${tx('chatboxStyleDesc', 'Choose a chat box style visible to everyone.')}</p>
+        <h3 class="settings-section-title">${tx('chatboxStyle', 'Message Bubble Style')}</h3>
+        <p class="settings-account-desc">${tx('chatboxStyleDesc', 'Choose a message bubble style visible to everyone.')}</p>
         <div class="chatbox-picker" id="chatbox-picker">
-          ${['default'].map(style => {
-            const active = (state.user?.chatbox_style || 'default') === style;
-            return `<button type="button" class="chatbox-picker-item ${active ? 'active' : ''}" data-style="${style}">
+          ${(state._chatboxStyles.length ? state._chatboxStyles : [{ id: 'default', name: 'Default' }]).map(s => {
+            const active = (state.user?.chatbox_style || 'default') === s.id;
+            return `<button type="button" class="chatbox-picker-item ${active ? 'active' : ''}" data-style="${s.id}" title="${escapeHtml(s.description || '')}">
               <div class="chatbox-picker-preview">
-                <div class="chatbox-preview-bubble chatbox-preview-other" style="border-image-source: url('/assets/chatboxes/${style}/other.svg')"></div>
-                <div class="chatbox-preview-bubble chatbox-preview-own" style="border-image-source: url('/assets/chatboxes/${style}/own.svg')"></div>
+                <div class="chatbox-preview-bubble chatbox-preview-other" style="border-image-source: url('/assets/chatboxes/${s.id}/other.svg')"></div>
+                <div class="chatbox-preview-bubble chatbox-preview-own" style="border-image-source: url('/assets/chatboxes/${s.id}/own.svg')"></div>
               </div>
-              <span class="chatbox-picker-label">${escapeHtml(style)}</span>
+              <span class="chatbox-picker-label">${escapeHtml(s.name)}</span>
             </button>`;
           }).join('')}
         </div>
@@ -5883,6 +5884,10 @@ async function init() {
   connectSocket();
     apiGet('/api/voice/participants').then(({ participants }) => {
       state._voiceParticipantCount = (participants || []).length;
+    }).catch(() => {});
+    apiGet('/api/chatbox-styles').then(({ styles }) => {
+      state._chatboxStyles = styles || [];
+      if (state.panel === 'settings') render();
     }).catch(() => {});
     maybeAskNotificationPermission();
     if (!window._notifModalCheckBound) {

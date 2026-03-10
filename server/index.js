@@ -1,5 +1,5 @@
 import { createServer } from 'http';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
@@ -273,6 +273,29 @@ app.get('/api/config', (req, res) => {
     recaptchaSiteKey: process.env.RECAPTCHA_SITE_KEY || '',
     allowIframe: process.env.ALLOW_IFRAME !== 'false',
   });
+});
+
+/** List available chatbox styles by scanning the chatboxes directory. */
+app.get('/api/chatbox-styles', (req, res) => {
+  const dir = join(publicDir, 'assets', 'chatboxes');
+  try {
+    const entries = readdirSync(dir, { withFileTypes: true });
+    const styles = entries
+      .filter(e => e.isDirectory() && e.name !== 'default-old')
+      .map(e => {
+        const jsonPath = join(dir, e.name, 'chatbox.json');
+        if (!existsSync(jsonPath)) return null;
+        try {
+          const meta = JSON.parse(readFileSync(jsonPath, 'utf8'));
+          return { id: e.name, name: meta.name || e.name, author: meta.author || null, description: meta.description || null };
+        } catch { return null; }
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ styles });
+  } catch {
+    res.json({ styles: [] });
+  }
 });
 
 // Collections: saved messages per user
