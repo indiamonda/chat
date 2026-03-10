@@ -3400,10 +3400,11 @@ function renderMessage(m, roomType, roomId, context = {}) {
   const defaultAvatar = getDefaultAvatarUrl(m.sender_id);
   const avatarSrc = (m.avatar_url && String(m.avatar_url).trim()) ? m.avatar_url : defaultAvatar;
   const senderName = escapeHtml(m.display_name || m.username || 'Unknown user');
-  const cbStyle = escapeHtml(m.chatbox_style || 'default');
-  const cbSvg = isOwn
-    ? `/assets/chatboxes/${cbStyle}/own.svg`
-    : `/assets/chatboxes/${cbStyle}/other.svg`;
+  const cbStyle = m.chatbox_style || 'default';
+  const useCustomBubble = !isFileMessage && cbStyle !== 'default';
+  const cbSvg = useCustomBubble
+    ? `/assets/chatboxes/${escapeHtml(cbStyle)}/${isOwn ? 'own' : 'other'}.svg`
+    : '';
   return `
     <div class="message-row" data-msg-id="${m.id}">
     <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
@@ -3411,7 +3412,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
           <span class="message-sender">${senderName}</span>
           <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
         </div>
-        <div class="message-body${isFileMessage ? ' message-body-file' : ''}"${isFileMessage ? '' : ` style="border-image-source:url('${cbSvg}')"`}>
+        <div class="message-body${isFileMessage ? ' message-body-file' : ''}"${useCustomBubble ? ` style="border-image-source:url('${cbSvg}')"` : ''}>
         ${replyBlock}
           ${contentBlock}
           ${reactionSummary ? `<div class="message-reactions">${reactionSummary}</div>` : ''}
