@@ -1965,9 +1965,7 @@ select:focus {
   transform: scale(1.1);
 }
 .message-reaction-picker-btn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
+  padding: 0.25rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1977,10 +1975,6 @@ select:focus {
   border-radius: 6px;
   cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast);
-}
-.message-reaction-picker-btn .icon {
-  width: 1rem;
-  height: 1rem;
 }
 .message-reaction-picker-btn:hover {
   background: var(--bg-hover);
@@ -4723,4 +4717,432 @@ input[type="checkbox"]:checked::after {
   color: var(--text-dim);
   min-width: 1.2em;
   text-align: center;
+}
+
+/* ── Voice Chat Panel Entry ── */
+.panel-voice-entry {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border);
+  margin-top: 0.25rem;
+}
+.panel-voice-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 8px;
+  color: #22c55e;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+.panel-voice-btn:hover {
+  background: rgba(34, 197, 94, 0.2);
+}
+.panel-voice-btn-active {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: #22c55e;
+}
+.panel-voice-icon {
+  display: inline-flex;
+}
+.panel-voice-icon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.panel-voice-count {
+  margin-left: auto;
+  background: rgba(34, 197, 94, 0.25);
+  border-radius: 10px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* ── Voice Chat Area ── */
+.vc-area {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  background: #111;
+  overflow: hidden;
+}
+.vc-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.vc-main-with-panel {
+  flex: 1;
+}
+.vc-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(var(--vc-cols, 1), 1fr);
+  gap: 8px;
+  padding: 12px;
+  align-content: center;
+  overflow-y: auto;
+}
+.vc-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,0.5);
+  font-size: 1rem;
+  grid-column: 1 / -1;
+}
+.vc-tile {
+  position: relative;
+  background: #1a1a2e;
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 16/9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vc-tile-video-wrap {
+  position: absolute;
+  inset: 0;
+}
+.vc-tile-video-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.vc-tile-video-wrap audio {
+  display: none;
+}
+.vc-tile-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.vc-tile-avatar img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid rgba(255,255,255,0.1);
+}
+.vc-tile-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  background: linear-gradient(transparent, rgba(0,0,0,0.6));
+  z-index: 2;
+}
+.vc-tile-name {
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vc-tile-mic {
+  margin-left: auto;
+  display: inline-flex;
+  color: #fff;
+}
+.vc-tile-mic svg {
+  width: 14px;
+  height: 14px;
+}
+.vc-tile-mic.vc-muted {
+  color: #f87171;
+}
+
+/* ── Voice Chat Toolbar ── */
+.vc-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #181825;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+}
+.vc-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.6rem 1rem;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.08);
+  color: #e0e0e0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 68px;
+}
+.vc-btn:hover {
+  background: rgba(255,255,255,0.14);
+}
+.vc-btn-icon {
+  display: inline-flex;
+}
+.vc-btn-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.vc-btn-label {
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+.vc-btn-off {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+.vc-btn-off:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+.vc-btn-active {
+  background: rgba(139, 92, 246, 0.25);
+  color: var(--purple-bright);
+}
+.vc-btn-active:hover {
+  background: rgba(139, 92, 246, 0.35);
+}
+.vc-btn-leave {
+  background: #dc2626;
+  color: #fff;
+}
+.vc-btn-leave:hover {
+  background: #ef4444;
+}
+.vc-btn-group {
+  position: relative;
+}
+
+/* ── Screen share dropdown ── */
+.vc-screen-menu {
+  position: fixed;
+  z-index: 9999;
+  background: #23233a;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.vc-screen-menu button {
+  padding: 0.55rem 0.75rem;
+  background: none;
+  border: none;
+  color: #e0e0e0;
+  font-size: 0.85rem;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.vc-screen-menu button:hover {
+  background: rgba(255,255,255,0.08);
+}
+.vc-screen-audio-opt {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  color: rgba(255,255,255,0.6);
+  font-size: 0.8rem;
+  cursor: pointer;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  margin-top: 0.15rem;
+}
+
+/* ── Voice Chat Side Panels ── */
+.vc-side-panel {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #181825;
+  border-left: 1px solid rgba(255,255,255,0.08);
+}
+.vc-side-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.vc-side-title {
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.vc-side-close {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.5);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  display: inline-flex;
+}
+.vc-side-close:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+}
+
+/* Voice chat messages */
+.vc-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.vc-chat-msg {
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+}
+.vc-chat-msg:hover {
+  background: rgba(255,255,255,0.04);
+}
+.vc-chat-sender {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--purple-bright);
+}
+.vc-chat-text {
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.8);
+  word-break: break-word;
+}
+.vc-chat-empty {
+  color: rgba(255,255,255,0.3);
+  text-align: center;
+  padding: 1.5rem;
+  font-size: 0.85rem;
+}
+.vc-chat-composer {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.5rem;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+.vc-chat-composer input {
+  flex: 1;
+  padding: 0.45rem 0.6rem;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.85rem;
+  outline: none;
+}
+.vc-chat-composer input:focus {
+  border-color: var(--purple-bright);
+}
+.vc-chat-composer input::placeholder {
+  color: rgba(255,255,255,0.3);
+}
+.vc-chat-composer button {
+  background: var(--purple-bright);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.vc-chat-composer button:hover {
+  opacity: 0.85;
+}
+.vc-chat-composer button svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Voice members list */
+.vc-members-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+.vc-member {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+}
+.vc-member:hover {
+  background: rgba(255,255,255,0.04);
+}
+.vc-member-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.vc-member-name {
+  flex: 1;
+  color: #e0e0e0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vc-member-mic {
+  display: inline-flex;
+  color: rgba(255,255,255,0.5);
+}
+.vc-member-mic svg {
+  width: 16px;
+  height: 16px;
+}
+.vc-member-mic.vc-muted {
+  color: #f87171;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .vc-side-panel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 20;
+    width: 280px;
+    box-shadow: -4px 0 16px rgba(0,0,0,0.3);
+  }
+  .vc-toolbar {
+    gap: 0.25rem;
+    padding: 0.5rem;
+  }
+  .vc-btn {
+    min-width: 52px;
+    padding: 0.5rem 0.5rem;
+  }
+  .vc-btn-label {
+    display: none;
+  }
+  .vc-tile-avatar img {
+    width: 56px;
+    height: 56px;
+  }
 }

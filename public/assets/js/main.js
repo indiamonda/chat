@@ -58,6 +58,18 @@ let state = {
   _chatSearchResults: [],
   _chatSearchLoading: false,
   _pinnedMessage: {},
+  // Voice chat
+  _voiceJoined: false,
+  _voiceParticipants: [],
+  _voicePeers: {},
+  _voiceLocalStream: null,
+  _voiceScreenStream: null,
+  _voiceMicOn: true,
+  _voiceCamOn: false,
+  _voiceScreenOn: false,
+  _voiceSidePanel: null,
+  _voiceChatMessages: [],
+  _voiceParticipantCount: 0,
 };
 
 if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
@@ -1258,8 +1270,8 @@ function getCurrentUserAvatarUrl() {
 }
 
 // URL panel param <-> internal panel
-const PANEL_TO_URL = { free_chat: 'chat', support: 'support', problem_solving: 'problem', rules: 'rules', announcements: 'announcements' };
-const URL_TO_PANEL = { chat: 'free_chat', support: 'support', problem: 'problem_solving', rules: 'rules', announcements: 'announcements' };
+const PANEL_TO_URL = { free_chat: 'chat', support: 'support', problem_solving: 'problem', rules: 'rules', announcements: 'announcements', voice_chat: 'voice' };
+const URL_TO_PANEL = { chat: 'free_chat', support: 'support', problem: 'problem_solving', rules: 'rules', announcements: 'announcements', voice: 'voice_chat' };
 
 function roomKey(roomType, roomId) {
   return `${roomType}:${roomId}`;
@@ -2009,6 +2021,17 @@ function connectSocket() {
     _connectSocketScheduled = false;
   });
   s.on('message', (msg) => {
+    if (msg.room_type === 'group' && msg.room_id === 'voice_chat') {
+      if (state._voiceJoined) {
+        state._voiceChatMessages.push(msg);
+        render();
+        requestAnimationFrame(() => {
+          const wrap = document.getElementById('voice-chat-messages');
+          if (wrap) wrap.scrollTop = wrap.scrollHeight;
+        });
+      }
+      return;
+    }
     addMessageLocal(msg);
     const trigger = msg.room_type === 'dm' ? 'dm' : 'group';
     if (shouldShowNotification(trigger, msg.sender_id)) {
@@ -2065,6 +2088,298 @@ function connectSocket() {
     loadInbox().then(render);
   });
   state.socket = s;
+  voiceSetupSignalListeners();
+}
+
+// ── Voice Chat WebRTC Manager ──
+
+const RTC_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
+
+async function voiceJoin() {
+  if (state._voiceJoined) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    state._voiceLocalStream = stream;
+    state._voiceMicOn = true;
+    state._voiceCamOn = false;
+    state._voiceScreenOn = false;
+    state._voiceJoined = true;
+    state.socket?.emit('voice:join', (res) => {
+      if (res?.participants) {
+        state._voiceParticipants = res.participants;
+        for (const p of res.participants) {
+          if (p.id !== state.user?.id) voiceCreatePeer(p.id, true);
+        }
+        render();
+      }
+    });
+    apiGet('/api/rooms/group/voice_chat/messages?limit=50').then(({ messages }) => {
+      state._voiceChatMessages = messages || [];
+    }).catch(() => {});
+  } catch (err) {
+    showToast('Could not access microphone: ' + (err.message || err));
+  }
+}
+
+function voiceLeave() {
+  state.socket?.emit('voice:leave', () => {});
+  voiceCleanup();
+  state.panel = 'free_chat';
+  navigateTo('/chat/group/?panel=chat');
+}
+
+function voiceCleanup() {
+  for (const peerId of Object.keys(state._voicePeers)) {
+    state._voicePeers[peerId]?.close();
+  }
+  state._voicePeers = {};
+  state._voiceLocalStream?.getTracks().forEach(t => t.stop());
+  state._voiceScreenStream?.getTracks().forEach(t => t.stop());
+  state._voiceLocalStream = null;
+  state._voiceScreenStream = null;
+  state._voiceJoined = false;
+  state._voiceParticipants = [];
+  state._voiceCamOn = false;
+  state._voiceMicOn = true;
+  state._voiceScreenOn = false;
+  state._voiceSidePanel = null;
+  state._voiceChatMessages = [];
+}
+
+function voiceCreatePeer(peerId, initiator) {
+  if (state._voicePeers[peerId]) { state._voicePeers[peerId].close(); }
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  state._voicePeers[peerId] = pc;
+
+  if (state._voiceLocalStream) {
+    for (const track of state._voiceLocalStream.getTracks()) {
+      pc.addTrack(track, state._voiceLocalStream);
+    }
+  }
+  if (state._voiceScreenStream) {
+    for (const track of state._voiceScreenStream.getTracks()) {
+      pc.addTrack(track, state._voiceScreenStream);
+    }
+  }
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      state.socket?.emit('voice:ice-candidate', { to: peerId, candidate: e.candidate }, () => {});
+    }
+  };
+
+  pc.ontrack = (e) => {
+    let container = document.getElementById(`voice-remote-${peerId}`);
+    if (!container) {
+      render();
+      container = document.getElementById(`voice-remote-${peerId}`);
+    }
+    if (container) {
+      const track = e.track;
+      let el;
+      if (track.kind === 'video') {
+        el = container.querySelector('video') || document.createElement('video');
+        el.autoplay = true;
+        el.playsInline = true;
+        el.muted = false;
+        if (!el.parentNode) container.appendChild(el);
+        const ms = el.srcObject instanceof MediaStream ? el.srcObject : new MediaStream();
+        ms.addTrack(track);
+        el.srcObject = ms;
+      } else if (track.kind === 'audio') {
+        el = container.querySelector('audio') || document.createElement('audio');
+        el.autoplay = true;
+        el.muted = false;
+        if (!el.parentNode) container.appendChild(el);
+        const ms = el.srcObject instanceof MediaStream ? el.srcObject : new MediaStream();
+        ms.addTrack(track);
+        el.srcObject = ms;
+      }
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+      pc.close();
+      delete state._voicePeers[peerId];
+    }
+  };
+
+  if (initiator) {
+    pc.onnegotiationneeded = async () => {
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        state.socket?.emit('voice:offer', { to: peerId, offer: pc.localDescription }, () => {});
+      } catch (_) {}
+    };
+  }
+
+  return pc;
+}
+
+function voiceSetupSignalListeners() {
+  const s = state.socket;
+  if (!s) return;
+  s.on('voice:offer', async ({ from, offer }) => {
+    if (!state._voiceJoined) return;
+    let pc = state._voicePeers[from];
+    if (!pc) pc = voiceCreatePeer(from, false);
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      s.emit('voice:answer', { to: from, answer: pc.localDescription }, () => {});
+    } catch (_) {}
+  });
+  s.on('voice:answer', async ({ from, answer }) => {
+    const pc = state._voicePeers[from];
+    if (pc) {
+      try { await pc.setRemoteDescription(new RTCSessionDescription(answer)); } catch (_) {}
+    }
+  });
+  s.on('voice:ice-candidate', async ({ from, candidate }) => {
+    const pc = state._voicePeers[from];
+    if (pc) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (_) {}
+    }
+  });
+  s.on('voice:participants', (participants) => {
+    state._voiceParticipants = participants;
+    state._voiceParticipantCount = participants.length;
+    if (state._voiceJoined) {
+      for (const p of participants) {
+        if (p.id !== state.user?.id && !state._voicePeers[p.id]) {
+          voiceCreatePeer(p.id, true);
+        }
+      }
+    }
+    render();
+  });
+  s.on('voice:peer-left', ({ userId }) => {
+    const pc = state._voicePeers[userId];
+    if (pc) { pc.close(); delete state._voicePeers[userId]; }
+    const container = document.getElementById(`voice-remote-${userId}`);
+    if (container) { container.querySelectorAll('audio, video').forEach(el => { el.srcObject = null; }); }
+  });
+  s.on('voice:media-state', ({ userId, audio, video, screen }) => {
+    const p = state._voiceParticipants.find(p => p.id === userId);
+    if (p) { p.media = { audio, video, screen }; render(); }
+  });
+  s.on('voice:kicked', () => {
+    showToast('You joined voice chat from another session.');
+    voiceCleanup();
+    render();
+  });
+  s.on('voice:participant-count', (count) => {
+    state._voiceParticipantCount = count;
+    render();
+  });
+}
+
+async function voiceToggleMic() {
+  if (!state._voiceLocalStream) return;
+  const audioTracks = state._voiceLocalStream.getAudioTracks();
+  state._voiceMicOn = !state._voiceMicOn;
+  audioTracks.forEach(t => { t.enabled = state._voiceMicOn; });
+  voiceBroadcastMediaState();
+  render();
+}
+
+async function voiceToggleCam() {
+  if (!state._voiceLocalStream) return;
+  if (!state._voiceCamOn) {
+    try {
+      const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const videoTrack = camStream.getVideoTracks()[0];
+      state._voiceLocalStream.addTrack(videoTrack);
+      for (const [, pc] of Object.entries(state._voicePeers)) {
+        pc.addTrack(videoTrack, state._voiceLocalStream);
+      }
+      state._voiceCamOn = true;
+      const localVid = document.getElementById('voice-local-video');
+      if (localVid) {
+        localVid.srcObject = state._voiceLocalStream;
+        localVid.style.display = '';
+      }
+    } catch (err) {
+      showToast('Could not access camera: ' + (err.message || err));
+      return;
+    }
+  } else {
+    const videoTracks = state._voiceLocalStream.getVideoTracks();
+    videoTracks.forEach(t => {
+      t.stop();
+      state._voiceLocalStream.removeTrack(t);
+      for (const [, pc] of Object.entries(state._voicePeers)) {
+        const sender = pc.getSenders().find(s => s.track === t);
+        if (sender) pc.removeTrack(sender);
+      }
+    });
+    state._voiceCamOn = false;
+    const localVid = document.getElementById('voice-local-video');
+    if (localVid) { localVid.srcObject = null; localVid.style.display = 'none'; }
+  }
+  voiceBroadcastMediaState();
+  render();
+}
+
+async function voiceShareScreen(options = {}) {
+  if (state._voiceScreenOn) {
+    voiceStopScreenShare();
+    return;
+  }
+  try {
+    const constraints = { video: true, audio: !!options.systemAudio };
+    if (options.displaySurface) constraints.video = { displaySurface: options.displaySurface };
+    const screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+    state._voiceScreenStream = screenStream;
+    state._voiceScreenOn = true;
+    for (const track of screenStream.getTracks()) {
+      for (const [, pc] of Object.entries(state._voicePeers)) {
+        pc.addTrack(track, screenStream);
+      }
+      track.onended = () => voiceStopScreenShare();
+    }
+    voiceBroadcastMediaState();
+    render();
+  } catch (err) {
+    if (err.name !== 'NotAllowedError') showToast('Screen share failed: ' + (err.message || err));
+  }
+}
+
+function voiceStopScreenShare() {
+  if (state._voiceScreenStream) {
+    state._voiceScreenStream.getTracks().forEach(t => {
+      t.stop();
+      for (const [, pc] of Object.entries(state._voicePeers)) {
+        const sender = pc.getSenders().find(s => s.track === t);
+        if (sender) pc.removeTrack(sender);
+      }
+    });
+    state._voiceScreenStream = null;
+  }
+  state._voiceScreenOn = false;
+  voiceBroadcastMediaState();
+  render();
+}
+
+function voiceBroadcastMediaState() {
+  state.socket?.emit('voice:media-state', { audio: state._voiceMicOn, video: state._voiceCamOn, screen: state._voiceScreenOn });
+}
+
+function voiceSendChatMessage(content) {
+  if (!content?.trim() || !state._voiceJoined) return;
+  state.socket?.emit('message:send', { roomType: 'group', roomId: 'voice_chat', content: content.trim(), msg_type: 'text' }, (res) => {
+    if (res?.message) {
+      state._voiceChatMessages.push(res.message);
+      render();
+      requestAnimationFrame(() => {
+        const wrap = document.getElementById('voice-chat-messages');
+        if (wrap) wrap.scrollTop = wrap.scrollHeight;
+      });
+    }
+  });
 }
 
 function render() {
@@ -2096,6 +2411,10 @@ function render() {
   app.innerHTML = renderMain();
   bindMain();
   if (route.page === 'settings') bindSettings();
+  if (state._voiceJoined && state._voiceLocalStream) {
+    const localVid = document.getElementById('voice-local-video');
+    if (localVid && state._voiceCamOn) { localVid.srcObject = state._voiceLocalStream; }
+  }
 }
 
 function renderAuth(isSignup = false, initialError = '', redirect = null) {
@@ -2385,6 +2704,13 @@ function renderMain() {
               return `<li><a href="/chat/group/?panel=${PANEL_TO_URL[p] || p}" class="panel-list-link ${state.panel === p ? 'active' : ''}"><span class="panel-list-hash">#</span> ${escapeHtml(panelLabels[p] || p)}${hasNew ? '<span class="panel-list-badge panel-list-badge-dot" aria-label="New"></span>' : ''}</a></li>`;
             }).join('')}
           </ul>
+          <div class="panel-voice-entry">
+            <button type="button" id="join-voice-chat" class="panel-voice-btn ${state._voiceJoined ? 'panel-voice-btn-active' : ''}">
+              <span class="panel-voice-icon">${ICON_PHONE}</span>
+              <span class="panel-voice-text">${state._voiceJoined ? 'Voice Chat' : 'Join Voice Chat'}</span>
+              ${state._voiceParticipantCount > 0 ? `<span class="panel-voice-count">${state._voiceParticipantCount}</span>` : ''}
+            </button>
+          </div>
           </div>
         ` : ''}
         ${primaryNav === 'chat' ? `
@@ -2461,7 +2787,7 @@ function renderMain() {
 
       <div class="main-content">
         <div class="main-content-body">
-          ${primaryNav === 'home' ? (isGroup && (state.panel === 'free_chat' || state.panel === 'support') ? renderChatArea() : isGroup && isDocPanel ? renderDocArea() : `<div class="empty-state">${t('selectPanel')}</div>`) : ''}
+          ${primaryNav === 'home' ? (state._voiceJoined && state.panel === 'voice_chat' ? renderVoiceChatArea() : isGroup && (state.panel === 'free_chat' || state.panel === 'support') ? renderChatArea() : isGroup && isDocPanel ? renderDocArea() : `<div class="empty-state">${t('selectPanel')}</div>`) : ''}
           ${primaryNav === 'chat' ? (state.dmUserId ? renderChatArea() : `<div class="empty-state"><i class="fas fa-comments empty-state-icon" aria-hidden="true"></i><span>${t('selectConversation')}</span></div>`) : ''}
           ${primaryNav === 'inbox' ? renderInboxContent() : ''}
           ${primaryNav === 'collections' ? renderCollectionsContent() : ''}
@@ -2538,7 +2864,7 @@ const ICON_CHEVRON_RIGHT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" h
 const ICON_CHEVRON_LEFT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
 const ICON_SEARCH = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
 const ICON_MIC = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
-const ICON_COMMAND = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6 9 12 15 18"/><path d="M9 6h6"/></svg>';
+const ICON_COMMAND = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" x2="20" y1="19" y2="19"/></svg>';
 const ICON_PLAY = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
 const ICON_PAUSE = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
 const ICON_PREV = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/><path d="M9 18V6"/></svg>';
@@ -2577,6 +2903,16 @@ const ICON_BELL_OFF_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" hei
 const ICON_MAIL_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>';
 const ICON_SHIELD_X_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="9" x2="15" y1="9" y2="15"/><line x1="15" x2="9" y1="9" y2="15"/></svg>';
 const ICON_PIN_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>';
+
+const ICON_MIC_ON = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
+const ICON_MIC_OFF = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/><path d="M5 10v2a7 7 0 0 0 12 5"/><path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
+const ICON_CAM_ON = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>';
+const ICON_CAM_OFF = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="2" y2="22"/><path d="M10.66 6H14a2 2 0 0 1 2 2v2.5l5.248-3.062A.5.5 0 0 1 22 7.87v8.196"/><path d="M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2"/></svg>';
+const ICON_SCREEN_SHARE = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3"/><polyline points="8 21 12 21 16 21"/><line x1="12" x2="12" y1="17" y2="21"/><path d="m17 8 5-5"/><path d="M17 3h5v5"/></svg>';
+const ICON_SCREEN_STOP = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 3H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3"/><polyline points="8 21 12 21 16 21"/><line x1="12" x2="12" y1="17" y2="21"/><line x1="18" x2="22" y1="3" y2="7"/><line x1="22" x2="18" y1="3" y2="7"/></svg>';
+const ICON_PHONE_OFF = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="22" x2="2" y1="2" y2="22"/></svg>';
+const ICON_USERS_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+const ICON_PHONE = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
 
 function renderProfileView(userId) {
   const pv = state._profileView;
@@ -2618,6 +2954,121 @@ function renderProfileView(userId) {
       </div>
     </div>
   `;
+}
+
+function renderVoiceChatArea() {
+  const participants = state._voiceParticipants || [];
+  const sidePanel = state._voiceSidePanel;
+  const me = participants.find(p => p.id === state.user?.id);
+  const screenSharer = participants.find(p => p.media?.screen);
+
+  const gridCount = participants.length || 1;
+  let cols = 1;
+  if (gridCount === 2) cols = 2;
+  else if (gridCount <= 4) cols = 2;
+  else if (gridCount <= 9) cols = 3;
+  else cols = 4;
+
+  const participantTiles = participants.map(p => {
+    const isSelf = p.id === state.user?.id;
+    const defAv = getDefaultAvatarUrl(p.id);
+    const av = p.avatar_url || defAv;
+    const hasVideo = isSelf ? state._voiceCamOn : p.media?.video;
+    const hasScreen = p.media?.screen;
+    const hasMic = isSelf ? state._voiceMicOn : p.media?.audio;
+    return `
+      <div class="vc-tile ${hasScreen ? 'vc-tile-screen' : ''}" data-user-id="${escapeHtml(p.id)}">
+        <div class="vc-tile-video-wrap" id="voice-remote-${escapeHtml(p.id)}">
+          ${isSelf ? `<video id="voice-local-video" autoplay playsinline muted style="${hasVideo ? '' : 'display:none'}"></video>` : ''}
+        </div>
+        <div class="vc-tile-avatar" style="${hasVideo || hasScreen ? 'display:none' : ''}">
+          <img src="${av}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
+        </div>
+        <div class="vc-tile-bar">
+          <span class="vc-tile-name">${escapeHtml(p.display_name || p.username || '')}</span>
+          <span class="vc-tile-mic ${hasMic ? '' : 'vc-muted'}" aria-label="${hasMic ? 'Mic on' : 'Mic off'}">${hasMic ? ICON_MIC_ON : ICON_MIC_OFF}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  const voiceMessages = state._voiceChatMessages || [];
+  const chatPanel = sidePanel === 'chat' ? `
+    <div class="vc-side-panel vc-side-chat">
+      <div class="vc-side-header">
+        <span class="vc-side-title">Chat</span>
+        <button type="button" class="vc-side-close" id="vc-side-close">${ICON_X_SM}</button>
+      </div>
+      <div class="vc-chat-messages" id="voice-chat-messages">
+        ${voiceMessages.map(m => `
+          <div class="vc-chat-msg">
+            <span class="vc-chat-sender">${escapeHtml(m.display_name || m.username || '')}</span>
+            <span class="vc-chat-text">${escapeHtml(m.content || '')}</span>
+          </div>`).join('') || '<div class="vc-chat-empty">No messages yet.</div>'}
+      </div>
+      <div class="vc-chat-composer">
+        <input type="text" id="vc-chat-input" placeholder="Send a message…" autocomplete="off" />
+        <button type="button" id="vc-chat-send">${ICON_SEND}</button>
+      </div>
+    </div>` : '';
+
+  const membersPanel = sidePanel === 'members' ? `
+    <div class="vc-side-panel vc-side-members">
+      <div class="vc-side-header">
+        <span class="vc-side-title">Participants (${participants.length})</span>
+        <button type="button" class="vc-side-close" id="vc-side-close">${ICON_X_SM}</button>
+      </div>
+      <div class="vc-members-list">
+        ${participants.map(p => {
+          const defAv = getDefaultAvatarUrl(p.id);
+          const av = p.avatar_url || defAv;
+          const hasMic = p.id === state.user?.id ? state._voiceMicOn : p.media?.audio;
+          return `
+          <div class="vc-member">
+            <img src="${av}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="vc-member-avatar" />
+            <span class="vc-member-name">${escapeHtml(p.display_name || p.username || '')}</span>
+            <span class="vc-member-mic ${hasMic ? '' : 'vc-muted'}">${hasMic ? ICON_MIC_ON : ICON_MIC_OFF}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="vc-area">
+      <div class="vc-main ${sidePanel ? 'vc-main-with-panel' : ''}">
+        <div class="vc-grid" style="--vc-cols:${cols}">
+          ${participantTiles || '<div class="vc-empty">Waiting for participants…</div>'}
+        </div>
+        <div class="vc-toolbar">
+          <button type="button" class="vc-btn ${state._voiceMicOn ? '' : 'vc-btn-off'}" id="vc-mic" title="${state._voiceMicOn ? 'Mute' : 'Unmute'}">
+            <span class="vc-btn-icon">${state._voiceMicOn ? ICON_MIC_ON : ICON_MIC_OFF}</span>
+            <span class="vc-btn-label">${state._voiceMicOn ? 'Mute' : 'Unmute'}</span>
+          </button>
+          <button type="button" class="vc-btn ${state._voiceCamOn ? '' : 'vc-btn-off'}" id="vc-cam" title="${state._voiceCamOn ? 'Stop camera' : 'Start camera'}">
+            <span class="vc-btn-icon">${state._voiceCamOn ? ICON_CAM_ON : ICON_CAM_OFF}</span>
+            <span class="vc-btn-label">${state._voiceCamOn ? 'Stop video' : 'Start video'}</span>
+          </button>
+          <div class="vc-btn-group">
+            <button type="button" class="vc-btn ${state._voiceScreenOn ? 'vc-btn-active' : ''}" id="vc-screen" title="${state._voiceScreenOn ? 'Stop sharing' : 'Share screen'}">
+              <span class="vc-btn-icon">${state._voiceScreenOn ? ICON_SCREEN_STOP : ICON_SCREEN_SHARE}</span>
+              <span class="vc-btn-label">${state._voiceScreenOn ? 'Stop share' : 'Share'}</span>
+            </button>
+          </div>
+          <button type="button" class="vc-btn ${sidePanel === 'chat' ? 'vc-btn-active' : ''}" id="vc-chat-toggle" title="Chat">
+            <span class="vc-btn-icon">${ICON_CHAT}</span>
+            <span class="vc-btn-label">Chat</span>
+          </button>
+          <button type="button" class="vc-btn ${sidePanel === 'members' ? 'vc-btn-active' : ''}" id="vc-members-toggle" title="Participants">
+            <span class="vc-btn-icon">${ICON_USERS_SM}</span>
+            <span class="vc-btn-label">Participants</span>
+          </button>
+          <button type="button" class="vc-btn vc-btn-leave" id="vc-leave" title="Leave">
+            <span class="vc-btn-icon">${ICON_PHONE_OFF}</span>
+            <span class="vc-btn-label">Leave</span>
+          </button>
+        </div>
+      </div>
+      ${chatPanel}${membersPanel}
+    </div>`;
 }
 
 function renderChatArea() {
@@ -2922,7 +3373,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
   const replyBlock = m.reply_to_id ? `<div class="message-reply-preview" data-reply-to="${m.reply_to_id}">${t('replyToMessage')}</div>` : '';
   const likeCount = (m.likes || 0) > 0 ? `<span class="message-like-count">${m.likes}</span>` : '';
   const likeIcon = `<button type="button" class="message-like-btn" data-msg-id="${m.id}" title="Like" aria-label="Like"><span class="message-like-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span></button>`;
-  const reactionPickerBtn = `<button type="button" class="message-reaction-picker-btn" data-msg-id="${m.id}" title="React" aria-label="React"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg></span></button>`;
+  const reactionPickerBtn = `<button type="button" class="message-reaction-picker-btn" data-msg-id="${m.id}" title="React" aria-label="React"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg></span></button>`;
 
   const chevronLeft = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>`;
   const chevronRight = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>`;
@@ -3593,6 +4044,77 @@ function bindMain() {
 
   document.getElementById('panel-search-btn')?.addEventListener('click', () => {
     setState({ panelSearchOpen: !state.panelSearchOpen });
+  });
+
+  // Voice chat bindings
+  document.getElementById('join-voice-chat')?.addEventListener('click', async () => {
+    if (!state._voiceJoined) {
+      await voiceJoin();
+      state.panel = 'voice_chat';
+      render();
+    } else {
+      state.panel = 'voice_chat';
+      render();
+    }
+  });
+  document.getElementById('vc-mic')?.addEventListener('click', voiceToggleMic);
+  document.getElementById('vc-cam')?.addEventListener('click', voiceToggleCam);
+  document.getElementById('vc-screen')?.addEventListener('click', () => {
+    if (state._voiceScreenOn) { voiceStopScreenShare(); return; }
+    const existing = document.querySelector('.vc-screen-menu');
+    if (existing) { existing.remove(); return; }
+    const btn = document.getElementById('vc-screen');
+    const rect = btn?.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.className = 'vc-screen-menu';
+    menu.style.left = (rect ? rect.left : 0) + 'px';
+    menu.style.bottom = (rect ? window.innerHeight - rect.top + 8 : 60) + 'px';
+    menu.innerHTML = `
+      <button data-surface="browser">Browser tab</button>
+      <button data-surface="window">Application window</button>
+      <button data-surface="monitor">Entire screen</button>
+      <label class="vc-screen-audio-opt"><input type="checkbox" id="vc-screen-audio" /> Share system audio</label>`;
+    document.body.appendChild(menu);
+    menu.querySelectorAll('button[data-surface]').forEach(b => {
+      b.addEventListener('click', () => {
+        const systemAudio = document.getElementById('vc-screen-audio')?.checked || false;
+        menu.remove();
+        voiceShareScreen({ displaySurface: b.dataset.surface, systemAudio });
+      });
+    });
+    const closeMenu = (e) => { if (!menu.contains(e.target) && e.target !== btn) { menu.remove(); document.removeEventListener('click', closeMenu); } };
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+  });
+  document.getElementById('vc-chat-toggle')?.addEventListener('click', () => {
+    state._voiceSidePanel = state._voiceSidePanel === 'chat' ? null : 'chat';
+    render();
+    if (state._voiceSidePanel === 'chat') {
+      requestAnimationFrame(() => {
+        document.getElementById('vc-chat-input')?.focus();
+        const wrap = document.getElementById('voice-chat-messages');
+        if (wrap) wrap.scrollTop = wrap.scrollHeight;
+      });
+    }
+  });
+  document.getElementById('vc-members-toggle')?.addEventListener('click', () => {
+    state._voiceSidePanel = state._voiceSidePanel === 'members' ? null : 'members';
+    render();
+  });
+  document.getElementById('vc-side-close')?.addEventListener('click', () => {
+    state._voiceSidePanel = null;
+    render();
+  });
+  document.getElementById('vc-leave')?.addEventListener('click', voiceLeave);
+  document.getElementById('vc-chat-send')?.addEventListener('click', () => {
+    const input = document.getElementById('vc-chat-input');
+    if (input?.value?.trim()) { voiceSendChatMessage(input.value); input.value = ''; }
+  });
+  document.getElementById('vc-chat-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const input = e.target;
+      if (input.value?.trim()) { voiceSendChatMessage(input.value); input.value = ''; }
+    }
   });
 
   function bindUserListSearch(inputId, listId) {
@@ -5163,7 +5685,10 @@ function applyRoute(route) {
       return;
     }
     state.convId = null;
-    if (state.panel === 'free_chat' || state.panel === 'support') {
+    if (state.panel === 'voice_chat') {
+        if (!state._voiceJoined) voiceJoin().then(() => render());
+        else render();
+      } else if (state.panel === 'free_chat' || state.panel === 'support') {
         loadMessages('group', state.panel).then(() => { render(); }).catch((err) => {
           console.warn('Load messages failed', err);
           render();
@@ -5318,6 +5843,9 @@ async function init() {
     await loadFriends();
     await loadNotificationPrefs();
   connectSocket();
+    apiGet('/api/voice/participants').then(({ participants }) => {
+      state._voiceParticipantCount = (participants || []).length;
+    }).catch(() => {});
     maybeAskNotificationPermission();
     if (!window._notifModalCheckBound) {
       window._notifModalCheckBound = true;

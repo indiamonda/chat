@@ -174,6 +174,7 @@ function applySearchFilters(rows, filterSpec) {
 }
 
 function createInboxForNewMessage(messageId, content, replyToId, senderId, roomType, roomId) {
+  if (roomId === 'voice_chat') return;
   const toNotify = new Set();
   if (/\@All\b/i.test(content || '')) {
     db.prepare('SELECT id FROM users').all().forEach(r => toNotify.add(r.id));
@@ -409,6 +410,10 @@ app.get('/api/geocode', requireAuth, async (req, res) => {
 
 app.get('/api/group', requireAuth, (req, res) => {
   res.json({ id: GROUP_ID, panels: PANELS });
+});
+
+app.get('/api/voice/participants', requireAuth, (req, res) => {
+  res.json({ participants: getVoiceParticipantList() });
 });
 
 app.get('/api/rooms/:roomType/:roomId/pinned', requireAuth, (req, res) => {
@@ -733,6 +738,31 @@ function isTimedOut(userId) {
   return !!row;
 }
 
+// Voice chat: in-memory participant tracking (userId → socketId)
+const voiceParticipants = new Map();
+
+function getVoiceParticipantList() {
+  const list = [];
+  for (const [userId, socketId] of voiceParticipants) {
+    const s = io.sockets.sockets.get(socketId);
+    if (!s) { voiceParticipants.delete(userId); continue; }
+    const u = s.user || {};
+    list.push({ id: userId, username: u.username, display_name: u.display_name, avatar_url: u.avatar_url, media: s._voiceMedia || { audio: false, video: false, screen: false } });
+  }
+  return list;
+}
+
+function voiceLeave(socket) {
+  if (voiceParticipants.get(socket.userId) === socket.id) {
+    voiceParticipants.delete(socket.userId);
+    socket.leave('voice:room');
+    const participants = getVoiceParticipantList();
+    io.to('voice:room').emit('voice:participants', participants);
+    io.to('voice:room').emit('voice:peer-left', { userId: socket.userId });
+    io.to(`group:${GROUP_ID}`).emit('voice:participant-count', participants.length);
+  }
+}
+
 io.on('connection', (socket) => {
   socket.join(`user:${socket.userId}`);
   if (!isBlacklisted(socket.userId)) {
@@ -783,7 +813,7 @@ io.on('connection', (socket) => {
     if (roomType === 'group') {
       if (checkSpam(socket.userId, 'group', roomId, textContent)) return ack?.({ error: 'NO SPAMMING!' });
       if (isBlacklisted(socket.userId)) return ack?.({ error: 'Access denied. You are blacklisted from group chat.' });
-      if (!['free_chat', 'support'].includes(roomId)) return ack?.({ error: 'Invalid panel' });
+      if (!['free_chat', 'support', 'voice_chat'].includes(roomId)) return ack?.({ error: 'Invalid panel' });
       if (isTimedOut(socket.userId)) return ack?.({ error: 'You are timed out from group chat' });
     }
     const id = randomUUID();
@@ -926,6 +956,57 @@ io.on('connection', (socket) => {
     if (!canEditDocs(socket.user)) return ack?.({ error: 'Not allowed' });
     const { support_message_id } = payload || {};
     ack?.({ ok: true, support_message_id });
+  });
+
+  // ── Voice Chat (WebRTC signaling) ──
+
+  socket.on('voice:join', (ack) => {
+    if (isBlacklisted(socket.userId)) return ack?.({ error: 'Access denied' });
+    const existing = voiceParticipants.get(socket.userId);
+    if (existing && existing !== socket.id) {
+      io.to(existing).emit('voice:kicked', { reason: 'joined_elsewhere' });
+    }
+    voiceParticipants.set(socket.userId, socket.id);
+    socket.join('voice:room');
+    const participants = getVoiceParticipantList();
+    io.to('voice:room').emit('voice:participants', participants);
+    io.to(`group:${GROUP_ID}`).emit('voice:participant-count', participants.length);
+    ack?.({ ok: true, participants });
+  });
+
+  socket.on('voice:leave', (ack) => {
+    voiceLeave(socket);
+    ack?.({ ok: true });
+  });
+
+  socket.on('voice:offer', ({ to, offer }, ack) => {
+    const targetSocketId = voiceParticipants.get(to);
+    if (!targetSocketId) return ack?.({ error: 'Peer not found' });
+    io.to(targetSocketId).emit('voice:offer', { from: socket.userId, offer });
+    ack?.({ ok: true });
+  });
+
+  socket.on('voice:answer', ({ to, answer }, ack) => {
+    const targetSocketId = voiceParticipants.get(to);
+    if (!targetSocketId) return ack?.({ error: 'Peer not found' });
+    io.to(targetSocketId).emit('voice:answer', { from: socket.userId, answer });
+    ack?.({ ok: true });
+  });
+
+  socket.on('voice:ice-candidate', ({ to, candidate }, ack) => {
+    const targetSocketId = voiceParticipants.get(to);
+    if (!targetSocketId) return ack?.({ error: 'Peer not found' });
+    io.to(targetSocketId).emit('voice:ice-candidate', { from: socket.userId, candidate });
+    ack?.({ ok: true });
+  });
+
+  socket.on('voice:media-state', ({ audio, video, screen }) => {
+    socket._voiceMedia = { audio: !!audio, video: !!video, screen: !!screen };
+    io.to('voice:room').emit('voice:media-state', { userId: socket.userId, audio: !!audio, video: !!video, screen: !!screen });
+  });
+
+  socket.on('disconnect', () => {
+    voiceLeave(socket);
   });
 });
 
