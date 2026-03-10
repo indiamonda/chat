@@ -3606,23 +3606,28 @@ function markdownToHtml(md) {
     // Linkify only plain text: split by existing <a>...</a>, process each text part, rejoin (avoids double-linking)
     const linkTag = /<a\s[^>]*>.*?<\/a>/g;
     const linkifyClass = ' class="linkify-link"';
+    const applyToPlainParts = (html, fn) => {
+      const parts = html.split(linkTag);
+      const tags = html.match(linkTag) || [];
+      let result = fn(parts[0] || '');
+      for (let i = 0; i < tags.length; i++) result += tags[i] + fn(parts[i + 1] || '');
+      return result;
+    };
+    const mkLink = (url, label) => `<a href="${safeHref('https://' + url)}"${linkifyClass} target="_blank" rel="noopener">${label || url}</a>`;
     const linkifyPlainOnly = (text) => {
       if (!text) return text;
-      return text
-        .replace(/(?<![\/">])(www\.[^\s<>"']+)/g, (_, url) =>
-          `<a href="${safeHref('https://' + url)}"${linkifyClass} target="_blank" rel="noopener">${url}</a>`)
-        .replace(/\b([a-zA-Z0-9][-a-zA-Z0-9_]*\.github\.io(?:\/[^\s<>"']*)?)/g, (_, url) =>
-          `<a href="${safeHref('https://' + url)}"${linkifyClass} target="_blank" rel="noopener">${url}</a>`)
-        .replace(/\b(localhost(?::\d+)?(?:\/[^\s<>"']*)?)/gi, (_, u) =>
-          `<a href="${safeHref('https://' + u)}"${linkifyClass} target="_blank" rel="noopener">${u}</a>`)
-        .replace(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?(?:\/[^\s<>"']*)?)/g, (_, u) =>
-          `<a href="${safeHref('https://' + u)}"${linkifyClass} target="_blank" rel="noopener">${u}</a>`)
-        .replace(/\b((?:[a-zA-Z0-9][-a-zA-Z0-9_]*\.)+[a-zA-Z0-9][-a-zA-Z0-9_]*(?::\d+)?(?:\/?[^\s<>"']*)?)\b/g, (_, url) => {
-          const tldMatch = url.match(/\.(com|org|net|io|co|edu|gov|dev|app|ai|site|xyz|test|local|internal)(?:\/|:\d+|\?|#|$)/i);
-          if (!tldMatch) return url;
-          if (url === 'github.io') return url;
-          return `<a href="${safeHref('https://' + url)}"${linkifyClass} target="_blank" rel="noopener">${url}</a>`;
-        });
+      let out = text;
+      out = applyToPlainParts(out, t => t.replace(/(?<![\/">])(www\.[^\s<>"']+)/g, (_, u) => mkLink(u)));
+      out = applyToPlainParts(out, t => t.replace(/\b([a-zA-Z0-9][-a-zA-Z0-9_]*\.github\.io(?:\/[^\s<>"']*)?)/g, (_, u) => mkLink(u)));
+      out = applyToPlainParts(out, t => t.replace(/\b(localhost(?::\d+)?(?:\/[^\s<>"']*)?)/gi, (_, u) => mkLink(u)));
+      out = applyToPlainParts(out, t => t.replace(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?(?:\/[^\s<>"']*)?)/g, (_, u) => mkLink(u)));
+      out = applyToPlainParts(out, t => t.replace(/\b((?:[a-zA-Z0-9][-a-zA-Z0-9_]*\.)+[a-zA-Z0-9][-a-zA-Z0-9_]*(?::\d+)?(?:\/?[^\s<>"']*)?)\b/g, (_, url) => {
+        const tldMatch = url.match(/\.(com|org|net|io|co|edu|gov|dev|app|ai|site|xyz|test|local|internal)(?:\/|:\d+|\?|#|$)/i);
+        if (!tldMatch) return url;
+        if (url === 'github.io') return url;
+        return mkLink(url);
+      }));
+      return out;
     };
     const linkifyOne = (text) => {
       if (!text) return text;
@@ -4631,9 +4636,10 @@ function bindMain() {
             }
             if (data?.message) addMessageLocal(data.message);
           state._pendingFile = null;
-          setState({ replyTo: null });
+          clearDraft(roomType, roomId);
           input.value = '';
             resizeComposerInput();
+          setState({ replyTo: null });
           if (roomType === 'dm') loadMessages('dm', roomId).then(render);
           })
           .catch(console.error)
@@ -4652,10 +4658,10 @@ function bindMain() {
           return;
         }
         if (res?.message) addMessageLocal(res.message);
-        setState({ replyTo: null });
+        clearDraft(roomType, roomId);
         input.value = '';
         resizeComposerInput();
-        clearDraft(roomType, roomId);
+        setState({ replyTo: null });
       });
     };
     sendBtn.addEventListener('click', send);
