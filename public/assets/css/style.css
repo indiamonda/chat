@@ -2378,7 +2378,7 @@ select:focus {
   padding: 0.6rem 0.9rem;
   position: relative;
   min-width: 0;
-  overflow: hidden;
+  overflow-wrap: anywhere;
   transition: box-shadow var(--transition-normal), border-color var(--transition-normal), transform var(--transition-fast);
 }
 
