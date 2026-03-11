@@ -2421,8 +2421,13 @@ select:focus {
 }
 
 .message-body-tail {
-  padding-bottom: 1.2rem;
-  margin-bottom: 0.3rem;
+  border-image-width: 13px 13px 26px 26px;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.message.own .message-body-tail {
+  border-image-width: 13px 26px 26px 13px;
 }
 
 /* Chatbox picker in settings */
