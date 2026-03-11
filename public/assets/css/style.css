@@ -2397,10 +2397,12 @@ select:focus {
   background: none;
   border: none;
   border-radius: 0;
-  padding: 0.25rem 0.6rem 0.3rem;
+  padding: 0.35rem 0.9rem 0.6rem;
   border-image-slice: 14 14 20 44 fill;
   border-image-width: 13px 13px 18px 16px;
+  border-image-outset: 13px 13px 18px 16px;
   border-image-repeat: stretch;
+  margin: 4px 0;
 }
 
 .message .message-body[style*="border-image-source"] {
@@ -2413,6 +2415,7 @@ select:focus {
   border: none;
   border-image-slice: 14 44 20 14 fill;
   border-image-width: 13px 16px 18px 13px;
+  border-image-outset: 13px 16px 18px 13px;
   box-shadow: none;
   filter: brightness(1.15);
 }
@@ -2420,13 +2423,14 @@ select:focus {
 .message-body-tail[style*="border-image-source"] {
   border-image-slice: 14 14 30 44 fill;
   border-image-width: 13px 13px 28px 16px;
-  padding-bottom: 0.15rem;
-  margin-bottom: 0.25rem;
+  border-image-outset: 13px 13px 28px 16px;
+  margin-bottom: 8px;
 }
 
 .message.own .message-body-tail[style*="border-image-source"] {
   border-image-slice: 14 44 30 14 fill;
   border-image-width: 13px 16px 28px 13px;
+  border-image-outset: 13px 16px 28px 13px;
 }
 
 /* Chatbox picker in settings */
