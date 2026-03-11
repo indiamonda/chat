@@ -19,6 +19,7 @@
     "express": "^4.21.1",
     "express-session": "^1.18.0",
     "multer": "^1.4.5-lts.1",
+    "playwright": "^1.58.2",
     "socket.io": "^4.8.1",
     "tz-lookup": "^6.1.25",
     "uuid": "^10.0.0"

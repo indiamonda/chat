@@ -3,8 +3,8 @@
   "name": "Default",
   "author": "jimmyqrg",
   "description": "Clean rounded bubble with a subtle purple glow.",
-  "type": "css",
-  "tail": "false",
+  "type": "svg",
+  "tail": "true",
   "files": {
     "other": "other.svg",
     "own": "own.svg"
