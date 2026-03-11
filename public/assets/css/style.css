@@ -2397,9 +2397,9 @@ select:focus {
   background: none;
   border: none;
   border-radius: 0;
-  padding: 0.2rem 0.4rem 0.25rem;
+  padding: 0.1rem 0.3rem 0.15rem;
   border-image-slice: 14 14 20 44 fill;
-  border-image-width: 6px 6px 8px 12px;
+  border-image-width: 10px 10px 14px 20px;
   border-image-repeat: stretch;
 }
 
@@ -2412,21 +2412,21 @@ select:focus {
   background: none;
   border: none;
   border-image-slice: 14 44 20 14 fill;
-  border-image-width: 6px 12px 8px 6px;
+  border-image-width: 10px 20px 14px 10px;
   box-shadow: none;
   filter: brightness(1.15);
 }
 
 .message-body-tail[style*="border-image-source"] {
   border-image-slice: 14 14 30 44 fill;
-  border-image-width: 6px 6px 15px 12px;
+  border-image-width: 10px 10px 22px 20px;
   padding-bottom: 0;
   margin-bottom: 0.15rem;
 }
 
 .message.own .message-body-tail[style*="border-image-source"] {
   border-image-slice: 14 44 30 14 fill;
-  border-image-width: 6px 12px 15px 6px;
+  border-image-width: 10px 20px 22px 10px;
 }
 
 /* Chatbox picker in settings */
@@ -2470,7 +2470,7 @@ select:focus {
 .chatbox-preview-bubble {
   height: 28px;
   border-image-slice: 14 14 20 44 fill;
-  border-image-width: 4px 4px 6px 8px;
+  border-image-width: 5px 5px 7px 10px;
   border-image-repeat: stretch;
   border: none;
   border-radius: 0;
@@ -2478,7 +2478,7 @@ select:focus {
 
 .chatbox-preview-own {
   border-image-slice: 14 44 20 14 fill;
-  border-image-width: 4px 8px 6px 4px;
+  border-image-width: 5px 10px 7px 5px;
   align-self: flex-end;
   width: 70%;
 }
