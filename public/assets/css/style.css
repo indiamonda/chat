@@ -2399,7 +2399,7 @@ select:focus {
   border-radius: 0;
   padding: 0.25rem 0.6rem 0.3rem;
   border-image-slice: 14 14 20 44 fill;
-  border-image-width: 13px 13px 18px 26px;
+  border-image-width: 13px 13px 18px 16px;
   border-image-repeat: stretch;
 }
 
@@ -2412,21 +2412,21 @@ select:focus {
   background: none;
   border: none;
   border-image-slice: 14 44 20 14 fill;
-  border-image-width: 13px 26px 18px 13px;
+  border-image-width: 13px 16px 18px 13px;
   box-shadow: none;
   filter: brightness(1.15);
 }
 
 .message-body-tail[style*="border-image-source"] {
   border-image-slice: 14 14 30 44 fill;
-  border-image-width: 13px 13px 28px 26px;
+  border-image-width: 13px 13px 28px 16px;
   padding-bottom: 0.15rem;
   margin-bottom: 0.25rem;
 }
 
 .message.own .message-body-tail[style*="border-image-source"] {
   border-image-slice: 14 44 30 14 fill;
-  border-image-width: 13px 26px 28px 13px;
+  border-image-width: 13px 16px 28px 13px;
 }
 
 /* Chatbox picker in settings */
