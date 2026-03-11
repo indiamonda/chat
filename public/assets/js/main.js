@@ -46,6 +46,7 @@ let state = {
   _recordingRecorder: null,
   _recordingChunks: [],
   commandMode: typeof localStorage !== 'undefined' && localStorage.getItem('commandMode') === '1',
+  uiAnimations: typeof localStorage !== 'undefined' ? localStorage.getItem('uiAnimations') !== '0' : true,
   notificationPrefs: null,
   drafts: {},
   collections: [],
@@ -5388,6 +5389,12 @@ function renderSettingsContent() {
             </button>`;
           }).join('')}
         </div>
+        <h3 class="settings-section-title">${tx('uiAnimation', 'UI Animation')}</h3>
+        <p class="settings-account-desc">${tx('uiAnimationDesc', 'Enable or disable transitions and animations throughout the interface.')}</p>
+        <label class="settings-checkbox-label">
+          <input type="checkbox" id="settings-ui-animations" ${state.uiAnimations ? 'checked' : ''} />
+          <span>${tx('enableUiAnimation', 'Enable UI animation')}</span>
+        </label>
           </div>
       ` : ''}
       ${tab === 'profile' ? `
@@ -5786,6 +5793,7 @@ function applyRoute(route) {
 }
 
 async function init() {
+  if (!state.uiAnimations) document.documentElement.classList.add('no-animations');
   await loadTranslationData();
   const loadingEl = document.querySelector('.loading-text');
   if (loadingEl) loadingEl.textContent = t('loading');
@@ -6075,6 +6083,11 @@ function bindSettings() {
     if (document.documentElement) document.documentElement.setAttribute('lang', lang);
     setState({});
     render();
+  });
+  document.getElementById('settings-ui-animations')?.addEventListener('change', (e) => {
+    state.uiAnimations = !!e.target.checked;
+    if (typeof localStorage !== 'undefined') localStorage.setItem('uiAnimations', state.uiAnimations ? '1' : '0');
+    document.documentElement.classList.toggle('no-animations', !state.uiAnimations);
   });
   document.getElementById('notif-enabled')?.addEventListener('change', async (e) => {
     const enabled = !!e.target.checked;

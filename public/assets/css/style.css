@@ -1109,6 +1109,7 @@ select:focus {
 
 .panel-search-bar.open {
   display: block;
+  animation: fadeIn 0.2s var(--ease) forwards;
 }
 
 .panel-search-bar input {
@@ -1117,6 +1118,7 @@ select:focus {
   border: var(--border-width) solid var(--border);
   border-radius: 8px;
   background: var(--bg-main);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   color: var(--text);
   font-size: 0.9rem;
 }
@@ -1390,6 +1392,7 @@ select:focus {
     z-index: -1;
     background: rgba(0, 0, 0, 0.3);
     cursor: pointer;
+    animation: overlayIn 0.2s var(--ease) forwards;
   }
 
   .message-avatar {
@@ -1661,6 +1664,7 @@ select:focus {
 .chat-side-panel.open {
   display: flex;
   flex-direction: column;
+  animation: panelSlideIn 0.25s var(--ease) forwards;
 }
 
 .chat-side-panel-header {
@@ -1739,6 +1743,7 @@ select:focus {
   border: var(--border-width) solid var(--border);
   border-radius: 8px;
   background: var(--bg-main);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   color: var(--text);
 }
 
@@ -2035,6 +2040,7 @@ select:focus {
   padding: 0.15rem 0.45rem;
   font-size: 0.8rem;
   cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 .message-reaction-chip:hover {
   border-color: var(--purple);
@@ -2119,6 +2125,7 @@ select:focus {
   color: var(--text);
   font: inherit;
   resize: vertical;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .message-edit-input:focus {
@@ -2792,6 +2799,7 @@ select:focus {
 
 .composer-command-btn {
   color: var(--text-dim);
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 .composer-command-btn.composer-command-btn-on {
   color: var(--purple-bright);
@@ -3001,6 +3009,7 @@ select:focus {
 .doc-markdown a {
   color: var(--accent);
   text-decoration: none;
+  transition: color var(--transition-fast);
 }
 
 .doc-markdown a:hover {
@@ -3294,6 +3303,7 @@ input[type="checkbox"]:checked::after {
   color: var(--text);
   font-size: 0.95rem;
   margin-bottom: 1rem;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .settings-select:focus {
@@ -3786,6 +3796,7 @@ input[type="checkbox"]:checked::after {
   font-family: inherit;
   margin-top: 0.5rem;
   margin-bottom: 0.75rem;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .modal form label {
@@ -3959,7 +3970,7 @@ input[type="checkbox"]:checked::after {
 .profile-modal-username { color: var(--text-dim); font-size: 0.9rem; margin: 0 0 0.5rem; }
 .profile-modal-description { display: block; font-size: 0.9rem; margin: 0 0 0.5rem; white-space: pre-wrap; word-break: break-word; color: var(--text); line-height: 1.4; }
 .profile-modal-website { font-size: 0.9rem; margin: 0; }
-.profile-modal-website a { color: var(--purple-bright); }
+.profile-modal-website a { color: var(--purple-bright); transition: color var(--transition-fast); }
 .profile-modal-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
 
 .admin-delete-modal h3 { margin: 0 0 0.75rem; font-size: 1.1rem; }
@@ -3987,6 +3998,7 @@ input[type="checkbox"]:checked::after {
   color: var(--purple-bright);
   text-decoration: none;
   font-size: 0.95rem;
+  transition: color var(--transition-fast);
 }
 .profile-view-back:hover {
   text-decoration: underline;
@@ -4021,6 +4033,7 @@ input[type="checkbox"]:checked::after {
 }
 .profile-view-value a {
   color: var(--purple-bright);
+  transition: color var(--transition-fast);
 }
 .admin-delete-modal p { margin: 0 0 1rem; font-size: 0.9rem; color: var(--text-dim); line-height: 1.4; }
 .admin-delete-modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
@@ -4361,6 +4374,7 @@ input[type="checkbox"]:checked::after {
   right: 6px;
   padding: 4px;
   color: var(--purple-bright);
+  transition: color var(--transition-fast);
 }
 .message-file-audio-download:hover {
   color: var(--accent);
@@ -4385,6 +4399,7 @@ input[type="checkbox"]:checked::after {
   padding: 8px;
   cursor: pointer;
   color: var(--text-dim);
+  transition: color var(--transition-fast);
 }
 .message-file-other-icon:hover {
   color: var(--purple-bright);
@@ -4392,6 +4407,7 @@ input[type="checkbox"]:checked::after {
 .message-file-other-download {
   padding: 4px;
   color: var(--purple-bright);
+  transition: color var(--transition-fast);
 }
 .message-file-other-download:hover {
   color: var(--accent);
@@ -4438,6 +4454,9 @@ input[type="checkbox"]:checked::after {
   z-index: 10;
 }
 .media-popup-close .icon { width: 1.2rem; height: 1.2rem; }
+.media-popup-close {
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+}
 .media-popup-close:hover {
   background: rgba(0, 0, 0, 0.75);
   opacity: 1;
@@ -4516,6 +4535,7 @@ input[type="checkbox"]:checked::after {
   border-radius: 4px;
   color: var(--text);
   cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 .media-popup--video .media-popup-step,
 .media-popup--video .media-popup-step-fwd {
@@ -4552,6 +4572,7 @@ input[type="checkbox"]:checked::after {
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(255, 255, 255, 0.25);
   color: #fff;
+  transition: background var(--transition-fast);
 }
 .media-popup-image-ui .media-popup-prev:hover,
 .media-popup-image-ui .media-popup-next:hover {
@@ -4572,6 +4593,7 @@ input[type="checkbox"]:checked::after {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   overflow: hidden;
   pointer-events: auto;
+  animation: fadeIn 0.2s var(--ease) forwards;
 }
 .link-preview-img {
   width: 100%;
@@ -5198,6 +5220,7 @@ input[type="checkbox"]:checked::after {
   color: #fff;
   font-size: 0.85rem;
   outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 .vc-chat-composer input:focus {
   border-color: var(--purple-bright);
@@ -5214,6 +5237,7 @@ input[type="checkbox"]:checked::after {
   cursor: pointer;
   display: inline-flex;
   align-items: center;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
 }
 .vc-chat-composer button:hover {
   opacity: 0.85;
@@ -5292,4 +5316,13 @@ input[type="checkbox"]:checked::after {
     width: 56px;
     height: 56px;
   }
+}
+
+/* ── Disable all transitions & animations when user opts out ── */
+.no-animations *,
+.no-animations *::before,
+.no-animations *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
 }
