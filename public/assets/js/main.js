@@ -5785,6 +5785,7 @@ function applyRoute(route) {
 }
 
 async function init() {
+  await loadTranslationData();
   const loadingEl = document.querySelector('.loading-text');
   if (loadingEl) loadingEl.textContent = t('loading');
 
