@@ -2420,14 +2420,16 @@ select:focus {
   filter: brightness(1.15);
 }
 
-.message-body-tail {
-  border-image-width: 13px 13px 26px 26px;
+.message-body-tail[style*="border-image-source"] {
+  border-image-slice: 14 14 30 44 fill;
+  border-image-width: 13px 13px 28px 26px;
   padding-bottom: 0.6rem;
   margin-bottom: 0.5rem;
 }
 
-.message.own .message-body-tail {
-  border-image-width: 13px 26px 26px 13px;
+.message.own .message-body-tail[style*="border-image-source"] {
+  border-image-slice: 14 44 30 14 fill;
+  border-image-width: 13px 26px 28px 13px;
 }
 
 /* Chatbox picker in settings */
