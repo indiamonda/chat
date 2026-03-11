@@ -2407,12 +2407,13 @@ select:focus {
   right: -12px;
   bottom: -16px;
   left: -14px;
+  border-width: 12px 12px 16px 14px;
+  border-style: solid;
+  border-color: transparent;
   border-image-source: var(--bubble-svg);
   border-image-slice: 14 14 20 44 fill;
   border-image-width: 12px 12px 16px 14px;
   border-image-repeat: stretch;
-  border-style: solid;
-  border-color: transparent;
   pointer-events: none;
   z-index: -1;
 }
