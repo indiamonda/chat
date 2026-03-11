@@ -3409,6 +3409,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
     : '';
   const bodyClasses = ['message-body'];
   if (isFileMessage) bodyClasses.push('message-body-file');
+  if (useSvgBubble) bodyClasses.push('message-body-svg');
   if (useSvgBubble && hasTail) bodyClasses.push('message-body-tail');
   return `
     <div class="message-row" data-msg-id="${m.id}">
@@ -3417,7 +3418,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
           <span class="message-sender">${senderName}</span>
           <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
         </div>
-        <div class="${bodyClasses.join(' ')}"${useSvgBubble ? ` style="border-image-source:url('${cbSvg}')"` : ''}>
+        <div class="${bodyClasses.join(' ')}"${useSvgBubble ? ` style="--bubble-svg:url('${cbSvg}')"` : ''}>
         ${replyBlock}
           ${contentBlock}
           ${reactionSummary ? `<div class="message-reactions">${reactionSummary}</div>` : ''}
