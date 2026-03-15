@@ -3226,6 +3226,45 @@ input[type="checkbox"]:checked::after {
 .settings-checkbox-label span {
   line-height: 1.35;
 }
+
+/* Toggle switch override for settings checkboxes */
+.settings-checkbox-label input[type="checkbox"] {
+  width: 2.5rem;
+  height: 1.375rem;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: var(--bg-main);
+  position: relative;
+  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.settings-checkbox-label input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 50%;
+  background: var(--text-dim);
+  border: none;
+  margin: 0;
+  transform: none;
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+.settings-checkbox-label input[type="checkbox"]:checked {
+  background: var(--purple);
+  border-color: var(--purple);
+}
+.settings-checkbox-label input[type="checkbox"]:checked::after {
+  transform: translateX(1.125rem);
+  background: #fff;
+  width: 0.875rem;
+  height: 0.875rem;
+  border: none;
+  margin: 0;
+  left: 2px;
+  top: 2px;
+}
 .admin-delete-msgs-label {
   margin-bottom: 1rem;
   font-size: 0.9rem;
