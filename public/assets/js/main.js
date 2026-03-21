@@ -2089,6 +2089,16 @@ function connectSocket() {
     }
     loadInbox().then(render);
   });
+  s.on('announcements:updated', ({ newItems }) => {
+    const summary = newItems?.length ? newItems.join(', ') : 'New content available';
+    showToast(`📢 ${tx('announcementsUpdated', 'Announcements updated')}: ${summary}`, 'info');
+    if (state.panel === 'announcements') {
+      loadDoc('announcements').then(({ doc }) => {
+        state._docContent = doc?.content ?? '';
+        render();
+      }).catch(() => {});
+    }
+  });
   state.socket = s;
   voiceSetupSignalListeners();
 }

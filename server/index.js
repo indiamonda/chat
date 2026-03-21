@@ -12,7 +12,7 @@ import { upload } from './upload.js';
 import { getUploadUrl, getFileRef } from './upload.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
-import docsRoutes from './routes/docs.js';
+import docsRoutes, { syncAnnouncementsFromPortal } from './routes/docs.js';
 import inboxRoutes from './routes/inbox.js';
 import adminRoutes from './routes/admin.js';
 import friendsRoutes, { areFriends } from './routes/friends.js';
@@ -1068,10 +1068,32 @@ io.on('connection', (socket) => {
 
 // Do not replace placeholder password: lets first signup with username jimmyqrg "claim" that account
 
+async function pollAnnouncementsFromPortal() {
+  try {
+    const result = await syncAnnouncementsFromPortal('system');
+    if (result.synced && result.newItems?.length) {
+      console.log(`Announcements sync: ${result.newItems.length} new item(s) from portal`);
+      io.emit('announcements:updated', {
+        version_id: result.version_id,
+        created_at: result.created_at,
+        newItems: result.newItems,
+      });
+    }
+  } catch (err) {
+    console.warn('Announcements poll error:', err.message || err);
+  }
+}
+
+const ANNOUNCEMENT_POLL_INTERVAL_MS = 60 * 60 * 1000;
+
 function start() {
   const PORT = parseInt(process.env.PORT, 10) || 3000;
   const HOST = process.env.HOST || '0.0.0.0';
-  httpServer.listen(PORT, HOST, () => console.log(`Server listening on ${HOST}:${PORT}`));
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`Server listening on ${HOST}:${PORT}`);
+    pollAnnouncementsFromPortal();
+    setInterval(pollAnnouncementsFromPortal, ANNOUNCEMENT_POLL_INTERVAL_MS);
+  });
 }
 httpServer.on('error', (err) => {
   console.error('Server listen error:', err);

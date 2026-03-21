@@ -60,42 +60,53 @@ function itemMatches(portalItem, jchatItems) {
   });
 }
 
+/**
+ * Core sync logic: fetches portal, diffs against current announcements doc,
+ * inserts a new version if there are new items.
+ * @param {string} [editorId] – user id to attribute the edit to (optional, defaults to 'system')
+ * @returns {{ synced: boolean, reason?: string, version_id?: string, created_at?: number, newItems?: string[] }}
+ */
+export async function syncAnnouncementsFromPortal(editorId = 'system') {
+  const resp = await fetch(PORTAL_ANNOUNCEMENT_URL, { headers: { 'User-Agent': 'JimmyQrg-Chat-Sync/1' } });
+  const html = await resp.text();
+  if (!portalHasAnnouncementContent(html)) return { synced: false, reason: 'no_portal_content' };
+  const portalItems = parsePortalAnnouncementItems(html);
+  if (!portalItems.length) return { synced: false, reason: 'no_content' };
+
+  const row = db.prepare(`
+    SELECT id, content FROM doc_versions WHERE doc_key = 'announcements' ORDER BY created_at DESC LIMIT 1
+  `).get();
+  const currentContent = row?.content || '';
+  const jchatItems = parseJchatEntriesItems(currentContent, 7);
+
+  const newItems = portalItems.filter(p => !itemMatches(p, jchatItems));
+  if (!newItems.length) return { synced: false, reason: 'already_present' };
+
+  const now = new Date();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  const dateLine = `**${mm}/${dd}/${yyyy}**`;
+  const newEntry = `${dateLine} ${newItems.join(', ')}`;
+
+  const title = '# Announcements\n\n';
+  const rest = currentContent.startsWith(title) ? currentContent.slice(title.length) : currentContent;
+  const updatedContent = title + newEntry + '\n\n' + rest;
+
+  const id = randomUUID();
+  const created = Date.now();
+  db.prepare('INSERT INTO doc_versions (id, doc_key, content, editor_id, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(id, 'announcements', updatedContent, editorId, created);
+  return { synced: true, version_id: id, created_at: created, newItems };
+}
+
 /** Sync announcements doc with portal: only add NEW items not already in jchat. */
 router.post('/announcements/sync', requireAuth, async (req, res) => {
   const user = getCurrentUser(req);
   if (!canEditDocs(user)) return res.status(403).json({ error: 'Not allowed to edit' });
   try {
-    const resp = await fetch(PORTAL_ANNOUNCEMENT_URL, { headers: { 'User-Agent': 'JimmyQrg-Chat-Sync/1' } });
-    const html = await resp.text();
-    if (!portalHasAnnouncementContent(html)) return res.json({ synced: false, reason: 'no_portal_content' });
-    const portalItems = parsePortalAnnouncementItems(html);
-    if (!portalItems.length) return res.json({ synced: false, reason: 'no_content' });
-
-    const row = db.prepare(`
-      SELECT id, content FROM doc_versions WHERE doc_key = 'announcements' ORDER BY created_at DESC LIMIT 1
-    `).get();
-    const currentContent = row?.content || '';
-    const jchatItems = parseJchatEntriesItems(currentContent, 7);
-
-    const newItems = portalItems.filter(p => !itemMatches(p, jchatItems));
-    if (!newItems.length) return res.json({ synced: false, reason: 'already_present' });
-
-    const now = new Date();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const yyyy = now.getFullYear();
-    const dateLine = `**${mm}/${dd}/${yyyy}**`;
-    const newEntry = `${dateLine} ${newItems.join(', ')}`;
-
-    const title = '# Announcements\n\n';
-    const rest = currentContent.startsWith(title) ? currentContent.slice(title.length) : currentContent;
-    const updatedContent = title + newEntry + '\n\n' + rest;
-
-    const id = randomUUID();
-    const created = Date.now();
-    db.prepare('INSERT INTO doc_versions (id, doc_key, content, editor_id, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(id, 'announcements', updatedContent, user.id, created);
-    res.json({ synced: true, version_id: id, created_at: created });
+    const result = await syncAnnouncementsFromPortal(user.id);
+    res.json(result);
   } catch (err) {
     console.error('Announcements sync error:', err);
     res.status(500).json({ error: err.message || 'Sync failed' });
