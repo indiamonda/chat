@@ -2404,36 +2404,40 @@ select:focus {
   background: none;
   border: none;
   border-radius: 0;
-  padding: 0 0.5rem 0.1rem;
-  border-image-source: var(--bubble-svg);
-  border-image-slice: 14 14 20 44 fill;
-  border-image-width: 6px 6px 9px 8px;
-  border-image-repeat: stretch;
+  padding: 0.35rem 0.9rem 0.6rem;
+  position: relative;
+}
+
+.message-body-svg::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background-image: var(--bubble-svg);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  z-index: -1;
+  pointer-events: none;
 }
 
 .message .message-body-svg {
   box-shadow: none;
-  filter: brightness(1.1);
 }
 
 .message.own .message-body-svg {
   background: none;
   border: none;
-  border-image-slice: 14 44 20 14 fill;
-  border-image-width: 6px 8px 9px 6px;
   box-shadow: none;
-  filter: brightness(1.15);
 }
 
+/* Tail bubbles: extra padding-bottom keeps text above the tail region;
+   ::before extends below the element so the SVG's tail has room to render. */
 .message-body-svg.message-body-tail {
-  border-image-slice: 14 14 30 44 fill;
-  border-image-width: 6px 6px 14px 8px;
-  margin-bottom: 2px;
+  padding-bottom: 1.5rem;
+  margin-bottom: 4px;
 }
 
-.message.own .message-body-svg.message-body-tail {
-  border-image-slice: 14 44 30 14 fill;
-  border-image-width: 6px 8px 14px 6px;
+.message-body-svg.message-body-tail::before {
+  inset: -2px -2px -18px -2px;
 }
 
 /* Chatbox picker in settings */
@@ -2476,16 +2480,13 @@ select:focus {
 
 .chatbox-preview-bubble {
   height: 28px;
-  border-image-slice: 14 14 20 44 fill;
-  border-image-width: 8px 8px 10px 16px;
-  border-image-repeat: stretch;
   border: none;
   border-radius: 0;
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
 }
 
 .chatbox-preview-own {
-  border-image-slice: 14 44 20 14 fill;
-  border-image-width: 8px 16px 10px 8px;
   align-self: flex-end;
   width: 70%;
 }
