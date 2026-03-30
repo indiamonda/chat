@@ -3422,6 +3422,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
   if (isFileMessage) bodyClasses.push('message-body-file');
   if (useSvgBubble) bodyClasses.push('message-body-svg');
   if (useSvgBubble && hasTail) bodyClasses.push('message-body-tail');
+  if (!useSvgBubble && cbStyle !== 'default') bodyClasses.push(`chatbox-${cbStyle}`);
   return `
     <div class="message-row" data-msg-id="${m.id}">
     <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
@@ -5390,10 +5391,14 @@ function renderSettingsContent() {
         <div class="chatbox-picker" id="chatbox-picker">
           ${(state._chatboxStyles.length ? state._chatboxStyles : [{ id: 'default', name: 'Default' }]).map(s => {
             const active = (state.user?.chatbox_style || 'default') === s.id;
+            const isSvgType = s.type === 'svg';
+            const previewCls = (!isSvgType && s.id !== 'default') ? ` chatbox-${s.id}` : '';
+            const previewStyle = isSvgType ? ` style="background-image: url('/assets/chatboxes/${s.id}/other.svg')"` : '';
+            const previewStyleOwn = isSvgType ? ` style="background-image: url('/assets/chatboxes/${s.id}/own.svg')"` : '';
             return `<button type="button" class="chatbox-picker-item ${active ? 'active' : ''}" data-style="${s.id}" title="${escapeHtml(s.description || '')}">
               <div class="chatbox-picker-preview">
-                <div class="chatbox-preview-bubble chatbox-preview-other" style="background-image: url('/assets/chatboxes/${s.id}/other.svg')"></div>
-                <div class="chatbox-preview-bubble chatbox-preview-own" style="background-image: url('/assets/chatboxes/${s.id}/own.svg')"></div>
+                <div class="chatbox-preview-bubble chatbox-preview-other${previewCls}"${previewStyle}></div>
+                <div class="chatbox-preview-bubble chatbox-preview-own${previewCls}"${previewStyleOwn}></div>
               </div>
               <span class="chatbox-picker-label">${escapeHtml(s.name)}</span>
             </button>`;
