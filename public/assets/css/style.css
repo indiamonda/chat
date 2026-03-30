@@ -2401,13 +2401,15 @@ select:focus {
 }
 
 .message-body-svg {
-  border: none;
+  background: transparent;
+  border-style: solid;
+  border-width: 0;
   border-radius: 0;
   padding: 0.35rem 0.9rem 0.6rem;
-  background-color: transparent;
-  background-image: var(--bubble-svg);
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
+  border-image-source: var(--bubble-svg);
+  border-image-slice: 14 14 20 44 fill;
+  border-image-width: 14px 14px 20px 44px;
+  border-image-repeat: stretch;
 }
 
 .message .message-body-svg {
@@ -2415,17 +2417,22 @@ select:focus {
 }
 
 .message.own .message-body-svg {
-  background-color: transparent;
-  background-image: var(--bubble-svg);
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  border: none;
+  background: transparent;
+  border-color: transparent;
+  border-image-slice: 14 44 20 14 fill;
+  border-image-width: 14px 44px 20px 14px;
   box-shadow: none;
 }
 
 .message-body-svg.message-body-tail {
-  padding-bottom: 1.5rem;
+  border-image-slice: 14 14 30 44 fill;
+  border-image-width: 14px 14px 30px 44px;
   margin-bottom: 4px;
+}
+
+.message.own .message-body-svg.message-body-tail {
+  border-image-slice: 14 44 30 14 fill;
+  border-image-width: 14px 44px 30px 14px;
 }
 
 /* Chatbox picker in settings */
