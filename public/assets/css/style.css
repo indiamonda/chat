@@ -2515,27 +2515,6 @@ select:focus {
   width: 85%;
 }
 
-.chatbox-preview-bubble.chatbox-star-gazer {
-  background: linear-gradient(135deg, #4C1D95 0%, #331464 100%);
-  border: 1.5px solid #7C3AED;
-  border-radius: 8px;
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15), 0 1px 8px rgba(124, 58, 237, 0.25);
-  position: relative;
-  overflow: hidden;
-}
-
-.chatbox-preview-bubble.chatbox-star-gazer::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: url('/assets/chatboxes/star-gazer/other.svg') center / cover no-repeat;
-  mix-blend-mode: screen;
-  pointer-events: none;
-}
-
-.chatbox-preview-own.chatbox-star-gazer::before {
-  background-image: url('/assets/chatboxes/star-gazer/own.svg');
-}
 
 .chatbox-picker-label {
   font-size: 0.8rem;
