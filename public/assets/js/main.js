@@ -3188,6 +3188,15 @@ function renderChatArea() {
               <button type="button" id="clear-pending-file" title="Remove"><span class="icon icon-sm" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></button>
             </div>
           ` : ''}
+          <div class="upload-progress" id="upload-progress" style="display:none">
+            <div class="upload-progress-info">
+              <span class="upload-progress-label">Uploading…</span>
+              <span class="upload-progress-pct" id="upload-progress-pct">0%</span>
+            </div>
+            <div class="upload-progress-track">
+              <div class="upload-progress-bar" id="upload-progress-bar"></div>
+            </div>
+          </div>
           <div class="composer-row">
             <div class="composer-input-wrap">
               <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(getDraft(roomType, roomId))}</textarea>
@@ -4658,28 +4667,50 @@ function bindMain() {
         form.append('content', text);
         form.append('msg_type', state._pendingFile.type.startsWith('image/') ? 'image' : state._pendingFile.type.startsWith('video/') ? 'video' : state._pendingFile.type.startsWith('audio/') ? 'audio' : 'file');
         if (reply_to_id) form.append('reply_to_id', reply_to_id);
-        const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
-        fetch(path, { method: 'POST', credentials: 'include', body: form })
-          .then((r) => r.json())
-          .then((data) => {
-            if (data?.error) {
-              showToast(data.error);
-              if (data.error === 'NO SPAMMING!') {
-                state._spamBlockedUntil = Date.now() + 5000;
-                setState({});
-                setTimeout(() => { state._spamBlockedUntil = null; setState({}); }, 5000);
-              }
+        const uploadPath = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
+
+        const progressEl = document.getElementById('upload-progress');
+        const progressBar = document.getElementById('upload-progress-bar');
+        const progressPct = document.getElementById('upload-progress-pct');
+        const pendingEl = document.getElementById('pending-file-indicator');
+        if (pendingEl) pendingEl.style.display = 'none';
+        if (progressEl) progressEl.style.display = '';
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', uploadPath);
+        xhr.withCredentials = true;
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable && progressBar && progressPct) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+          }
+        });
+        xhr.addEventListener('load', () => {
+          let data;
+          try { data = JSON.parse(xhr.responseText); } catch { data = {}; }
+          if (data?.error) {
+            showToast(data.error);
+            if (data.error === 'NO SPAMMING!') {
+              state._spamBlockedUntil = Date.now() + 5000;
+              setState({});
+              setTimeout(() => { state._spamBlockedUntil = null; setState({}); }, 5000);
             }
-            if (data?.message) addMessageLocal(data.message);
+          }
+          if (data?.message) addMessageLocal(data.message);
           state._pendingFile = null;
           clearDraft(roomType, roomId);
           input.value = '';
-            resizeComposerInput();
+          resizeComposerInput();
           setState({ replyTo: null });
           if (roomType === 'dm') loadMessages('dm', roomId).then(render);
-          })
-          .catch(console.error)
-          .finally(done);
+          done();
+        });
+        xhr.addEventListener('error', () => {
+          showToast('Upload failed');
+          done();
+        });
+        xhr.send(form);
         return;
       }
       state.socket?.emit('message:send', { roomType, roomId, content: text, reply_to_id }, (res) => {
