@@ -4355,7 +4355,9 @@ function bindMain() {
         }
         if (action === 'copy') {
           if (navigator.clipboard?.writeText) {
-            const text = msg.content != null ? String(msg.content) : '';
+            const versions = [...(msg.edit_history || []).map(h => h.content), msg.content || ''];
+            const versionIndex = Math.max(0, Math.min((state.messageVersionIndex[msg.id] ?? versions.length - 1), versions.length - 1));
+            const text = versions[versionIndex] != null ? String(versions[versionIndex]) : '';
             navigator.clipboard.writeText(text).then(() => {}).catch(() => {});
           }
           return;
