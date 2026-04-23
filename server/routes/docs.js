@@ -29,12 +29,11 @@ function parsePortalAnnouncementItems(html) {
   return items.filter(Boolean);
 }
 
-/** Extract items from a single jchat announcement entry. E.g. "**MM/DD/YYYY** Added Amenda, Potato." -> ["Amenda", "Potato"]. */
+/** Extract items from a single jchat announcement entry. Handles both comma-separated names ("Added X, Y") and full-sentence items ("Fixed all games related to turbowarp, Released Magic Tiles 3"). */
 function parseJchatEntryItems(entry) {
-  const addedMatch = entry.match(/\*\*[\d/]+\*\*\s*(?:Added\s+)?([^.]+)/i);
-  if (!addedMatch) return [];
-  const list = addedMatch[1].replace(/^Added\s+/i, '').replace(/\.$/, '').trim();
-  return list.split(',').map(s => s.trim()).filter(Boolean);
+  const dateStripped = entry.replace(/^\*\*[\d/]+\*\*\s*/, '').replace(/\.$/, '').trim();
+  if (!dateStripped) return [];
+  return dateStripped.split(',').map(s => s.trim()).filter(Boolean);
 }
 
 /** Extract items from the first N entries in jchat announcements (newest first). Default 7 entries. */
@@ -50,13 +49,15 @@ function parseJchatEntriesItems(content, limit = 7) {
   return [...new Set(allItems)];
 }
 
-/** Check if portal item matches any jchat item. E.g. "Added Amenda the Adventurer" matches jchat "Amenda". */
+/** Check if portal item matches any jchat item. Compares both the full item text and the prefix-stripped version. */
 function itemMatches(portalItem, jchatItems) {
-  const content = portalItem.replace(/^(Added|Updated|Fixed)\s+/i, '').trim().toLowerCase();
-  const firstWord = content.split(/\s+/)[0] || '';
+  const full = portalItem.trim().toLowerCase();
+  const stripped = portalItem.replace(/^(Added|Updated|Fixed|Released|Removed)\s+/i, '').trim().toLowerCase();
+  const firstWord = stripped.split(/\s+/)[0] || '';
   return jchatItems.some(j => {
     const jn = j.toLowerCase().trim();
-    return content.includes(jn) || jn.includes(firstWord) || jn.includes(content);
+    const jnStripped = jn.replace(/^(added|updated|fixed|released|removed)\s+/i, '').trim();
+    return full === jn || stripped === jnStripped || jn.includes(stripped) || stripped.includes(jn) || jn.includes(firstWord);
   });
 }
 
