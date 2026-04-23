@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { db, validateUsername } from './db.js';
 import { createSessionStore } from './session-store.js';
+import { resolveToken, extractToken } from './tokens.js';
 
 const TWO_MINUTES_MS = 2 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -38,8 +39,34 @@ export function touchSession(req, res, next) {
   next();
 }
 
+/** If session is missing, try to authenticate via Bearer token and mirror the user id onto req.session.userId. */
+export function tokenAuthMiddleware(req, res, next) {
+  if (req.session?.userId) return next();
+  const token = extractToken(req);
+  if (!token) return next();
+  const userId = resolveToken(token);
+  if (userId) {
+    try {
+      if (!req.session || typeof req.session !== 'object') req.session = {};
+      req.session.userId = userId;
+      req.tokenAuth = { userId, token };
+    } catch (_) {}
+  }
+  next();
+}
+
 export function requireAuth(req, res, next) {
   if (req.session?.userId) return next();
+  const token = extractToken(req);
+  if (token) {
+    const userId = resolveToken(token);
+    if (userId) {
+      if (!req.session || typeof req.session !== 'object') req.session = {};
+      req.session.userId = userId;
+      req.tokenAuth = { userId, token };
+      return next();
+    }
+  }
   res.status(401).json({ error: 'Not authenticated' });
 }
 

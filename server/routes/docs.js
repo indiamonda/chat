@@ -10,18 +10,18 @@ const PORTAL_ANNOUNCEMENT_URL = 'https://jimmyqrg.github.io/?directly=1';
 
 /** Grep: check if portal HTML contains the announcement sections. */
 function portalHasAnnouncementContent(html) {
-  return /✨\s*Latest updates:[\s\S]*?<ul>|⏱️\s*History[\s\S]*?<ul>/i.test(html);
+  return /Latest updates:\s*<\/p>[\s\S]*?<ul[^>]*>|History:?\s*<\/p>[\s\S]*?<ul[^>]*>/i.test(html);
 }
 
 /** Parse "Latest updates" and "History" list items from portal announcement HTML. Returns array of item strings (e.g. "Added Stickman Arena"). */
 function parsePortalAnnouncementItems(html) {
   const items = [];
-  const latestMatch = html.match(/✨\s*Latest updates:[\s\S]*?<ul>([\s\S]*?)<\/ul>/i);
+  const latestMatch = html.match(/Latest updates:\s*<\/p>[\s\S]*?<ul[^>]*>([\s\S]*?)<\/ul>/i);
   if (latestMatch) {
     const lis = latestMatch[1].match(/<li>([\s\S]*?)<\/li>/g) || [];
     lis.forEach(li => items.push(li.replace(/<\/?li>/g, '').replace(/<[^>]+>/g, '').trim()));
   }
-  const historyMatch = html.match(/⏱️\s*History[\s\S]*?<ul>([\s\S]*?)<\/ul>/i);
+  const historyMatch = html.match(/History:?\s*<\/p>[\s\S]*?<ul[^>]*>([\s\S]*?)<\/ul>/i);
   if (historyMatch) {
     const lis = historyMatch[1].match(/<li>([\s\S]*?)<\/li>/g) || [];
     lis.forEach(li => items.push(li.replace(/<\/?li>/g, '').replace(/<b>|<\/b>/gi, '**').replace(/<[^>]+>/g, '').trim()));

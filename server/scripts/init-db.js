@@ -173,6 +173,30 @@ db.exec(`
     FOREIGN KEY (created_by) REFERENCES users(id)
   );
   CREATE INDEX IF NOT EXISTS idx_group_timeouts_user_room ON group_timeouts(user_id, room_type, room_id);
+
+  CREATE TABLE IF NOT EXISTS user_saves (
+    user_id TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'localStorage',
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, origin, key, kind),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_user_saves_user_updated ON user_saves(user_id, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS auth_tokens (
+    token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    label TEXT,
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    expires_at INTEGER,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id);
+  CREATE INDEX IF NOT EXISTS idx_auth_tokens_expires ON auth_tokens(expires_at);
 `);
 
 try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch (_) {}
