@@ -178,6 +178,43 @@ export function isUserDeleted(userId) {
   return row && row.deleted_at != null;
 }
 
+// Game / app progress saves. A generic per-user key/value store used by jimmyqrg.github.io
+// games to persist save data to the server. The `origin` column namespaces keys across
+// different sites/games (typically 'jimmyqrg' or 'chat') so one account can hold data for many apps.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_saves (
+      user_id TEXT NOT NULL,
+      origin TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'localStorage',
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (user_id, origin, key, kind),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_saves_user_updated ON user_saves(user_id, updated_at DESC);
+  `);
+} catch (_) {}
+
+// Long-lived bearer tokens for cross-origin clients that can't use session cookies
+// (third-party cookie blocking makes cookies unreliable from jimmyqrg.github.io).
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS auth_tokens (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      label TEXT,
+      created_at INTEGER NOT NULL,
+      last_used_at INTEGER,
+      expires_at INTEGER,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_auth_tokens_expires ON auth_tokens(expires_at);
+  `);
+} catch (_) {}
+
 // Saved message collections (per-user saved messages for quick access)
 try {
   db.exec(`

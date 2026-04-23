@@ -6,7 +6,7 @@ import express from 'express';
 import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
-import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages, canTimeout, canUnlimitedEditRecall } from './auth.js';
+import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages, canTimeout, canUnlimitedEditRecall, tokenAuthMiddleware } from './auth.js';
 import { db, GROUP_ID, PANELS, isBlacklisted, isUserDeleted } from './db.js';
 import { upload } from './upload.js';
 import { getUploadUrl, getFileRef } from './upload.js';
@@ -18,6 +18,7 @@ import adminRoutes from './routes/admin.js';
 import friendsRoutes, { areFriends } from './routes/friends.js';
 import blocksRoutes, { isBlocked } from './routes/blocks.js';
 import notificationsRoutes, { getPrefs as getNotificationPrefs } from './routes/notifications.js';
+import savesRoutes from './routes/saves.js';
 import { randomUUID } from 'node:crypto';
 import tzLookup from 'tz-lookup';
 
@@ -214,8 +215,38 @@ const httpServer = createServer(app);
 
 app.set('trust proxy', 1);
 
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
+
+/** CORS for cross-origin clients (game pages on jimmyqrg.github.io, etc.). Credentials are
+ *  allowed so browsers that still accept the chat session cookie cross-site get a session;
+ *  Bearer tokens work for the rest. The allow-list is permissive: the chat API is read/write
+ *  only after requireAuth anyway, and tokens are long random strings. */
+const CORS_ALLOW_LIST = new Set([
+  'https://jimmyqrg.github.io',
+  'https://www.jimmyqrg.github.io',
+  'https://jchat.fly.dev',
+]);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    const allowed = CORS_ALLOW_LIST.has(origin)
+      || /^https?:\/\/localhost(?::\d+)?$/i.test(origin)
+      || /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin)
+      || /^https?:\/\/.+\.github\.io$/i.test(origin);
+    if (allowed) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Auth-Token, X-Requested-With');
+      res.setHeader('Access-Control-Max-Age', '86400');
+    }
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 
 // Serve assets and uploads before session so static requests never trigger session/DB errors or 500
 app.use('/assets', express.static(join(publicDir, 'assets'), {
@@ -243,6 +274,7 @@ app.use((req, res, next) => {
     touchSession(req, res, next);
   });
 });
+app.use(tokenAuthMiddleware);
 
 // Serve SPA HTML with cache-busting for all document routes (before static so "/" gets it too)
 app.use((req, res, next) => {
@@ -360,6 +392,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/friends', friendsRoutes);
 app.use('/api/blocks', blocksRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/saves', savesRoutes);
 
 /** Link preview: fetch URL and return og:title, og:description, og:image. Requires auth. */
 app.get('/api/link-preview', requireAuth, async (req, res) => {
