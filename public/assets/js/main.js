@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { apiGet, apiPost, apiPatch, apiPut, apiDelete, uploadFile, getDefaultAvatarUrl } from './api.js';
+import { compressMedia, isCompressibleMedia, formatBytes } from './mediaCompression.js';
 
 if (typeof window !== 'undefined' && window.katex) {
   window.renderKatex = function (latex, displayMode) {
@@ -106,6 +107,158 @@ function showToast(message, type = 'error') {
   };
   setTimeout(dismiss, 4000);
   el.addEventListener('click', dismiss);
+}
+
+const HTML_MAX_BYTES = 100 * 1024 * 1024;
+const MEDIA_CONFIRM_BYTES = 35 * 1024 * 1024;
+const MEDIA_TARGET_MB = 25;
+const OTHER_MAX_BYTES = 100 * 1024 * 1024;
+
+/** True if the file is HTML by extension or mime. Server allows these up to 100 MB. */
+function isHtmlFile(file) {
+  if (!file) return false;
+  const t = (file.type || '').toLowerCase();
+  if (t === 'text/html' || t === 'application/xhtml+xml') return true;
+  const name = (file.name || '').toLowerCase();
+  return /\.(html?|xhtml)$/.test(name);
+}
+
+/** Returns "video" / "image" / "gif" / "audio" / null based on mime. */
+function mediaKindFromFile(file) {
+  const t = (file?.type || '').toLowerCase();
+  if (t === 'image/gif') return 'gif';
+  if (t.startsWith('image/')) return 'image';
+  if (t.startsWith('video/')) return 'video';
+  if (t.startsWith('audio/')) return 'audio';
+  return null;
+}
+
+/** Modal: blocks until user clicks Send (resolves true) or Cancel/escape (resolves false). */
+function showCompressConfirmModal(file, kind) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const sizeLabel = formatBytes(file.size);
+    const typeLabel = t('fileCompressBodyType_' + kind) || kind;
+    const body = (t('fileCompressBody') || 'This {type} is {size}. It will be compressed to about 25 MB before sending. Continue?')
+      .replace('{type}', typeLabel)
+      .replace('{size}', sizeLabel);
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:420px;">
+        <h3>${escapeHtml(t('fileCompressTitle') || 'Large file')}</h3>
+        <p class="modal-hint" style="margin:0.5rem 0 1rem 0;">${escapeHtml(body)}</p>
+        <div class="modal-actions">
+          <button type="button" id="file-compress-cancel" class="modal-close"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>${escapeHtml(t('cancel'))}</button>
+          <button type="button" id="file-compress-ok" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_CHECK_SM}</span>${escapeHtml(t('fileCompressContinue') || 'Compress and send')}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      resolve(value);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') finish(false); };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(false); });
+    overlay.querySelector('#file-compress-cancel')?.addEventListener('click', () => finish(false));
+    overlay.querySelector('#file-compress-ok')?.addEventListener('click', () => finish(true));
+    document.addEventListener('keydown', onKey);
+  });
+}
+
+/** Modal: simple OK-only error dialog (used for HTML > 100 MB). */
+function showFileBlockedModal(title, body) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:440px;">
+      <h3>${escapeHtml(title)}</h3>
+      <p class="modal-hint" style="margin:0.5rem 0 1rem 0;">${escapeHtml(body)}</p>
+      <div class="modal-actions">
+        <button type="button" id="file-blocked-ok" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_CHECK_SM}</span>OK</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => { document.removeEventListener('keydown', onKey); overlay.remove(); };
+  const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter') close(); };
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('#file-blocked-ok')?.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+}
+
+/** Lightweight blocking overlay shown while compression runs. Returns { update(pct), close() }. */
+function showCompressingOverlay() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:340px;text-align:center;">
+      <h3 style="margin-bottom:0.75rem;">${escapeHtml(t('fileCompressing') || 'Compressing…')}</h3>
+      <div style="width:100%;height:8px;background:rgba(127,127,127,0.2);border-radius:4px;overflow:hidden;">
+        <div id="file-compress-bar" style="width:0%;height:100%;background:var(--accent-primary,#5b6cff);transition:width 0.15s ease;"></div>
+      </div>
+      <div id="file-compress-pct" style="margin-top:0.5rem;font-size:0.85rem;opacity:0.75;">0%</div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const bar = overlay.querySelector('#file-compress-bar');
+  const pct = overlay.querySelector('#file-compress-pct');
+  return {
+    update(p) {
+      const v = Math.max(0, Math.min(1, p));
+      const s = Math.round(v * 100) + '%';
+      if (bar) bar.style.width = s;
+      if (pct) pct.textContent = s;
+    },
+    close() { overlay.remove(); },
+  };
+}
+
+/**
+ * Validate + (optionally) compress a file before upload.
+ *  - HTML > 100 MB → blocked with a "use Google Drive/GitHub" message; returns null.
+ *  - HTML ≤ 100 MB → returned as-is.
+ *  - image/video/audio (and GIF) > 35 MB → confirm modal, then compress to ~25 MB.
+ *  - Other files > 100 MB → blocked; otherwise returned as-is.
+ * Returns the (possibly recompressed) File, or null if the user cancelled / file was rejected.
+ */
+async function prepareFileForUpload(file) {
+  if (!file) return null;
+
+  if (isHtmlFile(file)) {
+    if (file.size > HTML_MAX_BYTES) {
+      showFileBlockedModal(t('fileTooLargeHtmlTitle'), t('fileTooLargeHtmlBody'));
+      return null;
+    }
+    return file;
+  }
+
+  const kind = mediaKindFromFile(file);
+  if (kind && isCompressibleMedia(file) && file.size > MEDIA_CONFIRM_BYTES) {
+    const ok = await showCompressConfirmModal(file, kind);
+    if (!ok) return null;
+    const ui = showCompressingOverlay();
+    try {
+      const compressed = await compressMedia(file, { targetMB: MEDIA_TARGET_MB, onProgress: (p) => ui.update(p) });
+      ui.close();
+      return compressed;
+    } catch (err) {
+      ui.close();
+      console.error('[prepareFileForUpload] compress error:', err);
+      showToast(t('fileCompressFailed'));
+      return file;
+    }
+  }
+
+  if (file.size > OTHER_MAX_BYTES) {
+    showToast(t('fileTooLargeOther'));
+    return null;
+  }
+  return file;
 }
 
 /** Fallback strings until data.json loads. Full translations in /assets/translation/data.json */
@@ -279,6 +432,18 @@ const DEFAULT_STRINGS = {
     more: 'More',
     search: 'Search',
     open: 'Open',
+    fileTooLargeHtmlTitle: 'HTML file too large',
+    fileTooLargeHtmlBody: 'HTML files cannot be larger than 100 MB. Please use Google Drive, GitHub, or another file-sharing service to send this file.',
+    fileTooLargeOther: 'File is too large. Maximum size is 100 MB.',
+    fileCompressTitle: 'Large file',
+    fileCompressBody: 'This {type} is {size}. It will be compressed to about 25 MB before sending. Continue?',
+    fileCompressBodyType_video: 'video',
+    fileCompressBodyType_image: 'image',
+    fileCompressBodyType_gif: 'GIF',
+    fileCompressBodyType_audio: 'audio',
+    fileCompressContinue: 'Compress and send',
+    fileCompressing: 'Compressing…',
+    fileCompressFailed: 'Compression failed. Sending the original file.',
   }
 };
 let STRINGS = { ...DEFAULT_STRINGS };
@@ -4765,14 +4930,15 @@ function bindMain() {
     }
     document.getElementById('file-input')?.click();
   });
-  document.getElementById('file-input')?.addEventListener('change', (e) => {
+  document.getElementById('file-input')?.addEventListener('change', async (e) => {
     if (!canSendFiles) return;
     const file = e.target.files?.[0];
-    if (file) {
-      state._pendingFile = file;
-      render();
-    }
     e.target.value = '';
+    if (!file) return;
+    const prepared = await prepareFileForUpload(file);
+    if (!prepared) return;
+    state._pendingFile = prepared;
+    render();
   });
   document.getElementById('clear-pending-file')?.addEventListener('click', () => {
     state._pendingFile = null;
@@ -4910,14 +5076,18 @@ function bindMain() {
           if (file) {
             e.preventDefault();
             e.stopPropagation();
-            state._pendingFile = file;
-            render();
+            (async () => {
+              const prepared = await prepareFileForUpload(file);
+              if (!prepared) return;
+              state._pendingFile = prepared;
+              render();
+            })();
           }
           break;
         }
       }
     });
-    dropZone.addEventListener('drop', (e) => {
+    dropZone.addEventListener('drop', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       dropZone.classList.remove('composer-drag-over');
@@ -4925,7 +5095,9 @@ function bindMain() {
         showToast('Add as friend to send files');
         return;
       }
-      const file = e.dataTransfer.files?.[0];
+      const rawFile = e.dataTransfer.files?.[0];
+      if (!rawFile) return;
+      const file = await prepareFileForUpload(rawFile);
       if (!file) return;
       const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;

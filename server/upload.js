@@ -17,9 +17,12 @@ const storage = multer.diskStorage({
   }
 });
 
+/** 100 MB hard cap. Client compresses media >35 MB to ~25 MB, and rejects HTML >100 MB
+ *  with a helpful "use Google Drive / GitHub" message. Non-media non-HTML files are also
+ *  capped here at the network level. */
 export const upload = multer({
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 }
+  limits: { fileSize: 100 * 1024 * 1024 }
 });
 
 export function getUploadUrl(filename) {
