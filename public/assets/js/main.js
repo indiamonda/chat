@@ -110,6 +110,7 @@ function showToast(message, type = 'error') {
 }
 
 const HTML_MAX_BYTES = 100 * 1024 * 1024;
+const ZIP_MAX_BYTES = 3 * 1024 * 1024 * 1024;
 const MEDIA_CONFIRM_BYTES = 35 * 1024 * 1024;
 const MEDIA_TARGET_MB = 25;
 const OTHER_MAX_BYTES = 100 * 1024 * 1024;
@@ -121,6 +122,15 @@ function isHtmlFile(file) {
   if (t === 'text/html' || t === 'application/xhtml+xml') return true;
   const name = (file.name || '').toLowerCase();
   return /\.(html?|xhtml)$/.test(name);
+}
+
+/** True if the file is a ZIP archive by extension or mime. Server allows up to 3 GB. */
+function isZipFile(file) {
+  if (!file) return false;
+  const t = (file.type || '').toLowerCase();
+  if (t === 'application/zip' || t === 'application/x-zip-compressed' || t === 'application/x-zip') return true;
+  const name = (file.name || '').toLowerCase();
+  return /\.zip$/.test(name);
 }
 
 /** Returns "video" / "image" / "gif" / "audio" / null based on mime. */
@@ -220,8 +230,10 @@ function showCompressingOverlay() {
 
 /**
  * Validate + (optionally) compress a file before upload.
- *  - HTML > 100 MB → blocked with a "use Google Drive/GitHub" message; returns null.
+ *  - HTML > 100 MB → blocked with a "use Google Drive/GitHub" modal; returns null.
  *  - HTML ≤ 100 MB → returned as-is.
+ *  - ZIP > 3 GB  → blocked with a similar modal; returns null.
+ *  - ZIP ≤ 3 GB  → returned as-is.
  *  - image/video/audio (and GIF) > 35 MB → confirm modal, then compress to ~25 MB.
  *  - Other files > 100 MB → blocked; otherwise returned as-is.
  * Returns the (possibly recompressed) File, or null if the user cancelled / file was rejected.
@@ -232,6 +244,14 @@ async function prepareFileForUpload(file) {
   if (isHtmlFile(file)) {
     if (file.size > HTML_MAX_BYTES) {
       showFileBlockedModal(t('fileTooLargeHtmlTitle'), t('fileTooLargeHtmlBody'));
+      return null;
+    }
+    return file;
+  }
+
+  if (isZipFile(file)) {
+    if (file.size > ZIP_MAX_BYTES) {
+      showFileBlockedModal(t('fileTooLargeZipTitle'), t('fileTooLargeZipBody'));
       return null;
     }
     return file;
@@ -434,6 +454,8 @@ const DEFAULT_STRINGS = {
     open: 'Open',
     fileTooLargeHtmlTitle: 'HTML file too large',
     fileTooLargeHtmlBody: 'HTML files cannot be larger than 100 MB. Please use Google Drive, GitHub, or another file-sharing service to send this file.',
+    fileTooLargeZipTitle: 'Zip file too large',
+    fileTooLargeZipBody: 'Zip files cannot be larger than 3 GB. Please use Google Drive, GitHub, or another file-sharing service to send this file.',
     fileTooLargeOther: 'File is too large. Maximum size is 100 MB.',
     fileCompressTitle: 'Large file',
     fileCompressBody: 'This {type} is {size}. It will be compressed to about 25 MB before sending. Continue?',
