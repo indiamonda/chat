@@ -17,11 +17,11 @@ const storage = multer.diskStorage({
   }
 });
 
-/** 3 GB hard cap. Zip files are allowed up to 3 GB; HTML up to 100 MB; media is
+/** 2 GB hard cap. Zip files are allowed up to 2 GB; HTML up to 100 MB; media is
  *  compressed client-side. All other types are capped at 100 MB on the client. */
 export const upload = multer({
   storage,
-  limits: { fileSize: 3 * 1024 * 1024 * 1024 }
+  limits: { fileSize: 2 * 1024 * 1024 * 1024 }
 });
 
 export function getUploadUrl(filename) {
