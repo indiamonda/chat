@@ -110,7 +110,7 @@ function showToast(message, type = 'error') {
 }
 
 const HTML_MAX_BYTES = 100 * 1024 * 1024;
-const ZIP_MAX_BYTES = 3 * 1024 * 1024 * 1024;
+const ZIP_MAX_BYTES = 2 * 1024 * 1024 * 1024;
 const MEDIA_CONFIRM_BYTES = 35 * 1024 * 1024;
 const MEDIA_TARGET_MB = 25;
 const OTHER_MAX_BYTES = 100 * 1024 * 1024;
@@ -455,7 +455,7 @@ const DEFAULT_STRINGS = {
     fileTooLargeHtmlTitle: 'HTML file too large',
     fileTooLargeHtmlBody: 'HTML files cannot be larger than 100 MB. Please use Google Drive, GitHub, or another file-sharing service to send this file.',
     fileTooLargeZipTitle: 'Zip file too large',
-    fileTooLargeZipBody: 'Zip files cannot be larger than 3 GB. Please use Google Drive, GitHub, or another file-sharing service to send this file.',
+    fileTooLargeZipBody: 'Zip files cannot be larger than 2 GB. Please use Google Drive, GitHub, or another file-sharing service to send this file.',
     fileTooLargeOther: 'File is too large. Maximum size is 100 MB.',
     fileCompressTitle: 'Large file',
     fileCompressBody: 'This {type} is {size}. It will be compressed to about 25 MB before sending. Continue?',
