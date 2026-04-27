@@ -57,8 +57,10 @@ router.post('/register', async (req, res, next) => {
 
 router.post('/login', async (req, res, next) => {
   try {
-    const { username, password } = req.body || {};
-    const usernameOrEmail = username; // can be either
+    const { username, email, identifier, login_id, password } = req.body || {};
+    // Accept both legacy and explicit fields so frontend can send whichever
+    // shape it has (username-only, email-only, or unified identifier).
+    const usernameOrEmail = (identifier || login_id || username || email || '').toString().trim();
     if (!usernameOrEmail || !password) return res.status(400).json({ error: 'Username or email and password required' });
     const result = await login(usernameOrEmail, password);
     if (result.error) return res.status(200).json({ error: result.error });

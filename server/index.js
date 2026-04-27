@@ -226,6 +226,7 @@ const CORS_ALLOW_LIST = new Set([
   'https://jimmyqrg.github.io',
   'https://www.jimmyqrg.github.io',
   'https://jchat.fly.dev',
+  'https://mcraft.fly.dev',
 ]);
 
 app.use((req, res, next) => {
@@ -234,7 +235,8 @@ app.use((req, res, next) => {
     const allowed = CORS_ALLOW_LIST.has(origin)
       || /^https?:\/\/localhost(?::\d+)?$/i.test(origin)
       || /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin)
-      || /^https?:\/\/.+\.github\.io$/i.test(origin);
+      || /^https?:\/\/.+\.github\.io$/i.test(origin)
+      || /^https?:\/\/.+\.jimmyqrg\.com$/i.test(origin);
     if (allowed) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
