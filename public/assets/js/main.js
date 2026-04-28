@@ -228,12 +228,48 @@ function showCompressingOverlay() {
   };
 }
 
+/** Modal shown when compression fails; resolves true to send original, false to cancel upload. */
+function showCompressionFallbackModal(file, kind) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const typeLabel = t('fileCompressBodyType_' + kind) || kind || 'file';
+    const body = (t('fileCompressFallbackBody') || 'Could not compress this {type}. Send the original file ({size}) instead?')
+      .replace('{type}', typeLabel)
+      .replace('{size}', formatBytes(file?.size || 0));
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:440px;">
+        <h3>${escapeHtml(t('fileCompressFallbackTitle') || 'Compression failed')}</h3>
+        <p class="modal-hint" style="margin:0.5rem 0 1rem 0;">${escapeHtml(body)}</p>
+        <div class="modal-actions">
+          <button type="button" id="file-compress-fallback-cancel" class="modal-close"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>${escapeHtml(t('fileCompressCancel') || 'Cancel upload')}</button>
+          <button type="button" id="file-compress-fallback-send" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_CHECK_SM}</span>${escapeHtml(t('fileCompressSendOriginal') || 'Send original')}</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      resolve(value);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') finish(false); };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(false); });
+    overlay.querySelector('#file-compress-fallback-cancel')?.addEventListener('click', () => finish(false));
+    overlay.querySelector('#file-compress-fallback-send')?.addEventListener('click', () => finish(true));
+    document.addEventListener('keydown', onKey);
+  });
+}
+
 /**
  * Validate + (optionally) compress a file before upload.
  *  - HTML > 100 MB → blocked with a "use Google Drive/GitHub" modal; returns null.
  *  - HTML ≤ 100 MB → returned as-is.
- *  - ZIP > 3 GB  → blocked with a similar modal; returns null.
- *  - ZIP ≤ 3 GB  → returned as-is.
+ *  - ZIP > 2 GB  → blocked with a similar modal; returns null.
+ *  - ZIP ≤ 2 GB  → returned as-is.
  *  - image/video/audio (and GIF) > 35 MB → confirm modal, then compress to ~25 MB.
  *  - Other files > 100 MB → blocked; otherwise returned as-is.
  * Returns the (possibly recompressed) File, or null if the user cancelled / file was rejected.
@@ -263,13 +299,32 @@ async function prepareFileForUpload(file) {
     if (!ok) return null;
     const ui = showCompressingOverlay();
     try {
+      const originalBytes = file.size;
       const compressed = await compressMedia(file, { targetMB: MEDIA_TARGET_MB, onProgress: (p) => ui.update(p) });
       ui.close();
+      if (!compressed || !Number.isFinite(compressed.size) || compressed.size <= 0) {
+        const sendOriginal = await showCompressionFallbackModal(file, kind);
+        if (!sendOriginal) return null;
+        showToast((t('fileCompressFallbackUsingOriginal') || 'Sending original file ({size}).').replace('{size}', formatBytes(file.size)), 'info');
+        return file;
+      }
+      if (compressed.size >= originalBytes) {
+        showToast((t('fileCompressNoGain') || 'Compression did not reduce size. Sending original {size}.').replace('{size}', formatBytes(file.size)), 'info');
+        return file;
+      }
+      const typeLabel = t('fileCompressBodyType_' + kind) || kind;
+      const resultMsg = (t('fileCompressResult') || 'Compressed {type}: {from} -> {to}.')
+        .replace('{type}', typeLabel)
+        .replace('{from}', formatBytes(originalBytes))
+        .replace('{to}', formatBytes(compressed.size));
+      showToast(resultMsg, 'success');
       return compressed;
     } catch (err) {
       ui.close();
       console.error('[prepareFileForUpload] compress error:', err);
-      showToast(t('fileCompressFailed'));
+      const sendOriginal = await showCompressionFallbackModal(file, kind);
+      if (!sendOriginal) return null;
+      showToast((t('fileCompressFallbackUsingOriginal') || 'Sending original file ({size}).').replace('{size}', formatBytes(file.size)), 'info');
       return file;
     }
   }
@@ -466,6 +521,17 @@ const DEFAULT_STRINGS = {
     fileCompressContinue: 'Compress and send',
     fileCompressing: 'Compressing…',
     fileCompressFailed: 'Compression failed. Sending the original file.',
+    fileCompressResult: 'Compressed {type}: {from} -> {to}.',
+    fileCompressNoGain: 'Compression did not reduce size. Sending original {size}.',
+    fileCompressFallbackTitle: 'Compression failed',
+    fileCompressFallbackBody: 'Could not compress this {type}. Send the original file ({size}) instead?',
+    fileCompressSendOriginal: 'Send original',
+    fileCompressCancel: 'Cancel upload',
+    fileCompressFallbackUsingOriginal: 'Sending original file ({size}).',
+    mediaLoading: 'Loading media…',
+    mediaLoadError: 'Could not load media.',
+    mediaKbHintImage: 'Esc close • ←/→ next • Wheel or +/- zoom • Drag/pinch to pan/zoom • 0 reset',
+    mediaKbHintVideo: 'Esc close • ←/→ next • K/Space play/pause',
   }
 };
 let STRINGS = { ...DEFAULT_STRINGS };
@@ -4090,8 +4156,11 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
 
+  let currentMsg = null;
+
   function setMedia(msg) {
     if (!msg) return;
+    currentMsg = msg;
     // Uploaded files are stored as "/file <id>", so resolve to a real URL first.
     const ref = parseFileRef(msg.content, msg.msg_type);
     const u = (ref?.url || msg.content || '').trim();
@@ -4106,8 +4175,30 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
     const popupEl = overlay.querySelector('.media-popup');
     if (!contentEl || !controlsEl) return;
     contentEl.innerHTML = '';
+    controlsEl.classList.remove('media-popup-image-ui');
+    controlsEl.style.opacity = '';
     if (popupEl) popupEl.classList.toggle('media-popup--video', k === 'video');
     if (imageOverlayEl) imageOverlayEl.style.display = k === 'video' ? 'none' : '';
+
+    const statusEl = document.createElement('div');
+    statusEl.className = 'media-popup-status';
+    statusEl.textContent = t('mediaLoading');
+    contentEl.appendChild(statusEl);
+
+    const setStatus = (text, isError = false) => {
+      statusEl.textContent = text || '';
+      statusEl.classList.toggle('media-popup-status--error', !!isError);
+      statusEl.style.display = text ? '' : 'none';
+    };
+
+    const clearImageHandlers = () => {
+      overlay._imageShowUI = null;
+      overlay._imageHideUI = null;
+      overlay._imageZoomBy = null;
+      overlay._imagePanBy = null;
+      overlay._imageReset = null;
+    };
+
     if (k === 'video') {
       const steps = [5, 10, 15];
       const stepBtns = steps.map(s => `<button type="button" class="media-popup-step" data-sec="${s}" title="Back ${s}s" aria-label="Back ${s}s"><span class="icon icon-sm">${ICON_REWIND}</span><span class="media-popup-step-sec">${s}</span></button>`).join('');
@@ -4126,6 +4217,7 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
           <span class="media-popup-step-group">${stepFwd}</span>
           <button type="button" class="media-popup-next" ${!nextId ? 'disabled' : ''} data-msg-id="${nextId}" title="Next" aria-label="Next"><span class="icon icon-sm">${ICON_NEXT}</span></button>
           <a href="${safeUrl(u)}" download class="media-popup-download" title="Download" aria-label="Download"><span class="icon icon-sm">${ICON_DOWNLOAD}</span></a>
+          <span class="media-popup-kb-hint">${escapeHtml(t('mediaKbHintVideo'))}</span>
         </div>
       `;
       overlay.querySelector('.media-popup-prev')?.addEventListener('click', () => { if (prev) setMedia(prev); });
@@ -4146,6 +4238,8 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
           [...(row.querySelectorAll('.media-popup-step-fwd'))].forEach(btn => btn.addEventListener('click', () => { vid.currentTime = Math.min(vid.duration, vid.currentTime + parseInt(btn.dataset.sec, 10)); }));
         }
       });
+      vid.addEventListener('loadeddata', () => setStatus(''));
+      vid.addEventListener('error', () => setStatus(t('mediaLoadError'), true));
       vid.addEventListener('play', () => {
         const b = overlay.querySelector('.media-popup-play');
         const icon = b?.querySelector('.media-popup-play-icon');
@@ -4158,14 +4252,14 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
         if (icon) icon.innerHTML = ICON_PLAY;
         if (b) b.setAttribute('aria-label', 'Play');
       });
-      overlay._imageShowUI = null;
-      overlay._imageHideUI = null;
+      clearImageHandlers();
     } else {
       controlsEl.innerHTML = `
         <div class="media-popup-image-ui media-popup-controls-row" role="toolbar">
           <button type="button" class="media-popup-prev" ${!prevId ? 'disabled' : ''} data-msg-id="${prevId}" title="Previous" aria-label="Previous"><span class="icon icon-sm">${ICON_PREV}</span></button>
           <button type="button" class="media-popup-next" ${!nextId ? 'disabled' : ''} data-msg-id="${nextId}" title="Next" aria-label="Next"><span class="icon icon-sm">${ICON_NEXT}</span></button>
           <a href="${safeUrl(u)}" download class="media-popup-download" title="Download" aria-label="Download"><span class="icon icon-sm">${ICON_DOWNLOAD}</span></a>
+          <span class="media-popup-kb-hint">${escapeHtml(t('mediaKbHintImage'))}</span>
         </div>
       `;
       controlsEl.classList.add('media-popup-image-ui');
@@ -4176,8 +4270,63 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
       img.alt = '';
       contentEl.appendChild(img);
       let scale = 1;
+      let tx = 0;
+      let ty = 0;
+      let baseW = 0;
+      let baseH = 0;
       let uiTimer = null;
-      const isTouch = 'ontouchstart' in window;
+      let dragging = false;
+      let lastX = 0;
+      let lastY = 0;
+      const pointers = new Map();
+      let pinchStartDist = 0;
+      let pinchStartScale = 1;
+
+      function measureBase() {
+        const r = img.getBoundingClientRect();
+        baseW = r.width || baseW;
+        baseH = r.height || baseH;
+      }
+      function clampPan() {
+        if (!contentEl) return;
+        const maxX = Math.max(0, (baseW * scale - contentEl.clientWidth) / 2);
+        const maxY = Math.max(0, (baseH * scale - contentEl.clientHeight) / 2);
+        tx = Math.max(-maxX, Math.min(maxX, tx));
+        ty = Math.max(-maxY, Math.min(maxY, ty));
+      }
+      function updateTransform() {
+        clampPan();
+        img.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+        img.style.cursor = scale > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-in';
+      }
+      function setScale(next, centerX, centerY) {
+        const prevScale = scale;
+        scale = Math.max(1, Math.min(5, next));
+        if (scale === prevScale) return;
+        if (typeof centerX === 'number' && typeof centerY === 'number') {
+          const rect = contentEl.getBoundingClientRect();
+          const cx = centerX - rect.left - rect.width / 2;
+          const cy = centerY - rect.top - rect.height / 2;
+          const ratio = scale / prevScale;
+          tx = (tx - cx) * ratio + cx;
+          ty = (ty - cy) * ratio + cy;
+        }
+        updateTransform();
+      }
+      function zoomBy(delta) {
+        setScale(scale + delta);
+      }
+      function panBy(dx, dy) {
+        tx += dx;
+        ty += dy;
+        updateTransform();
+      }
+      function resetView() {
+        scale = 1;
+        tx = 0;
+        ty = 0;
+        updateTransform();
+      }
       function showUI() {
         controlsEl.style.opacity = '1';
         if (uiTimer) clearTimeout(uiTimer);
@@ -4189,9 +4338,74 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
       }
       overlay._imageShowUI = showUI;
       overlay._imageHideUI = hideUI;
+      overlay._imageZoomBy = zoomBy;
+      overlay._imagePanBy = panBy;
+      overlay._imageReset = resetView;
       overlay.querySelector('.media-popup-image-overlay')?.addEventListener('click', showUI);
       contentEl.addEventListener('click', showUI);
-      contentEl.addEventListener('wheel', (e) => { e.preventDefault(); scale = Math.max(0.25, Math.min(4, scale + (e.deltaY > 0 ? -0.1 : 0.1))); img.style.transform = `scale(${scale})`; });
+      contentEl.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        setScale(scale + (e.deltaY > 0 ? -0.12 : 0.12), e.clientX, e.clientY);
+      }, { passive: false });
+      img.style.touchAction = 'none';
+      img.addEventListener('load', () => {
+        setStatus('');
+        requestAnimationFrame(() => {
+          measureBase();
+          resetView();
+          showUI();
+        });
+      });
+      img.addEventListener('error', () => setStatus(t('mediaLoadError'), true));
+      img.addEventListener('pointerdown', (e) => {
+        showUI();
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size === 1) {
+          dragging = scale > 1;
+          lastX = e.clientX;
+          lastY = e.clientY;
+          if (dragging) img.setPointerCapture?.(e.pointerId);
+        } else if (pointers.size === 2) {
+          const arr = [...pointers.values()];
+          pinchStartDist = Math.hypot(arr[0].x - arr[1].x, arr[0].y - arr[1].y) || 1;
+          pinchStartScale = scale;
+          dragging = false;
+        }
+        updateTransform();
+      });
+      img.addEventListener('pointermove', (e) => {
+        if (!pointers.has(e.pointerId)) return;
+        pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.size === 2) {
+          const arr = [...pointers.values()];
+          const d = Math.hypot(arr[0].x - arr[1].x, arr[0].y - arr[1].y) || 1;
+          const centerX = (arr[0].x + arr[1].x) / 2;
+          const centerY = (arr[0].y + arr[1].y) / 2;
+          setScale(pinchStartScale * (d / pinchStartDist), centerX, centerY);
+          return;
+        }
+        if (!dragging) return;
+        const dx = e.clientX - lastX;
+        const dy = e.clientY - lastY;
+        lastX = e.clientX;
+        lastY = e.clientY;
+        panBy(dx, dy);
+      });
+      const endPointer = (e) => {
+        pointers.delete(e.pointerId);
+        if (pointers.size < 2) pinchStartDist = 0;
+        if (pointers.size === 0) {
+          dragging = false;
+          updateTransform();
+        }
+      };
+      img.addEventListener('pointerup', endPointer);
+      img.addEventListener('pointercancel', endPointer);
+      img.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        if (scale > 1.05) resetView();
+        else setScale(2, e.clientX, e.clientY);
+      });
       overlay.querySelector('.media-popup-prev')?.addEventListener('click', () => { if (prev) setMedia(prev); });
       overlay.querySelector('.media-popup-next')?.addEventListener('click', () => { if (next) setMedia(next); });
     }
@@ -4214,10 +4428,40 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
   };
   const onKey = (e) => {
     if (e.key === 'Escape') close();
+    if (e.key === 'ArrowLeft') {
+      const prevBtn = overlay.querySelector('.media-popup-prev');
+      if (prevBtn && !prevBtn.disabled) prevBtn.click();
+      return;
+    }
+    if (e.key === 'ArrowRight') {
+      const nextBtn = overlay.querySelector('.media-popup-next');
+      if (nextBtn && !nextBtn.disabled) nextBtn.click();
+      return;
+    }
     if (e.key === ' ') e.preventDefault();
     if (e.key === 'k' || e.key === 'K') {
       const v = overlay.querySelector('.media-popup-video');
       if (v) { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+    }
+    if (e.key === '+' || e.key === '=' || e.key === 'NumpadAdd') {
+      overlay._imageZoomBy?.(0.15);
+      return;
+    }
+    if (e.key === '-' || e.key === '_' || e.key === 'NumpadSubtract') {
+      overlay._imageZoomBy?.(-0.15);
+      return;
+    }
+    if (e.key === '0') {
+      overlay._imageReset?.();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      overlay._imagePanBy?.(0, 35);
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      overlay._imagePanBy?.(0, -35);
+      return;
     }
   };
   overlay.querySelector('.media-popup-close')?.addEventListener('click', close);
