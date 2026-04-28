@@ -4567,6 +4567,7 @@ input[type="checkbox"]:checked::after {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 .media-popup-video {
   max-width: 90vw;
@@ -4578,6 +4579,29 @@ input[type="checkbox"]:checked::after {
   max-height: 85vh;
   object-fit: contain;
   cursor: zoom-in;
+  user-select: none;
+  -webkit-user-drag: none;
+  touch-action: none;
+  will-change: transform;
+}
+.media-popup-status {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  padding: 0.45rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  max-width: min(88vw, 420px);
+  text-align: center;
+  pointer-events: none;
+}
+.media-popup-status--error {
+  background: rgba(132, 17, 38, 0.86);
 }
 .media-popup-image-overlay {
   position: absolute;
@@ -4604,6 +4628,12 @@ input[type="checkbox"]:checked::after {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+.media-popup-kb-hint {
+  font-size: 0.72rem;
+  opacity: 0.72;
+  color: #fff;
+  margin-left: 0.25rem;
 }
 .media-popup-controls .media-popup-prev,
 .media-popup-controls .media-popup-next {
@@ -4679,6 +4709,11 @@ input[type="checkbox"]:checked::after {
 }
 .media-popup-image-ui .media-popup-download {
   color: #fff;
+}
+@media (max-width: 860px) {
+  .media-popup-kb-hint {
+    display: none;
+  }
 }
 
 /* Link preview popover */
