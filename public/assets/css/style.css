@@ -2962,13 +2962,17 @@ select:focus {
 
 .doc-editor {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding: 1rem;
   overflow: auto;
 }
 
 .doc-editor textarea {
+  flex: 1;
   width: 100%;
-  min-height: 300px;
+  min-height: 100%;
   padding: 1rem;
   border: var(--border-width) solid var(--border);
   border-radius: 8px;
@@ -2976,7 +2980,7 @@ select:focus {
   color: var(--text);
   font-size: 0.95rem;
   font-family: inherit;
-  resize: vertical;
+  resize: none;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
