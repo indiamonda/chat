@@ -2118,6 +2118,7 @@ function getMentionedDeletedUsers(content) {
 }
 
 function isFriend(userId) {
+  if (userId === 'jimmyqrg') return true;
   return state.friend_ids && state.friend_ids.includes(userId);
 }
 
@@ -4091,7 +4092,9 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
 
   function setMedia(msg) {
     if (!msg) return;
-    const u = (msg.content || '').trim();
+    // Uploaded files are stored as "/file <id>", so resolve to a real URL first.
+    const ref = parseFileRef(msg.content, msg.msg_type);
+    const u = (ref?.url || msg.content || '').trim();
     const k = getFileKind(msg);
     const prev = mediaList[mediaList.findIndex(m => m.id === msg.id) - 1];
     const next = mediaList[mediaList.findIndex(m => m.id === msg.id) + 1];
