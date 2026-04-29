@@ -65,7 +65,7 @@ router.get('/:id/profile', requireAuth, (req, res) => {
 router.patch('/profile', requireAuth, upload.single('avatar'), (req, res) => {
   const user = getCurrentUser(req);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
-  const { display_name, website, profile_links, description, chatbox_style } = req.body || {};
+  const { display_name, website, profile_links, description, chatbox_style, email } = req.body || {};
   let avatar_url = user.avatar_url;
   if (req.file) avatar_url = `/uploads/${req.file.filename}`;
   const name = typeof display_name === 'string' && display_name.trim() ? display_name.trim().slice(0, 64) : null;
@@ -73,7 +73,26 @@ router.patch('/profile', requireAuth, upload.single('avatar'), (req, res) => {
   const links = profile_links != null ? (typeof profile_links === 'string' ? profile_links : JSON.stringify(profile_links)) : null;
   const desc = description !== undefined ? (typeof description === 'string' ? description.trim().slice(0, 1024) : null) : undefined;
   const cbStyle = typeof chatbox_style === 'string' ? chatbox_style.trim().slice(0, 64) : null;
-  if (name !== null || req.file || web !== null || links !== null || desc !== undefined || cbStyle !== null) {
+  // Email is opt-in: only treated as an update when the client explicitly sends
+  // the field. An empty string clears it; anything else has to look like an
+  // email and not collide with another account. Existing chat accounts that
+  // pre-date the email column have NULL stored here, so this lets the games-
+  // site profile UI fill in the gap and unblock email-based sign-in.
+  let mail = undefined;
+  if (typeof email === 'string') {
+    const trimmed = email.trim();
+    if (trimmed === '') {
+      mail = null;
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return res.status(400).json({ error: 'Valid email required' });
+    } else {
+      const lower = trimmed.toLowerCase().slice(0, 255);
+      const existing = db.prepare('SELECT id FROM users WHERE email IS NOT NULL AND LOWER(email) = LOWER(?) AND id != ?').get(lower, user.id);
+      if (existing) return res.status(400).json({ error: 'Email already registered to another account' });
+      mail = lower;
+    }
+  }
+  if (name !== null || req.file || web !== null || links !== null || desc !== undefined || cbStyle !== null || mail !== undefined) {
     const updates = [];
     const values = [];
     if (name !== null) { updates.push('display_name = ?'); values.push(name); }
@@ -82,12 +101,13 @@ router.patch('/profile', requireAuth, upload.single('avatar'), (req, res) => {
     if (links !== null) { updates.push('profile_links = ?'); values.push(links); }
     if (desc !== undefined) { updates.push('description = ?'); values.push(desc); }
     if (cbStyle !== null) { updates.push('chatbox_style = ?'); values.push(cbStyle); }
+    if (mail !== undefined) { updates.push('email = ?'); values.push(mail); }
     if (updates.length) {
       values.push(user.id);
       db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
     }
   }
-  const updated = db.prepare('SELECT id, username, display_name, avatar_url, chatbox_style, website, profile_links, description, is_allowed FROM users WHERE id = ?').get(user.id);
+  const updated = db.prepare('SELECT id, username, display_name, avatar_url, chatbox_style, website, profile_links, description, email, is_allowed FROM users WHERE id = ?').get(user.id);
   const out = { ...updated, is_allowed: !!updated.is_allowed };
   if (out.profile_links && typeof out.profile_links === 'string') out.profile_links = JSON.parse(out.profile_links);
   res.json({ user: out });
