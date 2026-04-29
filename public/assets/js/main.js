@@ -5729,6 +5729,26 @@ async function loadAdminTimeouts() {
 
 function bindAdmin() {
   const loadingHtml = `<p class="admin-section-desc admin-loading"><span class="admin-loading-spinner" aria-hidden="true"></span> ${t('loading')}</p>`;
+  const getAdminScrollContainer = () =>
+    document.querySelector('.main-content-body') ||
+    document.querySelector('.admin-main') ||
+    document.querySelector('.app-main');
+  const rerenderAdminKeepScroll = () => {
+    const sc = getAdminScrollContainer();
+    const top = sc ? sc.scrollTop : window.scrollY;
+    const left = sc ? sc.scrollLeft : window.scrollX;
+    render();
+    bindAdmin();
+    requestAnimationFrame(() => {
+      const sc2 = getAdminScrollContainer();
+      if (sc2) {
+        sc2.scrollTop = top;
+        sc2.scrollLeft = left;
+      } else {
+        window.scrollTo(left, top);
+      }
+    });
+  };
   const recalledEl = document.getElementById('admin-recalled-list');
   const timeoutEl = document.getElementById('admin-timeout-list');
   const timeoutElTab = document.getElementById('admin-timeout-list-tab');
@@ -5795,8 +5815,7 @@ function bindAdmin() {
       try {
         await apiPost('/api/admin/users/' + userId + '/allowed', { allowed });
         await loadUsers();
-          render();
-          bindAdmin();
+          rerenderAdminKeepScroll();
       } catch (err) { showToast(err.message); }
       }
     }
@@ -5810,8 +5829,7 @@ function bindAdmin() {
     try {
       await apiPatch('/api/admin/users/' + userId + '/permissions', { [perm]: value });
       await loadUsers();
-      render();
-      bindAdmin();
+      rerenderAdminKeepScroll();
     } catch (err) { showToast(err.message); }
   });
   document.getElementById('admin-inbox-send')?.addEventListener('click', async () => {
