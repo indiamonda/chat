@@ -4607,7 +4607,7 @@ input[type="checkbox"]:checked::after {
   position: absolute;
   inset: 0;
   background: transparent;
-  pointer-events: auto;
+  pointer-events: none;
   cursor: pointer;
 }
 .media-popup-controls {
