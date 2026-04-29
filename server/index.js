@@ -516,6 +516,11 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
   const user = getCurrentUser(req);
   if (!user) return res.status(401).json({ error: 'Not authenticated' });
   const { roomType, roomId } = req.params;
+  if (roomType === 'group') {
+    if (isBlacklisted(user.id)) return res.status(403).json({ error: 'Access denied. You are blacklisted from group chat.' });
+    if (!['free_chat', 'support', 'voice_chat'].includes(roomId)) return res.status(400).json({ error: 'Invalid panel' });
+    if (isTimedOut(user.id)) return res.status(403).json({ error: 'You are timed out from group chat' });
+  }
   const { content, msg_type, reply_to_id } = req.body || {};
   let finalContent = typeof content === 'string' ? content : '';
   let msgType = (msg_type || 'text').slice(0, 32);
