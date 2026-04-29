@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { requireAuth, getCurrentUser, canEditDocs } from '../auth.js';
 import { db } from '../db.js';
+import { recordAuditLog } from '../audit.js';
 
 const router = Router();
 const EDITABLE_DOCS = ['problem_solving', 'rules', 'announcements'];
@@ -98,6 +99,7 @@ export async function syncAnnouncementsFromPortal(editorId = 'system') {
   const created = Date.now();
   db.prepare('INSERT INTO doc_versions (id, doc_key, content, editor_id, created_at) VALUES (?, ?, ?, ?, ?)')
     .run(id, 'announcements', updatedContent, editorId, created);
+  recordAuditLog('docs.sync_announcements', editorId, null, { new_items: newItems });
   return { synced: true, version_id: id, created_at: created, newItems };
 }
 
@@ -137,6 +139,7 @@ router.put('/:docKey', requireAuth, (req, res) => {
   const now = Date.now();
   db.prepare('INSERT INTO doc_versions (id, doc_key, content, editor_id, created_at) VALUES (?, ?, ?, ?, ?)')
     .run(id, docKey, typeof content === 'string' ? content : '', user.id, now);
+  recordAuditLog('docs.edit', user.id, null, { doc_key: docKey, version_id: id, support_message_id: support_message_id || null });
   if (docKey === 'problem_solving' && support_message_id) {
     const msg = db.prepare('SELECT id, sender_id FROM messages WHERE id = ? AND room_type = ? AND room_id = ?').get(support_message_id, 'group', 'support');
     if (msg && msg.sender_id !== user.id) {

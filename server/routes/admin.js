@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { requireAuth, getCurrentUser, isAllowed, canManageUsers, canKick, canDeleteMessages, canTimeout, canPinMessages } from '../auth.js';
 import { db, GROUP_ID } from '../db.js';
+import { recordAuditLog, listAuditLogs } from '../audit.js';
 
 const router = Router();
 
@@ -31,6 +32,7 @@ router.post('/blacklist', requireAuth, (req, res) => {
   if (!target) return res.status(404).json({ error: 'User not found' });
   db.prepare('INSERT OR REPLACE INTO blacklist (user_id, created_by, created_at) VALUES (?, ?, ?)')
     .run(user_id, admin.id, Date.now());
+  recordAuditLog('blacklist.add', admin.id, user_id);
   res.json({ ok: true });
 });
 
@@ -39,6 +41,7 @@ router.delete('/blacklist/:userId', requireAuth, (req, res) => {
   if (admin === undefined) return;
   if (!canKick(admin)) return res.status(403).json({ error: 'Not allowed' });
   db.prepare('DELETE FROM blacklist WHERE user_id = ?').run(req.params.userId);
+  recordAuditLog('blacklist.remove', admin.id, req.params.userId);
   res.json({ ok: true });
 });
 
@@ -56,6 +59,7 @@ router.post('/remove-account', requireAuth, (req, res) => {
   db.prepare('UPDATE users SET deleted_at = ? WHERE id = ?').run(Date.now(), user_id);
   const io = req.app.get('io');
   if (io) io.to(`user:${user_id}`).emit('account_removed', {});
+  recordAuditLog('account.soft_delete', admin.id, user_id);
   res.json({ ok: true });
 });
 
@@ -70,6 +74,7 @@ router.post('/restore-account', requireAuth, (req, res) => {
   if (!target) return res.status(404).json({ error: 'User not found' });
   if (!target.deleted_at) return res.status(400).json({ error: 'Account is not removed' });
   db.prepare('UPDATE users SET deleted_at = NULL WHERE id = ?').run(user_id);
+  recordAuditLog('account.restore', admin.id, user_id);
   res.json({ ok: true });
 });
 
@@ -104,6 +109,7 @@ router.post('/delete-account-permanently', requireAuth, (req, res) => {
   db.prepare('DELETE FROM group_timeouts WHERE user_id = ?').run(user_id);
   db.prepare('DELETE FROM doc_versions WHERE editor_id = ?').run(user_id);
   db.prepare('DELETE FROM users WHERE id = ?').run(user_id);
+  recordAuditLog('account.delete_permanent', admin.id, user_id, { delete_group_messages: delGroupMsgs });
   res.json({ ok: true });
 });
 
@@ -116,6 +122,7 @@ router.post('/messages/:id/delete', requireAuth, (req, res) => {
   if (!msg) return res.status(404).json({ error: 'Message not found' });
   if (msg.sender_id === 'jimmyqrg') return res.status(403).json({ error: 'Cannot delete jimmyqrg\'s messages' });
   db.prepare('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE id = ?').run('deleted', req.params.id);
+  recordAuditLog('message.delete', admin.id, msg.sender_id, { message_id: req.params.id });
   res.json({ ok: true });
 });
 
@@ -129,6 +136,7 @@ router.post('/users/:id/allowed', requireAuth, (req, res) => {
   const { allowed } = req.body || {};
   const value = !!allowed ? 1 : 0;
   db.prepare('UPDATE users SET is_allowed = ? WHERE id = ?').run(value, id);
+  recordAuditLog('admin.allowed_toggle', admin.id, id, { allowed: !!value });
   res.json({ ok: true });
 });
 
@@ -156,6 +164,11 @@ router.patch('/users/:id/permissions', requireAuth, (req, res) => {
   if (setCols.length === 0) return res.status(400).json({ error: 'No permissions to update' });
   values.push(id);
   db.prepare(`UPDATE users SET ${setCols.join(', ')} WHERE id = ?`).run(...values);
+  const changed = {};
+  for (const key of PERM_KEYS) {
+    if (updates[key] !== undefined) changed[key] = !!updates[key];
+  }
+  recordAuditLog('admin.permissions_update', admin.id, id, { changed });
   res.json({ ok: true });
 });
 
@@ -207,6 +220,12 @@ router.post('/timeout', requireAuth, (req, res) => {
     INSERT INTO group_timeouts (id, user_id, room_type, room_id, expires_at, locked_release, created_at, created_by)
     VALUES (?, ?, 'group', ?, ?, ?, ?, ?)
   `).run(id, user_id, GROUP_ID, expiresAt, locked, Date.now(), admin.id);
+  recordAuditLog('timeout.create', admin.id, user_id, {
+    duration: duration || 'forever',
+    expires_at: expiresAt || null,
+    locked_release: !!locked,
+    timeout_id: id,
+  });
   res.json({ ok: true, timeout_id: id });
 });
 
@@ -219,7 +238,15 @@ router.post('/timeout/:id/release', requireAuth, (req, res) => {
   if (!row) return res.status(404).json({ error: 'Timeout not found or already released' });
   if (row.locked_release && admin.id !== 'jimmyqrg') return res.status(403).json({ error: 'Only jimmyqrg can release this timeout' });
   db.prepare('UPDATE group_timeouts SET released_at = ?, released_by = ? WHERE id = ?').run(Date.now(), admin.id, row.id);
+  recordAuditLog('timeout.release', admin.id, row.user_id, { timeout_id: row.id, locked_release: !!row.locked_release });
   res.json({ ok: true });
+});
+
+router.get('/audit', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  const rows = listAuditLogs(req.query.limit);
+  res.json({ logs: rows });
 });
 
 // List active timeouts

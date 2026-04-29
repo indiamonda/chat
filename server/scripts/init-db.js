@@ -197,6 +197,19 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id);
   CREATE INDEX IF NOT EXISTS idx_auth_tokens_expires ON auth_tokens(expires_at);
+
+  CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    action TEXT NOT NULL,
+    actor_id TEXT,
+    target_id TEXT,
+    details TEXT,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (actor_id) REFERENCES users(id),
+    FOREIGN KEY (target_id) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id, created_at DESC);
 `);
 
 try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch (_) {}

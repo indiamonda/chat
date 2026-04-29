@@ -158,6 +158,24 @@ try {
   `);
 } catch (_) {}
 
+// Admin audit log
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      action TEXT NOT NULL,
+      actor_id TEXT,
+      target_id TEXT,
+      details TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (actor_id) REFERENCES users(id),
+      FOREIGN KEY (target_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id, created_at DESC);
+  `);
+} catch (_) {}
+
 const USERNAME_RE = /^[a-z0-9]+$/;
 export function validateUsername(username) {
   return typeof username === 'string' && USERNAME_RE.test(username) && username.length >= 1 && username.length <= 32;

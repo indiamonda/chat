@@ -25,6 +25,7 @@ let state = {
   replyTo: null,
   inbox: [],
   friend_ids: [],
+  pending_friend_ids: [],
   blocked_ids: [],
   blacklisted: false,
   adminBlacklistedIds: [],
@@ -53,6 +54,7 @@ let state = {
   collections: [],
   _hasMoreMessages: {},
   _loadingOlderMessages: {},
+  _messageRenderLimitByRoom: {},
   _chatSidePanelOpen: false,
   _chatSidePanelTab: 'users',
   _chatSearchQuery: '',
@@ -85,6 +87,14 @@ if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
 }
 
 if (typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('lang', state.language || 'en');
+if (typeof window !== 'undefined' && !window._pendingFileUnloadGuardBound) {
+  window._pendingFileUnloadGuardBound = true;
+  window.addEventListener('beforeunload', (e) => {
+    if (!state._pendingFile) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+}
 
 /** Toast notifications (replacement for alert). type: 'error' | 'success' | 'info' */
 function showToast(message, type = 'error') {
@@ -124,7 +134,7 @@ function isHtmlFile(file) {
   return /\.(html?|xhtml)$/.test(name);
 }
 
-/** True if the file is a ZIP archive by extension or mime. Server allows up to 3 GB. */
+/** True if the file is a ZIP archive by extension or mime. Server allows up to 2 GB. */
 function isZipFile(file) {
   if (!file) return false;
   const t = (file.type || '').toLowerCase();
@@ -226,6 +236,58 @@ function showCompressingOverlay() {
     },
     close() { overlay.remove(); },
   };
+}
+
+/** Upload with retry. Keeps progress usable across retries for large files. */
+function uploadFormWithRetry({ uploadPath, form, maxRetries = 2, onProgress }) {
+  return new Promise((resolve, reject) => {
+    let attempt = 0;
+    const totalAttempts = maxRetries + 1;
+    const send = () => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', uploadPath);
+      xhr.withCredentials = true;
+      xhr.upload.addEventListener('progress', (e) => {
+        if (!e.lengthComputable) return;
+        // Represent attempt progress over whole retry budget, so users see meaningful continuation.
+        const unit = 1 / totalAttempts;
+        const pctOverall = Math.min(1, (attempt * unit) + ((e.loaded / e.total) * unit));
+        onProgress?.(pctOverall);
+      });
+      xhr.addEventListener('load', () => {
+        let data;
+        try { data = JSON.parse(xhr.responseText); } catch { data = {}; }
+        if (xhr.status >= 200 && xhr.status < 300 && !data?.error) {
+          onProgress?.(1);
+          resolve(data);
+          return;
+        }
+        const retryableStatus = xhr.status === 0 || xhr.status >= 500 || xhr.status === 429;
+        if (retryableStatus && attempt < maxRetries) {
+          attempt += 1;
+          showToast((t('uploadRetrying') || 'Upload failed. Retrying ({attempt}/{max})…')
+            .replace('{attempt}', String(attempt + 1))
+            .replace('{max}', String(totalAttempts)), 'info');
+          setTimeout(send, 450 * attempt);
+          return;
+        }
+        reject(new Error(data?.error || t('uploadFailedRetry') || 'Upload failed after retries. Please try again.'));
+      });
+      xhr.addEventListener('error', () => {
+        if (attempt < maxRetries) {
+          attempt += 1;
+          showToast((t('uploadRetrying') || 'Upload failed. Retrying ({attempt}/{max})…')
+            .replace('{attempt}', String(attempt + 1))
+            .replace('{max}', String(totalAttempts)), 'info');
+          setTimeout(send, 450 * attempt);
+          return;
+        }
+        reject(new Error(t('uploadFailedRetry') || 'Upload failed after retries. Please try again.'));
+      });
+      xhr.send(form);
+    };
+    send();
+  });
 }
 
 /** Modal shown when compression fails; resolves true to send original, false to cancel upload. */
@@ -413,6 +475,7 @@ const DEFAULT_STRINGS = {
     blocked: 'Blocked',
     sendFriendRequest: 'Send friend request',
     requestSent: 'Request sent',
+    requestPending: 'Request pending',
     sendMessage: 'Send message',
     notifications: 'Notifications',
     notificationsDesc: 'Desktop notifications for messages and mail.',
@@ -528,6 +591,14 @@ const DEFAULT_STRINGS = {
     fileCompressSendOriginal: 'Send original',
     fileCompressCancel: 'Cancel upload',
     fileCompressFallbackUsingOriginal: 'Sending original file ({size}).',
+    uploadRetrying: 'Upload failed. Retrying ({attempt}/{max})…',
+    uploadFailedRetry: 'Upload failed after retries. Please try again.',
+    leaveWithPendingFile: 'You have a selected file that has not been sent yet. Leave anyway?',
+    showEarlierMessages: 'Show {count} earlier loaded messages',
+    adminAuditLog: 'Audit log',
+    adminAuditBy: 'By',
+    adminAuditTarget: 'Target',
+    adminAuditNoItems: 'No audit items yet.',
     mediaLoading: 'Loading media…',
     mediaLoadError: 'Could not load media.',
     mediaKbHintImage: 'Esc close • ←/→ next • Wheel or +/- zoom • Drag/pinch to pan/zoom • 0 reset',
@@ -1805,7 +1876,15 @@ function isMobile() {
   return typeof window !== 'undefined' && (('ontouchstart' in window) || (window.matchMedia && window.matchMedia('(max-width: 768px)').matches));
 }
 
+function hasPendingUploadSelection() {
+  return !!state._pendingFile;
+}
+
 function navigateTo(path) {
+  if (hasPendingUploadSelection()) {
+    const ok = window.confirm(t('leaveWithPendingFile') || 'You have a selected file that has not been sent yet. Leave anyway?');
+    if (!ok) return;
+  }
   const full = path.startsWith('http') ? path : (path.startsWith('/') ? path : '/' + path);
   if (full.startsWith('http') && new URL(full).origin !== window.location.origin) {
     window.location.href = full;
@@ -1884,6 +1963,8 @@ export async function loadGroup() {
 
 export async function loadMessages(roomType, roomId) {
   const key = roomKey(roomType, roomId);
+  if (!state._messageRenderLimitByRoom) state._messageRenderLimitByRoom = {};
+  state._messageRenderLimitByRoom[key] = MESSAGE_RENDER_WINDOW;
   loadPinnedMessage(roomType, roomId);
   return loadMessagesPage(roomType, roomId, { reset: true, key });
 }
@@ -1982,9 +2063,23 @@ export async function loadFriends() {
   try {
     const { friend_ids } = await apiGet('/api/friends');
     state.friend_ids = friend_ids || [];
+    // Keep outgoing friend-request status in sync with friend list refreshes.
+    await loadPendingFriendRequests();
     return state.friend_ids;
   } catch {
     state.friend_ids = [];
+    state.pending_friend_ids = [];
+    return [];
+  }
+}
+
+export async function loadPendingFriendRequests() {
+  try {
+    const { to_user_ids } = await apiGet('/api/friends/pending');
+    state.pending_friend_ids = to_user_ids || [];
+    return state.pending_friend_ids;
+  } catch {
+    state.pending_friend_ids = [];
     return [];
   }
 }
@@ -2186,6 +2281,10 @@ function getMentionedDeletedUsers(content) {
 function isFriend(userId) {
   if (userId === 'jimmyqrg') return true;
   return state.friend_ids && state.friend_ids.includes(userId);
+}
+
+function isFriendRequestPending(userId) {
+  return !!(userId && state.pending_friend_ids && state.pending_friend_ids.includes(userId));
 }
 
 export function addMessageLocal(msg) {
@@ -3592,14 +3691,28 @@ function renderFileBlock(msg, mediaContext) {
 
 const ICON_DOWNLOAD = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>';
 const ICON_FILE = '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>';
+const MESSAGE_RENDER_WINDOW = 250;
+const MESSAGE_RENDER_WINDOW_STEP = 250;
 
 function renderMessagesWithTimestamps(list, roomType, roomId) {
+  const key = roomKey(roomType, roomId);
+  const fullList = list || [];
+  const existingLimit = state._messageRenderLimitByRoom?.[key];
+  const limit = existingLimit || Math.min(MESSAGE_RENDER_WINDOW, fullList.length || MESSAGE_RENDER_WINDOW);
+  if (!state._messageRenderLimitByRoom) state._messageRenderLimitByRoom = {};
+  state._messageRenderLimitByRoom[key] = limit;
+  const hiddenCount = Math.max(0, fullList.length - limit);
+  const viewList = hiddenCount > 0 ? fullList.slice(hiddenCount) : fullList;
   let lastTs = null;
-  const mediaIds = getMediaMessageIds(list);
+  const mediaIds = getMediaMessageIds(viewList);
   const parts = [];
+  if (hiddenCount > 0) {
+    const label = (t('showEarlierMessages') || 'Show {count} earlier loaded messages').replace('{count}', String(hiddenCount));
+    parts.push(`<div class="message-virtualize-notice"><button type="button" class="btn-small message-virtualize-show-more" data-room-type="${escapeHtml(roomType)}" data-room-id="${escapeHtml(roomId)}">${escapeHtml(label)}</button></div>`);
+  }
   const todayStr = new Date().toDateString();
-  for (let i = 0; i < list.length; i++) {
-    const m = list[i];
+  for (let i = 0; i < viewList.length; i++) {
+    const m = viewList[i];
     const t = m.created_at || 0;
     const isToday = t && new Date(t).toDateString() === todayStr;
     const intervalMs = isToday ? TS_INTERVAL_MS : TS_INTERVAL_DAY_MS;
@@ -4052,6 +4165,7 @@ async function showProfileModal(userId) {
     const { profile } = await apiGet(`/api/users/${encodeURIComponent(userId)}/profile`);
     const isSelf = userId === state.user?.id;
     const friend = isFriend(userId);
+    const pendingFriend = isFriendRequestPending(userId);
     const blocked = isBlocked(userId);
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay profile-modal-overlay';
@@ -4068,7 +4182,7 @@ async function showProfileModal(userId) {
         </div>
         ${!isSelf ? `<div class="profile-modal-actions">
           <button type="button" class="btn-primary profile-btn-message"><span class="icon" aria-hidden="true">${ICON_CHAT_SM}</span>${t('sendMessage')}</button>
-          ${!friend ? `<button type="button" class="btn-secondary profile-btn-friend-request"><span class="icon" aria-hidden="true">${ICON_USER_PLUS_SM}</span>${t('sendFriendRequest')}</button>` : ''}
+          ${!friend ? `<button type="button" class="btn-secondary profile-btn-friend-request" ${pendingFriend ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_USER_PLUS_SM}</span>${pendingFriend ? t('requestPending') : t('sendFriendRequest')}</button>` : ''}
           <button type="button" class="btn-secondary profile-btn-block" data-blocked="${blocked}"><span class="icon" aria-hidden="true">${ICON_BAN_SM}</span>${blocked ? t('unblock') : t('block')}</button>
         </div>` : ''}
         </div>
@@ -4109,7 +4223,9 @@ async function showProfileModal(userId) {
       frBtn.addEventListener('click', async () => {
         try {
           await apiPost('/api/friends/request', { to_user_id: userId });
-          frBtn.textContent = t('requestSent');
+          if (!state.pending_friend_ids.includes(userId)) state.pending_friend_ids.push(userId);
+          await loadPendingFriendRequests();
+          frBtn.textContent = t('requestPending');
           frBtn.disabled = true;
         } catch (err) {
           showToast(err.message || 'Failed to send friend request');
@@ -4606,18 +4722,22 @@ function bindMain() {
       e.preventDefault();
       const userId = a.dataset.userId;
       const friend = a.dataset.friend === '1';
+      const pending = isFriendRequestPending(userId);
       const items = [
         { label: t('profile'), action: 'profile' },
         { label: t('chat'), action: 'chat' },
       ];
-      if (!friend) items.push({ label: t('sendFriendRequest'), action: 'friend-request' });
+      if (!friend) items.push({ label: pending ? t('requestPending') : t('sendFriendRequest'), action: 'friend-request', disabled: pending });
       items.push({ label: t('block'), action: 'block', danger: true });
       showContextMenu(e.clientX, e.clientY, items, async (action) => {
         if (action === 'profile') navigateTo(`/chat/${encodeURIComponent(userId)}?view=profile`);
         else if (action === 'chat') navigateTo(`/chat/${encodeURIComponent(userId)}`);
         else if (action === 'friend-request') {
+          if (pending) return;
           try {
             await apiPost('/api/friends/request', { to_user_id: userId });
+            if (!state.pending_friend_ids.includes(userId)) state.pending_friend_ids.push(userId);
+            await loadPendingFriendRequests();
             await loadFriends();
             render();
           } catch (err) { showToast(err.message || 'Failed to send friend request'); }
@@ -4868,6 +4988,18 @@ function bindMain() {
   });
 
   wrap?.addEventListener('click', (e) => {
+    const showMoreBtn = e.target.closest('.message-virtualize-show-more');
+    if (showMoreBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const rType = showMoreBtn.dataset.roomType || roomType;
+      const rId = showMoreBtn.dataset.roomId || roomId;
+      const key = roomKey(rType, rId);
+      const current = state._messageRenderLimitByRoom?.[key] || MESSAGE_RENDER_WINDOW;
+      state._messageRenderLimitByRoom[key] = current + MESSAGE_RENDER_WINDOW_STEP;
+      render();
+      return;
+    }
     const reactionChip = e.target.closest('.message-reaction-chip');
     if (reactionChip) {
       e.preventDefault();
@@ -5111,20 +5243,18 @@ function bindMain() {
         const pendingEl = document.getElementById('pending-file-indicator');
         if (pendingEl) pendingEl.style.display = 'none';
         if (progressEl) progressEl.style.display = '';
-
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', uploadPath);
-        xhr.withCredentials = true;
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable && progressBar && progressPct) {
-            const pct = Math.round((e.loaded / e.total) * 100);
-            progressBar.style.width = pct + '%';
-            progressPct.textContent = pct + '%';
-          }
-        });
-        xhr.addEventListener('load', () => {
-          let data;
-          try { data = JSON.parse(xhr.responseText); } catch { data = {}; }
+        uploadFormWithRetry({
+          uploadPath,
+          form,
+          maxRetries: 2,
+          onProgress: (p) => {
+            if (progressBar && progressPct) {
+              const pct = Math.round(Math.max(0, Math.min(1, p)) * 100);
+              progressBar.style.width = pct + '%';
+              progressPct.textContent = pct + '%';
+            }
+          },
+        }).then((data) => {
           if (data?.error) {
             showToast(data.error);
             if (data.error === 'NO SPAMMING!') {
@@ -5141,12 +5271,10 @@ function bindMain() {
           setState({ replyTo: null });
           if (roomType === 'dm') loadMessages('dm', roomId).then(render);
           done();
-        });
-        xhr.addEventListener('error', () => {
-          showToast('Upload failed');
+        }).catch((err) => {
+          showToast(err.message || t('uploadFailedRetry') || 'Upload failed after retries. Please try again.');
           done();
         });
-        xhr.send(form);
         return;
       }
       state.socket?.emit('message:send', { roomType, roomId, content: text, reply_to_id }, (res) => {
@@ -5283,7 +5411,7 @@ function bindMain() {
     form.append('msg_type', 'voice');
     if (reply_to_id) form.append('reply_to_id', reply_to_id);
     const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
-    fetch(path, { method: 'POST', credentials: 'include', body: form }).then((r) => r.json()).then((data) => {
+    uploadFormWithRetry({ uploadPath: path, form, maxRetries: 2 }).then((data) => {
       if (data?.error) {
         showToast(data.error);
         if (data.error === 'NO SPAMMING!') {
@@ -5295,7 +5423,7 @@ function bindMain() {
       if (data.message) addMessageLocal(data.message);
       setState({ replyTo: null });
       if (roomType === 'dm') loadMessages('dm', roomId).then(render);
-    }).catch(console.error);
+    }).catch((err) => showToast(err.message || t('uploadFailedRetry') || 'Upload failed after retries. Please try again.'));
   });
 
   document.getElementById('recording-cancel')?.addEventListener('click', () => {
@@ -5379,9 +5507,11 @@ function bindMain() {
       if (reply_to_id) form.append('reply_to_id', reply_to_id);
       const path = roomType === 'dm' ? `/api/conversations/${roomId}/messages` : `/api/rooms/${roomType}/${roomId}/messages`;
       state._sendingMessage = true;
-      fetch(path, { method: 'POST', credentials: 'include', body: form })
-        .then((r) => r.json())
-        .then((data) => {
+      uploadFormWithRetry({
+        uploadPath: path,
+        form,
+        maxRetries: 2,
+      }).then((data) => {
           if (data?.error) {
             showToast(data.error);
             if (data.error === 'NO SPAMMING!') {
@@ -5394,7 +5524,9 @@ function bindMain() {
           setState({ replyTo: null });
           if (roomType === 'dm') loadMessages('dm', roomId).then(render);
         })
-        .catch(console.error)
+        .catch((err) => {
+          showToast(err.message || t('uploadFailedRetry') || 'Upload failed after retries. Please try again.');
+        })
         .finally(() => { state._sendingMessage = false; });
     });
   }
@@ -5451,11 +5583,17 @@ function showContextMenu(x, y, items, onSelect) {
   menu.style.visibility = 'hidden';
   menu.style.left = x + 'px';
   menu.style.top = y + 'px';
-  items.forEach(({ label, action, danger }) => {
+  items.forEach(({ label, action, danger, disabled }) => {
     const btn = document.createElement('button');
     btn.textContent = label;
     if (danger) btn.classList.add('danger');
-    btn.addEventListener('click', () => { onSelect(action); menu.remove(); });
+    if (disabled) {
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      btn.style.cursor = 'not-allowed';
+    } else {
+      btn.addEventListener('click', () => { onSelect(action); menu.remove(); });
+    }
     menu.appendChild(btn);
   });
   document.body.appendChild(menu);
@@ -5671,6 +5809,10 @@ function renderAdminContent() {
                 </div>
               `}).join('')}
             </div>
+            <div class="admin-audit-section">
+              <h3 class="admin-section-title">${tx('adminAuditLog', 'Audit log')}</h3>
+              <div id="admin-audit-list" class="admin-audit-list"><p class="admin-section-desc admin-loading"><span class="admin-loading-spinner" aria-hidden="true"></span> ${t('loading')}</p></div>
+            </div>
           </div>
           ` : ''}
     </div>
@@ -5702,6 +5844,32 @@ async function loadAdminBlacklist() {
     const { blacklisted_ids } = await apiGet('/api/admin/blacklist');
     state.adminBlacklistedIds = blacklisted_ids || [];
   } catch (_) { state.adminBlacklistedIds = []; }
+}
+
+async function loadAdminAudit() {
+  const el = document.getElementById('admin-audit-list');
+  if (!el) return;
+  try {
+    const { logs } = await apiGet('/api/admin/audit?limit=120');
+    const items = logs || [];
+    el.innerHTML = items.length === 0
+      ? `<p class="admin-section-desc">${tx('adminAuditNoItems', 'No audit items yet.')}</p>`
+      : `<ul class="admin-audit-ul">${items.map((a) => {
+          const actor = escapeHtml(a.actor_display_name || a.actor_username || a.actor_id || 'system');
+          const target = escapeHtml(a.target_display_name || a.target_username || a.target_id || '-');
+          const details = a.details ? `<pre class="admin-audit-details">${escapeHtml(JSON.stringify(a.details, null, 2))}</pre>` : '';
+          return `<li class="admin-audit-item">
+            <div class="admin-audit-main">
+              <strong>${escapeHtml(a.action)}</strong>
+              <span class="admin-audit-time">${escapeHtml(formatTime(a.created_at))}</span>
+            </div>
+            <div class="admin-audit-meta">${tx('adminAuditBy', 'By')}: ${actor} · ${tx('adminAuditTarget', 'Target')}: ${target}</div>
+            ${details}
+          </li>`;
+        }).join('')}</ul>`;
+  } catch (err) {
+    el.innerHTML = `<p class="admin-section-desc">${t('adminFailedToLoad')}</p>`;
+  }
 }
 
 async function loadAdminTimeouts() {
@@ -5757,6 +5925,7 @@ function bindAdmin() {
   if (timeoutElTab) timeoutElTab.innerHTML = loadingHtml;
   loadAdminRecalled();
   loadAdminTimeouts();
+  loadAdminAudit();
 
   document.getElementById('admin-timeout-submit')?.addEventListener('click', async () => {
     const userId = document.getElementById('admin-timeout-user')?.value;
@@ -6399,6 +6568,7 @@ async function init() {
     await loadBlocks();
     await loadInbox();
     await loadFriends();
+    await loadPendingFriendRequests();
     await loadNotificationPrefs();
   connectSocket();
     apiGet('/api/voice/participants').then(({ participants }) => {
@@ -6755,6 +6925,7 @@ function bindInbox() {
         await apiPost('/api/friends/accept', { inbox_id: inboxId });
         await loadInbox();
         await loadFriends();
+        await loadPendingFriendRequests();
         render();
         bindInbox();
       } catch (err) { showToast(err.message); }
@@ -6767,6 +6938,7 @@ function bindInbox() {
       try {
         await apiPost('/api/friends/reject', { inbox_id: inboxId });
         await loadInbox();
+        await loadPendingFriendRequests();
         render();
         bindInbox();
       } catch (err) { showToast(err.message); }
