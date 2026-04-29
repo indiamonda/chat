@@ -49,6 +49,10 @@ router.post('/request', requireAuth, (req, res) => {
   const target = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(to_user_id);
   if (!target) return res.status(404).json({ error: 'User not found' });
   if (areFriends(me.id, to_user_id)) return res.status(400).json({ error: 'Already friends' });
+  const pending = db.prepare(
+    "SELECT 1 FROM inbox WHERE type = 'friend_request' AND user_id = ? AND related_id = ? AND read_at IS NULL LIMIT 1"
+  ).get(to_user_id, me.id);
+  if (pending) return res.status(400).json({ error: 'Friend request already pending' });
   const cooldown = getFriendRequestCooldown(me.id, to_user_id);
   if (cooldown > 0) {
     return res.status(429).json({
@@ -129,6 +133,17 @@ router.get('/', requireAuth, (req, res) => {
   const ids = rows.map(r => (r.user1_id === me.id ? r.user2_id : r.user1_id));
   if (me.id !== AUTO_FRIEND_ID && !ids.includes(AUTO_FRIEND_ID)) ids.push(AUTO_FRIEND_ID);
   res.json({ friend_ids: ids });
+});
+
+/** GET /api/friends/pending – list outgoing pending friend requests (to_user_ids). */
+router.get('/pending', requireAuth, (req, res) => {
+  const me = getCurrentUser(req);
+  if (!me) return res.status(401).json({ error: 'Not authenticated' });
+  const rows = db.prepare(
+    "SELECT user_id FROM inbox WHERE type = 'friend_request' AND related_id = ? AND read_at IS NULL"
+  ).all(me.id);
+  const toIds = [...new Set(rows.map(r => r.user_id))].filter(id => id && id !== me.id && !areFriends(me.id, id));
+  res.json({ to_user_ids: toIds });
 });
 
 export default router;
