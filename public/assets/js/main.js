@@ -2586,13 +2586,19 @@ function connectSocket() {
   });
   s.on('presence:update', ({ user_id, state: pState, last_seen_at }) => {
     if (!state._presence) state._presence = {};
+    const prev = state._presence[user_id];
+    if (prev && prev.state === pState && prev.last_seen_at === last_seen_at) return;
     state._presence[user_id] = { state: pState, last_seen_at };
-    render();
+    if (user_id === state.user?.id) return;
+    schedulePresenceTypingRender();
   });
   s.on('typing:update', ({ room, user_ids }) => {
     if (!state._typing) state._typing = {};
-    state._typing[room] = (user_ids || []).filter((id) => id !== state.user?.id);
-    render();
+    const next = (user_ids || []).filter((id) => id !== state.user?.id);
+    const prev = state._typing[room] || [];
+    if (prev.length === next.length && prev.every((id, i) => id === next[i])) return;
+    state._typing[room] = next;
+    schedulePresenceTypingRender();
   });
   s.on('reports:counts', (counts) => {
     state._reportCounts = counts || { total: 0, open: 0, in_review: 0 };
@@ -2636,7 +2642,8 @@ function presenceDot(userId, { withLabel = false } = {}) {
   const presence = getPresence(userId);
   const cls = presence ? `presence-dot presence-dot-${presence.state}` : 'presence-dot presence-dot-offline';
   const label = presence ? presenceLabel(presence) : tx('presenceOffline', 'Offline');
-  const dot = `<span class="${cls}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"></span>`;
+  const idAttr = userId ? ` data-presence-user-id="${escapeHtml(String(userId))}"` : '';
+  const dot = `<span class="${cls}"${idAttr} title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"></span>`;
   if (!withLabel) return dot;
   return `${dot}<span class="presence-label">${escapeHtml(label)}</span>`;
 }
@@ -2647,6 +2654,44 @@ function getTypingUsersForRoom(roomType, roomId) {
   return (state._typing[key] || [])
     .map((id) => state.users?.find((u) => u.id === id))
     .filter(Boolean);
+}
+
+/**
+ * Lightweight DOM patcher for presence/typing updates so we don't rebuild the
+ * whole UI (which would steal focus and break in-progress typing/paste).
+ */
+let _presenceTypingRafId = 0;
+function schedulePresenceTypingRender() {
+  if (_presenceTypingRafId) return;
+  _presenceTypingRafId = requestAnimationFrame(() => {
+    _presenceTypingRafId = 0;
+    updateTypingIndicatorsInPlace();
+    updatePresenceDotsInPlace();
+  });
+}
+
+function updateTypingIndicatorsInPlace() {
+  const slots = document.querySelectorAll('[data-typing-indicator-slot]');
+  if (!slots.length) return;
+  slots.forEach((slot) => {
+    const roomType = slot.dataset.roomType;
+    const roomId = slot.dataset.roomId;
+    if (!roomType || !roomId) return;
+    slot.innerHTML = renderTypingIndicator(roomType, roomId) || '';
+  });
+}
+
+function updatePresenceDotsInPlace() {
+  document.querySelectorAll('[data-presence-user-id]').forEach((el) => {
+    const uid = el.dataset.presenceUserId;
+    const presence = getPresence(uid);
+    const next = presence?.state || 'offline';
+    el.classList.remove('presence-dot-online', 'presence-dot-idle', 'presence-dot-offline');
+    el.classList.add(`presence-dot-${next}`);
+    const label = presenceLabel(presence) || tx('presenceOffline', 'Offline');
+    el.setAttribute('title', label);
+    el.setAttribute('aria-label', label);
+  });
 }
 
 function renderTypingIndicator(roomType, roomId) {
@@ -3896,7 +3941,7 @@ function renderChatArea() {
         <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
           ${loadingOlder ? '<div class="messages-loading-older">Loading more…</div>' : ''}${hasMore && !loadingOlder ? '<div class="messages-load-more-hint">Scroll up to load more</div>' : ''}${emptyContent}
         </div>
-        ${typingHtml}
+        <div class="typing-indicator-slot" data-typing-indicator-slot data-room-type="${roomType}" data-room-id="${roomId}">${typingHtml}</div>
         <button type="button" class="scroll-to-bottom" aria-label="Scroll to bottom" title="Scroll to bottom" style="display:none">
           <span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></span>
         </button>
