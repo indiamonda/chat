@@ -1,5 +1,5 @@
 import { createServer } from 'http';
-import { readFileSync, existsSync, readdirSync } from 'fs';
+import { readFileSync, existsSync, readdirSync, rmSync as fsRm } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
@@ -19,6 +19,10 @@ import friendsRoutes, { areFriends } from './routes/friends.js';
 import blocksRoutes, { isBlocked } from './routes/blocks.js';
 import notificationsRoutes, { getPrefs as getNotificationPrefs } from './routes/notifications.js';
 import savesRoutes from './routes/saves.js';
+import reportsRoutes from './routes/reports.js';
+import { recordAuditLog } from './audit.js';
+import { recordUploadRef, markUploadOrphan } from './uploads-tracker.js';
+import { findMentionUserIds, MENTION_INCLUDES_ALL_RE, MENTION_INCLUDES_ADMINS_RE } from './mentions.js';
 import { randomUUID } from 'node:crypto';
 import tzLookup from 'tz-lookup';
 
@@ -176,15 +180,7 @@ function applySearchFilters(rows, filterSpec) {
 
 function createInboxForNewMessage(messageId, content, replyToId, senderId, roomType, roomId) {
   if (roomId === 'voice_chat') return;
-  const toNotify = new Set();
-  if (/\@All\b/i.test(content || '')) {
-    db.prepare('SELECT id FROM users').all().forEach(r => toNotify.add(r.id));
-  }
-  [...(content || '').matchAll(/\@([a-z0-9]+)/g)].forEach(m => {
-    const r = db.prepare('SELECT id FROM users WHERE LOWER(username) = ?').get(m[1].toLowerCase());
-    if (r) toNotify.add(r.id);
-  });
-  toNotify.delete(senderId);
+  const toNotify = findMentionUserIds(content, senderId);
   for (const uid of [...toNotify]) {
     if (isBlocked(uid, senderId)) toNotify.delete(uid);
   }
@@ -194,6 +190,10 @@ function createInboxForNewMessage(messageId, content, replyToId, senderId, roomT
   `);
   toNotify.forEach(uid => {
     insert.run(randomUUID(), uid, 'mention', 'New mention', (content || '').slice(0, 200), messageId, JSON.stringify({ roomType, roomId }), now);
+    try {
+      const io = app.get('io');
+      io?.to(`user:${uid}`).emit('inbox:item', { id: randomUUID(), type: 'mention', title: 'New mention', body: (content || '').slice(0, 200), related_id: messageId, related_extra: { roomType, roomId }, created_at: now });
+    } catch (_) {}
   });
   if (replyToId) {
     const orig = db.prepare('SELECT sender_id FROM messages WHERE id = ?').get(replyToId);
@@ -395,6 +395,7 @@ app.use('/api/friends', friendsRoutes);
 app.use('/api/blocks', blocksRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/saves', savesRoutes);
+app.use('/api/reports', reportsRoutes);
 
 /** Link preview: fetch URL and return og:title, og:description, og:image. Requires auth. */
 app.get('/api/link-preview', requireAuth, async (req, res) => {
@@ -514,12 +515,24 @@ app.get('/api/rooms/:roomType/:roomId/messages', requireAuth, (req, res) => {
 
 app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('file'), (req, res) => {
   const user = getCurrentUser(req);
-  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+  if (!user) {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
   const { roomType, roomId } = req.params;
   if (roomType === 'group') {
-    if (isBlacklisted(user.id)) return res.status(403).json({ error: 'Access denied. You are blacklisted from group chat.' });
-    if (!['free_chat', 'support', 'voice_chat'].includes(roomId)) return res.status(400).json({ error: 'Invalid panel' });
-    if (isTimedOut(user.id)) return res.status(403).json({ error: 'You are timed out from group chat' });
+    if (isBlacklisted(user.id)) {
+      if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+      return res.status(403).json({ error: 'Access denied. You are blacklisted from group chat.' });
+    }
+    if (!['free_chat', 'support', 'voice_chat'].includes(roomId)) {
+      if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+      return res.status(400).json({ error: 'Invalid panel' });
+    }
+    if (isTimedOut(user.id)) {
+      if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+      return res.status(403).json({ error: 'You are timed out from group chat' });
+    }
   }
   const { content, msg_type, reply_to_id } = req.body || {};
   let finalContent = typeof content === 'string' ? content : '';
@@ -532,14 +545,31 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
     }
   }
   if (checkSpam(user.id, roomType, roomId, finalContent)) {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
     return res.status(429).json({ error: 'NO SPAMMING!' });
   }
   const id = randomUUID();
   const now = Date.now();
-  db.prepare(`
-    INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, roomType, roomId, user.id, finalContent, msgType, reply_to_id || null, now, now);
+  try {
+    db.prepare(`
+      INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, roomType, roomId, user.id, finalContent, msgType, reply_to_id || null, now, now);
+  } catch (err) {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+    console.error('Failed to persist message:', err);
+    return res.status(500).json({ error: 'Failed to send message' });
+  }
+  if (req.file) {
+    recordUploadRef({
+      filename: req.file.filename,
+      messageId: id,
+      uploadedBy: user.id,
+      mimeType: req.file.mimetype || null,
+      sizeBytes: req.file.size || null,
+      originalName: req.file.originalname || null,
+    });
+  }
   createInboxForNewMessage(id, finalContent, reply_to_id || null, user.id, roomType, roomId);
   const row = db.prepare(`
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
@@ -611,6 +641,7 @@ app.get('/api/search/messages', requireAuth, (req, res) => {
   const user = getCurrentUser(req);
   const { roomType, roomId } = req.query;
   const q = String(req.query.q || '').trim();
+  const attachmentType = String(req.query.attachment_type || '').toLowerCase();
   const filterSpec = parseSearchFilter(req.query.filter || '');
   if (!roomType || !roomId) return res.status(400).json({ error: 'roomType and roomId required' });
   if (roomType === 'group' && isBlacklisted(user.id)) {
@@ -631,9 +662,28 @@ app.get('/api/search/messages', requireAuth, (req, res) => {
     LIMIT 5000
   `).all(roomType, roomId);
   let filtered = blockedIds.length ? rows.filter((row) => !blockedIds.includes(row.sender_id)) : rows;
+  if (attachmentType) {
+    const map = { image: 'image', video: 'video', audio: 'audio', voice: 'voice', file: 'file', gif: 'gif', any: 'any' };
+    const want = map[attachmentType];
+    if (want === 'any') {
+      filtered = filtered.filter((row) => /^(image|video|audio|voice|file|gif)$/i.test(row.msg_type || ''));
+    } else if (want) {
+      filtered = filtered.filter((row) => String(row.msg_type || '').toLowerCase() === want);
+    }
+  }
   if (q) {
     const lowered = q.toLowerCase();
-    filtered = filtered.filter((row) => String(row.content || '').toLowerCase().includes(lowered));
+    filtered = filtered.filter((row) => {
+      const content = String(row.content || '').toLowerCase();
+      if (content.includes(lowered)) return true;
+      // Match the trailing filename embedded in /file <id>.<ext> uploads.
+      const refMatch = String(row.content || '').match(/^\/file\s+(.+)$/);
+      if (refMatch && refMatch[1].toLowerCase().includes(lowered)) return true;
+      // Fall back to matching sender username/display name.
+      if (String(row.username || '').toLowerCase().includes(lowered)) return true;
+      if (String(row.display_name || '').toLowerCase().includes(lowered)) return true;
+      return false;
+    });
   }
   filtered = applySearchFilters(filtered, filterSpec).slice(0, 100);
   res.json({ messages: decorateMessages(filtered) });
@@ -698,7 +748,10 @@ app.get('/api/conversations/:convId/messages', requireAuth, (req, res) => {
 app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file'), (req, res) => {
   const user = getCurrentUser(req);
   const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(req.params.convId);
-  if (!conv || (conv.user1_id !== user.id && conv.user2_id !== user.id)) return res.status(404).json({ error: 'Not found' });
+  if (!conv || (conv.user1_id !== user.id && conv.user2_id !== user.id)) {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+    return res.status(404).json({ error: 'Not found' });
+  }
   const { content, msg_type, reply_to_id } = req.body || {};
   let finalContent = typeof content === 'string' ? content : '';
   let msgType = (msg_type || 'text').slice(0, 32);
@@ -710,14 +763,31 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
     }
   }
   if (checkSpam(user.id, 'dm', req.params.convId, finalContent)) {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
     return res.status(429).json({ error: 'NO SPAMMING!' });
   }
   const id = randomUUID();
   const now = Date.now();
-  db.prepare(`
-    INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
-    VALUES (?, 'dm', ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, req.params.convId, user.id, finalContent, msgType, reply_to_id || null, now, now);
+  try {
+    db.prepare(`
+      INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
+      VALUES (?, 'dm', ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, req.params.convId, user.id, finalContent, msgType, reply_to_id || null, now, now);
+  } catch (err) {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+    console.error('Failed to persist DM message:', err);
+    return res.status(500).json({ error: 'Failed to send message' });
+  }
+  if (req.file) {
+    recordUploadRef({
+      filename: req.file.filename,
+      messageId: id,
+      uploadedBy: user.id,
+      mimeType: req.file.mimetype || null,
+      sizeBytes: req.file.size || null,
+      originalName: req.file.originalname || null,
+    });
+  }
   createInboxForNewMessage(id, finalContent, reply_to_id || null, user.id, 'dm', req.params.convId);
   const row = db.prepare(`
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
@@ -818,6 +888,104 @@ function isTimedOut(userId) {
   return !!row;
 }
 
+// ── Presence + typing tracking ──
+// Presence: per-user state ('online' | 'idle' | 'offline'), last activity, socket count.
+const PRESENCE_IDLE_MS = 5 * 60 * 1000;
+const TYPING_TTL_MS = 6 * 1000;
+const presenceState = new Map();
+// Typing: room key -> Map<userId, { expiresAt }>
+const typingByRoom = new Map();
+
+function presenceRoomKeyForRoom(roomType, roomId) {
+  return roomType === 'dm' ? `dm:${roomId}` : `group:${GROUP_ID}`;
+}
+
+function readPresence(userId) {
+  const entry = presenceState.get(userId);
+  if (!entry) return { state: 'offline', last_seen_at: null };
+  return entry;
+}
+
+function setPresence(userId, partial) {
+  const existing = presenceState.get(userId) || { state: 'offline', last_seen_at: null, sockets: 0 };
+  const next = { ...existing, ...partial };
+  presenceState.set(userId, next);
+  return next;
+}
+
+function broadcastPresenceTo(userId) {
+  try {
+    const status = readPresence(userId);
+    io.emit('presence:update', { user_id: userId, state: status.state, last_seen_at: status.last_seen_at });
+  } catch (_) {}
+}
+
+function recomputePresence(userId, { explicitState } = {}) {
+  const prev = presenceState.get(userId) || { state: 'offline', last_seen_at: null, sockets: 0 };
+  let state = explicitState;
+  if (!state) {
+    if ((prev.sockets || 0) <= 0) state = 'offline';
+    else if (prev.last_seen_at && (Date.now() - prev.last_seen_at) > PRESENCE_IDLE_MS) state = 'idle';
+    else state = 'online';
+  }
+  if (state !== prev.state) {
+    setPresence(userId, { state });
+    broadcastPresenceTo(userId);
+  }
+}
+
+function snapshotPresence() {
+  const out = [];
+  for (const [userId, entry] of presenceState.entries()) {
+    out.push({ user_id: userId, state: entry.state, last_seen_at: entry.last_seen_at || null });
+  }
+  return out;
+}
+
+function emitTypingTo(roomKey) {
+  const map = typingByRoom.get(roomKey);
+  const now = Date.now();
+  const out = [];
+  if (map) {
+    for (const [uid, info] of map.entries()) {
+      if (info.expiresAt > now) out.push(uid);
+      else map.delete(uid);
+    }
+  }
+  io.to(roomKey).emit('typing:update', { room: roomKey, user_ids: out });
+}
+
+function setTyping(userId, roomKey, isTyping) {
+  let map = typingByRoom.get(roomKey);
+  if (!map) {
+    map = new Map();
+    typingByRoom.set(roomKey, map);
+  }
+  if (isTyping) {
+    map.set(userId, { expiresAt: Date.now() + TYPING_TTL_MS });
+  } else {
+    map.delete(userId);
+  }
+  emitTypingTo(roomKey);
+}
+
+function pruneExpiredTyping() {
+  const now = Date.now();
+  for (const [roomKey, map] of typingByRoom.entries()) {
+    let changed = false;
+    for (const [uid, info] of map.entries()) {
+      if (info.expiresAt <= now) {
+        map.delete(uid);
+        changed = true;
+      }
+    }
+    if (!map.size) typingByRoom.delete(roomKey);
+    if (changed) io.to(roomKey).emit('typing:update', { room: roomKey, user_ids: Array.from(map.keys()) });
+  }
+}
+
+setInterval(pruneExpiredTyping, 2000);
+
 // Voice chat: in-memory participant tracking (userId → socketId)
 const voiceParticipants = new Map();
 
@@ -848,6 +1016,31 @@ io.on('connection', (socket) => {
   if (!isBlacklisted(socket.userId)) {
     socket.join(`group:${GROUP_ID}`);
   }
+
+  // Presence: track active sockets per user.
+  const prev = presenceState.get(socket.userId) || { sockets: 0, state: 'offline', last_seen_at: null };
+  setPresence(socket.userId, { sockets: (prev.sockets || 0) + 1, last_seen_at: Date.now() });
+  recomputePresence(socket.userId, { explicitState: 'online' });
+  socket.emit('presence:snapshot', snapshotPresence());
+
+  socket.on('presence:heartbeat', (payload) => {
+    const desired = (payload && typeof payload.state === 'string' && ['online', 'idle'].includes(payload.state)) ? payload.state : null;
+    setPresence(socket.userId, { last_seen_at: Date.now() });
+    recomputePresence(socket.userId, { explicitState: desired });
+  });
+
+  socket.on('typing:start', (payload) => {
+    const { roomType, roomId } = payload || {};
+    if (!roomType || !roomId) return;
+    if (roomType === 'group' && isBlacklisted(socket.userId)) return;
+    if (roomType === 'group' && isTimedOut(socket.userId)) return;
+    setTyping(socket.userId, presenceRoomKeyForRoom(roomType, roomId), true);
+  });
+  socket.on('typing:stop', (payload) => {
+    const { roomType, roomId } = payload || {};
+    if (!roomType || !roomId) return;
+    setTyping(socket.userId, presenceRoomKeyForRoom(roomType, roomId), false);
+  });
 
   socket.on('dm:join', (convId, ack) => {
     const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(convId);
@@ -888,6 +1081,7 @@ io.on('connection', (socket) => {
       `).get(id);
       const msg = { ...row, likes: 0, edit_history: null };
       io.to(`dm:${roomId}`).emit('message', msg);
+      setTyping(socket.userId, presenceRoomKeyForRoom('dm', roomId), false);
       return ack?.({ message: msg });
     }
     if (roomType === 'group') {
@@ -908,6 +1102,7 @@ io.on('connection', (socket) => {
     `).get(id);
     const msg = { ...row, likes: 0, edit_history: null };
     io.to(`group:${GROUP_ID}`).emit('message', msg);
+    setTyping(socket.userId, presenceRoomKeyForRoom(roomType, roomId), false);
     ack?.({ message: msg });
   });
 
@@ -947,6 +1142,20 @@ io.on('connection', (socket) => {
     const now = Date.now();
     db.prepare('UPDATE messages SET content = ?, edit_history = ?, updated_at = ? WHERE id = ?')
       .run(newContent, JSON.stringify(history), now, msgId);
+    // Notify users newly mentioned by this edit (skip ones that were already mentioned in the previous content).
+    try {
+      const before = findMentionUserIds(msg.content || '', msg.sender_id);
+      const after = findMentionUserIds(newContent || '', msg.sender_id);
+      for (const uid of after) {
+        if (before.has(uid)) continue;
+        if (isBlocked(uid, msg.sender_id)) continue;
+        const inboxId = randomUUID();
+        db.prepare(`
+          INSERT INTO inbox (id, user_id, type, title, body, related_id, related_extra, created_at) VALUES (?, ?, 'mention', 'New mention', ?, ?, ?, ?)
+        `).run(inboxId, uid, (newContent || '').slice(0, 200), msgId, JSON.stringify({ roomType: msg.room_type, roomId: msg.room_id }), now);
+        io.to(`user:${uid}`).emit('inbox:item', { id: inboxId, type: 'mention', title: 'New mention', body: (newContent || '').slice(0, 200), related_id: msgId, related_extra: { roomType: msg.room_type, roomId: msg.room_id }, created_at: now });
+      }
+    } catch (_) {}
     const payloadOut = { id: msgId, content: newContent, edit_history: history, updated_at: now };
     if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:edited', payloadOut);
     else io.to(`group:${GROUP_ID}`).emit('message:edited', payloadOut);
@@ -1006,6 +1215,7 @@ io.on('connection', (socket) => {
       return ack?.({ error: 'Not allowed' });
     }
     db.prepare('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE id = ?').run('deleted', msgId);
+    markUploadOrphan(msgId);
     if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:deleted', { id: msgId });
     else io.to(`group:${GROUP_ID}`).emit('message:deleted', { id: msgId });
     ack?.({ ok: true });
@@ -1103,7 +1313,23 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     voiceLeave(socket);
+    const entry = presenceState.get(socket.userId) || { sockets: 0 };
+    const remaining = Math.max(0, (entry.sockets || 0) - 1);
+    setPresence(socket.userId, { sockets: remaining, last_seen_at: Date.now() });
+    if (remaining === 0) {
+      recomputePresence(socket.userId, { explicitState: 'offline' });
+    }
+    for (const [roomKey, map] of typingByRoom.entries()) {
+      if (map.delete(socket.userId)) {
+        io.to(roomKey).emit('typing:update', { room: roomKey, user_ids: Array.from(map.keys()) });
+      }
+      if (!map.size) typingByRoom.delete(roomKey);
+    }
   });
+});
+
+app.get('/api/presence', requireAuth, (req, res) => {
+  res.json({ presence: snapshotPresence() });
 });
 
 // Do not replace placeholder password: lets first signup with username jimmyqrg "claim" that account

@@ -3,6 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { requireAuth, getCurrentUser, isAllowed, canManageUsers, canKick, canDeleteMessages, canTimeout, canPinMessages } from '../auth.js';
 import { db, GROUP_ID } from '../db.js';
 import { recordAuditLog, listAuditLogs } from '../audit.js';
+import { markUploadOrphan } from '../uploads-tracker.js';
+import { runBackup, listBackups, getBackupsDir } from '../backup.js';
+import { join } from 'path';
+import { existsSync } from 'fs';
 
 const router = Router();
 
@@ -90,8 +94,10 @@ router.post('/delete-account-permanently', requireAuth, (req, res) => {
   if (!target) return res.status(404).json({ error: 'User not found' });
   const delGroupMsgs = delete_group_messages !== false; // default true
   if (delGroupMsgs) {
+    const affected = db.prepare('SELECT id FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?').all('group', GROUP_ID, user_id);
     db.prepare('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE room_type = ? AND room_id = ? AND sender_id = ?')
       .run('deleted', 'group', GROUP_ID, user_id);
+    for (const a of affected) markUploadOrphan(a.id);
   }
   db.prepare('DELETE FROM blacklist WHERE user_id = ?').run(user_id);
   db.prepare('DELETE FROM blocked_users WHERE user_id = ? OR blocked_id = ?').run(user_id, user_id);
@@ -122,6 +128,7 @@ router.post('/messages/:id/delete', requireAuth, (req, res) => {
   if (!msg) return res.status(404).json({ error: 'Message not found' });
   if (msg.sender_id === 'jimmyqrg') return res.status(403).json({ error: 'Cannot delete jimmyqrg\'s messages' });
   db.prepare('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE id = ?').run('deleted', req.params.id);
+  markUploadOrphan(req.params.id);
   recordAuditLog('message.delete', admin.id, msg.sender_id, { message_id: req.params.id });
   res.json({ ok: true });
 });
@@ -245,8 +252,155 @@ router.post('/timeout/:id/release', requireAuth, (req, res) => {
 router.get('/audit', requireAuth, (req, res) => {
   const admin = assertAllowed(req, res);
   if (admin === undefined) return;
-  const rows = listAuditLogs(req.query.limit);
+  const limit = req.query.limit;
+  const search = String(req.query.q || '').trim().toLowerCase();
+  let rows = listAuditLogs(limit);
+  if (search) {
+    rows = rows.filter((row) => {
+      const blob = [
+        row.action,
+        row.actor_username,
+        row.actor_display_name,
+        row.target_username,
+        row.target_display_name,
+        row.details ? JSON.stringify(row.details) : '',
+      ].filter(Boolean).join(' ').toLowerCase();
+      return blob.includes(search);
+    });
+  }
   res.json({ logs: rows });
+});
+
+// CSV helpers ---------------------------------------------------------------
+function csvEscape(value) {
+  if (value == null) return '';
+  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  if (/[",\n\r]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
+  return str;
+}
+
+function rowsToCsv(rows, columns) {
+  const header = columns.join(',');
+  const body = rows.map((row) => columns.map((c) => csvEscape(row[c])).join(',')).join('\n');
+  return header + '\n' + body + '\n';
+}
+
+function sendExport(res, filename, format, rows, columns) {
+  if (format === 'csv') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+    return res.send(rowsToCsv(rows, columns));
+  }
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}.json"`);
+  return res.send(JSON.stringify({ exported_at: Date.now(), rows }, null, 2));
+}
+
+const EXPORT_KINDS = new Set(['messages', 'users', 'audit', 'docs', 'reports']);
+
+router.get('/export/:kind', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  const { kind } = req.params;
+  if (!EXPORT_KINDS.has(kind)) return res.status(400).json({ error: 'Unknown export kind' });
+  if (admin.id !== 'jimmyqrg' && (kind === 'users' || kind === 'audit')) {
+    return res.status(403).json({ error: 'Only jimmyqrg can export this dataset' });
+  }
+  const format = req.query.format === 'csv' ? 'csv' : 'json';
+  const limit = Math.min(parseInt(req.query.limit, 10) || 5000, 50000);
+
+  if (kind === 'messages') {
+    const rows = db.prepare(`
+      SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type,
+             m.reply_to_id, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
+             u.username AS sender_username
+      FROM messages m
+      LEFT JOIN users u ON u.id = m.sender_id
+      ORDER BY m.created_at DESC LIMIT ?
+    `).all(limit);
+    recordAuditLog('admin.export', admin.id, null, { kind, format, rows: rows.length });
+    return sendExport(res, `chat-messages-${Date.now()}`, format, rows, [
+      'id', 'room_type', 'room_id', 'sender_id', 'sender_username', 'content', 'msg_type',
+      'reply_to_id', 'recalled_at', 'deleted_by_admin', 'created_at', 'updated_at',
+    ]);
+  }
+  if (kind === 'users') {
+    const rows = db.prepare(`
+      SELECT id, username, display_name, email, is_allowed, deleted_at, created_at,
+             can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages,
+             can_manage_users, can_timeout, can_pin_messages, can_unlimited_edit_recall
+      FROM users ORDER BY created_at ASC
+    `).all();
+    recordAuditLog('admin.export', admin.id, null, { kind, format, rows: rows.length });
+    return sendExport(res, `chat-users-${Date.now()}`, format, rows, [
+      'id', 'username', 'display_name', 'email', 'is_allowed', 'deleted_at', 'created_at',
+      'can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages',
+      'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall',
+    ]);
+  }
+  if (kind === 'audit') {
+    const rows = listAuditLogs(limit);
+    recordAuditLog('admin.export', admin.id, null, { kind, format, rows: rows.length });
+    return sendExport(res, `chat-audit-${Date.now()}`, format, rows.map((r) => ({
+      ...r,
+      details: r.details ? JSON.stringify(r.details) : null,
+    })), ['id', 'action', 'actor_id', 'actor_username', 'target_id', 'target_username', 'details', 'created_at']);
+  }
+  if (kind === 'docs') {
+    const rows = db.prepare(`
+      SELECT id, doc_key, content, editor_id, created_at FROM doc_versions
+      ORDER BY doc_key, created_at DESC
+    `).all();
+    recordAuditLog('admin.export', admin.id, null, { kind, format, rows: rows.length });
+    return sendExport(res, `chat-docs-${Date.now()}`, format, rows, ['id', 'doc_key', 'editor_id', 'created_at', 'content']);
+  }
+  if (kind === 'reports') {
+    const rows = db.prepare(`
+      SELECT r.id, r.reporter_id, r.target_user_id, r.message_id, r.room_type, r.room_id,
+             r.reason, r.details, r.status, r.outcome, r.assigned_to, r.resolved_by, r.resolved_at,
+             r.created_at, r.updated_at
+      FROM message_reports r ORDER BY r.created_at DESC LIMIT ?
+    `).all(limit);
+    recordAuditLog('admin.export', admin.id, null, { kind, format, rows: rows.length });
+    return sendExport(res, `chat-reports-${Date.now()}`, format, rows, [
+      'id', 'reporter_id', 'target_user_id', 'message_id', 'room_type', 'room_id', 'reason',
+      'details', 'status', 'outcome', 'assigned_to', 'resolved_by', 'resolved_at', 'created_at', 'updated_at',
+    ]);
+  }
+});
+
+// Manual database backup. Only jimmyqrg can trigger.
+router.post('/backup', requireAuth, async (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (admin.id !== 'jimmyqrg') return res.status(403).json({ error: 'Only jimmyqrg can run backups' });
+  try {
+    const result = await runBackup(admin.id);
+    res.json({ ok: true, backup: result });
+  } catch (err) {
+    console.error('Backup error:', err);
+    res.status(500).json({ error: err?.message || 'Backup failed' });
+  }
+});
+
+// List the existing backup snapshots so admin can download them.
+router.get('/backup', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (admin.id !== 'jimmyqrg') return res.status(403).json({ error: 'Only jimmyqrg can view backups' });
+  res.json({ backups: listBackups() });
+});
+
+router.get('/backup/:filename', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (admin.id !== 'jimmyqrg') return res.status(403).json({ error: 'Only jimmyqrg can download backups' });
+  const filename = String(req.params.filename || '');
+  if (!/^chat-[0-9TZ\-]+\.sqlite$/.test(filename)) return res.status(400).json({ error: 'Invalid filename' });
+  const filePath = join(getBackupsDir(), filename);
+  if (!existsSync(filePath)) return res.status(404).json({ error: 'Backup not found' });
+  recordAuditLog('admin.backup_download', admin.id, null, { filename });
+  res.download(filePath, filename);
 });
 
 // List active timeouts

@@ -43,6 +43,37 @@ router.get('/profile', requireAuth, (req, res) => {
   res.json({ user });
 });
 
+/** GET /api/users/mention-search?q=&room_type=&limit= — autocomplete for @ mentions. */
+router.get('/mention-search', requireAuth, (req, res) => {
+  const me = getCurrentUser(req);
+  const q = String(req.query.q || '').trim().toLowerCase();
+  const limit = Math.min(parseInt(req.query.limit, 10) || 8, 20);
+  let rows = db.prepare(`
+    SELECT id, username, display_name, avatar_url, is_allowed
+    FROM users
+    WHERE deleted_at IS NULL AND id != ?
+    ORDER BY username
+  `).all(me?.id || '');
+  if (q) {
+    rows = rows.filter((u) => {
+      const uname = String(u.username || '').toLowerCase();
+      const dname = String(u.display_name || '').toLowerCase();
+      return uname.startsWith(q) || dname.includes(q);
+    });
+  }
+  const trimmed = rows.slice(0, limit).map((u) => ({
+    id: u.id,
+    username: u.username,
+    display_name: u.display_name,
+    avatar_url: u.avatar_url,
+    is_allowed: !!u.is_allowed,
+  }));
+  const tokens = [];
+  if (!q || 'all'.startsWith(q)) tokens.push({ token: 'all', label: 'Everyone in this room' });
+  if (!q || 'admins'.startsWith(q)) tokens.push({ token: 'admins', label: 'All admins' });
+  res.json({ users: trimmed, tokens });
+});
+
 /** Public profile for viewing another user (id, username, display_name, avatar_url, website, profile_links). */
 router.get('/:id/profile', requireAuth, (req, res) => {
   const target = db.prepare(

@@ -75,6 +75,15 @@ let state = {
   _voiceChatMessages: [],
   _voiceParticipantCount: 0,
   _chatboxStyles: [],
+  _presence: {},
+  _typing: {},
+  _reportCounts: { total: 0, open: 0, in_review: 0 },
+  _modReports: { items: [], status: 'open', search: '', loading: false, selected: null, notes: [] },
+  _adminAuditSearch: '',
+  _backups: [],
+  _exportRunning: null,
+  _mentionAutocomplete: null,
+  _attachmentsPending: [],
 };
 
 if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
@@ -187,6 +196,58 @@ function showCompressConfirmModal(file, kind) {
     overlay.querySelector('#file-compress-cancel')?.addEventListener('click', () => finish(false));
     overlay.querySelector('#file-compress-ok')?.addEventListener('click', () => finish(true));
     document.addEventListener('keydown', onKey);
+  });
+}
+
+/** Modal that lets users report a message or user. */
+function showReportMessageModal(msgOrTarget) {
+  const isMessage = !!msgOrTarget?.id && !!msgOrTarget?.content !== undefined;
+  const messageId = isMessage ? msgOrTarget.id : null;
+  const targetUserId = msgOrTarget?.sender_id || msgOrTarget?.target_user_id || msgOrTarget?.id || null;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  const reasons = [
+    ['spam', tx('reportReasonSpam', 'Spam')],
+    ['harassment', tx('reportReasonHarassment', 'Harassment / bullying')],
+    ['hate_speech', tx('reportReasonHate', 'Hate speech')],
+    ['sexual_content', tx('reportReasonSexual', 'Sexual or explicit content')],
+    ['violence', tx('reportReasonViolence', 'Violence or threats')],
+    ['self_harm', tx('reportReasonSelfHarm', 'Self-harm or suicide')],
+    ['illegal', tx('reportReasonIllegal', 'Illegal activity')],
+    ['misinformation', tx('reportReasonMisinformation', 'Misinformation')],
+    ['impersonation', tx('reportReasonImpersonation', 'Impersonation')],
+    ['other', tx('reportReasonOther', 'Other')],
+  ];
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:460px;">
+      <h3>${escapeHtml(tx('reportMessageTitle', 'Report message'))}</h3>
+      <p class="modal-hint">${escapeHtml(tx('reportMessageHint', 'Select a reason and add optional context. Admins will review your report.'))}</p>
+      <label>${tx('reportReasonLabel', 'Reason')}</label>
+      <select id="report-reason" class="settings-select">
+        ${reasons.map(([id, label]) => `<option value="${id}">${escapeHtml(label)}</option>`).join('')}
+      </select>
+      <label>${tx('reportDetailsLabel', 'Details (optional)')}</label>
+      <textarea id="report-details" rows="3" placeholder="${tx('reportDetailsPlaceholder', 'Add anything that helps admins understand the issue.')}"></textarea>
+      <div class="modal-actions">
+        <button type="button" id="report-cancel" class="modal-close">${t('cancel')}</button>
+        <button type="button" id="report-submit" class="btn-primary">${tx('reportSubmit', 'Submit report')}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('#report-cancel')?.addEventListener('click', close);
+  overlay.querySelector('#report-submit')?.addEventListener('click', async () => {
+    const reason = overlay.querySelector('#report-reason')?.value || 'other';
+    const details = overlay.querySelector('#report-details')?.value?.trim();
+    try {
+      await apiPost('/api/reports', { message_id: messageId, target_user_id: targetUserId, reason, details: details || null });
+      showToast(tx('reportSubmitted', 'Report submitted. Thank you.'), 'success');
+      close();
+    } catch (err) {
+      showToast(err.message || 'Failed to submit report');
+    }
   });
 }
 
@@ -2084,6 +2145,69 @@ export async function loadPendingFriendRequests() {
   }
 }
 
+export async function loadReportCounts() {
+  if (!state.user?.is_allowed) return null;
+  try {
+    const counts = await apiGet('/api/reports/counts');
+    state._reportCounts = counts || { total: 0, open: 0, in_review: 0 };
+    return counts;
+  } catch {
+    state._reportCounts = { total: 0, open: 0, in_review: 0 };
+    return null;
+  }
+}
+
+export async function loadModerationQueue(status = state._modReports?.status || 'open', search = state._modReports?.search || '') {
+  if (!state.user?.is_allowed) return [];
+  if (!state._modReports) state._modReports = { items: [], status, search, loading: false, selected: null, notes: [] };
+  state._modReports.status = status;
+  state._modReports.search = search;
+  state._modReports.loading = true;
+  render();
+  try {
+    const params = new URLSearchParams({ status, q: search });
+    const data = await apiGet(`/api/reports?${params.toString()}`);
+    state._modReports.items = data?.reports || [];
+  } catch (err) {
+    showToast(err.message || 'Failed to load reports');
+    state._modReports.items = [];
+  } finally {
+    state._modReports.loading = false;
+    render();
+  }
+  return state._modReports.items;
+}
+
+export async function loadModerationReportDetail(reportId) {
+  if (!state.user?.is_allowed) return null;
+  try {
+    const data = await apiGet(`/api/reports/${reportId}`);
+    state._modReports = state._modReports || { items: [], status: 'open', search: '', loading: false, selected: null, notes: [] };
+    state._modReports.selected = data?.report || null;
+    state._modReports.notes = data?.notes || [];
+    render();
+    return data;
+  } catch (err) {
+    showToast(err.message || 'Failed to load report');
+    return null;
+  }
+}
+
+export async function loadBackups() {
+  if (state.user?.id !== 'jimmyqrg') {
+    state._backups = [];
+    return [];
+  }
+  try {
+    const data = await apiGet('/api/admin/backup');
+    state._backups = data?.backups || [];
+    return state._backups;
+  } catch {
+    state._backups = [];
+    return [];
+  }
+}
+
 export async function loadBlocks() {
   try {
     const { blocked_ids } = await apiGet('/api/blocks');
@@ -2452,8 +2576,236 @@ function connectSocket() {
       }).catch(() => {});
     }
   });
+  s.on('presence:snapshot', (snapshot) => {
+    const map = {};
+    for (const entry of snapshot || []) {
+      map[entry.user_id] = { state: entry.state, last_seen_at: entry.last_seen_at };
+    }
+    state._presence = map;
+    render();
+  });
+  s.on('presence:update', ({ user_id, state: pState, last_seen_at }) => {
+    if (!state._presence) state._presence = {};
+    state._presence[user_id] = { state: pState, last_seen_at };
+    render();
+  });
+  s.on('typing:update', ({ room, user_ids }) => {
+    if (!state._typing) state._typing = {};
+    state._typing[room] = (user_ids || []).filter((id) => id !== state.user?.id);
+    render();
+  });
+  s.on('reports:counts', (counts) => {
+    state._reportCounts = counts || { total: 0, open: 0, in_review: 0 };
+    render();
+  });
   state.socket = s;
   voiceSetupSignalListeners();
+  startPresenceHeartbeat();
+}
+
+let _presenceHeartbeatTimer = null;
+function startPresenceHeartbeat() {
+  if (_presenceHeartbeatTimer) clearInterval(_presenceHeartbeatTimer);
+  _presenceHeartbeatTimer = setInterval(() => {
+    if (!state.socket?.connected) return;
+    const isHidden = (typeof document !== 'undefined' && document.visibilityState === 'hidden');
+    state.socket.emit('presence:heartbeat', { state: isHidden ? 'idle' : 'online' });
+  }, 30 * 1000);
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (!state.socket?.connected) return;
+    state.socket.emit('presence:heartbeat', { state: document.visibilityState === 'hidden' ? 'idle' : 'online' });
+  });
+}
+
+function getPresence(userId) {
+  if (!userId) return null;
+  return state._presence?.[userId] || null;
+}
+
+function presenceLabel(presence) {
+  if (!presence) return '';
+  if (presence.state === 'online') return tx('presenceOnline', 'Online');
+  if (presence.state === 'idle') return tx('presenceIdle', 'Idle');
+  return tx('presenceOffline', 'Offline');
+}
+
+function presenceDot(userId, { withLabel = false } = {}) {
+  const presence = getPresence(userId);
+  const cls = presence ? `presence-dot presence-dot-${presence.state}` : 'presence-dot presence-dot-offline';
+  const label = presence ? presenceLabel(presence) : tx('presenceOffline', 'Offline');
+  const dot = `<span class="${cls}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}"></span>`;
+  if (!withLabel) return dot;
+  return `${dot}<span class="presence-label">${escapeHtml(label)}</span>`;
+}
+
+function getTypingUsersForRoom(roomType, roomId) {
+  if (!state._typing) return [];
+  const key = roomType === 'dm' ? `dm:${roomId}` : `group:JimmyQrg`;
+  return (state._typing[key] || [])
+    .map((id) => state.users?.find((u) => u.id === id))
+    .filter(Boolean);
+}
+
+function renderTypingIndicator(roomType, roomId) {
+  const users = getTypingUsersForRoom(roomType, roomId);
+  if (!users.length) return '';
+  const names = users.map((u) => u.display_name || u.username).filter(Boolean);
+  if (!names.length) return '';
+  const label = names.length === 1
+    ? (tx('typingOne', '{name} is typing…')).replace('{name}', names[0])
+    : names.length === 2
+      ? (tx('typingTwo', '{a} and {b} are typing…')).replace('{a}', names[0]).replace('{b}', names[1])
+      : (tx('typingMany', '{n} people are typing…')).replace('{n}', String(names.length));
+  return `<div class="typing-indicator"><span class="typing-dots"><span></span><span></span><span></span></span><span class="typing-label">${escapeHtml(label)}</span></div>`;
+}
+
+let _typingEmitTimer = null;
+let _typingLastSent = 0;
+function emitTypingActivity(roomType, roomId) {
+  if (!state.socket?.connected || !roomType || !roomId) return;
+  const now = Date.now();
+  if (now - _typingLastSent > 2000) {
+    state.socket.emit('typing:start', { roomType, roomId });
+    _typingLastSent = now;
+  }
+  if (_typingEmitTimer) clearTimeout(_typingEmitTimer);
+  _typingEmitTimer = setTimeout(() => {
+    state.socket?.emit('typing:stop', { roomType, roomId });
+    _typingLastSent = 0;
+  }, 4000);
+}
+
+function emitTypingStop(roomType, roomId) {
+  if (!state.socket?.connected || !roomType || !roomId) return;
+  if (_typingEmitTimer) clearTimeout(_typingEmitTimer);
+  _typingEmitTimer = null;
+  _typingLastSent = 0;
+  state.socket.emit('typing:stop', { roomType, roomId });
+}
+
+let _mentionFetchToken = 0;
+
+function findMentionContextAt(input) {
+  if (!input) return null;
+  const value = input.value || '';
+  const caret = input.selectionStart || 0;
+  const before = value.slice(0, caret);
+  const m = before.match(/(^|\s)@([a-zA-Z0-9_]*)$/);
+  if (!m) return null;
+  return { start: caret - m[2].length - 1, query: m[2], end: caret };
+}
+
+async function maybeOpenMentionAutocomplete(input) {
+  const ctx = findMentionContextAt(input);
+  if (!ctx) {
+    if (state._mentionAutocomplete) {
+      state._mentionAutocomplete = null;
+      renderMentionAutocomplete();
+    }
+    return;
+  }
+  const token = ++_mentionFetchToken;
+  let users = [];
+  let tokens = [];
+  try {
+    const data = await apiGet(`/api/users/mention-search?q=${encodeURIComponent(ctx.query)}&limit=8`);
+    users = data?.users || [];
+    tokens = data?.tokens || [];
+  } catch (_) {}
+  if (token !== _mentionFetchToken) return;
+  const options = [];
+  for (const tok of tokens) options.push({ kind: 'token', token: tok.token, label: tok.label });
+  for (const u of users) options.push({ kind: 'user', user: u });
+  if (!options.length) {
+    state._mentionAutocomplete = null;
+    renderMentionAutocomplete();
+    return;
+  }
+  state._mentionAutocomplete = {
+    activeIndex: 0,
+    options,
+    range: { start: ctx.start, end: ctx.end },
+    inputId: input.id || null,
+  };
+  renderMentionAutocomplete();
+}
+
+function ensureMentionAutocompleteEl() {
+  let el = document.getElementById('mention-autocomplete');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'mention-autocomplete';
+    el.className = 'mention-autocomplete';
+    document.body.appendChild(el);
+    el.addEventListener('mousedown', (e) => e.preventDefault());
+  }
+  return el;
+}
+
+function renderMentionAutocomplete() {
+  const el = ensureMentionAutocompleteEl();
+  const ac = state._mentionAutocomplete;
+  if (!ac || !ac.options?.length) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  const items = ac.options.map((opt, idx) => {
+    const isActive = idx === ac.activeIndex;
+    if (opt.kind === 'token') {
+      return `<button type="button" class="mention-option ${isActive ? 'active' : ''}" data-idx="${idx}">
+        <span class="mention-option-avatar mention-option-token">@</span>
+        <span class="mention-option-name">@${escapeHtml(opt.token)}</span>
+        <span class="mention-option-sub">${escapeHtml(opt.label || '')}</span>
+      </button>`;
+    }
+    const u = opt.user;
+    const av = u?.avatar_url || getDefaultAvatarUrl(u?.id);
+    return `<button type="button" class="mention-option ${isActive ? 'active' : ''}" data-idx="${idx}">
+      <img src="${escapeHtml(av)}" alt="" class="mention-option-avatar" />
+      <span class="mention-option-name">@${escapeHtml(u?.username || '')}</span>
+      <span class="mention-option-sub">${escapeHtml(u?.display_name || '')}</span>
+    </button>`;
+  }).join('');
+  el.innerHTML = items;
+  const inputId = ac.inputId || 'composer-input';
+  const input = document.getElementById(inputId);
+  if (input) {
+    const rect = input.getBoundingClientRect();
+    el.style.left = `${Math.max(8, rect.left)}px`;
+    el.style.top = `${Math.max(8, rect.top - 8 - el.offsetHeight)}px`;
+    el.style.minWidth = `${Math.min(360, rect.width)}px`;
+    el.style.transform = 'translateY(-100%)';
+  }
+  el.style.display = 'block';
+  el.querySelectorAll('.mention-option').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.idx);
+      const opt = ac.options[idx];
+      if (opt) applyMentionSelection(opt);
+    });
+  });
+}
+
+function applyMentionSelection(option) {
+  const ac = state._mentionAutocomplete;
+  if (!ac || !option) return;
+  const inputId = ac.inputId || 'composer-input';
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const value = input.value;
+  const insert = option.kind === 'token' ? `@${option.token}` : `@${option.user.username}`;
+  const next = value.slice(0, ac.range.start) + insert + ' ' + value.slice(ac.range.end);
+  input.value = next;
+  const caret = ac.range.start + insert.length + 1;
+  input.setSelectionRange(caret, caret);
+  state._mentionAutocomplete = null;
+  renderMentionAutocomplete();
+  input.dispatchEvent(new Event('input'));
+  input.focus();
 }
 
 // ── Voice Chat WebRTC Manager ──
@@ -3126,6 +3478,8 @@ function renderMain() {
           <a href="/manage?tab=users" class="panel-tab ${route.adminTab === 'users' ? 'active' : ''}">${tx('users', 'Users')}</a>
           <a href="/manage?tab=recalled" class="panel-tab ${route.adminTab === 'recalled' ? 'active' : ''}">${t('recalled')}</a>
           <a href="/manage?tab=timeout" class="panel-tab ${route.adminTab === 'timeout' ? 'active' : ''}">${t('timeout')}</a>
+          <a href="/manage?tab=moderation" class="panel-tab ${route.adminTab === 'moderation' ? 'active' : ''}">${tx('adminModeration', 'Moderation')}${(state._reportCounts?.open || 0) > 0 ? `<span class="panel-list-badge panel-list-badge-count">${state._reportCounts.open > 99 ? '99+' : state._reportCounts.open}</span>` : ''}</a>
+          ${state.user?.id === 'jimmyqrg' ? `<a href="/manage?tab=export" class="panel-tab ${route.adminTab === 'export' ? 'active' : ''}">${tx('adminExportTab', 'Export')}</a>` : ''}
         </div>
         ` : ''}
         ${primaryNav === 'settings' ? `
@@ -3447,7 +3801,7 @@ function renderChatArea() {
       ${profileContent}
     </div>
     ${`
-    <div class="composer composer-profile-view ${!isFriend(route.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${isFriend(route.dmUserId)}">
+    <div class="composer composer-safe-area composer-profile-view ${!isFriend(route.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${isFriend(route.dmUserId)}">
       <div class="composer-row">
         <div class="composer-input-wrap">
           <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(getDraft('dm', route.dmUserId))}</textarea>
@@ -3512,11 +3866,29 @@ function renderChatArea() {
       ${state.user?.can_pin_messages ? `<button type="button" class="pinned-message-unpin" title="${tx('unpinMessage', 'Unpin message')}" aria-label="${tx('unpinMessage', 'Unpin message')}"><span class="icon" aria-hidden="true">${ICON_X_SM}</span></button>` : ''}
     </div>` : '';
 
+  const headerSubtitle = (() => {
+    if (roomType === 'group') {
+      const onlineCount = (state.users || []).filter((u) => u.id !== state.user?.id && getPresence(u.id)?.state === 'online').length + (getPresence(state.user?.id)?.state === 'online' ? 1 : 0);
+      const totalCount = (state.users || []).filter((u) => !u.deleted_at).length;
+      return `<span class="chat-header-subtitle"><span class="presence-summary">${tx('chatHeaderUsers', '{online} online · {total} members')
+        .replace('{online}', onlineCount)
+        .replace('{total}', totalCount)}</span></span>`;
+    }
+    if (roomType === 'dm' && state.dmUserId) {
+      const presence = getPresence(state.dmUserId);
+      const status = presence ? presenceLabel(presence) : tx('presenceOffline', 'Offline');
+      return `<span class="chat-header-subtitle">${presenceDot(state.dmUserId)} <span class="presence-label">${escapeHtml(status)}</span></span>`;
+    }
+    return '';
+  })();
+  const typingHtml = renderTypingIndicator(roomType, roomId);
+
   return `
     <div class="chat-area">
       <div class="chat-main ${sidePanelOpen ? 'chat-main-with-side-panel' : ''}">
         <div class="chat-header">
           <div class="chat-header-title">${escapeHtml(getChatHeaderTitle(roomType, roomId))}</div>
+          ${headerSubtitle}
           <button type="button" class="chat-header-menu-btn" id="chat-header-menu-btn" title="${tx('more', 'More')}" aria-expanded="${sidePanelOpen}"><span class="icon" aria-hidden="true">${ICON_ELLIPSIS_V}</span></button>
         </div>
         ${pinnedBanner}
@@ -3524,11 +3896,12 @@ function renderChatArea() {
         <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
           ${loadingOlder ? '<div class="messages-loading-older">Loading more…</div>' : ''}${hasMore && !loadingOlder ? '<div class="messages-load-more-hint">Scroll up to load more</div>' : ''}${emptyContent}
         </div>
+        ${typingHtml}
         <button type="button" class="scroll-to-bottom" aria-label="Scroll to bottom" title="Scroll to bottom" style="display:none">
           <span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></span>
         </button>
         ${!accessDenied && ((roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm') ? `
-        <div class="composer ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
+        <div class="composer composer-safe-area ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
           ${replyPreview ? `
             <div class="composer-reply">
               <span class="composer-reply-text">Replying to <strong>${escapeHtml(replyPreview.sender)}</strong>: ${escapeHtml(replyPreview.content?.slice(0, 50) || '')}…</span>
@@ -4899,6 +5272,9 @@ function bindMain() {
       if (fileRef) items.push({ label: t('getFileId'), action: 'get-file-id' });
       items.push({ label: t('copy'), action: 'copy' });
       items.push({ label: t('reply'), action: 'reply' });
+      if (!isOwn && senderId !== 'jimmyqrg') {
+        items.push({ label: tx('reportMessage', 'Report message'), action: 'report' });
+      }
 
       showContextMenu(e.clientX, e.clientY, items, (action) => {
         if (action === 'get-file-id' && fileRef) {
@@ -4938,6 +5314,7 @@ function bindMain() {
           navigateTo('/chat/group/?panel=problem');
         }
         if (action === 'reply') setState({ replyTo: msg });
+        if (action === 'report') showReportMessageModal(msg);
       });
     });
   }
@@ -4947,6 +5324,7 @@ function bindMain() {
     const roomIdNow = state.dmUserId ? state.convId : state.panel;
     state._chatSearchQuery = document.getElementById('chat-search-query')?.value || '';
     state._chatSearchFilter = document.getElementById('chat-search-filter')?.value || '';
+    state._chatSearchAttachmentType = document.getElementById('chat-search-attachment')?.value || '';
     state._chatSearchLoading = true;
     render();
     try {
@@ -4956,6 +5334,7 @@ function bindMain() {
         q: state._chatSearchQuery || '',
         filter: state._chatSearchFilter || '',
       });
+      if (state._chatSearchAttachmentType) params.set('attachment_type', state._chatSearchAttachmentType);
       const { messages } = await apiGet(`/api/search/messages?${params.toString()}`);
       state._chatSearchResults = messages || [];
     } catch (err) {
@@ -4972,6 +5351,9 @@ function bindMain() {
       e.preventDefault();
       runSearch();
     }
+  });
+  document.getElementById('chat-search-attachment')?.addEventListener('change', () => {
+    runSearch();
   });
   document.querySelector('.chat-search-results')?.addEventListener('click', async (e) => {
     const result = e.target.closest('.chat-search-result[data-msg-id]');
@@ -5295,11 +5677,44 @@ function bindMain() {
         setState({ replyTo: null });
       });
     };
-    sendBtn.addEventListener('click', send);
+    sendBtn.addEventListener('click', () => {
+      const roomType = state.dmUserId ? 'dm' : 'group';
+      const roomId = state.dmUserId ? state.convId : state.panel;
+      emitTypingStop(roomType, roomId);
+      send();
+    });
     input.addEventListener('keydown', (e) => {
+      const ac = state._mentionAutocomplete;
+      if (ac && ac.options.length) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          ac.activeIndex = (ac.activeIndex + 1) % ac.options.length;
+          renderMentionAutocomplete();
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          ac.activeIndex = (ac.activeIndex - 1 + ac.options.length) % ac.options.length;
+          renderMentionAutocomplete();
+          return;
+        }
+        if (e.key === 'Enter' || e.key === 'Tab') {
+          e.preventDefault();
+          applyMentionSelection(ac.options[ac.activeIndex]);
+          return;
+        }
+        if (e.key === 'Escape') {
+          state._mentionAutocomplete = null;
+          renderMentionAutocomplete();
+          return;
+        }
+      }
       if (e.key === 'Enter' && !e.shiftKey) {
         if (isMobile()) return;
         e.preventDefault();
+        const roomType = state.dmUserId ? 'dm' : 'group';
+        const roomId = state.dmUserId ? state.convId : state.panel;
+        emitTypingStop(roomType, roomId);
         send();
       }
     });
@@ -5308,6 +5723,16 @@ function bindMain() {
       const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;
       saveDraft(roomType, roomId, input.value);
+      emitTypingActivity(roomType, roomId);
+      maybeOpenMentionAutocomplete(input);
+    });
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (!document.activeElement?.closest('.mention-autocomplete')) {
+          state._mentionAutocomplete = null;
+          renderMentionAutocomplete();
+        }
+      }, 120);
     });
     requestAnimationFrame(resizeComposerInput);
   }
@@ -5356,7 +5781,8 @@ function bindMain() {
       btn.title = state.commandMode ? 'Command mode on (e.g. /games, /wordle, /file <id>)' : 'Command mode off (send as text)';
     });
   }
-  document.getElementById('composer-mic')?.addEventListener('click', async () => {
+  const micBtn = document.getElementById('composer-mic');
+  const beginRecording = async () => {
     if (state._recording) return;
     const roomType = state.dmUserId ? 'dm' : 'group';
     const canSendFiles = roomType === 'dm' ? isFriend(state.dmUserId) : true;
@@ -5370,6 +5796,48 @@ function bindMain() {
       recorder.start();
       state._recordingRecorder = recorder;
       setState({ _recording: true });
+    } catch (err) {
+      console.error('Microphone access failed', err);
+    }
+  };
+  // Hold-to-record on touch devices: hold the mic button to record, release to send.
+  if (micBtn && isMobile() && !micBtn._holdRecBound) {
+    micBtn._holdRecBound = true;
+    let holdTriggered = false;
+    let holdTimer = null;
+    const sendNow = () => {
+      const sendBtn = document.getElementById('recording-send');
+      if (sendBtn) sendBtn.click();
+    };
+    micBtn.addEventListener('touchstart', (e) => {
+      if (state._recording) return;
+      e.preventDefault();
+      holdTriggered = false;
+      micBtn.classList.add('composer-mic-pressed');
+      holdTimer = setTimeout(() => {
+        holdTriggered = true;
+        beginRecording();
+      }, 220);
+    }, { passive: false });
+    const release = (e) => {
+      if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+      micBtn.classList.remove('composer-mic-pressed');
+      if (state._recording && holdTriggered) {
+        e?.preventDefault?.();
+        setTimeout(sendNow, 120);
+      }
+    };
+    micBtn.addEventListener('touchend', release);
+    micBtn.addEventListener('touchcancel', release);
+  }
+  micBtn?.addEventListener('click', async (e) => {
+    if (isMobile() && (e.detail === 0 || e.pointerType === 'touch' || e.button === 0 && state._recording)) {
+      // Tap on touch devices is handled via touchstart/end; ignore the synthesized click.
+      if (state._recording) return;
+    }
+    if (state._recording) return;
+    try {
+      await beginRecording();
     } catch (err) {
       console.error('Microphone access failed', err);
     }
@@ -5811,11 +6279,130 @@ function renderAdminContent() {
             </div>
             <div class="admin-audit-section">
               <h3 class="admin-section-title">${tx('adminAuditLog', 'Audit log')}</h3>
+              <div class="admin-audit-toolbar">
+                <input type="search" id="admin-audit-search" class="admin-audit-search" placeholder="${tx('adminAuditSearchPlaceholder', 'Search audit log…')}" value="${escapeHtml(state._adminAuditSearch || '')}" />
+              </div>
               <div id="admin-audit-list" class="admin-audit-list"><p class="admin-section-desc admin-loading"><span class="admin-loading-spinner" aria-hidden="true"></span> ${t('loading')}</p></div>
             </div>
           </div>
           ` : ''}
+          ${adminTab === 'moderation' ? renderModerationTab() : ''}
+          ${adminTab === 'export' && state.user?.id === 'jimmyqrg' ? renderExportTab() : ''}
     </div>
+  `;
+}
+
+function renderModerationTab() {
+  const reports = state._modReports || { items: [], status: 'open', search: '', loading: false };
+  const counts = state._reportCounts || { total: 0, open: 0, in_review: 0 };
+  const statusOptions = [
+    ['open', tx('modStatusOpen', 'Open')],
+    ['in_review', tx('modStatusInReview', 'In review')],
+    ['resolved', tx('modStatusResolved', 'Resolved')],
+    ['rejected', tx('modStatusRejected', 'Rejected')],
+    ['duplicate', tx('modStatusDuplicate', 'Duplicate')],
+    ['all', tx('modStatusAll', 'All')],
+  ];
+  const items = reports.items || [];
+  return `
+  <div class="admin-section">
+    <h2 class="admin-section-title">${tx('adminModerationQueue', 'Moderation queue')}</h2>
+    <p class="admin-section-desc">${tx('adminModerationDesc', 'Review reports submitted by users. Open: {open} · In review: {in_review} · Total: {total}.')
+      .replace('{open}', counts.open)
+      .replace('{in_review}', counts.in_review)
+      .replace('{total}', counts.total)}
+    </p>
+    <div class="mod-queue-toolbar">
+      <div class="mod-queue-status">
+        ${statusOptions.map(([id, label]) => `<button type="button" class="mod-queue-status-btn ${reports.status === id ? 'active' : ''}" data-mod-status="${id}">${escapeHtml(label)}</button>`).join('')}
+      </div>
+      <input type="search" id="mod-queue-search" class="mod-queue-search" placeholder="${tx('modQueueSearchPlaceholder', 'Search reason / user / message…')}" value="${escapeHtml(reports.search || '')}" />
+    </div>
+    ${reports.loading ? `<p class="admin-section-desc admin-loading"><span class="admin-loading-spinner" aria-hidden="true"></span> ${t('loading')}</p>` : items.length === 0
+      ? `<p class="admin-section-desc">${tx('modQueueEmpty', 'No reports here.')}</p>`
+      : `<div class="mod-queue-grid">
+          ${items.map((r) => renderModerationCard(r)).join('')}
+        </div>`}
+  </div>
+  `;
+}
+
+function renderModerationCard(r) {
+  const reporter = r.reporter_display_name || r.reporter_username || r.reporter_id;
+  const target = r.target_display_name || r.target_username || r.target_user_id || '-';
+  const messagePreview = r.message_content ? escapeHtml(String(r.message_content).slice(0, 240)) : '';
+  const status = escapeHtml(r.status);
+  const reason = escapeHtml(r.reason);
+  const resolveBtns = r.status === 'resolved' || r.status === 'rejected' || r.status === 'duplicate'
+    ? ''
+    : `<div class="mod-card-actions">
+        <button type="button" class="btn-small" data-mod-action="claim" data-report-id="${escapeHtml(r.id)}">${tx('modActionClaim', 'Claim')}</button>
+        <button type="button" class="btn-small" data-mod-action="resolve" data-report-id="${escapeHtml(r.id)}">${tx('modActionResolve', 'Mark resolved')}</button>
+        <button type="button" class="btn-small" data-mod-action="reject" data-report-id="${escapeHtml(r.id)}">${tx('modActionReject', 'Reject')}</button>
+        <button type="button" class="btn-small" data-mod-action="duplicate" data-report-id="${escapeHtml(r.id)}">${tx('modActionDuplicate', 'Mark duplicate')}</button>
+      </div>`;
+  return `
+    <article class="mod-card ${r.status === 'open' ? 'mod-card-open' : ''}" data-report-id="${escapeHtml(r.id)}">
+      <header class="mod-card-header">
+        <span class="mod-card-status mod-card-status-${status}">${status.replace('_', ' ')}</span>
+        <span class="mod-card-reason">${reason}</span>
+        <span class="mod-card-time">${escapeHtml(formatTime(r.created_at))}</span>
+      </header>
+      <div class="mod-card-meta">
+        <span><strong>${tx('modCardReporter', 'Reporter')}:</strong> ${escapeHtml(reporter || '-')}</span>
+        <span><strong>${tx('modCardTarget', 'Target')}:</strong> ${escapeHtml(target)}</span>
+        ${r.assigned_username ? `<span><strong>${tx('modCardAssignee', 'Assignee')}:</strong> ${escapeHtml(r.assigned_username)}</span>` : ''}
+      </div>
+      ${r.details ? `<p class="mod-card-details">${escapeHtml(String(r.details).slice(0, 480))}</p>` : ''}
+      ${messagePreview ? `<blockquote class="mod-card-message">${messagePreview}</blockquote>` : ''}
+      ${resolveBtns}
+      <div class="mod-card-detail-link">
+        <button type="button" class="btn-link" data-mod-action="view" data-report-id="${escapeHtml(r.id)}">${tx('modActionDetails', 'Open details / notes')}</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderExportTab() {
+  const backups = state._backups || [];
+  const exportRunning = state._exportRunning || null;
+  const items = [
+    { kind: 'messages', label: tx('exportMessages', 'Messages') },
+    { kind: 'users', label: tx('exportUsers', 'Users') },
+    { kind: 'audit', label: tx('exportAudit', 'Audit log') },
+    { kind: 'docs', label: tx('exportDocs', 'Docs') },
+    { kind: 'reports', label: tx('exportReports', 'Reports') },
+  ];
+  return `
+  <div class="admin-section">
+    <h2 class="admin-section-title">${tx('adminExportTitle', 'Manual export & backup')}</h2>
+    <p class="admin-section-desc">${tx('adminExportDesc', 'Download datasets as JSON or CSV for offline records. Backups create a SQLite snapshot of the database.')}</p>
+    <div class="admin-export-grid">
+      ${items.map((it) => `
+        <div class="admin-export-card">
+          <h3>${escapeHtml(it.label)}</h3>
+          <div class="admin-export-actions">
+            <button type="button" class="btn-small" data-export-kind="${it.kind}" data-export-format="json" ${exportRunning === it.kind + ':json' ? 'disabled' : ''}>JSON</button>
+            <button type="button" class="btn-small" data-export-kind="${it.kind}" data-export-format="csv" ${exportRunning === it.kind + ':csv' ? 'disabled' : ''}>CSV</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="admin-backup-section">
+      <h3>${tx('adminBackupTitle', 'Database backup')}</h3>
+      <button type="button" class="btn-primary" id="admin-backup-create">${tx('adminBackupCreate', 'Create snapshot')}</button>
+      <ul class="admin-backup-list">
+        ${backups.length === 0 ? `<li class="admin-section-desc">${tx('adminBackupEmpty', 'No backups yet.')}</li>` :
+          backups.map((b) => `
+          <li class="admin-backup-item">
+            <span class="admin-backup-name">${escapeHtml(b.filename)}</span>
+            <span class="admin-backup-meta">${formatTime(b.created_at)} · ${formatBytes(b.size)}</span>
+            <a class="btn-small" href="/api/admin/backup/${encodeURIComponent(b.filename)}" download>${tx('adminBackupDownload', 'Download')}</a>
+          </li>
+        `).join('')}
+      </ul>
+    </div>
+  </div>
   `;
 }
 
@@ -5846,11 +6433,13 @@ async function loadAdminBlacklist() {
   } catch (_) { state.adminBlacklistedIds = []; }
 }
 
-async function loadAdminAudit() {
+async function loadAdminAudit(search = state._adminAuditSearch || '') {
   const el = document.getElementById('admin-audit-list');
   if (!el) return;
   try {
-    const { logs } = await apiGet('/api/admin/audit?limit=120');
+    const params = new URLSearchParams({ limit: '120' });
+    if (search) params.set('q', search);
+    const { logs } = await apiGet(`/api/admin/audit?${params.toString()}`);
     const items = logs || [];
     el.innerHTML = items.length === 0
       ? `<p class="admin-section-desc">${tx('adminAuditNoItems', 'No audit items yet.')}</p>`
@@ -6018,6 +6607,166 @@ function bindAdmin() {
       await apiPost('/api/inbox/broadcast', { title, body });
       showToast(t('adminBroadcastSent'), 'success');
     } catch (e) { showToast(e.message); }
+  });
+
+  let auditSearchTimer = null;
+  document.getElementById('admin-audit-search')?.addEventListener('input', (e) => {
+    const value = e.target.value;
+    state._adminAuditSearch = value;
+    clearTimeout(auditSearchTimer);
+    auditSearchTimer = setTimeout(() => {
+      loadAdminAudit(value);
+    }, 250);
+  });
+
+  // Moderation queue tab
+  const adminTab = new URLSearchParams(window.location.search || '').get('tab') || 'action';
+  if (adminTab === 'moderation') {
+    if (!state._modReports || (state._modReports.items?.length === 0 && !state._modReports.loading)) {
+      loadModerationQueue();
+    }
+    document.querySelectorAll('[data-mod-status]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const status = btn.dataset.modStatus;
+        loadModerationQueue(status, state._modReports?.search || '');
+      });
+    });
+    let modSearchTimer = null;
+    document.getElementById('mod-queue-search')?.addEventListener('input', (e) => {
+      const value = e.target.value;
+      state._modReports.search = value;
+      clearTimeout(modSearchTimer);
+      modSearchTimer = setTimeout(() => loadModerationQueue(state._modReports.status, value), 250);
+    });
+    document.querySelectorAll('[data-mod-action]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const action = btn.dataset.modAction;
+        const reportId = btn.dataset.reportId;
+        if (!action || !reportId) return;
+        if (action === 'view') {
+          showModerationDetailModal(reportId);
+          return;
+        }
+        try {
+          if (action === 'claim') {
+            await apiPatch(`/api/reports/${reportId}`, { assign_to_me: true, status: 'in_review' });
+          } else if (action === 'resolve') {
+            await apiPatch(`/api/reports/${reportId}`, { status: 'resolved', outcome: 'reviewed' });
+          } else if (action === 'reject') {
+            await apiPatch(`/api/reports/${reportId}`, { status: 'rejected', outcome: 'no_action' });
+          } else if (action === 'duplicate') {
+            await apiPatch(`/api/reports/${reportId}`, { status: 'duplicate', outcome: 'duplicate' });
+          }
+          await loadReportCounts();
+          await loadModerationQueue(state._modReports.status, state._modReports.search || '');
+          showToast(tx('modActionDone', 'Report updated.'), 'success');
+        } catch (err) {
+          showToast(err.message || 'Failed to update report');
+        }
+      });
+    });
+  }
+
+  // Export tab
+  if (adminTab === 'export' && state.user?.id === 'jimmyqrg') {
+    if (!state._backups || state._backups.length === 0) {
+      loadBackups().then(() => render());
+    }
+    document.querySelectorAll('[data-export-kind]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const kind = btn.dataset.exportKind;
+        const format = btn.dataset.exportFormat;
+        const key = `${kind}:${format}`;
+        state._exportRunning = key;
+        render();
+        try {
+          const url = `/api/admin/export/${kind}?format=${format}`;
+          const res = await fetch(url, { credentials: 'include' });
+          if (!res.ok) throw new Error('Export failed');
+          const blob = await res.blob();
+          const dlUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = dlUrl;
+          a.download = `${kind}-${Date.now()}.${format}`;
+          a.click();
+          URL.revokeObjectURL(dlUrl);
+          showToast(tx('exportDone', 'Export ready.'), 'success');
+        } catch (err) {
+          showToast(err.message || 'Export failed');
+        } finally {
+          state._exportRunning = null;
+          render();
+        }
+      });
+    });
+    document.getElementById('admin-backup-create')?.addEventListener('click', async () => {
+      try {
+        await apiPost('/api/admin/backup');
+        await loadBackups();
+        render();
+        showToast(tx('backupCreated', 'Backup created.'), 'success');
+      } catch (err) {
+        showToast(err.message || 'Backup failed');
+      }
+    });
+  }
+}
+
+async function loadAdminAuditWithSearch(search) {
+  return loadAdminAudit(search);
+}
+
+function showModerationDetailModal(reportId) {
+  loadModerationReportDetail(reportId).then((data) => {
+    if (!data) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const r = data.report;
+    const notes = data.notes || [];
+    overlay.innerHTML = `
+      <div class="modal mod-detail-modal" style="max-width:560px;">
+        <h3>${escapeHtml(tx('modDetailTitle', 'Report details'))}</h3>
+        <div class="mod-detail-section">
+          <p><strong>${tx('modCardReason', 'Reason')}:</strong> ${escapeHtml(r.reason)}</p>
+          <p><strong>${tx('modCardStatus', 'Status')}:</strong> ${escapeHtml(r.status)}${r.outcome ? ` — ${escapeHtml(r.outcome)}` : ''}</p>
+          <p><strong>${tx('modCardReporter', 'Reporter')}:</strong> ${escapeHtml(r.reporter_username || r.reporter_id || '-')}</p>
+          <p><strong>${tx('modCardTarget', 'Target')}:</strong> ${escapeHtml(r.target_username || r.target_user_id || '-')}</p>
+          ${r.message_content ? `<blockquote class="mod-detail-message">${escapeHtml(r.message_content)}</blockquote>` : ''}
+          ${r.details ? `<p class="mod-detail-details">${escapeHtml(r.details)}</p>` : ''}
+        </div>
+        <div class="mod-detail-section">
+          <h4>${tx('modNotesTitle', 'Notes')}</h4>
+          <div class="mod-notes-list">
+            ${notes.length === 0 ? `<p class="admin-section-desc">${tx('modNotesEmpty', 'No notes yet.')}</p>` :
+              notes.map((n) => `<div class="mod-note">
+                <span class="mod-note-meta"><strong>${escapeHtml(n.author_username || 'admin')}</strong> · ${escapeHtml(formatTime(n.created_at))}</span>
+                <p>${escapeHtml(n.body)}</p>
+              </div>`).join('')}
+          </div>
+          <textarea id="mod-note-input" placeholder="${tx('modNotePlaceholder', 'Add a note…')}" rows="3"></textarea>
+          <div class="modal-actions">
+            <button type="button" id="mod-note-add" class="btn-primary">${tx('modNoteAdd', 'Add note')}</button>
+            <button type="button" id="mod-detail-close" class="modal-close">${t('cancel')}</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#mod-detail-close')?.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('#mod-note-add')?.addEventListener('click', async () => {
+      const ta = overlay.querySelector('#mod-note-input');
+      const body = ta?.value?.trim();
+      if (!body) return;
+      try {
+        await apiPost(`/api/reports/${reportId}/notes`, { body });
+        await loadModerationReportDetail(reportId);
+        close();
+        showModerationDetailModal(reportId);
+      } catch (err) {
+        showToast(err.message || 'Failed to add note');
+      }
+    });
   });
 }
 
@@ -6215,7 +6964,8 @@ function getChatHeaderTitle(roomType, roomId) {
 }
 
 function renderChatUsersView() {
-  const users = (state.users || []).filter((u) => !isBlocked(u.id));
+  const allUsers = (state.users || []).filter((u) => !isBlocked(u.id));
+  const users = allUsers.filter((u) => !u.deleted_at);
   const convId = (uid) => state.convByUserId[uid];
   const lastMessageAt = (uid) => {
     const fromApi = state.lastMessageAtByUserId?.[uid];
@@ -6237,8 +6987,15 @@ function renderChatUsersView() {
     if (bn !== an) return bn - an;
     return name(a).localeCompare(name(b));
   });
+  const onlineUsers = users.filter((u) => getPresence(u.id)?.state === 'online');
+  const idleUsers = users.filter((u) => getPresence(u.id)?.state === 'idle');
   return `
     <div class="chat-users-view">
+      <div class="chat-users-summary">
+        <strong class="chat-users-count">${tx('chatUsersCount', '{n} member(s)').replace('{n}', users.length)}</strong>
+        <span class="chat-users-online">${tx('chatUsersOnline', '{n} online').replace('{n}', onlineUsers.length)}</span>
+        ${idleUsers.length ? `<span class="chat-users-idle">${tx('chatUsersIdle', '{n} idle').replace('{n}', idleUsers.length)}</span>` : ''}
+      </div>
       <div class="chat-users-search">
         <input type="search" id="chat-side-user-search" placeholder="${tx('users', 'Users')}…" />
       </div>
@@ -6252,7 +7009,7 @@ function renderChatUsersView() {
           const chatHref = `/chat/${encodeURIComponent(u.id)}${friend ? '' : '?view=profile'}`;
           return `
             <li><a href="${chatHref}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-user-id="${escapeHtml(u.id)}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml(name(u))}" data-friend="${friend ? '1' : '0'}">
-              <span class="panel-user-avatar-wrap" data-user-id="${escapeHtml(u.id)}" title="View profile"><img src="${avSrc}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="panel-user-avatar" /></span>
+              <span class="panel-user-avatar-wrap" data-user-id="${escapeHtml(u.id)}" title="View profile"><img src="${avSrc}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="panel-user-avatar" />${presenceDot(u.id)}</span>
               <span class="panel-list-link-text">${escapeHtml(u.display_name || u.username)}</span>${badge}
             </a></li>
           `;
@@ -6283,12 +7040,26 @@ function renderChatSidePanel(roomType, roomId) {
 function renderChatSearchView(roomType, roomId) {
   const results = state._chatSearchResults || [];
   const loading = !!state._chatSearchLoading;
+  const attachmentType = state._chatSearchAttachmentType || '';
+  const types = [
+    ['', tx('searchAttachAll', 'All messages')],
+    ['any', tx('searchAttachAny', 'Any attachment')],
+    ['image', tx('searchAttachImage', 'Images')],
+    ['video', tx('searchAttachVideo', 'Videos')],
+    ['audio', tx('searchAttachAudio', 'Audio')],
+    ['voice', tx('searchAttachVoice', 'Voice')],
+    ['file', tx('searchAttachFile', 'Files')],
+    ['gif', tx('searchAttachGif', 'GIFs')],
+  ];
   return `
     <div class="chat-search-view" data-room-type="${roomType}" data-room-id="${roomId}">
       <div class="chat-search-top">
         <div class="chat-search-fields">
           <input type="search" id="chat-search-query" placeholder="${tx('searchMessages', 'Search messages')}" value="${escapeHtml(state._chatSearchQuery || '')}" />
           <input type="text" id="chat-search-filter" placeholder="${tx('searchFilterHint', 'e.g. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg')}" value="${escapeHtml(state._chatSearchFilter || '')}" />
+          <select id="chat-search-attachment" class="chat-search-attachment">
+            ${types.map(([val, label]) => `<option value="${val}" ${val === attachmentType ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+          </select>
         </div>
         <button type="button" class="chat-search-run icon-btn" title="${tx('search', 'Search')}"><span class="icon" aria-hidden="true">${ICON_SEARCH_SM}</span></button>
       </div>
@@ -6570,6 +7341,7 @@ async function init() {
     await loadFriends();
     await loadPendingFriendRequests();
     await loadNotificationPrefs();
+    if (state.user?.is_allowed) loadReportCounts().catch(() => {});
   connectSocket();
     apiGet('/api/voice/participants').then(({ participants }) => {
       state._voiceParticipantCount = (participants || []).length;
