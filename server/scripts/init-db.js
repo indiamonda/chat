@@ -210,6 +210,69 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS message_reports (
+    id TEXT PRIMARY KEY,
+    reporter_id TEXT NOT NULL,
+    target_user_id TEXT,
+    message_id TEXT,
+    room_type TEXT,
+    room_id TEXT,
+    reason TEXT NOT NULL,
+    details TEXT,
+    status TEXT NOT NULL DEFAULT 'open',
+    assigned_to TEXT,
+    outcome TEXT,
+    resolved_by TEXT,
+    resolved_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (reporter_id) REFERENCES users(id),
+    FOREIGN KEY (target_user_id) REFERENCES users(id),
+    FOREIGN KEY (message_id) REFERENCES messages(id),
+    FOREIGN KEY (assigned_to) REFERENCES users(id),
+    FOREIGN KEY (resolved_by) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_message_reports_status ON message_reports(status, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_message_reports_target ON message_reports(target_user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_message_reports_message ON message_reports(message_id);
+  CREATE INDEX IF NOT EXISTS idx_message_reports_reporter ON message_reports(reporter_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS moderation_notes (
+    id TEXT PRIMARY KEY,
+    report_id TEXT,
+    target_user_id TEXT,
+    message_id TEXT,
+    author_id TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (report_id) REFERENCES message_reports(id),
+    FOREIGN KEY (target_user_id) REFERENCES users(id),
+    FOREIGN KEY (message_id) REFERENCES messages(id),
+    FOREIGN KEY (author_id) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_moderation_notes_report ON moderation_notes(report_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_moderation_notes_target ON moderation_notes(target_user_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS upload_refs (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    message_id TEXT,
+    uploaded_by TEXT,
+    mime_type TEXT,
+    size_bytes INTEGER,
+    original_name TEXT,
+    referenced INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (message_id) REFERENCES messages(id),
+    FOREIGN KEY (uploaded_by) REFERENCES users(id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_upload_refs_filename ON upload_refs(filename);
+  CREATE INDEX IF NOT EXISTS idx_upload_refs_message ON upload_refs(message_id);
+  CREATE INDEX IF NOT EXISTS idx_upload_refs_referenced ON upload_refs(referenced, created_at);
+
+  CREATE INDEX IF NOT EXISTS idx_messages_msg_type ON messages(msg_type, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_messages_sender_created ON messages(sender_id, created_at DESC);
 `);
 
 try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch (_) {}

@@ -1859,13 +1859,19 @@ select:focus {
   display: grid;
   gap: 0.5rem;
 }
-.chat-search-fields input {
+.chat-search-fields input,
+.chat-search-fields select {
   width: 100%;
   padding: 0.6rem 0.75rem;
   border: var(--border-width) solid var(--border);
   border-radius: 8px;
   background: var(--bg-panel);
   color: var(--text);
+  font: inherit;
+}
+.chat-search-attachment {
+  appearance: auto;
+  cursor: pointer;
 }
 .chat-search-results {
   display: flex;
