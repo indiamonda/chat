@@ -4915,8 +4915,17 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
   };
+  const isTypingInEditable = () => {
+    const ae = document.activeElement;
+    if (!ae) return false;
+    const tag = (ae.tagName || '').toUpperCase();
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (ae.isContentEditable) return true;
+    return false;
+  };
   const onKey = (e) => {
-    if (e.key === 'Escape') close();
+    if (e.key === 'Escape') { close(); return; }
+    if (isTypingInEditable()) return;
     if (e.key === 'ArrowLeft') {
       const prevBtn = overlay.querySelector('.media-popup-prev');
       if (prevBtn && !prevBtn.disabled) prevBtn.click();
@@ -4927,7 +4936,14 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
       if (nextBtn && !nextBtn.disabled) nextBtn.click();
       return;
     }
-    if (e.key === ' ') e.preventDefault();
+    if (e.key === ' ' || e.code === 'Space') {
+      const v = overlay.querySelector('.media-popup-video');
+      if (v) {
+        e.preventDefault();
+        v.paused ? v.play() : v.pause();
+      }
+      return;
+    }
     if (e.key === 'k' || e.key === 'K') {
       const v = overlay.querySelector('.media-popup-video');
       if (v) { e.preventDefault(); v.paused ? v.play() : v.pause(); }
