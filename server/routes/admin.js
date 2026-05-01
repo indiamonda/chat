@@ -210,30 +210,36 @@ function parseDuration(str) {
   return Date.now() + sec * 1000;
 }
 
-// Timeout user in group – requires can_timeout
+// Timeout user – requires can_timeout. `scope` can be 'group' (mute in group chat)
+// or 'dm' (mute in private chats, except with jimmyqrg).
 router.post('/timeout', requireAuth, (req, res) => {
   const admin = assertAllowed(req, res);
   if (admin === undefined) return;
   if (!canTimeout(admin)) return res.status(403).json({ error: 'Not allowed to timeout' });
-  const { user_id, duration, locked_release } = req.body || {};
+  const { user_id, duration, locked_release, scope } = req.body || {};
   if (!user_id) return res.status(400).json({ error: 'user_id required' });
   if (user_id === 'jimmyqrg') return res.status(403).json({ error: 'Cannot timeout jimmyqrg' });
+  const normalizedScope = scope === 'dm' ? 'dm' : 'group';
   const target = db.prepare('SELECT id FROM users WHERE id = ?').get(user_id);
   if (!target) return res.status(404).json({ error: 'User not found' });
   const expiresAt = duration ? parseDuration(duration) : null;
-  const locked = admin.id !== 'jimmyqrg' ? 0 : (!!locked_release ? 1 : 0); // only jimmyqrg can set locked_release
+  const locked = admin.id !== 'jimmyqrg' ? 0 : (!!locked_release ? 1 : 0);
   const id = randomUUID();
+  const roomType = normalizedScope === 'dm' ? 'dm' : 'group';
+  const roomId = normalizedScope === 'dm' ? '*' : GROUP_ID;
   db.prepare(`
-    INSERT INTO group_timeouts (id, user_id, room_type, room_id, expires_at, locked_release, created_at, created_by)
-    VALUES (?, ?, 'group', ?, ?, ?, ?, ?)
-  `).run(id, user_id, GROUP_ID, expiresAt, locked, Date.now(), admin.id);
+    INSERT INTO group_timeouts (id, user_id, room_type, room_id, expires_at, locked_release, created_at, created_by, scope)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, user_id, roomType, roomId, expiresAt, locked, Date.now(), admin.id, normalizedScope);
   recordAuditLog('timeout.create', admin.id, user_id, {
     duration: duration || 'forever',
     expires_at: expiresAt || null,
     locked_release: !!locked,
+    scope: normalizedScope,
     timeout_id: id,
   });
-  res.json({ ok: true, timeout_id: id });
+  notifyTimeoutChanged(req, user_id);
+  res.json({ ok: true, timeout_id: id, scope: normalizedScope });
 });
 
 // Release timeout – any admin with can_timeout unless locked (then only jimmyqrg)
@@ -246,8 +252,17 @@ router.post('/timeout/:id/release', requireAuth, (req, res) => {
   if (row.locked_release && admin.id !== 'jimmyqrg') return res.status(403).json({ error: 'Only jimmyqrg can release this timeout' });
   db.prepare('UPDATE group_timeouts SET released_at = ?, released_by = ? WHERE id = ?').run(Date.now(), admin.id, row.id);
   recordAuditLog('timeout.release', admin.id, row.user_id, { timeout_id: row.id, locked_release: !!row.locked_release });
+  notifyTimeoutChanged(req, row.user_id);
   res.json({ ok: true });
 });
+
+/** Emit a 'timeouts:changed' event to the affected user so their client
+ * refreshes its banner/state immediately. */
+function notifyTimeoutChanged(req, userId) {
+  const io = req.app.get('io');
+  if (!io || !userId) return;
+  try { io.to(`user:${userId}`).emit('timeouts:changed'); } catch (_) {}
+}
 
 router.get('/audit', requireAuth, (req, res) => {
   const admin = assertAllowed(req, res);
@@ -403,18 +418,20 @@ router.get('/backup/:filename', requireAuth, (req, res) => {
   res.download(filePath, filename);
 });
 
-// List active timeouts
+// List active timeouts (both group and dm scopes).
 router.get('/timeouts', requireAuth, (req, res) => {
   const admin = assertAllowed(req, res);
   if (admin === undefined) return;
   const rows = db.prepare(`
     SELECT t.id, t.user_id, t.expires_at, t.locked_release, t.created_at, t.created_by,
+           t.scope, t.room_type, t.room_id,
            u.username, u.display_name
     FROM group_timeouts t
     JOIN users u ON u.id = t.user_id
-    WHERE t.room_type = 'group' AND t.room_id = ? AND t.released_at IS NULL
+    WHERE t.released_at IS NULL
+      AND (t.expires_at IS NULL OR t.expires_at > ?)
     ORDER BY t.created_at DESC
-  `).all(GROUP_ID);
+  `).all(Date.now());
   res.json({ timeouts: rows });
 });
 

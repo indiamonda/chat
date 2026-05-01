@@ -2234,6 +2234,16 @@ select:focus {
   text-align: center;
 }
 
+.dm-timeout-banner {
+  padding: 0.55rem 1rem;
+  background: rgba(220, 80, 80, 0.12);
+  border-bottom: 1px solid rgba(220, 80, 80, 0.35);
+  color: #d04040;
+  font-size: 0.88rem;
+  text-align: center;
+  font-weight: 500;
+}
+
 .pinned-message-banner {
   display: flex;
   align-items: center;
@@ -2544,11 +2554,45 @@ select:focus {
 }
 
 .message-reply-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  max-width: 100%;
+  text-align: left;
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-left: 3px solid var(--purple);
+  padding: 0 0.5rem;
+  margin-bottom: 0.35rem;
+  font: inherit;
   font-size: 0.85rem;
   color: var(--text-dim);
-  border-left: 3px solid var(--purple);
-  padding-left: 0.5rem;
-  margin-bottom: 0.35rem;
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+}
+.message-reply-preview:hover,
+.message-reply-preview:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+.message-reply-sender {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  flex: 0 0 auto;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.message-reply-snippet {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .message-content {
@@ -2751,6 +2795,45 @@ select:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.composer-reply-jump {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-left: 3px solid var(--purple);
+  padding-left: 0.5rem;
+}
+.composer-reply-jump:hover,
+.composer-reply-jump:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+.composer-reply-sender {
+  font-weight: 600;
+  color: var(--text);
+  flex: 0 0 auto;
+  max-width: 40%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.composer-reply-snippet {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .cancel-reply-x {
   background: none;
@@ -4155,7 +4238,15 @@ input[type="checkbox"]:checked::after {
 .admin-delete-modal p { margin: 0 0 1rem; font-size: 0.9rem; color: var(--text-dim); line-height: 1.4; }
 .admin-delete-modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
 
-.inbox-item-actions { margin-top: 0.5rem; display: flex; gap: 0.5rem; }
+.inbox-item-actions { margin-top: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.inbox-item-report .body { white-space: pre-wrap; }
+.inbox-item-report .type {
+  color: var(--red, #e06c75);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
 .admin-recalled-ul { list-style: none; padding: 0; margin: 0; }
 .admin-recalled-item { padding: 0.75rem; border: var(--border-width) solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
 .admin-recalled-content { margin: 0.25rem 0 0; color: var(--text-dim); font-size: 0.9rem; }
@@ -4224,6 +4315,44 @@ input[type="checkbox"]:checked::after {
 .admin-timeout-item { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; padding: 0.6rem; border: var(--border-width) solid var(--border); border-radius: 8px; margin-bottom: 0.5rem; background: var(--bg-panel); }
 .admin-timeout-item .admin-timeout-release { margin-left: auto; }
 .admin-timeout-meta { font-size: 0.85rem; color: var(--text-dim); }
+.admin-timeout-scope {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 0.25rem 0 0.35rem;
+}
+.admin-timeout-scope-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+.admin-section-subhint {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin: 0 0 0.5rem;
+}
+.admin-timeout-scope-badge {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.admin-timeout-scope-badge-group {
+  background: rgba(140, 95, 255, 0.12);
+  color: var(--purple, #8c5fff);
+  border-color: rgba(140, 95, 255, 0.4);
+}
+.admin-timeout-scope-badge-dm {
+  background: rgba(255, 160, 64, 0.12);
+  color: #d98a25;
+  border-color: rgba(255, 160, 64, 0.4);
+}
 .admin-form label {
   display: block;
   margin-bottom: 0.35rem;
@@ -5013,6 +5142,90 @@ input[type="checkbox"]:checked::after {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   padding: 1.5rem;
   color: var(--text);
+}
+
+/* Report context modal (admin view of nearest messages around a reported DM) */
+.report-context-modal {
+  max-width: 640px;
+  width: 100%;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow: hidden;
+}
+.report-context-modal h3 {
+  margin: 0;
+}
+.report-context-participants {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+.report-context-messages {
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: 55vh;
+}
+.report-context-message {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  background: var(--bg-main);
+  border: 1px solid var(--border);
+}
+.report-context-message-focus {
+  border-color: var(--purple);
+  box-shadow: 0 0 0 2px rgba(140, 95, 255, 0.2);
+  background: rgba(140, 95, 255, 0.08);
+}
+.report-context-meta {
+  font-size: 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--text-dim);
+}
+.report-context-meta strong {
+  color: var(--text);
+}
+.report-context-time {
+  white-space: nowrap;
+}
+.report-context-body {
+  font-size: 0.92rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.report-context-muted {
+  color: var(--text-dim);
+  font-style: italic;
+}
+.report-context-attach {
+  font-weight: 600;
+  color: var(--purple);
+}
+.report-context-fileref {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+.report-context-empty {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  font-style: italic;
+  padding: 0.3rem 0.5rem;
+}
+.mod-detail-actions {
+  margin-top: 0.5rem;
 }
 
 /* Composer reply and pending file (ensure layout) */
