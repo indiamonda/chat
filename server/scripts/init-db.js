@@ -169,10 +169,12 @@ db.exec(`
     created_by TEXT NOT NULL,
     released_at INTEGER,
     released_by TEXT,
+    scope TEXT NOT NULL DEFAULT 'group',
     FOREIGN KEY (user_id) REFERENCES users(id),
     FOREIGN KEY (created_by) REFERENCES users(id)
   );
   CREATE INDEX IF NOT EXISTS idx_group_timeouts_user_room ON group_timeouts(user_id, room_type, room_id);
+  CREATE INDEX IF NOT EXISTS idx_group_timeouts_scope_user ON group_timeouts(scope, user_id);
 
   CREATE TABLE IF NOT EXISTS user_saves (
     user_id TEXT NOT NULL,

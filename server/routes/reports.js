@@ -99,18 +99,46 @@ function notifyAdminsNewReport(req, report) {
       VALUES (?, ?, 'mod_report', ?, ?, ?, ?, ?)
     `);
     const now = Date.now();
-    const title = 'New moderation report';
-    const body = `Reason: ${report.reason}${report.details ? ` — ${String(report.details).slice(0, 160)}` : ''}`;
+    const reporterName = report.reporter_display_name || report.reporter_username || report.reporter_id || 'someone';
+    const targetName = report.target_display_name || report.target_username || report.target_user_id || 'a user';
+    const title = `New report: ${reporterName} → ${targetName}`;
+    const snippetSource = report.message_content || report.details || '';
+    const snippet = String(snippetSource).replace(/\s+/g, ' ').trim().slice(0, 180);
+    const bodyLines = [
+      `Reporter: ${reporterName}${report.reporter_username ? ` (@${report.reporter_username})` : ''}`,
+      `Target: ${targetName}${report.target_username ? ` (@${report.target_username})` : ''}`,
+      `Reason: ${report.reason}`,
+    ];
+    if (report.details) bodyLines.push(`Details: ${String(report.details).slice(0, 200)}`);
+    if (report.message_id) {
+      bodyLines.push(`Message: ${snippet || '(no text)'}`);
+    }
+    const body = bodyLines.join('\n');
+    const extra = {
+      report_id: report.id,
+      reporter_id: report.reporter_id,
+      reporter_username: report.reporter_username || null,
+      reporter_display_name: report.reporter_display_name || null,
+      target_user_id: report.target_user_id,
+      target_username: report.target_username || null,
+      target_display_name: report.target_display_name || null,
+      message_id: report.message_id || null,
+      message_snippet: snippet || null,
+      reason: report.reason,
+      room_type: report.room_type || null,
+      room_id: report.room_id || null,
+    };
+    const extraJson = JSON.stringify(extra);
     for (const a of admins) {
       const inboxId = randomUUID();
-      insert.run(inboxId, a.id, title, body, report.id, JSON.stringify({ report_id: report.id }), now);
+      insert.run(inboxId, a.id, title, body, report.id, extraJson, now);
       io.to(`user:${a.id}`).emit('inbox:item', {
         id: inboxId,
         type: 'mod_report',
         title,
         body,
         related_id: report.id,
-        related_extra: { report_id: report.id },
+        related_extra: extra,
         created_at: now,
       });
     }
@@ -319,5 +347,106 @@ router.post('/:id/notes', requireAuth, (req, res) => {
   recordAuditLog('mod.report_note', admin.id, exists.target_user_id || null, { report_id: reportId });
   res.status(201).json({ ok: true, note: { id, body, created_at: now, author_id: admin.id } });
 });
+
+/**
+ * GET /api/reports/:id/context – nearest 10 messages around the reported message.
+ * Returns { before: [...], focus: {...}, after: [...], room_type, room_id, conversation }.
+ * Used by admins to review the context of a reported DM without exposing the whole
+ * private chat history.
+ */
+router.get('/:id/context', requireAuth, (req, res) => {
+  const admin = assertAdmin(req, res);
+  if (!admin) return;
+  const reportId = req.params.id;
+  const report = db.prepare(`SELECT id, message_id, room_type, room_id FROM message_reports WHERE id = ?`).get(reportId);
+  if (!report) return res.status(404).json({ error: 'Report not found' });
+  if (!report.message_id) return res.status(400).json({ error: 'Report is not tied to a message' });
+  const focus = db.prepare(`
+    SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id,
+           m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
+           u.username, u.display_name, u.avatar_url, u.chatbox_style
+    FROM messages m
+    LEFT JOIN users u ON u.id = m.sender_id
+    WHERE m.id = ?
+  `).get(report.message_id);
+  if (!focus) return res.status(404).json({ error: 'Reported message not found' });
+
+  const WINDOW = 5;
+  const before = db.prepare(`
+    SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id,
+           m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
+           u.username, u.display_name, u.avatar_url, u.chatbox_style
+    FROM messages m
+    LEFT JOIN users u ON u.id = m.sender_id
+    WHERE m.room_type = ? AND m.room_id = ?
+      AND (m.created_at < ? OR (m.created_at = ? AND m.id < ?))
+    ORDER BY m.created_at DESC, m.id DESC
+    LIMIT ?
+  `).all(focus.room_type, focus.room_id, focus.created_at, focus.created_at, focus.id, WINDOW).reverse();
+
+  const after = db.prepare(`
+    SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id,
+           m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
+           u.username, u.display_name, u.avatar_url, u.chatbox_style
+    FROM messages m
+    LEFT JOIN users u ON u.id = m.sender_id
+    WHERE m.room_type = ? AND m.room_id = ?
+      AND (m.created_at > ? OR (m.created_at = ? AND m.id > ?))
+    ORDER BY m.created_at ASC, m.id ASC
+    LIMIT ?
+  `).all(focus.room_type, focus.room_id, focus.created_at, focus.created_at, focus.id, WINDOW);
+
+  let conversation = null;
+  if (focus.room_type === 'dm') {
+    const conv = db.prepare(`
+      SELECT c.id, c.user1_id, c.user2_id,
+             u1.username AS u1_username, u1.display_name AS u1_display_name,
+             u2.username AS u2_username, u2.display_name AS u2_display_name
+      FROM conversations c
+      LEFT JOIN users u1 ON u1.id = c.user1_id
+      LEFT JOIN users u2 ON u2.id = c.user2_id
+      WHERE c.id = ?
+    `).get(focus.room_id);
+    if (conv) {
+      conversation = {
+        id: conv.id,
+        participants: [
+          { id: conv.user1_id, username: conv.u1_username, display_name: conv.u1_display_name },
+          { id: conv.user2_id, username: conv.u2_username, display_name: conv.u2_display_name },
+        ],
+      };
+    }
+  }
+
+  const decoratedBefore = decorateMessagesForReport(before);
+  const decoratedFocus = decorateMessagesForReport([focus])[0];
+  const decoratedAfter = decorateMessagesForReport(after);
+
+  recordAuditLog('mod.report_view_context', admin.id, report.target_user_id || null, {
+    report_id: reportId, room_type: focus.room_type, room_id: focus.room_id, message_id: focus.id,
+  });
+
+  res.json({
+    room_type: focus.room_type,
+    room_id: focus.room_id,
+    conversation,
+    focus_message_id: focus.id,
+    before: decoratedBefore,
+    focus: decoratedFocus,
+    after: decoratedAfter,
+  });
+});
+
+/** Minimal decorator: parses edit_history JSON so the client can render nicely. */
+function decorateMessagesForReport(rows) {
+  return rows.map((row) => ({
+    ...row,
+    edit_history: row.edit_history ? safeJsonParse(row.edit_history) : null,
+  }));
+}
+
+function safeJsonParse(text) {
+  try { return JSON.parse(text); } catch (_) { return null; }
+}
 
 export default router;

@@ -86,15 +86,51 @@ function getReactionMap(messageIds) {
   return out;
 }
 
+function getReplyTargetMap(replyIds) {
+  if (!replyIds.length) return {};
+  const placeholders = replyIds.map(() => '?').join(', ');
+  const rows = db.prepare(`
+    SELECT m.id, m.content, m.msg_type, m.sender_id, m.recalled_at, m.deleted_by_admin,
+           u.username, u.display_name
+    FROM messages m
+    LEFT JOIN users u ON u.id = m.sender_id
+    WHERE m.id IN (${placeholders})
+  `).all(...replyIds);
+  const out = {};
+  for (const row of rows) {
+    const isRecalled = !!row.recalled_at;
+    const isDeleted = !!row.deleted_by_admin;
+    let snippet = '';
+    if (isRecalled) snippet = '[recalled message]';
+    else if (isDeleted) snippet = '[deleted by admin]';
+    else if (row.msg_type && row.msg_type !== 'text') snippet = `[${row.msg_type}]`;
+    else snippet = (row.content || '').slice(0, 160);
+    out[row.id] = {
+      id: row.id,
+      sender_id: row.sender_id,
+      sender_username: row.username || null,
+      sender_display_name: row.display_name || row.username || null,
+      msg_type: row.msg_type || 'text',
+      content: snippet,
+      recalled: isRecalled,
+      deleted: isDeleted,
+    };
+  }
+  return out;
+}
+
 function decorateMessages(rows) {
   const messageIds = rows.map((row) => row.id);
   const likeMap = getLikeMap(messageIds);
   const reactionMap = getReactionMap(messageIds);
+  const replyIds = [...new Set(rows.map((r) => r.reply_to_id).filter(Boolean))];
+  const replyMap = getReplyTargetMap(replyIds);
   return rows.map((row) => ({
     ...row,
     likes: likeMap[row.id] || 0,
     reactions: reactionMap[row.id] || [],
     edit_history: row.edit_history ? JSON.parse(row.edit_history) : null,
+    reply_to: row.reply_to_id ? (replyMap[row.reply_to_id] || null) : null,
   }));
 }
 
@@ -396,6 +432,19 @@ app.use('/api/blocks', blocksRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/saves', savesRoutes);
 app.use('/api/reports', reportsRoutes);
+
+/** Active timeouts for the signed-in user (used by client UI to show hints). */
+app.get('/api/my/timeouts', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  const now = Date.now();
+  const rows = db.prepare(`
+    SELECT id, scope, expires_at, locked_release, created_at
+    FROM group_timeouts
+    WHERE user_id = ? AND released_at IS NULL
+      AND (expires_at IS NULL OR expires_at > ?)
+  `).all(user.id, now);
+  res.json({ timeouts: rows });
+});
 
 /** Link preview: fetch URL and return og:title, og:description, og:image. Requires auth. */
 app.get('/api/link-preview', requireAuth, async (req, res) => {
@@ -752,6 +801,11 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
     if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
     return res.status(404).json({ error: 'Not found' });
   }
+  const otherId = conv.user1_id === user.id ? conv.user2_id : conv.user1_id;
+  if (blockedByDmTimeout(user.id, otherId)) {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+    return res.status(403).json({ error: 'You are timed out from private chat. You can still message jimmyqrg.' });
+  }
   const { content, msg_type, reply_to_id } = req.body || {};
   let finalContent = typeof content === 'string' ? content : '';
   let msgType = (msg_type || 'text').slice(0, 32);
@@ -883,9 +937,35 @@ io.use((socket, next) => {
 function isTimedOut(userId) {
   const now = Date.now();
   const row = db.prepare(
-    'SELECT id FROM group_timeouts WHERE user_id = ? AND room_type = ? AND room_id = ? AND released_at IS NULL AND (expires_at IS NULL OR expires_at > ?)'
-  ).get(userId, 'group', GROUP_ID, now);
+    `SELECT id FROM group_timeouts
+     WHERE user_id = ?
+       AND released_at IS NULL
+       AND (expires_at IS NULL OR expires_at > ?)
+       AND (scope = 'group' OR (scope IS NULL AND room_type = 'group' AND room_id = ?))`
+  ).get(userId, now, GROUP_ID);
   return !!row;
+}
+
+/** True when the user has an active dm-scope timeout. Recipients named
+ * 'jimmyqrg' are always reachable so the timed-out user can appeal. */
+function isDmTimedOut(userId) {
+  if (!userId) return false;
+  const now = Date.now();
+  const row = db.prepare(
+    `SELECT id FROM group_timeouts
+     WHERE user_id = ?
+       AND scope = 'dm'
+       AND released_at IS NULL
+       AND (expires_at IS NULL OR expires_at > ?)`
+  ).get(userId, now);
+  return !!row;
+}
+
+/** Whether a DM from sender to receiver should be blocked by a dm timeout. */
+function blockedByDmTimeout(senderId, receiverId) {
+  if (!senderId) return false;
+  if (receiverId === 'jimmyqrg') return false;
+  return isDmTimedOut(senderId);
 }
 
 // ── Presence + typing tracking ──
@@ -1061,6 +1141,9 @@ io.on('connection', (socket) => {
       if (isBlacklisted(socket.userId)) {
         const other = db.prepare('SELECT id, is_allowed FROM users WHERE id = ?').get(otherId);
         if (!other || (other.id !== 'jimmyqrg' && !other.is_allowed)) return ack?.({ error: 'Access denied. Blacklisted users can only DM with JimmyQrg or allowed users.' });
+      }
+      if (blockedByDmTimeout(socket.userId, otherId)) {
+        return ack?.({ error: 'You are timed out from private chat. You can still message jimmyqrg.' });
       }
       if (!areFriends(socket.userId, otherId)) {
         const myCount = db.prepare('SELECT COUNT(*) as c FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?').get('dm', roomId, socket.userId).c;

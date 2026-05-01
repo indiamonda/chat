@@ -70,7 +70,7 @@ try {
   `);
 } catch (_) {}
 
-// Group timeouts (mute in JimmyQrg group)
+// Group timeouts (mute in JimmyQrg group or in private chat)
 try {
   db.exec(`
     CREATE TABLE IF NOT EXISTS group_timeouts (
@@ -89,6 +89,16 @@ try {
     );
     CREATE INDEX IF NOT EXISTS idx_group_timeouts_user_room ON group_timeouts(user_id, room_type, room_id);
   `);
+} catch (_) {}
+
+// Add scope column (group | dm) so admins can pick where the mute applies
+try {
+  const cols = db.prepare("PRAGMA table_info(group_timeouts)").all();
+  const hasScope = cols.some((c) => c.name === 'scope');
+  if (!hasScope) {
+    db.exec(`ALTER TABLE group_timeouts ADD COLUMN scope TEXT NOT NULL DEFAULT 'group'`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_group_timeouts_scope_user ON group_timeouts(scope, user_id)`);
+  }
 } catch (_) {}
 
 // Blocked users (blocker_id blocks blocked_id)

@@ -14,7 +14,14 @@ router.get('/', requireAuth, (req, res) => {
     ORDER BY created_at DESC
     LIMIT 100
   `).all(user.id);
-  res.json({ items: rows });
+  const items = rows.map((row) => {
+    let parsedExtra = null;
+    if (row.related_extra) {
+      try { parsedExtra = JSON.parse(row.related_extra); } catch (_) { parsedExtra = row.related_extra; }
+    }
+    return { ...row, related_extra: parsedExtra };
+  });
+  res.json({ items });
 });
 
 router.post('/:id/read', requireAuth, (req, res) => {

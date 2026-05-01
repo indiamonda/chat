@@ -2157,6 +2157,28 @@ export async function loadReportCounts() {
   }
 }
 
+/** Load any active timeouts for the current user so the UI can show hints. */
+export async function loadMyTimeouts() {
+  try {
+    const { timeouts } = await apiGet('/api/my/timeouts');
+    state._myTimeouts = timeouts || [];
+  } catch {
+    state._myTimeouts = [];
+  }
+}
+
+export function hasDmTimeout() {
+  return !!(state._myTimeouts || []).find((t) => t.scope === 'dm');
+}
+
+export function hasGroupTimeout() {
+  return !!(state._myTimeouts || []).find((t) => t.scope === 'group' || !t.scope);
+}
+
+export function getActiveDmTimeout() {
+  return (state._myTimeouts || []).find((t) => t.scope === 'dm') || null;
+}
+
 export async function loadModerationQueue(status = state._modReports?.status || 'open', search = state._modReports?.search || '') {
   if (!state.user?.is_allowed) return [];
   if (!state._modReports) state._modReports = { items: [], status, search, loading: false, selected: null, notes: [] };
@@ -2602,6 +2624,10 @@ function connectSocket() {
   });
   s.on('reports:counts', (counts) => {
     state._reportCounts = counts || { total: 0, open: 0, in_review: 0 };
+    render();
+  });
+  s.on('timeouts:changed', async () => {
+    await loadMyTimeouts();
     render();
   });
   state.socket = s;
@@ -3896,6 +3922,17 @@ function renderChatArea() {
     ? '<div class="deleted-user-banner">This account has been deleted.</div>'
     : '';
 
+  const dmTimeoutBanner = (roomType === 'dm' && state.dmUserId && state.dmUserId !== 'jimmyqrg' && hasDmTimeout())
+    ? (() => {
+        const to = getActiveDmTimeout();
+        const until = to?.expires_at ? formatTime(to.expires_at) : '';
+        const msg = until
+          ? tx('dmTimeoutBannerUntil', "You're timed out from private chat until {until}. You can still message jimmyqrg.").replace('{until}', until)
+          : tx('dmTimeoutBannerForever', "You're timed out from private chat. You can still message jimmyqrg.");
+        return `<div class="dm-timeout-banner">${escapeHtml(msg)}</div>`;
+      })()
+    : '';
+
   const pinKey = roomKey(roomType, roomId);
   const pinned = state._pinnedMessage?.[pinKey];
   const pinnedText = pinned ? (pinned.msg_type && pinned.msg_type !== 'text'
@@ -3938,6 +3975,7 @@ function renderChatArea() {
         </div>
         ${pinnedBanner}
         ${deletedUserBanner}
+        ${dmTimeoutBanner}
         <div class="messages-wrap" data-room-type="${roomType}" data-room-id="${roomId}">
           ${loadingOlder ? '<div class="messages-loading-older">Loading more…</div>' : ''}${hasMore && !loadingOlder ? '<div class="messages-load-more-hint">Scroll up to load more</div>' : ''}${emptyContent}
         </div>
@@ -3949,7 +3987,10 @@ function renderChatArea() {
         <div class="composer composer-safe-area ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
           ${replyPreview ? `
             <div class="composer-reply">
-              <span class="composer-reply-text">Replying to <strong>${escapeHtml(replyPreview.sender)}</strong>: ${escapeHtml(replyPreview.content?.slice(0, 50) || '')}…</span>
+              <button type="button" class="composer-reply-jump" data-reply-jump data-reply-to-id="${escapeHtml(String(replyPreview.id || ''))}" title="${tx('jumpToMessage', 'Jump to message')}">
+                <span class="composer-reply-sender">${escapeHtml(replyPreview.sender)}</span>
+                <span class="composer-reply-snippet">${escapeHtml(replyPreview.snippet || '')}</span>
+              </button>
               <button type="button" id="cancel-reply" class="cancel-reply-x" title="${t('cancel')}"><span class="icon" aria-hidden="true">${ICON_CLOSE}</span></button>
             </div>
           ` : ''}
@@ -3990,7 +4031,52 @@ function renderChatArea() {
 
 function getReplyPreview(msg) {
   if (!msg) return null;
-  return { sender: msg.display_name || msg.username || 'Unknown user', content: msg.content };
+  return {
+    id: msg.id,
+    sender: msg.display_name || msg.username || 'Unknown user',
+    snippet: summarizeMessageForReply(msg),
+  };
+}
+
+/** One-line textual summary of a message suitable for reply previews. */
+function summarizeMessageForReply(msg) {
+  if (!msg) return '';
+  if (msg.recalled_at) return tx('recalled', '[recalled message]');
+  if (msg.deleted_by_admin) return tx('deletedByAdmin', '[deleted by admin]');
+  if (msg.msg_type && msg.msg_type !== 'text') {
+    const labels = {
+      image: tx('attachImage', '[Image]'),
+      video: tx('attachVideo', '[Video]'),
+      audio: tx('attachAudio', '[Audio]'),
+      voice: tx('attachVoice', '[Voice]'),
+      gif: tx('attachGif', '[GIF]'),
+      file: tx('attachFile', '[File]'),
+    };
+    return labels[msg.msg_type] || `[${msg.msg_type}]`;
+  }
+  const raw = String(msg.content || '').replace(/\s+/g, ' ').trim();
+  return raw || tx('noContent', '[no content]');
+}
+
+/** Build a preview for an inline message reply block given the parent message. */
+function getReplyInfoForMessage(m) {
+  if (!m?.reply_to_id) return null;
+  if (m.reply_to) {
+    return {
+      id: m.reply_to.id,
+      sender: m.reply_to.sender_display_name || m.reply_to.sender_username || tx('unknownUser', 'Unknown user'),
+      snippet: summarizeMessageForReply({
+        content: m.reply_to.content,
+        msg_type: m.reply_to.msg_type,
+        recalled_at: m.reply_to.recalled ? Date.now() : null,
+        deleted_by_admin: m.reply_to.deleted ? 1 : 0,
+      }),
+    };
+  }
+  const list = Object.values(state.messages || {}).flat();
+  const parent = list.find((x) => x && x.id === m.reply_to_id);
+  if (parent) return getReplyPreview(parent);
+  return { id: m.reply_to_id, sender: tx('unknownUser', 'Unknown user'), snippet: tx('replyUnavailable', 'Original message unavailable') };
 }
 
 const TS_INTERVAL_MS = 15 * 60 * 1000; // today: 15 min
@@ -4176,7 +4262,12 @@ function renderMessage(m, roomType, roomId, context = {}) {
   const displayContent = versions[versionIndex];
   const mediaContext = { mediaIds: context.mediaIds || [], currentIndex: context.mediaIndex ?? -1 };
   const content = isFileMessage ? renderFileBlock(m, mediaContext) : renderMessageContent(displayContent || '');
-  const replyBlock = m.reply_to_id ? `<div class="message-reply-preview" data-reply-to="${m.reply_to_id}">${t('replyToMessage')}</div>` : '';
+  const replyInfo = getReplyInfoForMessage(m);
+  const replyBlock = m.reply_to_id ? `
+    <button type="button" class="message-reply-preview" data-reply-to="${escapeHtml(String(m.reply_to_id))}" title="${tx('jumpToMessage', 'Jump to message')}">
+      <span class="message-reply-sender">${escapeHtml(replyInfo?.sender || tx('unknownUser', 'Unknown user'))}</span>
+      <span class="message-reply-snippet">${escapeHtml(replyInfo?.snippet || tx('replyUnavailable', 'Original message unavailable'))}</span>
+    </button>` : '';
   const likeCount = (m.likes || 0) > 0 ? `<span class="message-like-count">${m.likes}</span>` : '';
   const likeIcon = `<button type="button" class="message-like-btn" data-msg-id="${m.id}" title="Like" aria-label="Like"><span class="message-like-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span></button>`;
   const reactionPickerBtn = `<button type="button" class="message-reaction-picker-btn" data-msg-id="${m.id}" title="React" aria-label="React"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg></span></button>`;
@@ -5199,6 +5290,20 @@ function bindMain() {
   });
 
   document.getElementById('cancel-reply')?.addEventListener('click', () => setState({ replyTo: null }));
+  document.querySelector('[data-reply-jump]')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    const targetId = btn.dataset.replyToId;
+    if (!targetId) return;
+    const ctx = getCurrentRoomContext();
+    if (!ctx) return;
+    try {
+      await jumpToMessageInCurrentChat(targetId, state.replyTo?.created_at || null, ctx.roomType, ctx.roomId);
+    } catch (err) {
+      showToast(err.message || 'Could not jump to message');
+    }
+  });
   document.querySelector('.pinned-message-banner')?.addEventListener('click', (e) => {
     if (e.target.closest('.pinned-message-unpin')) return;
     const msgId = e.currentTarget.dataset.msgId;
@@ -5448,6 +5553,19 @@ function bindMain() {
       e.preventDefault();
       e.stopPropagation();
       state.socket?.emit('message:reaction:toggle', { id: reactionChip.dataset.msgId, emoji: reactionChip.dataset.emoji }, () => {});
+      return;
+    }
+    const replyJump = e.target.closest('.message-reply-preview[data-reply-to]');
+    if (replyJump) {
+      e.preventDefault();
+      e.stopPropagation();
+      const targetId = replyJump.dataset.replyTo;
+      if (targetId) {
+        const ctx = getCurrentRoomContext();
+        const parent = (state.messages[roomKey(ctx.roomType, ctx.roomId)] || []).find((m) => m.id === targetId);
+        jumpToMessageInCurrentChat(targetId, parent?.created_at || null, ctx.roomType, ctx.roomId)
+          .catch((err) => showToast(err.message || 'Could not jump to message'));
+      }
       return;
     }
     const reactionPickerBtn = e.target.closest('.message-reaction-picker-btn');
@@ -6265,6 +6383,18 @@ function renderAdminContent() {
                 <option value="">${t('adminSelectUser')}</option>
                 ${otherUsers.filter(u => u.id !== 'jimmyqrg').map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
               </select>
+              <label>${tx('adminTimeoutScopeLabel', 'Apply timeout to')}</label>
+              <div class="admin-timeout-scope" role="radiogroup">
+                <label class="admin-timeout-scope-option">
+                  <input type="radio" name="admin-timeout-scope" value="group" checked />
+                  <span>${tx('adminTimeoutScopeGroup', 'Group chat')}</span>
+                </label>
+                <label class="admin-timeout-scope-option">
+                  <input type="radio" name="admin-timeout-scope" value="dm" />
+                  <span>${tx('adminTimeoutScopeDm', 'Private messages')}</span>
+                </label>
+              </div>
+              <p class="admin-section-subhint">${tx('adminTimeoutScopeHint', 'Private-chat timeouts still let the user message jimmyqrg.')}</p>
               <label>${t('adminDuration')}</label>
               <input type="text" id="admin-timeout-duration" placeholder="${t('adminDurationPlaceholder')}" />
               ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked" /> ${t('adminOnlyICanRelease')}</label>` : ''}
@@ -6292,6 +6422,18 @@ function renderAdminContent() {
                 <option value="">${t('adminSelectUser')}</option>
                 ${otherUsers.filter(u => u.id !== 'jimmyqrg').map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
               </select>
+              <label>${tx('adminTimeoutScopeLabel', 'Apply timeout to')}</label>
+              <div class="admin-timeout-scope" role="radiogroup">
+                <label class="admin-timeout-scope-option">
+                  <input type="radio" name="admin-timeout-scope-tab" value="group" checked />
+                  <span>${tx('adminTimeoutScopeGroup', 'Group chat')}</span>
+                </label>
+                <label class="admin-timeout-scope-option">
+                  <input type="radio" name="admin-timeout-scope-tab" value="dm" />
+                  <span>${tx('adminTimeoutScopeDm', 'Private messages')}</span>
+                </label>
+              </div>
+              <p class="admin-section-subhint">${tx('adminTimeoutScopeHint', 'Private-chat timeouts still let the user message jimmyqrg.')}</p>
               <label>${t('adminDuration')}</label>
               <input type="text" id="admin-timeout-duration-tab" placeholder="${t('adminDurationPlaceholder')}" />
               ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked-tab" /> ${t('adminOnlyICanRelease')}</label>` : ''}
@@ -6531,13 +6673,19 @@ async function loadAdminTimeouts() {
     const { timeouts } = await apiGet('/api/admin/timeouts');
     const html = timeouts.length === 0
       ? `<p class="admin-section-desc">${t('adminNoActiveTimeouts')}</p>`
-      : `<ul class="admin-timeout-ul">${timeouts.map(to => `
+      : `<ul class="admin-timeout-ul">${timeouts.map(to => {
+          const scopeLabel = to.scope === 'dm'
+            ? tx('adminTimeoutScopeDmBadge', 'Private messages')
+            : tx('adminTimeoutScopeGroupBadge', 'Group chat');
+          const scopeClass = to.scope === 'dm' ? 'admin-timeout-scope-badge-dm' : 'admin-timeout-scope-badge-group';
+          return `
         <li class="admin-timeout-item">
           <span>${escapeHtml(to.display_name || to.username)}</span>
+          <span class="admin-timeout-scope-badge ${scopeClass}">${escapeHtml(scopeLabel)}</span>
           <span class="admin-timeout-meta">${to.expires_at ? t('adminTimeoutUntil') + formatTime(to.expires_at) : t('adminTimeoutForever')} ${to.locked_release ? t('adminTimeoutLocked') : ''}</span>
           ${(!to.locked_release || state.user?.id === 'jimmyqrg') ? `<button type="button" class="btn-small admin-timeout-release" data-timeout-id="${to.id}"><span class="icon" aria-hidden="true">${ICON_UNLOCK_SM}</span>${t('adminRelease')}</button>` : ''}
-        </li>
-      `).join('')}</ul>`;
+        </li>`;
+        }).join('')}</ul>`;
     if (el) el.innerHTML = html;
     if (elTab) elTab.innerHTML = html;
   } catch (err) {
@@ -6581,9 +6729,10 @@ function bindAdmin() {
     const userId = document.getElementById('admin-timeout-user')?.value;
     const duration = document.getElementById('admin-timeout-duration')?.value?.trim();
     const locked = document.getElementById('admin-timeout-locked')?.checked;
+    const scope = document.querySelector('input[name="admin-timeout-scope"]:checked')?.value || 'group';
     if (!userId) { showToast(t('adminSelectUser')); return; }
     try {
-      await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked });
+      await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked, scope });
       document.getElementById('admin-timeout-duration').value = '';
       loadAdminTimeouts();
     } catch (err) { showToast(err.message); }
@@ -6592,9 +6741,10 @@ function bindAdmin() {
     const userId = document.getElementById('admin-timeout-user-tab')?.value;
     const duration = document.getElementById('admin-timeout-duration-tab')?.value?.trim();
     const locked = document.getElementById('admin-timeout-locked-tab')?.checked;
+    const scope = document.querySelector('input[name="admin-timeout-scope-tab"]:checked')?.value || 'group';
     if (!userId) { showToast(t('adminSelectUser')); return; }
     try {
-      await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked });
+      await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked, scope });
       document.getElementById('admin-timeout-duration-tab').value = '';
       loadAdminTimeouts();
     } catch (err) { showToast(err.message); }
@@ -6794,6 +6944,9 @@ function showModerationDetailModal(reportId) {
           <p><strong>${tx('modCardTarget', 'Target')}:</strong> ${escapeHtml(r.target_username || r.target_user_id || '-')}</p>
           ${r.message_content ? `<blockquote class="mod-detail-message">${escapeHtml(r.message_content)}</blockquote>` : ''}
           ${r.details ? `<p class="mod-detail-details">${escapeHtml(r.details)}</p>` : ''}
+          ${r.message_id ? `<div class="mod-detail-actions">
+            <button type="button" id="mod-detail-context" class="btn-small">${escapeHtml(tx('viewContext', 'View surrounding messages'))}</button>
+          </div>` : ''}
         </div>
         <div class="mod-detail-section">
           <h4>${tx('modNotesTitle', 'Notes')}</h4>
@@ -6815,6 +6968,9 @@ function showModerationDetailModal(reportId) {
     const close = () => overlay.remove();
     overlay.querySelector('#mod-detail-close')?.addEventListener('click', close);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('#mod-detail-context')?.addEventListener('click', () => {
+      showReportContextModal(reportId);
+    });
     overlay.querySelector('#mod-note-add')?.addEventListener('click', async () => {
       const ta = overlay.querySelector('#mod-note-input');
       const body = ta?.value?.trim();
@@ -6962,22 +7118,39 @@ function renderInboxContent() {
           ? `<div class="inbox-loading"><span class="inbox-loading-spinner" aria-hidden="true"></span><span>${t('loading')}</span></div>`
           : empty
           ? `<div class="inbox-empty"><span class="inbox-empty-icon" aria-hidden="true"><i class="fas fa-inbox"></i></span><span>${t('noMailYet')}</span></div>`
-          : list.map(item => `
-          <div class="inbox-item ${item.read_at ? '' : 'unread'}" data-id="${item.id}" data-type="${escapeHtml(item.type)}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(item.related_extra || '')}">
+          : list.map(item => {
+            const extraObj = typeof item.related_extra === 'object' && item.related_extra
+              ? item.related_extra
+              : (typeof item.related_extra === 'string' && item.related_extra
+                ? (() => { try { return JSON.parse(item.related_extra); } catch (_) { return {}; } })()
+                : {});
+            const extraJson = JSON.stringify(extraObj || {});
+            const typeLabel = (item.type === 'mod_report')
+              ? tx('inboxTypeReport', 'Report')
+              : item.type;
+            return `
+          <div class="inbox-item ${item.read_at ? '' : 'unread'} ${item.type === 'mod_report' ? 'inbox-item-report' : ''}" data-id="${item.id}" data-type="${escapeHtml(item.type)}" data-related="${escapeHtml(item.related_id || '')}" data-extra="${escapeHtml(extraJson)}">
             <div class="inbox-item-main">
-                <div class="type">${escapeHtml(item.type)}</div>
+                <div class="type">${escapeHtml(typeLabel)}</div>
                 <div class="title">${escapeHtml(item.title || '')}</div>
-                <div class="body">${escapeHtml(item.body || '')}</div>
+                <div class="body">${escapeHtml(item.body || '').replace(/\n/g, '<br>')}</div>
               ${item.type === 'friend_request' && !item.read_at ? `
               <div class="inbox-item-actions">
                 <button type="button" class="btn-small btn-primary inbox-accept-fr" data-inbox-id="${item.id}"><span class="icon" aria-hidden="true">${ICON_CHECK_SM}</span>${t('accept')}</button>
                 <button type="button" class="btn-small inbox-reject-fr" data-inbox-id="${item.id}"><span class="icon" aria-hidden="true">${ICON_X_SM}</span>${t('reject')}</button>
               </div>
               ` : ''}
+              ${item.type === 'mod_report' ? `
+              <div class="inbox-item-actions">
+                ${extraObj?.message_id ? `<button type="button" class="btn-small btn-primary inbox-report-jump" data-inbox-id="${item.id}">${tx('goToMessage', 'Go to message')}</button>` : ''}
+                <button type="button" class="btn-small inbox-report-open-queue" data-inbox-id="${item.id}" data-report-id="${escapeHtml(extraObj?.report_id || item.related_id || '')}">${tx('openInModeration', 'Open in moderation')}</button>
+              </div>
+              ` : ''}
           </div>
             <button type="button" class="inbox-item-delete" data-inbox-id="${item.id}" title="${t('delete')}" aria-label="${t('delete')}"><i class="fas fa-trash-alt" aria-hidden="true"></i></button>
               </div>
-            `).join('')}
+            `;
+          }).join('')}
           </div>
         </div>
   `;
@@ -7402,6 +7575,7 @@ async function init() {
     await loadFriends();
     await loadPendingFriendRequests();
     await loadNotificationPrefs();
+    await loadMyTimeouts();
     if (state.user?.is_allowed) loadReportCounts().catch(() => {});
   connectSocket();
     apiGet('/api/voice/participants').then(({ participants }) => {
@@ -7777,6 +7951,28 @@ function bindInbox() {
       } catch (err) { showToast(err.message); }
       return;
     }
+    const reportJump = e.target.closest('.inbox-report-jump');
+    const reportQueue = e.target.closest('.inbox-report-open-queue');
+    if (reportJump || reportQueue) {
+      e.preventDefault();
+      e.stopPropagation();
+      const itemEl = (reportJump || reportQueue).closest('.inbox-item');
+      if (!itemEl) return;
+      const inboxId = itemEl.dataset.id;
+      const extraStr = itemEl.dataset.extra;
+      let extra = {};
+      try { extra = extraStr ? JSON.parse(extraStr) : {}; } catch (_) {}
+      try { await fetch(`/api/inbox/${inboxId}/read`, { method: 'POST', credentials: 'include' }); } catch (_) {}
+      if (reportJump && extra.message_id && extra.room_type && extra.room_id) {
+        await navigateToReportedMessage(extra);
+      } else if (reportQueue) {
+        const reportId = reportQueue.dataset.reportId || extra.report_id;
+        navigateTo('/chat/group/?panel=admin&tab=moderation');
+        if (reportId) setTimeout(() => showModerationDetailModal?.(reportId), 200);
+      }
+      await loadInbox();
+      return;
+    }
     const item = e.target.closest('.inbox-item');
     if (!item) return;
     const id = item.dataset.id;
@@ -7789,7 +7985,117 @@ function bindInbox() {
     try {
       const extra = extraStr ? JSON.parse(extraStr) : {};
       if (extra.panel === 'problem_solving') navigateTo('/chat/group/?panel=problem');
+      if (item.dataset.type === 'mod_report' && extra.message_id && extra.room_type && extra.room_id) {
+        await navigateToReportedMessage(extra);
+      }
     } catch (_) {}
+  });
+}
+
+/**
+ * Open the best view of a reported message for an admin.
+ * - DMs: admin isn't a member of the conversation, so show a limited-scope
+ *   context modal with the 10 nearest messages around the reported one.
+ * - Group rooms: admin can view normally — navigate and jump to the message.
+ */
+async function navigateToReportedMessage(extra) {
+  try {
+    if (extra.room_type === 'dm') {
+      if (!extra.report_id) {
+        showToast('Missing report id');
+        return;
+      }
+      await showReportContextModal(extra.report_id);
+      return;
+    }
+    const panel = extra.room_id === 'free_chat' ? 'free_chat' : extra.room_id === 'support' ? 'support' : 'free_chat';
+    navigateTo(`/chat/group/?panel=${encodeURIComponent(panel)}`);
+    setTimeout(async () => {
+      try {
+        const ctx = getCurrentRoomContext();
+        if (!ctx) return;
+        await jumpToMessageInCurrentChat(extra.message_id, null, ctx.roomType, ctx.roomId);
+      } catch (err) {
+        showToast(err?.message || 'Could not jump to reported message');
+      }
+    }, 350);
+  } catch (err) {
+    showToast(err?.message || 'Could not open reported message');
+  }
+}
+
+/** Format message content for the report context modal (short markdown + escape). */
+function formatReportContextMessage(msg) {
+  if (!msg) return '';
+  if (msg.recalled_at) return `<em class="report-context-muted">${escapeHtml(tx('recalled', '[recalled message]'))}</em>`;
+  if (msg.deleted_by_admin) return `<em class="report-context-muted">${escapeHtml(tx('deletedByAdmin', '[deleted by admin]'))}</em>`;
+  if (msg.msg_type && msg.msg_type !== 'text') {
+    const label = {
+      image: '[Image]', video: '[Video]', audio: '[Audio]', voice: '[Voice]', gif: '[GIF]', file: '[File]',
+    }[msg.msg_type] || `[${msg.msg_type}]`;
+    const ref = (msg.content || '').trim();
+    return `<span class="report-context-attach">${escapeHtml(label)}</span>${ref ? ` <code class="report-context-fileref">${escapeHtml(ref)}</code>` : ''}`;
+  }
+  return escapeHtml(msg.content || '').replace(/\n/g, '<br>');
+}
+
+function renderReportContextMessage(msg, isFocus) {
+  const sender = escapeHtml(msg.display_name || msg.username || 'Unknown');
+  const time = escapeHtml(formatTime(msg.created_at));
+  return `
+    <div class="report-context-message ${isFocus ? 'report-context-message-focus' : ''}">
+      <div class="report-context-meta"><strong>${sender}</strong><span class="report-context-time">${time}</span></div>
+      <div class="report-context-body">${formatReportContextMessage(msg)}</div>
+    </div>
+  `;
+}
+
+async function showReportContextModal(reportId) {
+  let data = null;
+  try {
+    data = await apiGet(`/api/reports/${encodeURIComponent(reportId)}/context`);
+  } catch (err) {
+    showToast(err?.message || 'Failed to load report context');
+    return;
+  }
+  if (!data) return;
+  const before = data.before || [];
+  const focus = data.focus;
+  const after = data.after || [];
+  const participants = data.conversation?.participants || [];
+  const partLabel = participants
+    .map((p) => p.display_name || p.username || p.id)
+    .filter(Boolean)
+    .join(' ↔ ');
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal report-context-modal">
+      <h3>${escapeHtml(tx('reportContextTitle', 'Reported message context'))}</h3>
+      <p class="admin-section-desc">${escapeHtml(tx(
+        'reportContextDesc',
+        'Showing the 10 nearest messages around the reported one. Private DM history is not shown beyond this window.'
+      ))}</p>
+      ${partLabel ? `<p class="report-context-participants"><strong>${escapeHtml(tx('modCardRoom', 'Conversation'))}:</strong> ${escapeHtml(partLabel)}</p>` : ''}
+      <div class="report-context-messages">
+        ${before.length === 0 ? `<div class="report-context-empty">${escapeHtml(tx('reportContextNoBefore', 'No earlier messages in window.'))}</div>` : before.map((m) => renderReportContextMessage(m, false)).join('')}
+        ${focus ? renderReportContextMessage(focus, true) : ''}
+        ${after.length === 0 ? `<div class="report-context-empty">${escapeHtml(tx('reportContextNoAfter', 'No later messages in window.'))}</div>` : after.map((m) => renderReportContextMessage(m, false)).join('')}
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="modal-close" id="report-context-close">${t('close') || 'Close'}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('#report-context-close')?.addEventListener('click', close);
+  const onEsc = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onEsc); } };
+  document.addEventListener('keydown', onEsc);
+  requestAnimationFrame(() => {
+    const focusEl = overlay.querySelector('.report-context-message-focus');
+    if (focusEl) focusEl.scrollIntoView({ block: 'center' });
   });
 }
 
