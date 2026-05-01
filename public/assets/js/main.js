@@ -4526,16 +4526,27 @@ function markdownToHtml(md) {
     const linkifyPlainOnly = (text) => {
       if (!text) return text;
       let out = text;
+      // Run the generic domain+path matcher first so a URL like
+      // "github.com/jimmyqrg.github.io" is captured as ONE link. If the
+      // github.io-specific rule ran first it would split it into two.
       out = applyToPlainParts(out, t => t.replace(/(?<![\/">])(www\.[^\s<>"']+)/g, (_, u) => mkLink(u)));
+      out = applyToPlainParts(out, t => t.replace(/(?<![\/"':@\w.-])((?:[a-zA-Z0-9][-a-zA-Z0-9_]*\.)+[a-zA-Z0-9][-a-zA-Z0-9_]*(?::\d+)?(?:\/[^\s<>"']*)?)/g, (_, url) => {
+        // Trim trailing punctuation that's almost never part of a URL.
+        let trimmed = url;
+        let suffix = '';
+        while (trimmed && /[.,;:!?)\]}>]$/.test(trimmed)) {
+          suffix = trimmed.slice(-1) + suffix;
+          trimmed = trimmed.slice(0, -1);
+        }
+        const tldMatch = trimmed.match(/\.(com|org|net|io|co|edu|gov|dev|app|ai|site|xyz|test|local|internal)(?:\/|:\d+|\?|#|$)/i);
+        if (!tldMatch) return url;
+        if (trimmed === 'github.io') return url;
+        return mkLink(trimmed) + suffix;
+      }));
+      // Fallback specific to *.github.io hosts when the generic pass doesn't fire.
       out = applyToPlainParts(out, t => t.replace(/\b([a-zA-Z0-9][-a-zA-Z0-9_]*\.github\.io(?:\/[^\s<>"']*)?)/g, (_, u) => mkLink(u)));
       out = applyToPlainParts(out, t => t.replace(/\b(localhost(?::\d+)?(?:\/[^\s<>"']*)?)/gi, (_, u) => mkLink(u)));
       out = applyToPlainParts(out, t => t.replace(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?(?:\/[^\s<>"']*)?)/g, (_, u) => mkLink(u)));
-      out = applyToPlainParts(out, t => t.replace(/\b((?:[a-zA-Z0-9][-a-zA-Z0-9_]*\.)+[a-zA-Z0-9][-a-zA-Z0-9_]*(?::\d+)?(?:\/?[^\s<>"']*)?)\b/g, (_, url) => {
-        const tldMatch = url.match(/\.(com|org|net|io|co|edu|gov|dev|app|ai|site|xyz|test|local|internal)(?:\/|:\d+|\?|#|$)/i);
-        if (!tldMatch) return url;
-        if (url === 'github.io') return url;
-        return mkLink(url);
-      }));
       return out;
     };
     const linkifyOne = (text) => {
