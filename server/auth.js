@@ -106,8 +106,12 @@ function isValidEmail(s) {
 
 const PLACEHOLDER_PASSWORD = '$2a$10$placeholder';
 
+const RESERVED_NAMES = ['helper', 'venory'];
+
 export async function register(username, email, password, displayName) {
   if (!validateUsername(username)) return { error: 'Username must be lowercase letters and numbers only' };
+  if (RESERVED_NAMES.includes(username.toLowerCase())) return { error: 'That username is reserved' };
+  if (displayName && RESERVED_NAMES.includes(displayName.trim().toLowerCase())) return { error: 'That display name is reserved' };
   if (!isValidEmail(email)) return { error: 'Valid email required' };
   const existingUser = db.prepare('SELECT id, password_hash, email FROM users WHERE LOWER(username) = LOWER(?)').get(username);
   const isJimmyqrg = username.toLowerCase() === 'jimmyqrg';

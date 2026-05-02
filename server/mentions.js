@@ -28,8 +28,9 @@ export function findMentionUserIds(content, senderId) {
     db.prepare('SELECT id FROM users WHERE is_allowed = 1 AND deleted_at IS NULL').all().forEach((u) => set.add(u.id));
   }
   text.replace(USERNAME_RE, (_match, name) => {
-    const lower = String(name || '').toLowerCase();
+    let lower = String(name || '').toLowerCase();
     if (!lower || lower === 'all' || lower === 'admins') return '';
+    if (lower === 'venory') lower = 'helper';
     const row = db.prepare('SELECT id FROM users WHERE LOWER(username) = ? AND deleted_at IS NULL').get(lower);
     if (row) set.add(row.id);
     return '';

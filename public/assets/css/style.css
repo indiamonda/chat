@@ -1468,6 +1468,10 @@ select:focus {
     font-size: 0.68rem;
   }
 
+  .message-inline {
+    gap: 0.6rem;
+  }
+
   .message-row {
     grid-template-columns: calc(40px + 0.6rem) 1fr;
   }
@@ -2024,7 +2028,7 @@ select:focus {
 .message.message-system {
   max-width: none;
   padding: 0.35rem 0;
-  justify-content: center;
+  align-items: center;
 }
 
 .message-timestamp .message-system-text,
@@ -2051,6 +2055,7 @@ select:focus {
 .message-row .message {
   grid-column: 1 / -1;
   display: flex;
+  flex-direction: column;
   min-width: 0;
 }
 
@@ -2430,8 +2435,9 @@ select:focus {
 
 .message {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 0.75rem;
+  gap: 0.2rem;
   max-width: 85%;
   padding: 0.5rem 0;
 }
@@ -2439,38 +2445,53 @@ select:focus {
 .message.own {
   justify-self: end;
   align-self: flex-end;
+  align-items: flex-end;
+}
+
+.message-header {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 0.25rem;
+}
+
+.message.own .message-header {
+  justify-content: flex-end;
+}
+
+.message-inline {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.message.own .message-inline {
   flex-direction: row-reverse;
 }
 
 .message-avatar-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.2rem;
   flex-shrink: 0;
   cursor: pointer;
-}
-
-.message.own .message-avatar-wrap {
-  align-items: flex-end;
+  line-height: 0;
 }
 
 .message-sender {
   font-size: 0.72rem;
   font-weight: 500;
   color: var(--text-dim);
-  max-width: 180px;
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
   line-height: 1.2;
-  align-self: flex-start;
+  display: inline-block;
 }
 
 .message.own .message-sender {
   text-align: right;
-  align-self: flex-end;
 }
 
 .message-avatar {
@@ -2480,11 +2501,6 @@ select:focus {
   object-fit: cover;
   flex-shrink: 0;
   transition: transform var(--transition-fast);
-  align-self: flex-start;
-}
-
-.message.own .message-avatar {
-  align-self: flex-end;
 }
 
 .message:hover .message-avatar {
