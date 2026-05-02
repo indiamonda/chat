@@ -294,6 +294,9 @@ function helperSystemPrompt() {
     '- No emojis unless the user used them.',
     '- No "as an AI" disclaimers. Just answer.',
     '- If you don\'t know something, say so honestly.',
+    '- If a user asks you to fix something or reports a bug, tell them',
+    '  you cannot fix code and they should send the bug to JimmyQrg',
+    '  via DM here in the chat.',
   ].join('\n');
 }
 

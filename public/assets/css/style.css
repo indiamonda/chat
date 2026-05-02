@@ -1057,6 +1057,69 @@ select:focus {
   padding: 0;
 }
 
+/* User role tags */
+.user-tag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  line-height: 1.4;
+  margin-left: 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.user-tag-helper {
+  background: linear-gradient(135deg, rgba(99,102,241,.25), rgba(168,85,247,.25));
+  color: #a78bfa;
+  border: 1px solid rgba(139,92,246,.3);
+}
+.user-tag-owner {
+  background: linear-gradient(135deg, rgba(234,179,8,.2), rgba(245,158,11,.2));
+  color: #fbbf24;
+  border: 1px solid rgba(234,179,8,.3);
+}
+.message-sender .user-tag { font-size: 0.55rem; padding: 0px 4px; margin-left: 4px; }
+
+/* Support @Helper tip bar */
+.support-helper-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, rgba(99,102,241,.12), rgba(168,85,247,.10));
+  border: 1px solid rgba(139,92,246,.2);
+  border-radius: 8px;
+  margin: 0 12px 4px;
+  font-size: 0.82rem;
+  color: rgba(255,255,255,.75);
+}
+.support-helper-tip-icon {
+  flex-shrink: 0;
+  display: flex;
+  color: #a78bfa;
+}
+.support-helper-tip-text { flex: 1; }
+.support-helper-tip-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: rgba(255,255,255,.4);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  transition: color .15s, background .15s;
+}
+.support-helper-tip-close:hover {
+  color: #fff;
+  background: rgba(255,255,255,.08);
+}
+
 .panel-user-avatar-wrap {
   display: inline-flex;
   flex-shrink: 0;
