@@ -321,16 +321,34 @@ function helperSystemPrompt() {
 }
 
 function buildHelperContext(triggerMsg, roomId) {
-  const recent = db.prepare(`
-    SELECT m.content, m.sender_id, u.username, u.display_name
+  const chatRecent = db.prepare(`
+    SELECT m.content, m.sender_id, m.created_at, u.username, u.display_name
     FROM messages m LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = 'group' AND m.room_id = ?
       AND m.recalled_at IS NULL AND m.deleted_by_admin IS NULL
-    ORDER BY m.created_at DESC LIMIT 10
+    ORDER BY m.created_at DESC LIMIT 20
   `).all(roomId);
-  recent.reverse();
+
+  const helperRecent = db.prepare(`
+    SELECT m.content, m.sender_id, m.created_at, u.username, u.display_name
+    FROM messages m LEFT JOIN users u ON u.id = m.sender_id
+    WHERE m.room_type = 'group' AND m.room_id = ?
+      AND m.sender_id = ?
+      AND m.recalled_at IS NULL AND m.deleted_by_admin IS NULL
+    ORDER BY m.created_at DESC LIMIT 10
+  `).all(roomId, HELPER_USER_ID);
+
+  const seen = new Set();
+  const combined = [];
+  for (const r of chatRecent) { seen.add(r.created_at + ':' + r.sender_id); combined.push(r); }
+  for (const r of helperRecent) {
+    const key = r.created_at + ':' + r.sender_id;
+    if (!seen.has(key)) { seen.add(key); combined.push(r); }
+  }
+  combined.sort((a, b) => a.created_at - b.created_at);
+
   const msgs = [{ role: 'system', content: helperSystemPrompt() }];
-  for (const r of recent) {
+  for (const r of combined) {
     if (r.sender_id === HELPER_USER_ID) {
       msgs.push({ role: 'assistant', content: r.content || '' });
     } else {
