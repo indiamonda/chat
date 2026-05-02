@@ -4012,7 +4012,7 @@ function renderChatArea() {
         ${roomType === 'group' && state.panel === 'support' && !localStorage.getItem('__jqrg_support_tip_hidden') ? `
         <div class="support-helper-tip" id="support-helper-tip">
           <span class="support-helper-tip-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></span>
-          <span class="support-helper-tip-text">@Helper to get immediate assistance</span>
+          <span class="support-helper-tip-text">@Venory to get immediate assistance</span>
           <button type="button" class="support-helper-tip-close" id="support-helper-tip-close" aria-label="Dismiss"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
         ` : ''}
@@ -4343,15 +4343,17 @@ function renderMessage(m, roomType, roomId, context = {}) {
   if (!useSvgBubble && cbStyle !== 'default') bodyClasses.push(`chatbox-${cbStyle}`);
   return `
     <div class="message-row" data-msg-id="${m.id}">
-    <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
-        <div class="message-avatar-wrap" data-sender-id="${escapeHtml(m.sender_id || '')}" title="View profile" role="button" tabindex="0">
-          <span class="message-sender">${senderName}</span>
-          <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
-        </div>
-        <div class="${bodyClasses.join(' ')}"${useSvgBubble ? ` style="--bubble-svg:url('${cbSvg}')"` : ''}>
-        ${replyBlock}
-          ${contentBlock}
-          ${reactionSummary ? `<div class="message-reactions">${reactionSummary}</div>` : ''}
+      <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
+        <div class="message-header"><span class="message-sender">${senderName}</span></div>
+        <div class="message-inline">
+          <div class="message-avatar-wrap" data-sender-id="${escapeHtml(m.sender_id || '')}" title="View profile" role="button" tabindex="0">
+            <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
+          </div>
+          <div class="${bodyClasses.join(' ')}"${useSvgBubble ? ` style="--bubble-svg:url('${cbSvg}')"` : ''}>
+            ${replyBlock}
+            ${contentBlock}
+            ${reactionSummary ? `<div class="message-reactions">${reactionSummary}</div>` : ''}
+          </div>
         </div>
       </div>
       <div class="message-like-wrap">

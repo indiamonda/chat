@@ -249,7 +249,7 @@ function createInboxForNewMessage(messageId, content, replyToId, senderId, roomT
  * (via the Cloudflare Worker proxy, or directly with DEEPSEEK_KEY)
  * and post the response as a message from the "helper" user.
  * ==================================================================*/
-const HELPER_RE = /(^|\s)@helper\b/i;
+const HELPER_RE = /(^|\s)@(?:helper|venory)\b/i;
 const DEEPSEEK_API = process.env.DEEPSEEK_KEY
   ? 'https://api.deepseek.com/v1/chat/completions'
   : 'https://deepseek-proxy.ikunbeautiful.workers.dev/v1/chat';
@@ -257,9 +257,11 @@ const DEEPSEEK_API = process.env.DEEPSEEK_KEY
 function helperSystemPrompt(roomType) {
   var context = roomType === 'dm'
     ? 'You are responding to a DIRECT MESSAGE (DM) from a user. Treat it like a private conversation — be helpful, thorough, and personal.'
-    : 'You are responding to a group chat message where someone mentioned @helper. Keep group responses concise (1-4 paragraphs).';
+    : 'You are responding to a group chat message where someone mentioned @helper or @venory. Keep group responses concise (1-4 paragraphs).';
   return [
-    'YOU ARE "Helper", a friendly AI bot in the JimmyQrg Chat app.',
+    'YOU ARE "Venory", a friendly AI bot in the JimmyQrg Chat app.',
+    'Your username is "helper" but your display name is "Venory".',
+    'Users can mention you with @helper and you will respond.',
     'You are currently running inside the CHAT APP (chat.jimmyqrg.com),',
     'NOT on the main site (jimmyqrg.github.io).',
     context,

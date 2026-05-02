@@ -101,7 +101,9 @@ router.patch('/profile', requireAuth, upload.single('avatar'), (req, res) => {
   const { display_name, website, profile_links, description, chatbox_style, email } = req.body || {};
   let avatar_url = user.avatar_url;
   if (req.file) avatar_url = `/uploads/${req.file.filename}`;
+  const RESERVED_NAMES = ['helper', 'venory'];
   const name = typeof display_name === 'string' && display_name.trim() ? display_name.trim().slice(0, 64) : null;
+  if (name !== null && RESERVED_NAMES.includes(name.toLowerCase())) return res.status(400).json({ error: 'That display name is reserved' });
   const web = typeof website === 'string' ? website.trim().slice(0, 512) : null;
   const links = profile_links != null ? (typeof profile_links === 'string' ? profile_links : JSON.stringify(profile_links)) : null;
   const desc = description !== undefined ? (typeof description === 'string' ? description.trim().slice(0, 1024) : null) : undefined;
