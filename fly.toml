@@ -9,7 +9,7 @@ primary_region = 'sjc'
 [build]
 
 # Persistent storage — one volume in primary_region (SQLite + sessions are per-machine; use 1 machine only)
-#   fly volume create chat_data --region iad --size 1 -a jchat
+#   fly volume create chat_data --region sjc --size 1 -a jchat
 [mounts]
   source = "chat_data"
   destination = "/data"
