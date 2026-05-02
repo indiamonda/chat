@@ -80,6 +80,7 @@ let state = {
   _reportCounts: { total: 0, open: 0, in_review: 0 },
   _modReports: { items: [], status: 'open', search: '', loading: false, selected: null, notes: [] },
   _adminAuditSearch: '',
+  _adminUserSearch: '',
   _backups: [],
   _exportRunning: null,
   _mentionAutocomplete: null,
@@ -6453,24 +6454,42 @@ function renderAdminContent() {
             <div id="admin-timeout-list-tab" class="admin-timeout-list"></div>
           </div>
           ` : ''}
-          ${adminTab === 'users' ? `
+          ${adminTab === 'users' ? (() => {
+            const canManage = state.user?.can_manage_users;
+            const userSearch = (state._adminUserSearch || '').trim().toLowerCase();
+            const filteredUsers = userSearch
+              ? users.filter((u) => {
+                  const blob = [u.id, u.username, u.display_name, u.email].filter(Boolean).join(' ').toLowerCase();
+                  return blob.includes(userSearch);
+                })
+              : users;
+            return `
           <div class="admin-section">
             <h2 class="admin-section-title">${t('adminUsersSection')}</h2>
             <p class="admin-section-desc">${t('adminUsersDesc')}</p>
+            <div class="admin-users-toolbar">
+              <input type="search" id="admin-user-search" class="admin-user-search" placeholder="${tx('adminUserSearchPlaceholder', 'Search by name, username, or email…')}" value="${escapeHtml(state._adminUserSearch || '')}" />
+              <span class="admin-user-count">${tx('adminUserCount', '{shown} / {total} users')
+                .replace('{shown}', filteredUsers.length)
+                .replace('{total}', users.length)}</span>
+            </div>
+            ${filteredUsers.length === 0 ? `<p class="admin-section-desc">${tx('adminUserSearchEmpty', 'No users match your search.')}</p>` : ''}
             <div class="admin-users-list" id="admin-user-list">
-              ${users.map(u => {
-                const canManage = state.user?.can_manage_users;
+              ${filteredUsers.map(u => {
                 const permLabels = { can_send_inbox: t('adminPermSendMail'), can_broadcast: t('adminPermBroadcast'), can_edit_docs: t('adminPermEditDocs'), can_kick: t('adminPermRemoveAccount'), can_delete_messages: t('adminPermDeleteMessages'), can_manage_users: t('adminPermManageUsers'), can_timeout: t('adminPermTimeout'), can_pin_messages: tx('adminPermPinMessages', 'Pin messages'), can_unlimited_edit_recall: tx('adminPermUnlimitedEditRecall', 'Unlimited edit & recall') };
                 const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall'];
                 const isAdmin = u.id === 'jimmyqrg';
                 const showPerms = canManage && !isAdmin && u.is_allowed;
                 const defAvU = getDefaultAvatarUrl(u.id);
                 const avSrcU = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : defAvU;
+                const email = canManage && u.email ? String(u.email) : '';
                 return `
                 <div class="admin-user-card" data-user-id="${u.id}">
                   <img src="${avSrcU}" data-fallback="${defAvU.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="admin-user-avatar" />
                   <div class="admin-user-info">
                     <span class="admin-user-name">${escapeHtml(u.display_name || u.username)}</span>
+                    <span class="admin-user-handle">@${escapeHtml(u.username || u.id)}</span>
+                    ${email ? `<span class="admin-user-email" title="${escapeHtml(email)}"><span class="icon" aria-hidden="true">${ICON_MAIL_SM}</span>${escapeHtml(email)}</span>` : ''}
                     <span class="admin-user-meta">${isAdmin ? t('adminRoleAdmin') : u.deleted_at ? t('adminRoleDeleted') : (u.is_allowed ? t('adminRoleOnList') : t('adminRoleMember'))}</span>
                   </div>
                   ${!isAdmin ? `
@@ -6499,7 +6518,8 @@ function renderAdminContent() {
               <div id="admin-audit-list" class="admin-audit-list"><p class="admin-section-desc admin-loading"><span class="admin-loading-spinner" aria-hidden="true"></span> ${t('loading')}</p></div>
             </div>
           </div>
-          ` : ''}
+          `;
+          })() : ''}
           ${adminTab === 'moderation' ? renderModerationTab() : ''}
           ${adminTab === 'export' && state.user?.id === 'jimmyqrg' ? renderExportTab() : ''}
     </div>
@@ -6555,8 +6575,23 @@ function renderModerationCard(r) {
         <button type="button" class="btn-small" data-mod-action="reject" data-report-id="${escapeHtml(r.id)}">${tx('modActionReject', 'Reject')}</button>
         <button type="button" class="btn-small" data-mod-action="duplicate" data-report-id="${escapeHtml(r.id)}">${tx('modActionDuplicate', 'Mark duplicate')}</button>
       </div>`;
+  const roomType = r.room_type === 'dm' ? 'dm' : (r.room_type || 'group');
+  const roomId = r.room_id || '';
+  const messageBlock = messagePreview && r.message_id
+    ? `<button type="button"
+              class="mod-card-message mod-card-message-jump"
+              data-mod-action="jump"
+              data-report-id="${escapeHtml(r.id)}"
+              data-message-id="${escapeHtml(r.message_id)}"
+              data-room-type="${escapeHtml(roomType)}"
+              data-room-id="${escapeHtml(roomId)}"
+              title="${escapeHtml(tx('modCardJumpTitle', 'Go to this message in the chat'))}">
+        <span class="mod-card-message-text">${messagePreview}</span>
+        <span class="mod-card-message-jump-hint">${escapeHtml(tx('modCardJumpHint', roomType === 'dm' ? 'View context' : 'Go to message'))} →</span>
+      </button>`
+    : (messagePreview ? `<blockquote class="mod-card-message">${messagePreview}</blockquote>` : '');
   return `
-    <article class="mod-card ${r.status === 'open' ? 'mod-card-open' : ''}" data-report-id="${escapeHtml(r.id)}">
+    <article class="mod-card mod-card-${status} ${r.status === 'open' ? 'mod-card-open' : ''}" data-report-id="${escapeHtml(r.id)}" data-target-id="${escapeHtml(r.target_user_id || '')}" data-reporter-id="${escapeHtml(r.reporter_id || '')}">
       <header class="mod-card-header">
         <span class="mod-card-status mod-card-status-${status}">${status.replace('_', ' ')}</span>
         <span class="mod-card-reason">${reason}</span>
@@ -6566,9 +6601,10 @@ function renderModerationCard(r) {
         <span><strong>${tx('modCardReporter', 'Reporter')}:</strong> ${escapeHtml(reporter || '-')}</span>
         <span><strong>${tx('modCardTarget', 'Target')}:</strong> ${escapeHtml(target)}</span>
         ${r.assigned_username ? `<span><strong>${tx('modCardAssignee', 'Assignee')}:</strong> ${escapeHtml(r.assigned_username)}</span>` : ''}
+        <span class="mod-card-room"><strong>${tx('modCardRoom', 'Room')}:</strong> ${escapeHtml(roomType === 'dm' ? tx('modCardRoomDm', 'Private chat') : tx('modCardRoomGroup', 'Group chat'))}</span>
       </div>
       ${r.details ? `<p class="mod-card-details">${escapeHtml(String(r.details).slice(0, 480))}</p>` : ''}
-      ${messagePreview ? `<blockquote class="mod-card-message">${messagePreview}</blockquote>` : ''}
+      ${messageBlock}
       ${resolveBtns}
       <div class="mod-card-detail-link">
         <button type="button" class="btn-link" data-mod-action="view" data-report-id="${escapeHtml(r.id)}">${tx('modActionDetails', 'Open details / notes')}</button>
@@ -6701,6 +6737,56 @@ async function loadAdminTimeouts() {
     if (elTab) elTab.innerHTML = html;
   } catch (err) {
     listEl.innerHTML = `<p class="admin-section-desc">${t('adminFailedToLoad')}</p>`;
+  }
+}
+
+function applyAdminUserSearchFilter(rawQuery) {
+  const query = String(rawQuery || '').trim().toLowerCase();
+  const list = document.getElementById('admin-user-list');
+  if (!list) return;
+  const cards = list.querySelectorAll('.admin-user-card');
+  const usersMap = new Map((state.users || []).map((u) => [u.id, u]));
+  let shown = 0;
+  cards.forEach((card) => {
+    const uid = card.dataset.userId;
+    const u = usersMap.get(uid);
+    if (!query) {
+      card.hidden = false;
+      shown += 1;
+      return;
+    }
+    const blob = [
+      uid,
+      u?.username,
+      u?.display_name,
+      u?.email,
+      card.querySelector('.admin-user-email')?.textContent,
+      card.querySelector('.admin-user-handle')?.textContent,
+      card.querySelector('.admin-user-name')?.textContent,
+    ].filter(Boolean).join(' ').toLowerCase();
+    const match = blob.includes(query);
+    card.hidden = !match;
+    if (match) shown += 1;
+  });
+  const countEl = document.querySelector('.admin-users-toolbar .admin-user-count');
+  if (countEl) {
+    countEl.textContent = tx('adminUserCount', '{shown} / {total} users')
+      .replace('{shown}', shown)
+      .replace('{total}', cards.length);
+  }
+  const section = list.closest('.admin-section');
+  if (section) {
+    let emptyMsg = section.querySelector('.admin-user-empty');
+    if (shown === 0) {
+      if (!emptyMsg) {
+        emptyMsg = document.createElement('p');
+        emptyMsg.className = 'admin-section-desc admin-user-empty';
+        list.insertAdjacentElement('beforebegin', emptyMsg);
+      }
+      emptyMsg.textContent = tx('adminUserSearchEmpty', 'No users match your search.');
+    } else if (emptyMsg) {
+      emptyMsg.remove();
+    }
   }
 }
 
@@ -6841,6 +6927,12 @@ function bindAdmin() {
     }, 250);
   });
 
+  document.getElementById('admin-user-search')?.addEventListener('input', (e) => {
+    const value = e.target.value;
+    state._adminUserSearch = value;
+    applyAdminUserSearchFilter(value);
+  });
+
   // Moderation queue tab
   const adminTab = new URLSearchParams(window.location.search || '').get('tab') || 'action';
   if (adminTab === 'moderation') {
@@ -6861,12 +6953,29 @@ function bindAdmin() {
       modSearchTimer = setTimeout(() => loadModerationQueue(state._modReports.status, value), 250);
     });
     document.querySelectorAll('[data-mod-action]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', async (ev) => {
         const action = btn.dataset.modAction;
         const reportId = btn.dataset.reportId;
         if (!action || !reportId) return;
         if (action === 'view') {
           showModerationDetailModal(reportId);
+          return;
+        }
+        if (action === 'jump') {
+          ev.preventDefault();
+          const messageId = btn.dataset.messageId;
+          const rType = btn.dataset.roomType;
+          const rId = btn.dataset.roomId;
+          if (!messageId) return;
+          const card = btn.closest('[data-report-id]');
+          await navigateToReportedMessage({
+            report_id: reportId,
+            message_id: messageId,
+            room_type: rType,
+            room_id: rId,
+            target_user_id: card?.dataset?.targetId || null,
+            reporter_id: card?.dataset?.reporterId || null,
+          });
           return;
         }
         try {
