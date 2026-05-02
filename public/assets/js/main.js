@@ -2838,7 +2838,7 @@ function renderMentionAutocomplete() {
     const av = u?.avatar_url || getDefaultAvatarUrl(u?.id);
     return `<button type="button" class="mention-option ${isActive ? 'active' : ''}" data-idx="${idx}">
       <img src="${escapeHtml(av)}" alt="" class="mention-option-avatar" />
-      <span class="mention-option-name">@${escapeHtml(u?.username || '')}</span>
+      <span class="mention-option-name">@${escapeHtml(u?.username || '')}</span>${userTag(u?.id)}
       <span class="mention-option-sub">${escapeHtml(u?.display_name || '')}</span>
     </button>`;
   }).join('');
@@ -3518,8 +3518,10 @@ function renderMain() {
               const lastMessageAt = (uid) => { const fromApi = state.lastMessageAtByUserId?.[uid]; if (fromApi != null) return fromApi; const c = convId(uid); if (!c) return 0; const list = state.messages['dm:' + c]; return list?.length ? Math.max(...list.map(m => m.created_at || 0)) : 0; };
               const newCount = (uid) => { const c = convId(uid); return c ? getNewCount('dm', c) : 0; };
               const name = (u) => (u.display_name || u.username || '').toLowerCase();
-              /* Private chat list order: last chat time (recent first) > new message count (high first) > alphabetical */
+              /* Private chat list order: pinned users (Helper, JimmyQrg) > last chat time (recent first) > new message count (high first) > alphabetical */
               users.sort((a, b) => {
+                const pa = userSortPriority(a.id), pb = userSortPriority(b.id);
+                if (pa !== pb) return pa - pb;
                 const at = lastMessageAt(a.id), bt = lastMessageAt(b.id);
                 if (bt !== at) return bt - at;
                 const an = newCount(a.id), bn = newCount(b.id);
@@ -3533,10 +3535,11 @@ function renderMain() {
                 const n = newCount(u.id);
                 const badge = n > 0 ? `<span class="panel-list-badge panel-list-badge-count" aria-label="${n} new">${n > 99 ? '99+' : n}</span>` : '';
                 const chatHref = `/chat/${encodeURIComponent(u.id)}${friend ? '' : '?view=profile'}`;
+                const tag = userTag(u.id);
                 return `
               <li><a href="${chatHref}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-user-id="${escapeHtml(u.id)}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml(name(u))}" data-friend="${friend ? '1' : '0'}">
                 <span class="panel-user-avatar-wrap" data-user-id="${escapeHtml(u.id)}" title="View profile"><img src="${avSrc}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="panel-user-avatar" /></span>
-                <span class="panel-list-link-text">${escapeHtml(u.display_name || u.username)}</span>${badge}
+                <span class="panel-list-link-text">${escapeHtml(u.display_name || u.username)}</span>${tag}${badge}
               </a></li>
             `; }).join('');
             })()}
@@ -3984,6 +3987,13 @@ function renderChatArea() {
         <button type="button" class="scroll-to-bottom" aria-label="Scroll to bottom" title="Scroll to bottom" style="display:none">
           <span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></span>
         </button>
+        ${roomType === 'group' && state.panel === 'support' && !localStorage.getItem('__jqrg_support_tip_hidden') ? `
+        <div class="support-helper-tip" id="support-helper-tip">
+          <span class="support-helper-tip-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></span>
+          <span class="support-helper-tip-text">@Helper to get immediate assistance</span>
+          <button type="button" class="support-helper-tip-close" id="support-helper-tip-close" aria-label="Dismiss"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+        ` : ''}
         ${!accessDenied && ((roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm') ? `
         <div class="composer composer-safe-area ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
           ${replyPreview ? `
@@ -4296,7 +4306,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
 
   const defaultAvatar = getDefaultAvatarUrl(m.sender_id);
   const avatarSrc = (m.avatar_url && String(m.avatar_url).trim()) ? m.avatar_url : defaultAvatar;
-  const senderName = escapeHtml(m.display_name || m.username || 'Unknown user');
+  const senderName = escapeHtml(m.display_name || m.username || 'Unknown user') + userTag(m.sender_id);
   const cbStyle = m.chatbox_style || 'default';
   const cbMeta = state._chatboxStyles.find(s => s.id === cbStyle);
   const useSvgBubble = !isFileMessage && cbMeta?.type === 'svg';
@@ -4370,6 +4380,18 @@ function escapeHtml(s) {
   const div = document.createElement('div');
   div.textContent = s;
   return div.innerHTML;
+}
+
+function userTag(userId) {
+  if (userId === 'helper') return '<span class="user-tag user-tag-helper">Assistance</span>';
+  if (userId === 'jimmyqrg') return '<span class="user-tag user-tag-owner">Owner</span>';
+  return '';
+}
+
+function userSortPriority(userId) {
+  if (userId === 'helper') return 0;
+  if (userId === 'jimmyqrg') return 1;
+  return 2;
 }
 
 /** Parse $ [\] [ ](language|lang)=[ ]"name" ... \$ blocks. Supports $\language=, $\ lang=, $\ language =, etc. */
@@ -5302,6 +5324,10 @@ function bindMain() {
   });
 
   document.getElementById('cancel-reply')?.addEventListener('click', () => setState({ replyTo: null }));
+  document.getElementById('support-helper-tip-close')?.addEventListener('click', () => {
+    try { localStorage.setItem('__jqrg_support_tip_hidden', '1'); } catch (_) {}
+    document.getElementById('support-helper-tip')?.remove();
+  });
   document.querySelector('[data-reply-jump]')?.addEventListener('click', async (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -6487,7 +6513,7 @@ function renderAdminContent() {
                 <div class="admin-user-card" data-user-id="${u.id}">
                   <img src="${avSrcU}" data-fallback="${defAvU.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="admin-user-avatar" />
                   <div class="admin-user-info">
-                    <span class="admin-user-name">${escapeHtml(u.display_name || u.username)}</span>
+                    <span class="admin-user-name">${escapeHtml(u.display_name || u.username)}${userTag(u.id)}</span>
                     <span class="admin-user-handle">@${escapeHtml(u.username || u.id)}</span>
                     ${email ? `<span class="admin-user-email" title="${escapeHtml(email)}"><span class="icon" aria-hidden="true">${ICON_MAIL_SM}</span>${escapeHtml(email)}</span>` : ''}
                     <span class="admin-user-meta">${isAdmin ? t('adminRoleAdmin') : u.deleted_at ? t('adminRoleDeleted') : (u.is_allowed ? t('adminRoleOnList') : t('adminRoleMember'))}</span>
@@ -7335,6 +7361,8 @@ function renderChatUsersView() {
   };
   const name = (u) => (u.display_name || u.username || '').toLowerCase();
   users.sort((a, b) => {
+    const pa = userSortPriority(a.id), pb = userSortPriority(b.id);
+    if (pa !== pb) return pa - pb;
     const at = lastMessageAt(a.id), bt = lastMessageAt(b.id);
     if (bt !== at) return bt - at;
     const an = newCount(a.id), bn = newCount(b.id);
@@ -7361,10 +7389,11 @@ function renderChatUsersView() {
           const n = newCount(u.id);
           const badge = n > 0 ? `<span class="panel-list-badge panel-list-badge-count" aria-label="${n} new">${n > 99 ? '99+' : n}</span>` : '';
           const chatHref = `/chat/${encodeURIComponent(u.id)}${friend ? '' : '?view=profile'}`;
+          const tag = userTag(u.id);
           return `
             <li><a href="${chatHref}" class="panel-list-link ${state.dmUserId === u.id ? 'active' : ''}" data-user-id="${escapeHtml(u.id)}" data-username="${escapeHtml((u.username || '').toLowerCase())}" data-display="${escapeHtml(name(u))}" data-friend="${friend ? '1' : '0'}">
               <span class="panel-user-avatar-wrap" data-user-id="${escapeHtml(u.id)}" title="View profile"><img src="${avSrc}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="panel-user-avatar" />${presenceDot(u.id)}</span>
-              <span class="panel-list-link-text">${escapeHtml(u.display_name || u.username)}</span>${badge}
+              <span class="panel-list-link-text">${escapeHtml(u.display_name || u.username)}</span>${tag}${badge}
             </a></li>
           `;
         }).join('')}
