@@ -254,12 +254,15 @@ const DEEPSEEK_API = process.env.DEEPSEEK_KEY
   ? 'https://api.deepseek.com/v1/chat/completions'
   : 'https://deepseek-proxy.ikunbeautiful.workers.dev/v1/chat';
 
-function helperSystemPrompt() {
+function helperSystemPrompt(roomType) {
+  var context = roomType === 'dm'
+    ? 'You are responding to a DIRECT MESSAGE (DM) from a user. Treat it like a private conversation — be helpful, thorough, and personal.'
+    : 'You are responding to a group chat message where someone mentioned @helper. Keep group responses concise (1-4 paragraphs).';
   return [
     'YOU ARE "Helper", a friendly AI bot in the JimmyQrg Chat app.',
     'You are currently running inside the CHAT APP (chat.jimmyqrg.com),',
-    'NOT on the main site (jimmyqrg.github.io). You are responding to',
-    'a group chat message where someone mentioned @helper.',
+    'NOT on the main site (jimmyqrg.github.io).',
+    context,
     '',
     'ABOUT THIS CHAT APP:',
     '- This is JimmyQrg Chat, a community chat by JimmyQrg.',
@@ -310,33 +313,36 @@ function helperSystemPrompt() {
     '  * **Slope** – Fast-paced ball-rolling reflexes game.',
     '- Show math work step-by-step in LaTeX ($...$ inline, $$...$$ block).',
     '- For code, always use fenced blocks with language tags.',
-    '- Be thorough but not bloated. Group chat = 1-4 paragraphs.',
+    '- Be thorough but not bloated.',
     '- No emojis unless the user used them.',
     '- No "as an AI" disclaimers. Just answer.',
     '- If you don\'t know something, say so honestly.',
-    '- If a user asks you to fix something or reports a bug, tell them',
-    '  you cannot fix code and they should send the bug to JimmyQrg',
-    '  via DM here in the chat.',
+    '- You can and SHOULD answer questions about: weather, math, code,',
+    '  games, general knowledge, definitions, translations, trivia,',
+    '  site navigation, how-to questions, etc. These are your purpose.',
+    '- ONLY if a user explicitly reports a BUG or asks you to FIX broken',
+    '  code/features on the site or chat app, tell them to DM JimmyQrg',
+    '  with the bug details. Normal questions are NOT bug reports.',
   ].join('\n');
 }
 
-function buildHelperContext(triggerMsg, roomId) {
+function buildHelperContext(triggerMsg, roomType, roomId) {
   const chatRecent = db.prepare(`
     SELECT m.content, m.sender_id, m.created_at, u.username, u.display_name
     FROM messages m LEFT JOIN users u ON u.id = m.sender_id
-    WHERE m.room_type = 'group' AND m.room_id = ?
+    WHERE m.room_type = ? AND m.room_id = ?
       AND m.recalled_at IS NULL AND m.deleted_by_admin IS NULL
     ORDER BY m.created_at DESC LIMIT 20
-  `).all(roomId);
+  `).all(roomType, roomId);
 
   const helperRecent = db.prepare(`
     SELECT m.content, m.sender_id, m.created_at, u.username, u.display_name
     FROM messages m LEFT JOIN users u ON u.id = m.sender_id
-    WHERE m.room_type = 'group' AND m.room_id = ?
+    WHERE m.room_type = ? AND m.room_id = ?
       AND m.sender_id = ?
       AND m.recalled_at IS NULL AND m.deleted_by_admin IS NULL
     ORDER BY m.created_at DESC LIMIT 10
-  `).all(roomId, HELPER_USER_ID);
+  `).all(roomType, roomId, HELPER_USER_ID);
 
   const seen = new Set();
   const combined = [];
@@ -347,13 +353,13 @@ function buildHelperContext(triggerMsg, roomId) {
   }
   combined.sort((a, b) => a.created_at - b.created_at);
 
-  const msgs = [{ role: 'system', content: helperSystemPrompt() }];
+  const msgs = [{ role: 'system', content: helperSystemPrompt(roomType) }];
   for (const r of combined) {
     if (r.sender_id === HELPER_USER_ID) {
       msgs.push({ role: 'assistant', content: r.content || '' });
     } else {
       const name = r.display_name || r.username || 'User';
-      msgs.push({ role: 'user', content: `[${name}]: ${r.content || ''}` });
+      msgs.push({ role: 'user', content: roomType === 'dm' ? (r.content || '') : `[${name}]: ${r.content || ''}` });
     }
   }
   return msgs;
@@ -491,9 +497,8 @@ async function executeServerTools(text) {
 }
 
 async function helperReply(triggerMsgId, content, roomType, roomId) {
-  if (roomType !== 'group') return;
   try {
-    const messages = buildHelperContext(content, roomId);
+    const messages = buildHelperContext(content, roomType, roomId);
     const headers = { 'Content-Type': 'application/json' };
     if (process.env.DEEPSEEK_KEY) {
       headers['Authorization'] = `Bearer ${process.env.DEEPSEEK_KEY}`;
@@ -545,7 +550,8 @@ async function helperReply(triggerMsgId, content, roomType, roomId) {
     `).get(id);
     const msg = { ...row, likes: 0, edit_history: null };
     const io = app.get('io');
-    io?.to(`group:${GROUP_ID}`).emit('message', msg);
+    const emitRoom = roomType === 'dm' ? `dm:${roomId}` : `group:${GROUP_ID}`;
+    io?.to(emitRoom).emit('message', msg);
   } catch (err) {
     console.error('[helper-bot] Error:', err);
   }
@@ -1326,9 +1332,12 @@ function recomputePresence(userId, { explicitState } = {}) {
 
 function snapshotPresence() {
   const out = [];
+  let helperFound = false;
   for (const [userId, entry] of presenceState.entries()) {
+    if (userId === HELPER_USER_ID) { helperFound = true; out.push({ user_id: userId, state: 'online', last_seen_at: Date.now() }); continue; }
     out.push({ user_id: userId, state: entry.state, last_seen_at: entry.last_seen_at || null });
   }
+  if (!helperFound) out.push({ user_id: HELPER_USER_ID, state: 'online', last_seen_at: Date.now() });
   return out;
 }
 
@@ -1475,6 +1484,9 @@ io.on('connection', (socket) => {
       const msg = { ...row, likes: 0, edit_history: null };
       io.to(`dm:${roomId}`).emit('message', msg);
       setTyping(socket.userId, presenceRoomKeyForRoom('dm', roomId), false);
+      if (otherId === HELPER_USER_ID && socket.userId !== HELPER_USER_ID) {
+        helperReply(id, content, 'dm', roomId);
+      }
       return ack?.({ message: msg });
     }
     if (roomType === 'group') {
