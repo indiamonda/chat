@@ -2770,6 +2770,15 @@ function findMentionContextAt(input) {
   return { start: caret - m[2].length - 1, query: m[2], end: caret };
 }
 
+/**
+ * Click-only mention picker:
+ * - Opens as soon as the caret follows a bare `@` (optionally with letters).
+ * - Shows up to 10 matching users; list is vertically scrollable if it overflows.
+ * - Typing letters after `@` narrows the list; no keyboard auto-completion
+ *   (Enter / Tab keep their normal composer behaviour). Only a click completes.
+ */
+const MENTION_MAX_ITEMS = 10;
+
 async function maybeOpenMentionAutocomplete(input) {
   const ctx = findMentionContextAt(input);
   if (!ctx) {
@@ -2783,7 +2792,7 @@ async function maybeOpenMentionAutocomplete(input) {
   let users = [];
   let tokens = [];
   try {
-    const data = await apiGet(`/api/users/mention-search?q=${encodeURIComponent(ctx.query)}&limit=8`);
+    const data = await apiGet(`/api/users/mention-search?q=${encodeURIComponent(ctx.query)}&limit=${MENTION_MAX_ITEMS}`);
     users = data?.users || [];
     tokens = data?.tokens || [];
   } catch (_) {}
@@ -2791,14 +2800,14 @@ async function maybeOpenMentionAutocomplete(input) {
   const options = [];
   for (const tok of tokens) options.push({ kind: 'token', token: tok.token, label: tok.label });
   for (const u of users) options.push({ kind: 'user', user: u });
-  if (!options.length) {
+  const limited = options.slice(0, MENTION_MAX_ITEMS);
+  if (!limited.length) {
     state._mentionAutocomplete = null;
     renderMentionAutocomplete();
     return;
   }
   state._mentionAutocomplete = {
-    activeIndex: 0,
-    options,
+    options: limited,
     range: { start: ctx.start, end: ctx.end },
     inputId: input.id || null,
   };
@@ -2826,33 +2835,46 @@ function renderMentionAutocomplete() {
     return;
   }
   const items = ac.options.map((opt, idx) => {
-    const isActive = idx === ac.activeIndex;
     if (opt.kind === 'token') {
-      return `<button type="button" class="mention-option ${isActive ? 'active' : ''}" data-idx="${idx}">
-        <span class="mention-option-avatar mention-option-token">@</span>
-        <span class="mention-option-name">@${escapeHtml(opt.token)}</span>
-        <span class="mention-option-sub">${escapeHtml(opt.label || '')}</span>
+      return `<button type="button" class="mention-option mention-option-token-row" data-idx="${idx}">
+        <span class="mention-option-avatar mention-option-token-avatar">@</span>
+        <span class="mention-option-info">
+          <span class="mention-option-name">@${escapeHtml(opt.token)}</span>
+          <span class="mention-option-sub">${escapeHtml(opt.label || '')}</span>
+        </span>
       </button>`;
     }
     const u = opt.user;
     const av = u?.avatar_url || getDefaultAvatarUrl(u?.id);
-    return `<button type="button" class="mention-option ${isActive ? 'active' : ''}" data-idx="${idx}">
+    const displayName = u?.display_name || u?.username || '';
+    return `<button type="button" class="mention-option" data-idx="${idx}">
       <img src="${escapeHtml(av)}" alt="" class="mention-option-avatar" />
-      <span class="mention-option-name">@${escapeHtml(u?.username || '')}</span>${userTag(u?.id)}
-      <span class="mention-option-sub">${escapeHtml(u?.display_name || '')}</span>
+      <span class="mention-option-info">
+        <span class="mention-option-name">${escapeHtml(displayName)}${userTag(u?.id)}</span>
+        <span class="mention-option-sub">@${escapeHtml(u?.username || '')}</span>
+      </span>
     </button>`;
   }).join('');
   el.innerHTML = items;
   const inputId = ac.inputId || 'composer-input';
   const input = document.getElementById(inputId);
+  el.style.transform = '';
+  el.style.display = 'block';
   if (input) {
     const rect = input.getBoundingClientRect();
-    el.style.left = `${Math.max(8, rect.left)}px`;
-    el.style.top = `${Math.max(8, rect.top - 8 - el.offsetHeight)}px`;
+    const popupHeight = el.offsetHeight || 220;
+    const margin = 8;
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const left = Math.min(Math.max(margin, rect.left), Math.max(margin, vw - Math.min(360, rect.width) - margin));
+    el.style.left = `${left}px`;
+    const desiredTop = rect.top - margin - popupHeight;
+    if (desiredTop < margin) {
+      el.style.top = `${Math.min(rect.bottom + margin, (window.innerHeight || 0) - popupHeight - margin)}px`;
+    } else {
+      el.style.top = `${desiredTop}px`;
+    }
     el.style.minWidth = `${Math.min(360, rect.width)}px`;
-    el.style.transform = 'translateY(-100%)';
   }
-  el.style.display = 'block';
   el.querySelectorAll('.mention-option').forEach((btn) => {
     btn.addEventListener('click', () => {
       const idx = Number(btn.dataset.idx);
@@ -5901,30 +5923,11 @@ function bindMain() {
       send();
     });
     input.addEventListener('keydown', (e) => {
-      const ac = state._mentionAutocomplete;
-      if (ac && ac.options.length) {
-        if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          ac.activeIndex = (ac.activeIndex + 1) % ac.options.length;
-          renderMentionAutocomplete();
-          return;
-        }
-        if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          ac.activeIndex = (ac.activeIndex - 1 + ac.options.length) % ac.options.length;
-          renderMentionAutocomplete();
-          return;
-        }
-        if (e.key === 'Enter' || e.key === 'Tab') {
-          e.preventDefault();
-          applyMentionSelection(ac.options[ac.activeIndex]);
-          return;
-        }
-        if (e.key === 'Escape') {
-          state._mentionAutocomplete = null;
-          renderMentionAutocomplete();
-          return;
-        }
+      if (state._mentionAutocomplete && e.key === 'Escape') {
+        e.preventDefault();
+        state._mentionAutocomplete = null;
+        renderMentionAutocomplete();
+        return;
       }
       if (e.key === 'Enter' && !e.shiftKey) {
         if (isMobile()) return;
