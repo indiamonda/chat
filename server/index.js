@@ -287,10 +287,30 @@ function helperSystemPrompt() {
     '- General knowledge, writing, debugging',
     '- Site/chat navigation and feature questions',
     '',
-    'RULES:',
-    '- Be concise. Group chat messages should be shorter than private',
-    '  helper conversations — keep it 1-3 paragraphs max.',
-    '- Use Markdown for formatting.',
+    'TOOLS (REAL-TIME DATA):',
+    'You have tools. To use one, output on its own line:',
+    '<<<TOOL:name({"key":"value"})>>>',
+    '',
+    'Available: weather(location), clock(timezone), calculate(expression),',
+    'define(word), translate(text,to), wikipedia(query), unitconvert(value,from,to),',
+    'randomnumber(min,max,count), joke(), trivia().',
+    '',
+    'Examples:',
+    '<<<TOOL:weather({"location":"London"})>>>',
+    '<<<TOOL:clock({"timezone":"Asia/Tokyo"})>>>',
+    '<<<TOOL:calculate({"expression":"sqrt(144) + 3^2"})>>>',
+    '',
+    'OUTPUT STYLE:',
+    '- Use Markdown: headers (##), **bold**, *italic*, bullet lists,',
+    '  numbered lists, code blocks with language tags, tables.',
+    '- When listing items, give each a **bold title** and description.',
+    '  Example:',
+    '  ## Here are 3 games:',
+    '  * **Minecraft** – Build, explore, survive in a blocky world.',
+    '  * **Slope** – Fast-paced ball-rolling reflexes game.',
+    '- Show math work step-by-step in LaTeX ($...$ inline, $$...$$ block).',
+    '- For code, always use fenced blocks with language tags.',
+    '- Be thorough but not bloated. Group chat = 1-4 paragraphs.',
     '- No emojis unless the user used them.',
     '- No "as an AI" disclaimers. Just answer.',
     '- If you don\'t know something, say so honestly.',
@@ -321,6 +341,137 @@ function buildHelperContext(triggerMsg, roomId) {
   return msgs;
 }
 
+const TOOL_RE_SERVER = /<<<TOOL:(\w+)\(([^)]*)\)>>>/g;
+
+const serverTools = {
+  async weather(args) {
+    const loc = args.location || args.city || 'New York';
+    try {
+      const r = await fetch('https://wttr.in/' + encodeURIComponent(loc) + '?format=j1');
+      const d = await r.json();
+      const cur = d.current_condition?.[0];
+      if (!cur) return 'Weather data unavailable for ' + loc + '.';
+      const area = d.nearest_area?.[0];
+      const areaName = area?.areaName?.[0]?.value || loc;
+      const country = area?.country?.[0]?.value || '';
+      let res = `WEATHER FOR ${areaName}${country ? ', ' + country : ''}:\n`;
+      res += `Condition: ${cur.weatherDesc?.[0]?.value || '?'}\n`;
+      res += `Temperature: ${cur.temp_C}°C / ${cur.temp_F}°F (feels like ${cur.FeelsLikeC}°C / ${cur.FeelsLikeF}°F)\n`;
+      res += `Humidity: ${cur.humidity}% | Wind: ${cur.windspeedKmph} km/h ${cur.winddir16Point}\n`;
+      res += `UV Index: ${cur.uvIndex} | Visibility: ${cur.visibility} km\n`;
+      const forecast = d.weather || [];
+      if (forecast.length) {
+        res += '\nFORECAST:\n';
+        forecast.slice(0, 3).forEach(day => {
+          const desc = day.hourly?.[4]?.weatherDesc?.[0]?.value || '';
+          res += `${day.date}: ${desc}, ${day.mintempC}-${day.maxtempC}°C / ${day.mintempF}-${day.maxtempF}°F\n`;
+        });
+      }
+      return res;
+    } catch { return 'Could not fetch weather for ' + loc + '.'; }
+  },
+  async clock(args) {
+    const tz = args.timezone || args.tz || 'UTC';
+    try {
+      const now = new Date();
+      const formatted = now.toLocaleString('en-US', { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+      return `CURRENT TIME (${tz}): ${formatted}\nISO: ${now.toISOString()}\nUnix: ${Math.floor(now.getTime() / 1000)}`;
+    } catch { return 'Invalid timezone "' + tz + '".'; }
+  },
+  async calculate(args) {
+    const expr = args.expression || args.expr || '';
+    try {
+      const sanitized = expr.replace(/[^0-9+\-*/().,%^ sincotaqrlgexpabfdhMPIE\s]/g, '');
+      const result = Function('"use strict"; return (' + sanitized.replace(/\^/g, '**') + ')')();
+      return `CALCULATION: ${expr} = ${result}`;
+    } catch (e) { return `Could not evaluate: ${expr}. Error: ${e.message}`; }
+  },
+  async define(args) {
+    const word = args.word || args.term || '';
+    try {
+      const r = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(word));
+      const d = await r.json();
+      if (!Array.isArray(d) || !d[0]) return `No definition found for "${word}".`;
+      const entry = d[0];
+      let res = `DEFINITION OF "${(entry.word || word).toUpperCase()}"${entry.phonetic ? ' ' + entry.phonetic : ''}:\n`;
+      for (const m of (entry.meanings || [])) {
+        res += `\n(${m.partOfSpeech || '?'})\n`;
+        (m.definitions || []).slice(0, 3).forEach((def, i) => {
+          res += `${i + 1}. ${def.definition}\n`;
+          if (def.example) res += `   Example: "${def.example}"\n`;
+        });
+        if (m.synonyms?.length) res += '   Synonyms: ' + m.synonyms.slice(0, 6).join(', ') + '\n';
+      }
+      return res;
+    } catch { return `Could not look up "${word}".`; }
+  },
+  async translate(args) {
+    const text = args.text || '', to = args.to || 'en';
+    try {
+      const r = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${encodeURIComponent(to)}`);
+      const d = await r.json();
+      if (d.responseStatus !== 200) return 'Translation failed.';
+      return `TRANSLATION (→ ${to}): "${text}" → "${d.responseData.translatedText}"`;
+    } catch { return 'Translation service unavailable.'; }
+  },
+  async wikipedia(args) {
+    const q = args.query || args.topic || args.q || '';
+    try {
+      const r = await fetch('https://en.wikipedia.org/api/rest_v1/page/summary/' + encodeURIComponent(q));
+      const d = await r.json();
+      if (!d.extract) return `No Wikipedia article found for "${q}".`;
+      let res = `WIKIPEDIA: ${d.title || q}\n${d.extract}\n`;
+      if (d.content_urls?.desktop) res += 'Read more: ' + d.content_urls.desktop.page;
+      return res;
+    } catch { return `Could not fetch Wikipedia article for "${q}".`; }
+  },
+  async unitconvert(args) {
+    const val = parseFloat(args.value), from = (args.from || '').toLowerCase(), to = (args.to || '').toLowerCase();
+    if (isNaN(val)) return 'Invalid value for conversion.';
+    const table = { km_mi: v => v*0.621371, mi_km: v => v*1.60934, kg_lb: v => v*2.20462, lb_kg: v => v*0.453592, c_f: v => v*9/5+32, f_c: v => (v-32)*5/9, cm_in: v => v*0.393701, in_cm: v => v*2.54, m_ft: v => v*3.28084, ft_m: v => v*0.3048, l_gal: v => v*0.264172, gal_l: v => v*3.78541 };
+    const fn = table[from + '_' + to];
+    if (!fn) return `Unsupported conversion: ${from} → ${to}.`;
+    return `UNIT CONVERSION: ${val} ${from} = ${Math.round(fn(val)*10000)/10000} ${to}`;
+  },
+  async randomnumber(args) {
+    const min = parseInt(args.min)||1, max = parseInt(args.max)||100, count = Math.min(parseInt(args.count)||1, 20);
+    const results = []; for (let i = 0; i < count; i++) results.push(Math.floor(Math.random()*(max-min+1))+min);
+    return `RANDOM NUMBER(S) [${min}-${max}]: ${results.join(', ')}`;
+  },
+  async joke() {
+    try { const r = await fetch('https://official-joke-api.appspot.com/random_joke'); const d = await r.json(); return `JOKE:\n${d.setup || ''}\n${d.punchline || ''}`; }
+    catch { return 'Could not fetch a joke.'; }
+  },
+  async trivia() {
+    try {
+      const r = await fetch('https://opentdb.com/api.php?amount=1&type=multiple'); const d = await r.json();
+      const q = d.results?.[0]; if (!q) return 'Could not fetch trivia.';
+      const decode = s => s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#039;/g,"'");
+      const answers = [...q.incorrect_answers.map(decode), decode(q.correct_answer)].sort(() => Math.random()-0.5);
+      return `TRIVIA (${decode(q.category)}, ${q.difficulty}):\n${decode(q.question)}\nOptions: ${answers.join(' | ')}\n||Answer: ${decode(q.correct_answer)}||`;
+    } catch { return 'Trivia service unavailable.'; }
+  }
+};
+
+async function executeServerTools(text) {
+  const calls = [];
+  let m;
+  TOOL_RE_SERVER.lastIndex = 0;
+  while ((m = TOOL_RE_SERVER.exec(text)) !== null) {
+    let args = {};
+    try { args = JSON.parse(m[2].trim() || '{}'); } catch { m[2].trim().split(',').forEach(p => { const eq = p.indexOf(':'); if (eq >= 0) args[p.slice(0,eq).trim().replace(/["']/g,'')] = p.slice(eq+1).trim().replace(/["']/g,''); }); }
+    calls.push({ name: m[1].toLowerCase(), args, match: m[0] });
+  }
+  if (!calls.length) return null;
+  const results = await Promise.all(calls.map(async tc => {
+    const fn = serverTools[tc.name];
+    if (!fn) return { call: tc, result: 'Unknown tool: ' + tc.name };
+    try { return { call: tc, result: await fn(tc.args) }; }
+    catch (e) { return { call: tc, result: 'Tool error: ' + e.message }; }
+  }));
+  return results;
+}
+
 async function helperReply(triggerMsgId, content, roomType, roomId) {
   if (roomType !== 'group') return;
   try {
@@ -329,23 +480,38 @@ async function helperReply(triggerMsgId, content, roomType, roomId) {
     if (process.env.DEEPSEEK_KEY) {
       headers['Authorization'] = `Bearer ${process.env.DEEPSEEK_KEY}`;
     }
-    const resp = await fetch(DEEPSEEK_API, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages,
-        max_tokens: 1024,
-        temperature: 0.7,
-        stream: false,
-      }),
-    });
-    if (!resp.ok) {
-      console.error('[helper-bot] DeepSeek API error:', resp.status, await resp.text().catch(() => ''));
-      return;
+
+    let reply = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const resp = await fetch(DEEPSEEK_API, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages,
+          max_tokens: 2048,
+          temperature: 0.7,
+          stream: false,
+        }),
+      });
+      if (!resp.ok) {
+        console.error('[helper-bot] DeepSeek API error:', resp.status, await resp.text().catch(() => ''));
+        return;
+      }
+      const data = await resp.json();
+      reply = data.choices?.[0]?.message?.content;
+      if (!reply || !reply.trim()) return;
+
+      const toolResults = await executeServerTools(reply);
+      if (!toolResults) break;
+
+      const toolText = toolResults.map(r => `[Tool result for ${r.call.name}]: ${r.result}`).join('\n\n');
+      const cleanReply = reply.replace(TOOL_RE_SERVER, '').trim();
+      messages.push({ role: 'assistant', content: cleanReply });
+      messages.push({ role: 'user', content: toolText });
+      reply = '';
     }
-    const data = await resp.json();
-    const reply = data.choices?.[0]?.message?.content;
+
     if (!reply || !reply.trim()) return;
 
     const id = randomUUID();
