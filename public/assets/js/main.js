@@ -5849,9 +5849,9 @@ function bindMain() {
           onProgress: (p) => {
             if (progressBar && progressPct) {
               const pct = Math.round(Math.max(0, Math.min(1, p)) * 100);
-              progressBar.style.width = pct + '%';
-              progressPct.textContent = pct + '%';
-            }
+            progressBar.style.width = pct + '%';
+            progressPct.textContent = pct + '%';
+          }
           },
         }).then((data) => {
           if (data?.error) {
@@ -6162,7 +6162,7 @@ function bindMain() {
               const prepared = await prepareFileForUpload(file);
               if (!prepared) return;
               state._pendingFile = prepared;
-              render();
+            render();
             })();
           }
           break;
@@ -6277,7 +6277,7 @@ function showContextMenu(x, y, items, onSelect) {
       btn.style.opacity = '0.6';
       btn.style.cursor = 'not-allowed';
     } else {
-      btn.addEventListener('click', () => { onSelect(action); menu.remove(); });
+    btn.addEventListener('click', () => { onSelect(action); menu.remove(); });
     }
     menu.appendChild(btn);
   });
@@ -6540,7 +6540,7 @@ function renderAdminContent() {
               <h3 class="admin-section-title">${tx('adminAuditLog', 'Audit log')}</h3>
               <div class="admin-audit-toolbar">
                 <input type="search" id="admin-audit-search" class="admin-audit-search" placeholder="${tx('adminAuditSearchPlaceholder', 'Search audit log…')}" value="${escapeHtml(state._adminAuditSearch || '')}" />
-              </div>
+          </div>
               <div id="admin-audit-list" class="admin-audit-list"><p class="admin-section-desc admin-loading"><span class="admin-loading-spinner" aria-hidden="true"></span> ${t('loading')}</p></div>
             </div>
           </div>
@@ -6678,7 +6678,7 @@ function renderExportTab() {
         `).join('')}
       </ul>
     </div>
-  </div>
+    </div>
   `;
 }
 
