@@ -288,6 +288,8 @@ for (const col of permCols) {
 db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at)
   VALUES ('jimmyqrg', 'jimmyqrg', 'jimmyqrg', NULL, NULL, '$2a$10$placeholder', 1, ?)`).run(Date.now());
 db.prepare(`UPDATE users SET can_send_inbox=1, can_broadcast=1, can_edit_docs=1, can_kick=1, can_delete_messages=1, can_manage_users=1, can_timeout=1, can_pin_messages=1, can_unlimited_edit_recall=1 WHERE id='jimmyqrg'`).run();
+db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at)
+  VALUES ('helper', 'helper', 'Helper', NULL, NULL, '$2a$10$placeholder', 0, ?)`).run(Date.now());
 // Backfill: existing is_allowed users get all permissions (except can_manage_users) so they keep working
 try {
   db.prepare(`UPDATE users SET can_send_inbox=1, can_broadcast=1, can_edit_docs=1, can_kick=1, can_delete_messages=1, can_timeout=1, can_pin_messages=1 WHERE is_allowed=1 AND id!='jimmyqrg'`).run();

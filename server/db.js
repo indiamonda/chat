@@ -276,6 +276,12 @@ export function validateUsername(username) {
 
 export const GROUP_ID = 'JimmyQrg';
 export const PANELS = ['announcements', 'free_chat', 'support', 'problem_solving', 'rules'];
+export const HELPER_USER_ID = 'helper';
+
+try {
+  db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at)
+    VALUES (?, 'helper', 'Helper', NULL, NULL, '$2a$10$placeholder', 0, ?)`).run(HELPER_USER_ID, Date.now());
+} catch (_) {}
 
 export function isBlacklisted(userId) {
   if (!userId) return false;
