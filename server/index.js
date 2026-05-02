@@ -7,7 +7,7 @@ import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
 import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages, canTimeout, canUnlimitedEditRecall, tokenAuthMiddleware } from './auth.js';
-import { db, GROUP_ID, PANELS, isBlacklisted, isUserDeleted } from './db.js';
+import { db, GROUP_ID, PANELS, HELPER_USER_ID, isBlacklisted, isUserDeleted } from './db.js';
 import { upload } from './upload.js';
 import { getUploadUrl, getFileRef } from './upload.js';
 import authRoutes from './routes/auth.js';
@@ -217,6 +217,7 @@ function applySearchFilters(rows, filterSpec) {
 function createInboxForNewMessage(messageId, content, replyToId, senderId, roomType, roomId) {
   if (roomId === 'voice_chat') return;
   const toNotify = findMentionUserIds(content, senderId);
+  toNotify.delete(HELPER_USER_ID);
   for (const uid of [...toNotify]) {
     if (isBlocked(uid, senderId)) toNotify.delete(uid);
   }
@@ -238,6 +239,128 @@ function createInboxForNewMessage(messageId, content, replyToId, senderId, roomT
         INSERT INTO inbox (id, user_id, type, title, body, related_id, related_extra, created_at) VALUES (?, ?, 'reply', 'New reply', ?, ?, ?, ?)
       `).run(randomUUID(), orig.sender_id, (content || '').slice(0, 200), messageId, JSON.stringify({ roomType, roomId, reply_to_id: replyToId }), now);
     }
+  }
+}
+
+/* ====================================================================
+ * Helper bot (@helper mention in group chat)
+ *
+ * When a group message contains @helper, we call the DeepSeek API
+ * (via the Cloudflare Worker proxy, or directly with DEEPSEEK_KEY)
+ * and post the response as a message from the "helper" user.
+ * ==================================================================*/
+const HELPER_RE = /(^|\s)@helper\b/i;
+const DEEPSEEK_API = process.env.DEEPSEEK_KEY
+  ? 'https://api.deepseek.com/v1/chat/completions'
+  : 'https://deepseek-proxy.ikunbeautiful.workers.dev/v1/chat';
+
+function helperSystemPrompt() {
+  return [
+    'YOU ARE "Helper", a friendly AI bot in the JimmyQrg Chat app.',
+    'You are currently running inside the CHAT APP (chat.jimmyqrg.com),',
+    'NOT on the main site (jimmyqrg.github.io). You are responding to',
+    'a group chat message where someone mentioned @helper.',
+    '',
+    'ABOUT THIS CHAT APP:',
+    '- This is JimmyQrg Chat, a community chat by JimmyQrg.',
+    '- Hosted at chat.jimmyqrg.com (server on Fly.io).',
+    '- One group space "JimmyQrg" with panels: free_chat, support,',
+    '  voice_chat (for messages), plus document panels: announcements,',
+    '  problem_solving, rules (admin-editable).',
+    '- DMs, friend system, file uploads, reactions, mentions, search,',
+    '  collections, voice chat with WebRTC.',
+    '- Users sign up with username/password. Same account works on the',
+    '  main site jimmyqrg.github.io for cloud saves.',
+    '',
+    'ABOUT THE MAIN SITE (jimmyqrg.github.io):',
+    '- Personal website by JimmyQrg with an embedded games library.',
+    '- 5 tabs: Home, Games, Apps, Unblocks, Contacts.',
+    '- Games: huge library (Slope, Minecraft, Bloxd, Brotato, etc.).',
+    '- Apps: external utility sites (YouTube, TikTok, GitHub, etc.).',
+    '- Settings: tab cloak, particles, panic key, access code.',
+    '- Access code to unlock gated apps: asdfghjkl;\' (reveal only',
+    '  after warning about third-party services).',
+    '',
+    'YOU CAN HELP WITH:',
+    '- Math (show work in LaTeX: $...$ inline, $$...$$ block)',
+    '- Programming (use fenced code blocks with language tags)',
+    '- General knowledge, writing, debugging',
+    '- Site/chat navigation and feature questions',
+    '',
+    'RULES:',
+    '- Be concise. Group chat messages should be shorter than private',
+    '  helper conversations — keep it 1-3 paragraphs max.',
+    '- Use Markdown for formatting.',
+    '- No emojis unless the user used them.',
+    '- No "as an AI" disclaimers. Just answer.',
+    '- If you don\'t know something, say so honestly.',
+  ].join('\n');
+}
+
+function buildHelperContext(triggerMsg, roomId) {
+  const recent = db.prepare(`
+    SELECT m.content, m.sender_id, u.username, u.display_name
+    FROM messages m LEFT JOIN users u ON u.id = m.sender_id
+    WHERE m.room_type = 'group' AND m.room_id = ?
+      AND m.recalled_at IS NULL AND m.deleted_by_admin IS NULL
+    ORDER BY m.created_at DESC LIMIT 10
+  `).all(roomId);
+  recent.reverse();
+  const msgs = [{ role: 'system', content: helperSystemPrompt() }];
+  for (const r of recent) {
+    if (r.sender_id === HELPER_USER_ID) {
+      msgs.push({ role: 'assistant', content: r.content || '' });
+    } else {
+      const name = r.display_name || r.username || 'User';
+      msgs.push({ role: 'user', content: `[${name}]: ${r.content || ''}` });
+    }
+  }
+  return msgs;
+}
+
+async function helperReply(triggerMsgId, content, roomType, roomId) {
+  if (roomType !== 'group') return;
+  try {
+    const messages = buildHelperContext(content, roomId);
+    const headers = { 'Content-Type': 'application/json' };
+    if (process.env.DEEPSEEK_KEY) {
+      headers['Authorization'] = `Bearer ${process.env.DEEPSEEK_KEY}`;
+    }
+    const resp = await fetch(DEEPSEEK_API, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages,
+        max_tokens: 1024,
+        temperature: 0.7,
+        stream: false,
+      }),
+    });
+    if (!resp.ok) {
+      console.error('[helper-bot] DeepSeek API error:', resp.status, await resp.text().catch(() => ''));
+      return;
+    }
+    const data = await resp.json();
+    const reply = data.choices?.[0]?.message?.content;
+    if (!reply || !reply.trim()) return;
+
+    const id = randomUUID();
+    const now = Date.now();
+    db.prepare(`
+      INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'text', ?, ?, ?)
+    `).run(id, roomType, roomId, HELPER_USER_ID, reply.trim(), triggerMsgId, now, now);
+
+    const row = db.prepare(`
+      SELECT m.*, u.username, u.display_name, u.avatar_url, u.chatbox_style
+      FROM messages m LEFT JOIN users u ON u.id = m.sender_id WHERE m.id = ?
+    `).get(id);
+    const msg = { ...row, likes: 0, edit_history: null };
+    const io = app.get('io');
+    io?.to(`group:${GROUP_ID}`).emit('message', msg);
+  } catch (err) {
+    console.error('[helper-bot] Error:', err);
   }
 }
 
@@ -1186,6 +1309,9 @@ io.on('connection', (socket) => {
     const msg = { ...row, likes: 0, edit_history: null };
     io.to(`group:${GROUP_ID}`).emit('message', msg);
     setTyping(socket.userId, presenceRoomKeyForRoom(roomType, roomId), false);
+    if (socket.userId !== HELPER_USER_ID && HELPER_RE.test(content || '')) {
+      helperReply(id, content, roomType, roomId);
+    }
     ack?.({ message: msg });
   });
 

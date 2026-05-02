@@ -4,7 +4,7 @@ import { requireAuth, getCurrentUser } from '../auth.js';
 import { db, GROUP_ID } from '../db.js';
 
 const router = Router();
-const AUTO_FRIEND_ID = 'jimmyqrg';
+const AUTO_FRIEND_IDS = ['jimmyqrg', 'helper'];
 const ONE_MIN = 60 * 1000;
 const THIRTY_MIN = 30 * 60 * 1000;
 const ONE_HOUR = 60 * 60 * 1000;
@@ -17,7 +17,7 @@ function friendPair(a, b) {
 /** Check if two users are friends */
 export function areFriends(userId1, userId2) {
   if (!userId1 || !userId2 || userId1 === userId2) return false;
-  if (userId1 === AUTO_FRIEND_ID || userId2 === AUTO_FRIEND_ID) return true;
+  if (AUTO_FRIEND_IDS.includes(userId1) || AUTO_FRIEND_IDS.includes(userId2)) return true;
   const [u1, u2] = friendPair(userId1, userId2);
   const row = db.prepare('SELECT 1 FROM friendships WHERE user1_id = ? AND user2_id = ?').get(u1, u2);
   return !!row;
@@ -131,7 +131,9 @@ router.get('/', requireAuth, (req, res) => {
   if (!me) return res.status(401).json({ error: 'Not authenticated' });
   const rows = db.prepare('SELECT user1_id, user2_id FROM friendships WHERE user1_id = ? OR user2_id = ?').all(me.id, me.id);
   const ids = rows.map(r => (r.user1_id === me.id ? r.user2_id : r.user1_id));
-  if (me.id !== AUTO_FRIEND_ID && !ids.includes(AUTO_FRIEND_ID)) ids.push(AUTO_FRIEND_ID);
+  for (const afId of AUTO_FRIEND_IDS) {
+    if (me.id !== afId && !ids.includes(afId)) ids.push(afId);
+  }
   res.json({ friend_ids: ids });
 });
 
