@@ -2465,10 +2465,12 @@ select:focus {
   white-space: nowrap;
   text-align: left;
   line-height: 1.2;
+  align-self: flex-start;
 }
 
 .message.own .message-sender {
   text-align: right;
+  align-self: flex-end;
 }
 
 .message-avatar {
@@ -2478,6 +2480,11 @@ select:focus {
   object-fit: cover;
   flex-shrink: 0;
   transition: transform var(--transition-fast);
+  align-self: flex-start;
+}
+
+.message.own .message-avatar {
+  align-self: flex-end;
 }
 
 .message:hover .message-avatar {
