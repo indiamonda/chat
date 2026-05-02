@@ -277,10 +277,13 @@ export function validateUsername(username) {
 export const GROUP_ID = 'JimmyQrg';
 export const PANELS = ['announcements', 'free_chat', 'support', 'problem_solving', 'rules'];
 export const HELPER_USER_ID = 'helper';
+export const HELPER_AVATAR_URL = '/assets/helper/avatar.png';
 
 try {
   db.prepare(`INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at)
-    VALUES (?, 'helper', 'Helper', NULL, NULL, '$2a$10$placeholder', 0, ?)`).run(HELPER_USER_ID, Date.now());
+    VALUES (?, 'helper', 'Helper', ?, NULL, '$2a$10$placeholder', 0, ?)`).run(HELPER_USER_ID, HELPER_AVATAR_URL, Date.now());
+  db.prepare(`UPDATE users SET avatar_url = ? WHERE id = ? AND (avatar_url IS NULL OR avatar_url = '')`)
+    .run(HELPER_AVATAR_URL, HELPER_USER_ID);
 } catch (_) {}
 
 export function isBlacklisted(userId) {
