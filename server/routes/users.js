@@ -49,7 +49,7 @@ router.get('/profile', requireAuth, (req, res) => {
 router.get('/mention-search', requireAuth, (req, res) => {
   const me = getCurrentUser(req);
   const q = String(req.query.q || '').trim().toLowerCase();
-  const limit = Math.min(parseInt(req.query.limit, 10) || 8, 20);
+  const limit = Math.min(parseInt(req.query.limit, 10) || 10, 10);
   let rows = db.prepare(`
     SELECT id, username, display_name, avatar_url, is_allowed
     FROM users
