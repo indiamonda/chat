@@ -42,7 +42,7 @@
 :root,
 html[data-theme="jimmyqrg"] {
   --font-family: 'JimmyQrg', system-ui, sans-serif;
-  --font-code: 'ChatCode', ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
+  --font-code: 'Oxygen Mono', 'ChatCode', ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
   --bg-deep: #0a0612;
   --bg-main: #120c1a;
   --bg-panel: #1a1225;
@@ -69,7 +69,7 @@ html[data-theme="jimmyqrg"] {
 /* Simple: formal, Roboto, light, blue & green */
 html[data-theme="simple"] {
   --font-family: 'Roboto', system-ui, sans-serif;
-  --font-code: 'ChatCode', ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
+  --font-code: 'Oxygen Mono', 'ChatCode', ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
   --bg-deep: #e8f0f7;
   --bg-main: #ffffff;
   --bg-panel: #f5f9fc;
@@ -108,7 +108,7 @@ html[data-theme="simple"] body::after {
 /* Comic: hand-written, Nunito, light, white/black/orange, thicker lines */
 html[data-theme="comic"] {
   --font-family: 'JimmyComicLatin', 'JimmyComicChinese', system-ui, sans-serif;
-  --font-code: 'ChatCode', ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
+  --font-code: 'Oxygen Mono', 'ChatCode', ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
   --bg-deep: #ffffff;
   --bg-main: #ffffff;
   --bg-panel: #fafafa;
@@ -2700,6 +2700,60 @@ select:focus {
 }
 .message-content pre code {
   font-family: var(--font-code);
+}
+
+/* Code block with header */
+.chat-codeblock {
+  background: rgba(0,0,0,.3);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px;
+  margin: 0.4em 0;
+  overflow: hidden;
+  position: relative;
+}
+.chat-codeblock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  background: rgba(255,255,255,.04);
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.chat-codeblock-lang {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: lowercase;
+  letter-spacing: 0.3px;
+}
+.chat-codeblock-copy {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  padding: 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color .15s, background .15s;
+}
+.chat-codeblock-copy:hover {
+  color: var(--text);
+  background: rgba(255,255,255,.08);
+}
+.chat-codeblock code {
+  display: block;
+  padding: 10px 12px;
+  font-family: var(--font-code);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  background: transparent;
 }
 
 .message-content blockquote {
