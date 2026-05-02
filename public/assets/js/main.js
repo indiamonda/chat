@@ -4528,15 +4528,20 @@ function markdownToHtml(md) {
   const out = [];
   let inBlock = false;
   let blockContent = [];
+  let blockLang = '';
   let listItems = [];
   let listOrdered = false;
   let blockquoteLines = [];
 
+  const copySvg = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
   function flushBlock() {
     if (blockContent.length) {
       const code = escapeHtml(blockContent.join('\n'));
-      out.push(`<pre><code>${code}</code></pre>`);
+      const langLabel = escapeHtml(blockLang || 'code');
+      out.push(`<pre class="chat-codeblock"><div class="chat-codeblock-head"><span class="chat-codeblock-lang">${langLabel}</span><button class="chat-codeblock-copy" type="button" title="Copy code">${copySvg}</button></div><code>${code}</code></pre>`);
       blockContent = [];
+      blockLang = '';
     }
     inBlock = false;
   }
@@ -4653,6 +4658,7 @@ function markdownToHtml(md) {
         flushBlock();
       } else {
         inBlock = true;
+        blockLang = trimmed.slice(3).trim();
       }
       continue;
     }
@@ -5209,6 +5215,19 @@ async function openFileContentModal(url) {
 }
 
 function bindMain() {
+  document.addEventListener('click', (e) => {
+    const copyBtn = e.target.closest('.chat-codeblock-copy');
+    if (!copyBtn) return;
+    const pre = copyBtn.closest('.chat-codeblock');
+    const code = pre?.querySelector('code');
+    if (!code) return;
+    navigator.clipboard?.writeText(code.textContent || '');
+    const orig = copyBtn.innerHTML;
+    copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    copyBtn.style.color = '#4ade80';
+    setTimeout(() => { copyBtn.innerHTML = orig; copyBtn.style.color = ''; }, 1500);
+  });
+
   document.querySelector('.panel-column-content')?.addEventListener('click', (e) => {
     if (e.target.closest('a') && state.panelColumnExpanded) {
       state.panelColumnExpanded = false;
