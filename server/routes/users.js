@@ -10,8 +10,9 @@ router.get('/', requireAuth, (req, res) => {
   const me = getCurrentUser(req);
   const canSeeAllowed = me?.is_allowed;
   const canSeePerms = canManageUsers(me);
+  const canSeeEmail = canSeePerms;
   const list = db.prepare(`
-    SELECT id, username, display_name, avatar_url, chatbox_style, deleted_at${canSeeAllowed ? ', is_allowed' : ''}${canSeePerms ? `, ${PERM_COLS}` : ''}
+    SELECT id, username, display_name, avatar_url, chatbox_style, deleted_at${canSeeAllowed ? ', is_allowed' : ''}${canSeeEmail ? ', email' : ''}${canSeePerms ? `, ${PERM_COLS}` : ''}
     FROM users
     ORDER BY username
   `).all();
@@ -20,6 +21,7 @@ router.get('/', requireAuth, (req, res) => {
     out.deleted_at = u.deleted_at || null;
     if (!canSeeAllowed) delete out.is_allowed;
     else out.is_allowed = !!u.is_allowed;
+    if (!canSeeEmail) delete out.email;
     if (canSeePerms) {
       out.can_send_inbox = !!u.can_send_inbox;
       out.can_broadcast = !!u.can_broadcast;
