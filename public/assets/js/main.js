@@ -4696,6 +4696,11 @@ function markdownToHtml(md) {
       out.push(`<h1>${inlineMarkdown(trimmed.slice(2))}</h1>`);
       continue;
     }
+    if (/^-{3,}$|^\*{3,}$|^_{3,}$/.test(trimmed)) {
+      flushList();
+      out.push('<hr>');
+      continue;
+    }
     if (trimmed === '') {
       out.push('<p></p>');
       continue;
