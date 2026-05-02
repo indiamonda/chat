@@ -2763,6 +2763,11 @@ select:focus {
   background: transparent;
 }
 
+.message-content hr {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,.12);
+  margin: 14px 0;
+}
 .message-content blockquote {
   margin: 0.5em 0;
   padding: 0.5em 0.75em 0.5em 1rem;
