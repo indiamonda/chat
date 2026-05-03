@@ -7,7 +7,9 @@ import { recordAuditLog } from '../audit.js';
 const router = Router();
 const EDITABLE_DOCS = ['problem_solving', 'rules', 'announcements'];
 
-const PORTAL_ANNOUNCEMENT_URL = 'https://jimmyqrg.github.io/?directly=1';
+const PORTAL_ANNOUNCEMENT_URL = process.env.SYNC_KEY
+  ? 'https://deepseek-proxy.ikunbeautiful.workers.dev/v1/portal-announcements'
+  : 'https://jimmyqrg.github.io/?directly=1';
 
 /** Grep: check if portal HTML contains the announcement sections. */
 function portalHasAnnouncementContent(html) {
@@ -69,7 +71,9 @@ function itemMatches(portalItem, jchatItems) {
  * @returns {{ synced: boolean, reason?: string, version_id?: string, created_at?: number, newItems?: string[] }}
  */
 export async function syncAnnouncementsFromPortal(editorId = 'system') {
-  const resp = await fetch(PORTAL_ANNOUNCEMENT_URL, { headers: { 'User-Agent': 'JimmyQrg-Chat-Sync/1' } });
+  const headers = { 'User-Agent': 'JimmyQrg-Chat-Sync/1' };
+  if (process.env.SYNC_KEY) headers['X-Sync-Key'] = process.env.SYNC_KEY;
+  const resp = await fetch(PORTAL_ANNOUNCEMENT_URL, { headers });
   const html = await resp.text();
   if (!portalHasAnnouncementContent(html)) return { synced: false, reason: 'no_portal_content' };
   const portalItems = parsePortalAnnouncementItems(html);
