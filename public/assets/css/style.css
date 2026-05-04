@@ -4620,6 +4620,10 @@ input[type="checkbox"]:checked::after {
   transition: border-color var(--transition-fast);
 }
 
+.admin-user-card[hidden] {
+  display: none;
+}
+
 .admin-user-card:hover {
   border-color: var(--border);
 }

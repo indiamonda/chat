@@ -5531,8 +5531,10 @@ function bindMain() {
         }
         state._scrollToMessageId = null;
       } else if (preserve && preserve.key === key) {
-        wrap.scrollTop = wrap.scrollHeight - preserve.prevHeight;
-        state._preserveScrollAfterPrepend = null;
+        wrap.scrollTop = Math.max(0, wrap.scrollHeight - preserve.prevHeight);
+        if (!state._loadingOlderMessages?.[key]) {
+          state._preserveScrollAfterPrepend = null;
+        }
       } else {
         wrap.scrollTop = wrap.scrollHeight;
       }
@@ -6486,9 +6488,72 @@ async function toggleBlacklist(userId, isBlacklisted) {
     state.adminBlacklistedIds = isBlacklisted
       ? (state.adminBlacklistedIds || []).filter(id => id !== userId)
       : [...(state.adminBlacklistedIds || []), userId];
-    render();
-    bindAdmin();
+    if (!replaceAdminUserCardInPlace(userId)) {
+      render();
+      bindAdmin();
+    }
   } catch (err) { showToast(err.message); }
+}
+
+const ADMIN_PERM_KEYS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall'];
+
+function getAdminPermLabels() {
+  return {
+    can_send_inbox: t('adminPermSendMail'),
+    can_broadcast: t('adminPermBroadcast'),
+    can_edit_docs: t('adminPermEditDocs'),
+    can_kick: t('adminPermRemoveAccount'),
+    can_delete_messages: t('adminPermDeleteMessages'),
+    can_manage_users: t('adminPermManageUsers'),
+    can_timeout: t('adminPermTimeout'),
+    can_pin_messages: tx('adminPermPinMessages', 'Pin messages'),
+    can_unlimited_edit_recall: tx('adminPermUnlimitedEditRecall', 'Unlimited edit & recall'),
+  };
+}
+
+/** HTML for the inner contents of a single admin user card (everything inside `.admin-user-card`). */
+function renderAdminUserCardInner(u) {
+  const canManage = state.user?.can_manage_users;
+  const permLabels = getAdminPermLabels();
+  const isAdmin = u.id === 'jimmyqrg';
+  const showPerms = canManage && !isAdmin && u.is_allowed;
+  const defAvU = getDefaultAvatarUrl(u.id);
+  const avSrcU = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : defAvU;
+  const email = canManage && u.email ? String(u.email) : '';
+  const blacklisted = (state.adminBlacklistedIds || []).includes(u.id);
+  return `
+    <img src="${avSrcU}" data-fallback="${defAvU.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="admin-user-avatar" />
+    <div class="admin-user-info">
+      <span class="admin-user-name">${escapeHtml(u.display_name || u.username)}${userTag(u.id)}</span>
+      <span class="admin-user-handle">@${escapeHtml(u.username || u.id)}</span>
+      ${email ? `<span class="admin-user-email" title="${escapeHtml(email)}"><span class="icon" aria-hidden="true">${ICON_MAIL_SM}</span>${escapeHtml(email)}</span>` : ''}
+      <span class="admin-user-meta">${isAdmin ? t('adminRoleAdmin') : u.deleted_at ? t('adminRoleDeleted') : (u.is_allowed ? t('adminRoleOnList') : t('adminRoleMember'))}</span>
+    </div>
+    ${!isAdmin ? `
+    <div class="admin-user-actions">
+      ${canManage ? `<button type="button" class="btn-small" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}"><span class="icon" aria-hidden="true">${u.is_allowed ? ICON_USER_MINUS_SM : ICON_USER_CHECK_SM}</span>${u.is_allowed ? t('adminRemoveFromList') : t('adminAddToList')}</button>` : ''}
+      ${state.user?.can_kick ? (u.deleted_at
+        ? `<button type="button" class="btn-small" data-action="restore" data-user-id="${u.id}"><span class="icon" aria-hidden="true">${ICON_ROTATE_SM}</span>${t('adminRestore')}</button>
+           ${state.user?.id === 'jimmyqrg' ? `<button type="button" class="btn-small btn-danger" data-action="delete-permanently" data-user-id="${u.id}"><span class="icon" aria-hidden="true">${ICON_TRASH}</span>${t('adminDeletePermanently')}</button>` : ''}`
+        : `<button type="button" class="btn-small btn-danger" data-action="remove-account" data-user-id="${u.id}"><span class="icon" aria-hidden="true">${ICON_USER_X_SM}</span>${t('adminRemoveAccount')}</button>
+           <button type="button" class="btn-small" data-action="blacklist" data-user-id="${u.id}" data-blacklisted="${blacklisted ? '1' : '0'}"><span class="icon" aria-hidden="true">${ICON_SHIELD_X_SM}</span>${blacklisted ? t('adminUnblacklist') : t('adminBlacklist')}</button>`) : ''}
+    </div>
+    ${showPerms ? `
+    <div class="admin-user-perms">
+      ${ADMIN_PERM_KEYS.map(k => `<label class="admin-perm-check"><input type="checkbox" data-action="perm" data-user-id="${u.id}" data-perm="${k}" ${u[k] ? 'checked' : ''} /> ${escapeHtml(permLabels[k])}</label>`).join('')}
+    </div>
+    ` : ''}
+    ` : ''}
+  `;
+}
+
+function replaceAdminUserCardInPlace(userId) {
+  const card = document.querySelector(`.admin-user-card[data-user-id="${CSS.escape(userId)}"]`);
+  if (!card) return false;
+  const u = (state.users || []).find((x) => x.id === userId);
+  if (!u) return false;
+  card.innerHTML = renderAdminUserCardInner(u);
+  return true;
 }
 
 function renderAdminContent() {
@@ -6599,7 +6664,6 @@ function renderAdminContent() {
           </div>
           ` : ''}
           ${adminTab === 'users' ? (() => {
-            const canManage = state.user?.can_manage_users;
             const userSearch = (state._adminUserSearch || '').trim().toLowerCase();
             const filteredUsers = userSearch
               ? users.filter((u) => {
@@ -6619,40 +6683,7 @@ function renderAdminContent() {
             </div>
             ${filteredUsers.length === 0 ? `<p class="admin-section-desc">${tx('adminUserSearchEmpty', 'No users match your search.')}</p>` : ''}
             <div class="admin-users-list" id="admin-user-list">
-              ${filteredUsers.map(u => {
-                const permLabels = { can_send_inbox: t('adminPermSendMail'), can_broadcast: t('adminPermBroadcast'), can_edit_docs: t('adminPermEditDocs'), can_kick: t('adminPermRemoveAccount'), can_delete_messages: t('adminPermDeleteMessages'), can_manage_users: t('adminPermManageUsers'), can_timeout: t('adminPermTimeout'), can_pin_messages: tx('adminPermPinMessages', 'Pin messages'), can_unlimited_edit_recall: tx('adminPermUnlimitedEditRecall', 'Unlimited edit & recall') };
-                const permKeys = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall'];
-                const isAdmin = u.id === 'jimmyqrg';
-                const showPerms = canManage && !isAdmin && u.is_allowed;
-                const defAvU = getDefaultAvatarUrl(u.id);
-                const avSrcU = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : defAvU;
-                const email = canManage && u.email ? String(u.email) : '';
-                return `
-                <div class="admin-user-card" data-user-id="${u.id}">
-                  <img src="${avSrcU}" data-fallback="${defAvU.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="admin-user-avatar" />
-                  <div class="admin-user-info">
-                    <span class="admin-user-name">${escapeHtml(u.display_name || u.username)}${userTag(u.id)}</span>
-                    <span class="admin-user-handle">@${escapeHtml(u.username || u.id)}</span>
-                    ${email ? `<span class="admin-user-email" title="${escapeHtml(email)}"><span class="icon" aria-hidden="true">${ICON_MAIL_SM}</span>${escapeHtml(email)}</span>` : ''}
-                    <span class="admin-user-meta">${isAdmin ? t('adminRoleAdmin') : u.deleted_at ? t('adminRoleDeleted') : (u.is_allowed ? t('adminRoleOnList') : t('adminRoleMember'))}</span>
-                  </div>
-                  ${!isAdmin ? `
-                  <div class="admin-user-actions">
-                    ${canManage ? `<button type="button" class="btn-small" data-action="allowed" data-user-id="${u.id}" data-allowed="${u.is_allowed ? '1' : '0'}"><span class="icon" aria-hidden="true">${u.is_allowed ? ICON_USER_MINUS_SM : ICON_USER_CHECK_SM}</span>${u.is_allowed ? t('adminRemoveFromList') : t('adminAddToList')}</button>` : ''}
-                    ${state.user?.can_kick ? (u.deleted_at
-                      ? `<button type="button" class="btn-small" data-action="restore" data-user-id="${u.id}"><span class="icon" aria-hidden="true">${ICON_ROTATE_SM}</span>${t('adminRestore')}</button>
-                         ${state.user?.id === 'jimmyqrg' ? `<button type="button" class="btn-small btn-danger" data-action="delete-permanently" data-user-id="${u.id}"><span class="icon" aria-hidden="true">${ICON_TRASH}</span>${t('adminDeletePermanently')}</button>` : ''}`
-                      : `<button type="button" class="btn-small btn-danger" data-action="remove-account" data-user-id="${u.id}"><span class="icon" aria-hidden="true">${ICON_USER_X_SM}</span>${t('adminRemoveAccount')}</button>
-                         <button type="button" class="btn-small" data-action="blacklist" data-user-id="${u.id}" data-blacklisted="${(state.adminBlacklistedIds || []).includes(u.id) ? '1' : '0'}"><span class="icon" aria-hidden="true">${ICON_SHIELD_X_SM}</span>${(state.adminBlacklistedIds || []).includes(u.id) ? t('adminUnblacklist') : t('adminBlacklist')}</button>`) : ''}
-                  </div>
-                  ${showPerms ? `
-                  <div class="admin-user-perms">
-                    ${permKeys.map(k => `<label class="admin-perm-check"><input type="checkbox" data-action="perm" data-user-id="${u.id}" data-perm="${k}" ${u[k] ? 'checked' : ''} /> ${escapeHtml(permLabels[k])}</label>`).join('')}
-                  </div>
-                  ` : ''}
-                  ` : ''}
-                </div>
-              `}).join('')}
+              ${filteredUsers.map((u) => `<div class="admin-user-card" data-user-id="${escapeHtml(u.id)}">${renderAdminUserCardInner(u)}</div>`).join('')}
             </div>
             <div class="admin-audit-section">
               <h3 class="admin-section-title">${tx('adminAuditLog', 'Audit log')}</h3>
@@ -7014,20 +7045,20 @@ function bindAdmin() {
 
   document.getElementById('admin-user-list')?.addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-action]');
-    if (btn) {
+    if (!btn) return;
     const userId = btn.dataset.userId;
-      if (btn.dataset.action === 'remove-account') removeAccount(userId);
-      if (btn.dataset.action === 'restore') restoreAccount(userId);
-      if (btn.dataset.action === 'delete-permanently') showDeletePermanentlyModal(userId);
-      if (btn.dataset.action === 'blacklist') toggleBlacklist(userId, btn.dataset.blacklisted === '1');
+    if (btn.dataset.action === 'remove-account') return removeAccount(userId);
+    if (btn.dataset.action === 'restore') return restoreAccount(userId);
+    if (btn.dataset.action === 'delete-permanently') return showDeletePermanentlyModal(userId);
+    if (btn.dataset.action === 'blacklist') return toggleBlacklist(userId, btn.dataset.blacklisted === '1');
     if (btn.dataset.action === 'allowed') {
       const allowed = btn.dataset.allowed !== '1';
       try {
         await apiPost('/api/admin/users/' + userId + '/allowed', { allowed });
-        await loadUsers();
-          rerenderAdminKeepScroll();
+        const u = (state.users || []).find((x) => x.id === userId);
+        if (u) u.is_allowed = allowed;
+        replaceAdminUserCardInPlace(userId);
       } catch (err) { showToast(err.message); }
-      }
     }
   });
   document.getElementById('admin-user-list')?.addEventListener('change', async (e) => {
@@ -7038,9 +7069,13 @@ function bindAdmin() {
     const value = !!cb.checked;
     try {
       await apiPatch('/api/admin/users/' + userId + '/permissions', { [perm]: value });
-      await loadUsers();
-      rerenderAdminKeepScroll();
-    } catch (err) { showToast(err.message); }
+      const u = (state.users || []).find((x) => x.id === userId);
+      if (u) u[perm] = value;
+      // checkbox already reflects the new state from the user's click — no re-render needed
+    } catch (err) {
+      cb.checked = !value;
+      showToast(err.message);
+    }
   });
   document.getElementById('admin-inbox-send')?.addEventListener('click', async () => {
     const to = document.getElementById('admin-inbox-user')?.value;
