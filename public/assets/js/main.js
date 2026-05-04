@@ -2434,6 +2434,46 @@ function isFriendRequestPending(userId) {
   return !!(userId && state.pending_friend_ids && state.pending_friend_ids.includes(userId));
 }
 
+/**
+ * Resilient text-message send:
+ *  - Prefers the Socket.IO path (lower latency, triggers room broadcast).
+ *  - Falls back to HTTP if the socket is disconnected, the connection has
+ *    given up reconnecting, or the ack never comes back within `ackTimeoutMs`.
+ *  - Resolves with `{ message }` on success or `{ error }` on server rejection.
+ *  - Rejects only on transport / network failures.
+ */
+async function sendMessageResilient({ roomType, roomId, text, reply_to_id, ackTimeoutMs = 8000 }) {
+  const socket = state.socket;
+  const socketReady = socket && socket.connected;
+  if (socketReady) {
+    try {
+      const res = await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('timeout')), ackTimeoutMs);
+        socket.emit('message:send', { roomType, roomId, content: text, reply_to_id }, (r) => {
+          clearTimeout(timer);
+          resolve(r);
+        });
+      });
+      return res || {};
+    } catch (_) {
+      // fall through to HTTP
+    }
+  }
+  const httpPath = roomType === 'dm'
+    ? `/api/conversations/${roomId}/messages`
+    : `/api/rooms/${roomType}/${roomId}/messages`;
+  const body = { content: text };
+  if (reply_to_id) body.reply_to_id = reply_to_id;
+  try {
+    const data = await apiPost(httpPath, body);
+    return data && data.message ? { message: data.message } : (data || {});
+  } catch (err) {
+    const raw = err && err.message ? String(err.message) : '';
+    if (/spam/i.test(raw)) return { error: 'NO SPAMMING!' };
+    return { error: raw || 'Network error' };
+  }
+}
+
 export function addMessageLocal(msg) {
   if (isBlocked(msg.sender_id)) return;
   const key = roomKey(msg.room_type, msg.room_id);
@@ -5927,23 +5967,28 @@ function bindMain() {
         });
         return;
       }
-      state.socket?.emit('message:send', { roomType, roomId, content: text, reply_to_id }, (res) => {
-        done();
-        if (res?.error) {
-          showToast(res.error);
-          if (res.error === 'NO SPAMMING!') {
-            state._spamBlockedUntil = Date.now() + 5000;
-            setState({});
-            setTimeout(() => { state._spamBlockedUntil = null; setState({}); }, 5000);
+      sendMessageResilient({ roomType, roomId, text, reply_to_id })
+        .then((res) => {
+          done();
+          if (res?.error) {
+            showToast(res.error);
+            if (res.error === 'NO SPAMMING!') {
+              state._spamBlockedUntil = Date.now() + 5000;
+              setState({});
+              setTimeout(() => { state._spamBlockedUntil = null; setState({}); }, 5000);
+            }
+            return;
           }
-          return;
-        }
-        if (res?.message) addMessageLocal(res.message);
-        clearDraft(roomType, roomId);
-        input.value = '';
-        resizeComposerInput();
-        setState({ replyTo: null });
-      });
+          if (res?.message) addMessageLocal(res.message);
+          clearDraft(roomType, roomId);
+          input.value = '';
+          resizeComposerInput();
+          setState({ replyTo: null });
+        })
+        .catch((err) => {
+          done();
+          showToast(err?.message || tx('sendFailed', 'Message could not be sent. Try again.'));
+        });
     };
     sendBtn.addEventListener('click', () => {
       const roomType = state.dmUserId ? 'dm' : 'group';
