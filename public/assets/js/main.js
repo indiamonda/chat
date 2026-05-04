@@ -4409,6 +4409,9 @@ function escapeHtml(s) {
 function userTag(userId) {
   if (userId === 'helper') return '<span class="user-tag user-tag-helper">Assistance</span>';
   if (userId === 'jimmyqrg') return '<span class="user-tag user-tag-owner">Owner</span>';
+  if (!userId) return '';
+  const u = (state.users || []).find((x) => x.id === userId);
+  if (u?.is_allowed) return '<span class="user-tag user-tag-admin">Admin</span>';
   return '';
 }
 

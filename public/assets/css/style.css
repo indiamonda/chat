@@ -1084,6 +1084,11 @@ select:focus {
   color: #fbbf24;
   border: 1px solid rgba(234,179,8,.3);
 }
+.user-tag-admin {
+  background: linear-gradient(135deg, rgba(140,95,255,.22), rgba(168,85,247,.22));
+  color: #c4b5fd;
+  border: 1px solid rgba(140,95,255,.35);
+}
 .message-sender .user-tag { font-size: 0.55rem; padding: 0px 4px; margin-left: 4px; }
 
 /* Support @Helper tip bar */
