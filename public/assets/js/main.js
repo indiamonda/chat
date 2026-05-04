@@ -2525,6 +2525,39 @@ function findMessageInState(msgId) {
   return null;
 }
 
+/**
+ * After a socket reconnect, pull anything we might have missed while disconnected.
+ * The server can't replay missed broadcast events to us, so we re-fetch:
+ *  - messages for the room currently on screen
+ *  - inbox (for DM/mention/admin notifications)
+ *  - user list (presence + new/removed accounts)
+ *  - pinned message for the current room
+ *  - moderation report counts (admins only)
+ *  - our active timeouts (in case an admin timed us out while offline)
+ * We run these in parallel and swallow individual failures so one failing
+ * request doesn't block the rest.
+ */
+async function syncAfterReconnect() {
+  try {
+    const roomType = state.dmUserId ? 'dm' : 'group';
+    const roomId = state.dmUserId ? state.convId : state.panel;
+    const tasks = [];
+    if (roomType && roomId) {
+      tasks.push(loadMessages(roomType, roomId).catch(() => {}));
+    }
+    tasks.push(loadInbox().catch(() => {}));
+    tasks.push(loadUsers().catch(() => {}));
+    tasks.push(loadMyTimeouts().catch(() => {}));
+    if (state.user?.is_allowed) {
+      tasks.push(loadReportCounts().catch(() => {}));
+    }
+    await Promise.all(tasks);
+    render();
+  } catch (_) {
+    // best-effort sync; ignore errors so the UI doesn't flash
+  }
+}
+
 let _connectSocketScheduled = null;
 function connectSocket() {
   if (_connectSocketScheduled) return;
@@ -2546,9 +2579,16 @@ function connectSocket() {
     reconnectionDelay: 1000,
     timeout: 20000,
   });
+  let hadConnection = false;
+  let wasDisconnected = false;
   s.on('connect', () => {
     _connectSocketScheduled = false;
     if (state.dmUserId && state.convId) s.emit('dm:join', state.convId, () => {});
+    if (hadConnection && wasDisconnected) {
+      wasDisconnected = false;
+      syncAfterReconnect();
+    }
+    hadConnection = true;
   });
   s.on('connect_error', (err) => {
     _connectSocketScheduled = false;
@@ -2561,6 +2601,7 @@ function connectSocket() {
   });
   s.on('disconnect', () => {
     _connectSocketScheduled = false;
+    wasDisconnected = true;
   });
   s.on('message', (msg) => {
     if (msg.room_type === 'group' && msg.room_id === 'voice_chat') {
