@@ -950,7 +950,14 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
     LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.id = ?
   `).get(id);
-  res.status(201).json({ message: { ...row, likes: 0, reactions: [], edit_history: null } });
+  const msg = { ...row, likes: 0, reactions: [], edit_history: null };
+  if (roomType === 'group') {
+    io.to(`group:${GROUP_ID}`).emit('message', msg);
+    if (user.id !== HELPER_USER_ID && HELPER_RE.test(finalContent || '')) {
+      helperReply(id, finalContent, roomType, roomId);
+    }
+  }
+  res.status(201).json({ message: msg });
 });
 
 app.patch('/api/messages/:id/recall', requireAuth, (req, res) => {
@@ -1175,6 +1182,9 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   `).get(id);
   const msg = { ...row, likes: 0, reactions: [], edit_history: null };
   io.to(`dm:${req.params.convId}`).emit('message', msg);
+  if (otherId === HELPER_USER_ID && user.id !== HELPER_USER_ID) {
+    helperReply(id, finalContent, 'dm', req.params.convId);
+  }
   res.status(201).json({ message: msg });
 });
 
