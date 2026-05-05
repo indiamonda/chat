@@ -1,8 +1,53 @@
 {
   "compilerOptions": {
     "checkJs": false,
+    "allowJs": true,
+    "noEmit": true,
     "module": "ESNext",
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "types": ["node"]
   },
-  "exclude": ["node_modules"]
+  "include": [
+    "server/**/*.js",
+    "public/assets/js/**/*.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "data",
+    "uploads",
+    "tmp",
+    "dist",
+    "build",
+    "**/*.min.js"
+  ],
+  "typeAcquisition": {
+    "enable": false,
+    "include": [],
+    "exclude": [
+      "better-sqlite3",
+      "bindings",
+      "body-parser",
+      "busboy",
+      "concat-stream",
+      "cookie-parser",
+      "cookie-signature",
+      "debug",
+      "depd",
+      "express",
+      "express-session",
+      "merge-descriptors",
+      "multer",
+      "on-headers",
+      "parseurl",
+      "random-bytes",
+      "serve-static",
+      "type-is",
+      "tz-lookup",
+      "uid-safe",
+      "ws",
+      "xtend"
+    ]
+  }
 }

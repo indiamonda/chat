@@ -2,9 +2,25 @@ import session from 'express-session';
 import { EventEmitter } from 'events';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
+import { randomBytes } from 'node:crypto';
 import { db, validateUsername, isEmailBanned } from './db.js';
 import { createSessionStore } from './session-store.js';
 import { resolveToken, extractToken } from './tokens.js';
+
+/** Generate a 44-character alphanumeric recovery key with hyphens every 8
+ *  chars (e.g. "aBcD1234-eFgH5678-iJkL9012-mNoP3456-qRsT7890"). 40 random
+ *  chars give ~238 bits of entropy — brute-forceable only by another
+ *  universe. */
+export function generateAccountKey() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = randomBytes(40);
+  let key = '';
+  for (let i = 0; i < 40; i++) {
+    if (i > 0 && i % 8 === 0) key += '-';
+    key += chars[bytes[i] % chars.length];
+  }
+  return key;
+}
 
 const TWO_MINUTES_MS = 2 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -123,15 +139,16 @@ export async function register(username, email, password, displayName) {
   const hash = bcrypt.hashSync(password, 10);
   const name = (displayName || username).slice(0, 64);
   const emailVal = email.trim().toLowerCase().slice(0, 255);
+  const accountKey = generateAccountKey();
   if (isJimmyqrg && isPlaceholder) {
-    db.prepare('UPDATE users SET display_name = ?, email = ?, password_hash = ?, created_at = ? WHERE id = ?')
-      .run(name, emailVal, hash, Date.now(), existingUser.id);
-    return { user: getNormalizedUserById(existingUser.id) };
+    db.prepare('UPDATE users SET display_name = ?, email = ?, password_hash = ?, account_key = ?, created_at = ? WHERE id = ?')
+      .run(name, emailVal, hash, accountKey, Date.now(), existingUser.id);
+    return { user: getNormalizedUserById(existingUser.id), accountKey };
   }
   const id = isJimmyqrg ? 'jimmyqrg' : uuidv4();
-  db.prepare('INSERT INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, created_at) VALUES (?, ?, ?, NULL, ?, ?, ?, ?)')
-    .run(id, username.toLowerCase(), name, emailVal, hash, isJimmyqrg ? 1 : 0, Date.now());
-  return { user: getNormalizedUserById(id) };
+  db.prepare('INSERT INTO users (id, username, display_name, avatar_url, email, password_hash, account_key, is_allowed, created_at) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?)')
+    .run(id, username.toLowerCase(), name, emailVal, hash, accountKey, isJimmyqrg ? 1 : 0, Date.now());
+  return { user: getNormalizedUserById(id), accountKey };
 }
 
 const DEFAULT_PLACEHOLDER_PASSWORD = 'changeme';

