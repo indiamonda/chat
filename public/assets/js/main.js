@@ -2207,6 +2207,37 @@ export function getActiveDmTimeout() {
   return (state._myTimeouts || []).find((t) => t.scope === 'dm') || null;
 }
 
+/* Cancel an in-flight or about-to-start file upload if the current user is
+ * timed out from the relevant scope. Returns `true` if the upload was
+ * blocked (caller should bail out), `false` if it's safe to proceed.
+ *
+ * - `roomType` is 'group' or 'dm'.
+ * - `dmUserId` is required when roomType === 'dm' so we can keep the
+ *   jimmyqrg exception (DM-timed-out users are still allowed to message
+ *   jimmyqrg, mirroring the server's blockedByDmTimeout()).
+ * - `clearPending` defaults to true: if there's a staged _pendingFile, drop
+ *   it so the composer pill goes away immediately and the admin doesn't get
+ *   re-spammed if the user keeps clicking Send.
+ */
+export function maybeBlockTimeoutUpload({ roomType, dmUserId, clearPending = true } = {}) {
+  let blocked = false;
+  let toast = '';
+  if (roomType === 'group' && hasGroupTimeout()) {
+    blocked = true;
+    toast = tx('groupTimeoutUploadBlocked', "You're timed out from group chat — file upload cancelled.");
+  } else if (roomType === 'dm' && dmUserId && dmUserId !== 'jimmyqrg' && hasDmTimeout()) {
+    blocked = true;
+    toast = tx('dmTimeoutUploadBlocked', "You're timed out from private chat — file upload cancelled. You can still message jimmyqrg.");
+  }
+  if (!blocked) return false;
+  showToast(toast);
+  if (clearPending && state._pendingFile) {
+    state._pendingFile = null;
+    try { render(); } catch (_) {}
+  }
+  return true;
+}
+
 export async function loadModerationQueue(status = state._modReports?.status || 'open', search = state._modReports?.search || '') {
   if (!state.user?.is_allowed) return [];
   if (!state._modReports) state._modReports = { items: [], status, search, loading: false, selected: null, notes: [] };
@@ -6416,6 +6447,14 @@ function bindMain() {
           state._sendingMessage = false;
           return;
         }
+        // Bail out before the upload starts if the user is timed out for the
+        // current scope. This avoids burning bandwidth on a request the
+        // server will reject anyway, and clears the pending file pill so the
+        // user can't keep retrying the same file in a tight loop.
+        if (maybeBlockTimeoutUpload({ roomType, dmUserId: state.dmUserId })) {
+          state._sendingMessage = false;
+          return;
+        }
         const form = new FormData();
         form.append('file', state._pendingFile);
         form.append('content', text);
@@ -6540,6 +6579,10 @@ function bindMain() {
       showToast('Add as friend to send files');
       return;
     }
+    // Don't even open the system file picker if the user is currently timed
+    // out — surface the toast immediately so they understand why.
+    const composerRoomType = state.dmUserId ? 'dm' : 'group';
+    if (maybeBlockTimeoutUpload({ roomType: composerRoomType, dmUserId: state.dmUserId, clearPending: false })) return;
     document.getElementById('file-input')?.click();
   });
   document.getElementById('file-input')?.addEventListener('change', async (e) => {
@@ -6547,6 +6590,12 @@ function bindMain() {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    // Belt-and-braces: even if the picker was opened (e.g. before the
+    // timeout fired or via keyboard shortcut) drop the chosen file once we
+    // know the user is timed out instead of staging something we won't be
+    // allowed to send.
+    const composerRoomType = state.dmUserId ? 'dm' : 'group';
+    if (maybeBlockTimeoutUpload({ roomType: composerRoomType, dmUserId: state.dmUserId, clearPending: false })) return;
     const prepared = await prepareFileForUpload(file);
     if (!prepared) return;
     state._pendingFile = prepared;
@@ -6661,6 +6710,10 @@ function bindMain() {
     const reply_to_id = state.replyTo?.id || null;
     const canSendFiles = roomType === 'dm' ? isFriend(state.dmUserId) : true;
     if (!canSendFiles) return;
+    // Cancel the upload if the user got timed out while recording (otherwise
+    // the recording would be uploaded, the server would reject it, and the
+    // captured audio would be silently discarded with no UX feedback).
+    if (maybeBlockTimeoutUpload({ roomType, dmUserId: state.dmUserId, clearPending: false })) return;
     const blob = new Blob(chunks, { type: 'audio/webm' });
     const file = new File([blob], 'voice.webm', { type: 'audio/webm' });
     const form = new FormData();
@@ -6727,6 +6780,14 @@ function bindMain() {
             showToast('Add as friend to send files');
             return;
           }
+          // Block staging the pasted file if the user is timed out — same
+          // rule as Send: don't even let them attach something we'll have to
+          // throw away.
+          const pasteRoomType = state.dmUserId ? 'dm' : 'group';
+          if (maybeBlockTimeoutUpload({ roomType: pasteRoomType, dmUserId: state.dmUserId, clearPending: false })) {
+            e.preventDefault();
+            return;
+          }
           const file = item.getAsFile();
           if (file) {
             e.preventDefault();
@@ -6752,9 +6813,12 @@ function bindMain() {
       }
       const rawFile = e.dataTransfer.files?.[0];
       if (!rawFile) return;
+      const roomType = state.dmUserId ? 'dm' : 'group';
+      // Drag-drop uploads directly without going through the composer pill,
+      // so this is the right place to bail out when the user is timed out.
+      if (maybeBlockTimeoutUpload({ roomType, dmUserId: state.dmUserId, clearPending: false })) return;
       const file = await prepareFileForUpload(rawFile);
       if (!file) return;
-      const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;
       const reply_to_id = state.replyTo?.id || null;
       const msgType = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file';
