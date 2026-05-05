@@ -2,7 +2,7 @@ import session from 'express-session';
 import { EventEmitter } from 'events';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { db, validateUsername } from './db.js';
+import { db, validateUsername, isEmailBanned } from './db.js';
 import { createSessionStore } from './session-store.js';
 import { resolveToken, extractToken } from './tokens.js';
 
@@ -113,6 +113,7 @@ export async function register(username, email, password, displayName) {
   if (RESERVED_NAMES.includes(username.toLowerCase())) return { error: 'That username is reserved' };
   if (displayName && RESERVED_NAMES.includes(displayName.trim().toLowerCase())) return { error: 'That display name is reserved' };
   if (!isValidEmail(email)) return { error: 'Valid email required' };
+  if (isEmailBanned(email)) return { error: 'This email address has been permanently banned.' };
   const existingUser = db.prepare('SELECT id, password_hash, email FROM users WHERE LOWER(username) = LOWER(?)').get(username);
   const isJimmyqrg = username.toLowerCase() === 'jimmyqrg';
   const isPlaceholder = existingUser?.password_hash === PLACEHOLDER_PASSWORD && existingUser?.email == null;
@@ -138,10 +139,18 @@ const DEFAULT_PLACEHOLDER_PASSWORD = 'changeme';
 export async function login(usernameOrEmail, password) {
   const input = (usernameOrEmail || '').trim().toLowerCase();
   const pass = (password || '').trim();
+  // Block banned emails at the login gate — whether entered directly as the
+  // identifier, or resolved to a user whose stored email is banned.
+  if (input.includes('@') && isEmailBanned(input)) {
+    return { error: 'This email address has been permanently banned.' };
+  }
   const u = db.prepare(
     'SELECT id, username, display_name, avatar_url, email, password_hash, is_allowed, deleted_at FROM users WHERE LOWER(username) = ? OR (email IS NOT NULL AND LOWER(email) = ?)'
   ).get(input, input);
   if (!u) return { error: 'Invalid credentials' };
+  if (u.email && isEmailBanned(u.email)) {
+    return { error: 'This email address has been permanently banned.' };
+  }
   if (u.deleted_at != null) return { error: 'This account has been deleted.' };
   const isPlaceholder = u.password_hash === PLACEHOLDER_PASSWORD || (String(u.password_hash || '').includes('placeholder'));
   let validPassword = false;

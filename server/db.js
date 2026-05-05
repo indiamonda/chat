@@ -91,7 +91,9 @@ try {
   `);
 } catch (_) {}
 
-// Add scope column (group | dm) so admins can pick where the mute applies
+// Add scope column (group | dm) so admins can pick where the mute applies.
+// We surface any migration errors explicitly so a botched migration isn't
+// silent — a failed migration means new timeouts can't be created or checked.
 try {
   const cols = db.prepare("PRAGMA table_info(group_timeouts)").all();
   const hasScope = cols.some((c) => c.name === 'scope');
@@ -99,6 +101,62 @@ try {
     db.exec(`ALTER TABLE group_timeouts ADD COLUMN scope TEXT NOT NULL DEFAULT 'group'`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_group_timeouts_scope_user ON group_timeouts(scope, user_id)`);
   }
+  // Backfill: older rows with NULL scope should be treated as group-scope timeouts.
+  db.exec(`UPDATE group_timeouts SET scope = 'group' WHERE scope IS NULL OR scope = ''`);
+} catch (err) {
+  console.error('[db migrate] group_timeouts.scope migration failed:', err?.message || err);
+}
+
+// Per-message likes (heart/reaction count). Created here as a migration fallback
+// so DBs initialized before message_likes existed still pick it up.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS message_likes (
+      message_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (message_id, user_id),
+      FOREIGN KEY (message_id) REFERENCES messages(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_message_likes_message ON message_likes(message_id);
+  `);
+} catch (_) {}
+
+// Personal inbox (system messages sent to a user).
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS inbox (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT,
+      body TEXT,
+      related_id TEXT,
+      related_extra TEXT,
+      read_at INTEGER,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_inbox_user ON inbox(user_id);
+  `);
+} catch (_) {}
+
+// Kicked (per-room eject tracker).
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS kicked (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      room_type TEXT NOT NULL,
+      room_id TEXT NOT NULL,
+      kicked_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (kicked_by) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_kicked_user_room ON kicked(user_id, room_type, room_id);
+  `);
 } catch (_) {}
 
 // Blocked users (blocker_id blocks blocked_id)
@@ -297,6 +355,68 @@ export function isUserDeleted(userId) {
   const row = db.prepare('SELECT deleted_at FROM users WHERE id = ?').get(userId);
   return row && row.deleted_at != null;
 }
+
+// Banned emails — addresses that cannot register, log in, or be set as a
+// user's email. Matched case-insensitively. Used for hard permanent bans
+// that survive account deletion / re-registration.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS banned_emails (
+      email TEXT PRIMARY KEY,
+      reason TEXT,
+      created_by TEXT,
+      created_at INTEGER NOT NULL
+    );
+  `);
+} catch (err) {
+  console.error('[db migrate] banned_emails migration failed:', err?.message || err);
+}
+
+/** Check whether a given email is on the permanent ban list. */
+export function isEmailBanned(email) {
+  if (!email) return false;
+  const normalized = String(email).trim().toLowerCase();
+  if (!normalized) return false;
+  try {
+    const row = db.prepare('SELECT 1 FROM banned_emails WHERE LOWER(email) = ?').get(normalized);
+    return !!row;
+  } catch (err) {
+    console.warn('[isEmailBanned] query failed:', err?.message || err);
+    return false;
+  }
+}
+
+/** Add an email to the permanent ban list and delete any existing account using it. */
+export function banEmail(email, { reason = null, actorId = null } = {}) {
+  if (!email) return false;
+  const normalized = String(email).trim().toLowerCase();
+  if (!normalized) return false;
+  try {
+    db.prepare('INSERT OR REPLACE INTO banned_emails (email, reason, created_by, created_at) VALUES (?, ?, ?, ?)')
+      .run(normalized, reason, actorId, Date.now());
+    // Soft-delete any account currently using this email so they can no
+    // longer log in. We keep their record for audit/restore purposes.
+    db.prepare('UPDATE users SET deleted_at = COALESCE(deleted_at, ?) WHERE email IS NOT NULL AND LOWER(email) = ?')
+      .run(Date.now(), normalized);
+    // Revoke any active bearer tokens for affected accounts.
+    try {
+      const affected = db.prepare('SELECT id FROM users WHERE email IS NOT NULL AND LOWER(email) = ?').all(normalized);
+      for (const u of affected) {
+        db.prepare('DELETE FROM auth_tokens WHERE user_id = ?').run(u.id);
+      }
+    } catch (_) {}
+    return true;
+  } catch (err) {
+    console.error('[banEmail] failed:', err?.message || err);
+    return false;
+  }
+}
+
+// Seed the initial permanent ban for weeee@outlook.com. INSERT OR IGNORE
+// keeps this idempotent across restarts.
+try {
+  banEmail('weeee@outlook.com', { reason: 'Admin-requested permanent ban', actorId: 'jimmyqrg' });
+} catch (_) {}
 
 // Game / app progress saves. A generic per-user key/value store used by jimmyqrg.github.io
 // games to persist save data to the server. The `origin` column namespaces keys across

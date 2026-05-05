@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { requireAuth, getCurrentUser, isAllowed, canManageUsers, canKick, canDeleteMessages, canTimeout, canPinMessages } from '../auth.js';
-import { db, GROUP_ID } from '../db.js';
+import { db, GROUP_ID, banEmail } from '../db.js';
 import { recordAuditLog, listAuditLogs } from '../audit.js';
 import { markUploadOrphan } from '../uploads-tracker.js';
 import { runBackup, listBackups, getBackupsDir } from '../backup.js';
@@ -49,6 +49,52 @@ router.delete('/blacklist/:userId', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Permanent email bans ──────────────────────────────────────────────────
+// Bans here survive account deletion / re-registration. Only jimmyqrg can
+// manage this list — these are hard permanent bans.
+
+router.get('/banned-emails', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (admin.id !== 'jimmyqrg') return res.status(403).json({ error: 'Only jimmyqrg can view banned emails' });
+  try {
+    const rows = db.prepare('SELECT email, reason, created_by, created_at FROM banned_emails ORDER BY created_at DESC').all();
+    res.json({ banned_emails: rows });
+  } catch (err) {
+    res.status(500).json({ error: err?.message || 'Failed to list banned emails' });
+  }
+});
+
+router.post('/banned-emails', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (admin.id !== 'jimmyqrg') return res.status(403).json({ error: 'Only jimmyqrg can manage banned emails' });
+  const { email, reason } = req.body || {};
+  const trimmed = String(email || '').trim();
+  if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+    return res.status(400).json({ error: 'Valid email required' });
+  }
+  const ok = banEmail(trimmed, { reason: reason ? String(reason).slice(0, 500) : null, actorId: admin.id });
+  if (!ok) return res.status(500).json({ error: 'Failed to ban email' });
+  recordAuditLog('email.ban', admin.id, null, { email: trimmed.toLowerCase(), reason: reason || null });
+  res.json({ ok: true, email: trimmed.toLowerCase() });
+});
+
+router.delete('/banned-emails/:email', requireAuth, (req, res) => {
+  const admin = assertAllowed(req, res);
+  if (admin === undefined) return;
+  if (admin.id !== 'jimmyqrg') return res.status(403).json({ error: 'Only jimmyqrg can manage banned emails' });
+  const normalized = String(req.params.email || '').trim().toLowerCase();
+  if (!normalized) return res.status(400).json({ error: 'email required' });
+  try {
+    db.prepare('DELETE FROM banned_emails WHERE LOWER(email) = ?').run(normalized);
+    recordAuditLog('email.unban', admin.id, null, { email: normalized });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err?.message || 'Failed to unban email' });
+  }
+});
+
 // Remove account (soft delete) – user cannot log in, messages stay, can be restored
 router.post('/remove-account', requireAuth, (req, res) => {
   const admin = assertAllowed(req, res);
@@ -82,6 +128,34 @@ router.post('/restore-account', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * Best-effort DELETE helper — swallows errors like "no such table" so a missing
+ * legacy table cannot take down the whole permanent-delete flow. Real errors
+ * are logged so they remain debuggable.
+ */
+function safeRun(sql, params = []) {
+  try {
+    db.prepare(sql).run(...params);
+    return true;
+  } catch (err) {
+    if (!/no such table/i.test(err?.message || '')) {
+      console.warn('[delete-permanently] query failed:', sql, err?.message || err);
+    }
+    return false;
+  }
+}
+
+function safeAll(sql, params = []) {
+  try {
+    return db.prepare(sql).all(...params);
+  } catch (err) {
+    if (!/no such table/i.test(err?.message || '')) {
+      console.warn('[delete-permanently] query failed:', sql, err?.message || err);
+    }
+    return [];
+  }
+}
+
 // Permanently delete account – removes user and optionally their group messages. Only jimmyqrg can do this.
 router.post('/delete-account-permanently', requireAuth, (req, res) => {
   const admin = assertAllowed(req, res);
@@ -93,30 +167,63 @@ router.post('/delete-account-permanently', requireAuth, (req, res) => {
   const target = db.prepare('SELECT id FROM users WHERE id = ?').get(user_id);
   if (!target) return res.status(404).json({ error: 'User not found' });
   const delGroupMsgs = delete_group_messages !== false; // default true
-  if (delGroupMsgs) {
-    const affected = db.prepare('SELECT id FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?').all('group', GROUP_ID, user_id);
-    db.prepare('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE room_type = ? AND room_id = ? AND sender_id = ?')
-      .run('deleted', 'group', GROUP_ID, user_id);
-    for (const a of affected) markUploadOrphan(a.id);
+
+  try {
+    if (delGroupMsgs) {
+      const affected = safeAll('SELECT id FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?', ['group', GROUP_ID, user_id]);
+      safeRun('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE room_type = ? AND room_id = ? AND sender_id = ?',
+        ['deleted', 'group', GROUP_ID, user_id]);
+      for (const a of affected) markUploadOrphan(a.id);
+    }
+
+    // Clean up every table that references users(id) or holds per-user state.
+    // Each DELETE is best-effort so missing/legacy tables do not crash the flow.
+    safeRun('DELETE FROM blacklist WHERE user_id = ?', [user_id]);
+    safeRun('DELETE FROM blocked_users WHERE user_id = ? OR blocked_id = ?', [user_id, user_id]);
+    safeRun('DELETE FROM friendships WHERE user1_id = ? OR user2_id = ?', [user_id, user_id]);
+    safeRun('DELETE FROM friend_request_log WHERE from_id = ? OR to_id = ?', [user_id, user_id]);
+    safeRun('DELETE FROM message_likes WHERE user_id = ?', [user_id]);
+    safeRun('DELETE FROM message_reactions WHERE user_id = ?', [user_id]);
+    safeRun('DELETE FROM inbox WHERE user_id = ?', [user_id]);
+    safeRun('DELETE FROM user_notification_prefs WHERE user_id = ?', [user_id]);
+    safeRun('DELETE FROM user_saves WHERE user_id = ?', [user_id]);
+    safeRun('DELETE FROM auth_tokens WHERE user_id = ?', [user_id]);
+    safeRun('DELETE FROM message_collections WHERE user_id = ?', [user_id]);
+
+    // Delete DM conversations and their messages
+    const convs = safeAll('SELECT id FROM conversations WHERE user1_id = ? OR user2_id = ?', [user_id, user_id]);
+    for (const c of convs) {
+      safeRun('DELETE FROM messages WHERE room_type = ? AND room_id = ?', ['dm', c.id]);
+      safeRun('DELETE FROM conversations WHERE id = ?', [c.id]);
+    }
+
+    safeRun('DELETE FROM kicked WHERE user_id = ?', [user_id]);
+    safeRun('DELETE FROM group_timeouts WHERE user_id = ?', [user_id]);
+
+    // Moderation: reports filed by the user or about the user, and any notes they authored.
+    safeRun('DELETE FROM moderation_notes WHERE author_id = ?', [user_id]);
+    safeRun('DELETE FROM message_reports WHERE reporter_id = ? OR target_user_id = ?', [user_id, user_id]);
+
+    // Unpin any pinned messages the user pinned (their authored messages are already
+    // covered by deleted_by_admin above; pinned_messages points to message_id so we
+    // only need to clear rows where pinned_by references the deleted user).
+    safeRun('DELETE FROM pinned_messages WHERE pinned_by = ?', [user_id]);
+
+    // Upload refs: mark this user's uploads as orphaned so the GC can sweep them.
+    safeRun('UPDATE upload_refs SET uploaded_by = NULL WHERE uploaded_by = ?', [user_id]);
+
+    // Preserve document history: leave doc_versions intact (editor_id FK isn't
+    // enforced so a dangling reference is harmless, and we keep doc history).
+    // Audit logs: keep rows for accountability; FKs aren't enforced so the
+    // dangling actor/target references are fine.
+
+    db.prepare('DELETE FROM users WHERE id = ?').run(user_id);
+    recordAuditLog('account.delete_permanent', admin.id, user_id, { delete_group_messages: delGroupMsgs });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[delete-permanently] Failed to delete user', user_id, err);
+    res.status(500).json({ error: err?.message || 'Failed to permanently delete account' });
   }
-  db.prepare('DELETE FROM blacklist WHERE user_id = ?').run(user_id);
-  db.prepare('DELETE FROM blocked_users WHERE user_id = ? OR blocked_id = ?').run(user_id, user_id);
-  db.prepare('DELETE FROM friendships WHERE user1_id = ? OR user2_id = ?').run(user_id, user_id);
-  db.prepare('DELETE FROM friend_request_log WHERE from_id = ? OR to_id = ?').run(user_id, user_id);
-  db.prepare('DELETE FROM message_likes WHERE user_id = ?').run(user_id);
-  db.prepare('DELETE FROM inbox WHERE user_id = ?').run(user_id);
-  db.prepare('DELETE FROM user_notification_prefs WHERE user_id = ?').run(user_id);
-  const convs = db.prepare('SELECT id FROM conversations WHERE user1_id = ? OR user2_id = ?').all(user_id, user_id);
-  for (const c of convs) {
-    db.prepare('DELETE FROM messages WHERE room_type = ? AND room_id = ?').run('dm', c.id);
-    db.prepare('DELETE FROM conversations WHERE id = ?').run(c.id);
-  }
-  db.prepare('DELETE FROM kicked WHERE user_id = ?').run(user_id);
-  db.prepare('DELETE FROM group_timeouts WHERE user_id = ?').run(user_id);
-  db.prepare('DELETE FROM doc_versions WHERE editor_id = ?').run(user_id);
-  db.prepare('DELETE FROM users WHERE id = ?').run(user_id);
-  recordAuditLog('account.delete_permanent', admin.id, user_id, { delete_group_messages: delGroupMsgs });
-  res.json({ ok: true });
 });
 
 // Delete message (permanent; no "recalled" notice). Cannot delete jimmyqrg's messages.
@@ -227,10 +334,23 @@ router.post('/timeout', requireAuth, (req, res) => {
   const id = randomUUID();
   const roomType = normalizedScope === 'dm' ? 'dm' : 'group';
   const roomId = normalizedScope === 'dm' ? '*' : GROUP_ID;
+  // Release any previous active timeouts of the same scope so we don't stack
+  // stale rows — otherwise an earlier row could expire and leave stale state.
   db.prepare(`
-    INSERT INTO group_timeouts (id, user_id, room_type, room_id, expires_at, locked_release, created_at, created_by, scope)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, user_id, roomType, roomId, expiresAt, locked, Date.now(), admin.id, normalizedScope);
+    UPDATE group_timeouts SET released_at = ?, released_by = ?
+    WHERE user_id = ? AND scope = ? AND released_at IS NULL
+  `).run(Date.now(), admin.id, user_id, normalizedScope);
+  try {
+    db.prepare(`
+      INSERT INTO group_timeouts (id, user_id, room_type, room_id, expires_at, locked_release, created_at, created_by, scope)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, user_id, roomType, roomId, expiresAt, locked, Date.now(), admin.id, normalizedScope);
+  } catch (err) {
+    console.error('[timeout.create] Failed to insert timeout row', {
+      admin: admin.id, user_id, scope: normalizedScope, error: err?.message || err,
+    });
+    return res.status(500).json({ error: err?.message || 'Failed to create timeout' });
+  }
   recordAuditLog('timeout.create', admin.id, user_id, {
     duration: duration || 'forever',
     expires_at: expiresAt || null,

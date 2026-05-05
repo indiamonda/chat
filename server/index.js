@@ -1267,31 +1267,51 @@ io.use((socket, next) => {
   });
 });
 
+/**
+ * True when the user has an active group-scope timeout. Defensive against
+ * legacy rows where scope may be NULL: treat any active row whose room_type
+ * is 'group' (regardless of scope) as a group timeout.
+ */
 function isTimedOut(userId) {
-  const now = Date.now();
-  const row = db.prepare(
-    `SELECT id FROM group_timeouts
-     WHERE user_id = ?
-       AND released_at IS NULL
-       AND (expires_at IS NULL OR expires_at > ?)
-       AND (scope = 'group' OR (scope IS NULL AND room_type = 'group' AND room_id = ?))`
-  ).get(userId, now, GROUP_ID);
-  return !!row;
+  if (!userId) return false;
+  try {
+    const now = Date.now();
+    const row = db.prepare(
+      `SELECT id, scope, room_type, room_id FROM group_timeouts
+       WHERE user_id = ?
+         AND released_at IS NULL
+         AND (expires_at IS NULL OR expires_at > ?)
+         AND (
+              scope = 'group'
+           OR (scope IS NULL AND room_type = 'group')
+           OR (scope IS NULL AND room_type IS NULL)
+         )`
+    ).get(userId, now);
+    return !!row;
+  } catch (err) {
+    console.error('[isTimedOut] query failed for', userId, err?.message || err);
+    return false;
+  }
 }
 
 /** True when the user has an active dm-scope timeout. Recipients named
  * 'jimmyqrg' are always reachable so the timed-out user can appeal. */
 function isDmTimedOut(userId) {
   if (!userId) return false;
-  const now = Date.now();
-  const row = db.prepare(
-    `SELECT id FROM group_timeouts
-     WHERE user_id = ?
-       AND scope = 'dm'
-       AND released_at IS NULL
-       AND (expires_at IS NULL OR expires_at > ?)`
-  ).get(userId, now);
-  return !!row;
+  try {
+    const now = Date.now();
+    const row = db.prepare(
+      `SELECT id FROM group_timeouts
+       WHERE user_id = ?
+         AND scope = 'dm'
+         AND released_at IS NULL
+         AND (expires_at IS NULL OR expires_at > ?)`
+    ).get(userId, now);
+    return !!row;
+  } catch (err) {
+    console.error('[isDmTimedOut] query failed for', userId, err?.message || err);
+    return false;
+  }
 }
 
 /** Whether a DM from sender to receiver should be blocked by a dm timeout. */
