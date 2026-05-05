@@ -607,3 +607,99 @@ try {
     CREATE INDEX IF NOT EXISTS idx_collections_message ON message_collections(message_id);
   `);
 } catch (_) {}
+
+// AI moderation flags. Per-user severity score (0=neutral, 10=severe repeat
+// offender). The AI moderator reads this score when judging borderline
+// messages so that users with a clean record get the benefit of the doubt
+// while users with a long history of violations are evaluated more strictly.
+// `recent_reasons` stores the most recent block reasons (pipe-delimited)
+// purely for admin context; the score itself is what the AI sees.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_moderation_flags (
+      user_id TEXT PRIMARY KEY,
+      severity INTEGER NOT NULL DEFAULT 0,
+      total_violations INTEGER NOT NULL DEFAULT 0,
+      last_violation_at INTEGER,
+      recent_reasons TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_moderation_flags_severity
+      ON user_moderation_flags(severity DESC, last_violation_at DESC);
+  `);
+} catch (err) {
+  console.error('[db migrate] user_moderation_flags migration failed:', err?.message || err);
+}
+
+/** Read a user's current AI-moderation severity (0-10). 0 by default. */
+export function getUserModerationSeverity(userId) {
+  if (!userId) return 0;
+  try {
+    const row = db.prepare('SELECT severity FROM user_moderation_flags WHERE user_id = ?').get(userId);
+    return Math.max(0, Math.min(10, Number(row?.severity || 0)));
+  } catch {
+    return 0;
+  }
+}
+
+/** Read the full moderation row (severity + reasons) for admin/staff view. */
+export function getUserModerationRow(userId) {
+  if (!userId) return null;
+  try {
+    return db.prepare('SELECT * FROM user_moderation_flags WHERE user_id = ?').get(userId) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Increase a user's severity score and remember the most recent reason.
+ *  Severity is clamped to [0, 10]. Pass a positive `delta` (e.g. 1 for a
+ *  minor block, 3 for severe). */
+export function bumpUserModerationSeverity(userId, delta, reason = '') {
+  if (!userId) return 0;
+  const d = Math.max(0, Math.min(10, Number(delta) || 0));
+  if (d <= 0) return getUserModerationSeverity(userId);
+  const now = Date.now();
+  try {
+    const existing = db.prepare('SELECT severity, total_violations, recent_reasons FROM user_moderation_flags WHERE user_id = ?').get(userId);
+    const cleanReason = String(reason || '').slice(0, 200);
+    if (existing) {
+      const next = Math.max(0, Math.min(10, (existing.severity || 0) + d));
+      const total = (existing.total_violations || 0) + 1;
+      const list = (existing.recent_reasons || '').split('||').filter(Boolean);
+      list.push(cleanReason);
+      while (list.length > 5) list.shift();
+      db.prepare(`
+        UPDATE user_moderation_flags
+        SET severity = ?, total_violations = ?, last_violation_at = ?, recent_reasons = ?, updated_at = ?
+        WHERE user_id = ?
+      `).run(next, total, now, list.join('||'), now, userId);
+      return next;
+    }
+    db.prepare(`
+      INSERT INTO user_moderation_flags (user_id, severity, total_violations, last_violation_at, recent_reasons, updated_at)
+      VALUES (?, ?, 1, ?, ?, ?)
+    `).run(userId, d, now, cleanReason, now);
+    return d;
+  } catch (err) {
+    console.warn('[bumpUserModerationSeverity] failed:', err?.message || err);
+    return getUserModerationSeverity(userId);
+  }
+}
+
+/** Decay a user's severity by `amount` (default 1). Called when admins want
+ *  to give a user a clean slate, or by a future scheduled job. */
+export function decayUserModerationSeverity(userId, amount = 1) {
+  if (!userId) return 0;
+  try {
+    const row = db.prepare('SELECT severity FROM user_moderation_flags WHERE user_id = ?').get(userId);
+    if (!row) return 0;
+    const next = Math.max(0, Math.min(10, (row.severity || 0) - Math.max(0, Number(amount) || 0)));
+    db.prepare('UPDATE user_moderation_flags SET severity = ?, updated_at = ? WHERE user_id = ?')
+      .run(next, Date.now(), userId);
+    return next;
+  } catch {
+    return 0;
+  }
+}

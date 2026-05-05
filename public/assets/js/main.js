@@ -278,6 +278,45 @@ function showFileBlockedModal(title, body) {
   document.addEventListener('keydown', onKey);
 }
 
+/** Modal shown when the AI moderator blocks an outgoing message. The
+ *  `reason` is the AI's plain-language explanation; we keep the wording the
+ *  AI provided as-is so the user gets context-specific feedback (e.g. "this
+ *  message reads as a personal attack"). */
+function showAiModerationModal(reason, opts = {}) {
+  // Only one moderation modal at a time — if the user is sending fast and
+  // multiple drafts get blocked back-to-back, replace the previous one
+  // rather than stacking them.
+  document.querySelectorAll('.modal-overlay.ai-mod-overlay').forEach(n => n.remove());
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay ai-mod-overlay';
+  const title = opts.title || tx('aiModBlockTitle', 'Message not sent');
+  const fallback = tx('aiModBlockFallback', 'This message looks like it might break the chat rules. Please rephrase and try again.');
+  const reasonText = (reason || '').toString().trim() || fallback;
+  const help = tx('aiModBlockHelp', "Your draft was reviewed by the chat's AI moderator before being sent. If you think this was a mistake, you can edit your message and try again.");
+  overlay.innerHTML = `
+    <div class="modal ai-mod-modal" role="alertdialog" aria-labelledby="ai-mod-title" aria-describedby="ai-mod-reason">
+      <div class="ai-mod-header">
+        <span class="ai-mod-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg></span>
+        <h3 id="ai-mod-title">${escapeHtml(title)}</h3>
+      </div>
+      <p id="ai-mod-reason" class="ai-mod-reason">${escapeHtml(reasonText)}</p>
+      <p class="ai-mod-help">${escapeHtml(help)}</p>
+      <div class="modal-actions">
+        <button type="button" id="ai-mod-ok" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_CHECK_SM}</span>${escapeHtml(tx('aiModBlockOk', 'Got it'))}</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => { document.removeEventListener('keydown', onKey); overlay.remove(); };
+  const onKey = (e) => { if (e.key === 'Escape' || e.key === 'Enter') close(); };
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector('#ai-mod-ok')?.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  // Focus the OK button so screen readers announce the alert and Enter
+  // dismisses it without pinging anything else.
+  setTimeout(() => overlay.querySelector('#ai-mod-ok')?.focus(), 50);
+}
+
 /** Lightweight blocking overlay shown while compression runs. Returns { update(pct), close() }. */
 function showCompressingOverlay() {
   const overlay = document.createElement('div');
@@ -329,6 +368,17 @@ function uploadFormWithRetry({ uploadPath, form, maxRetries = 2, onProgress }) {
           resolve(data);
           return;
         }
+        // AI moderation block: don't retry, surface the AI's reason directly
+        // to the caller so it can pop the moderation modal.
+        if (data?.error === 'AI_MOD_BLOCK') {
+          const err = new Error('AI_MOD_BLOCK');
+          err.code = 'AI_MOD_BLOCK';
+          err.status = xhr.status;
+          err.data = data;
+          err.reason = data.reason || '';
+          reject(err);
+          return;
+        }
         const retryableStatus = xhr.status === 0 || xhr.status >= 500 || xhr.status === 429;
         if (retryableStatus && attempt < maxRetries) {
           attempt += 1;
@@ -338,7 +388,12 @@ function uploadFormWithRetry({ uploadPath, form, maxRetries = 2, onProgress }) {
           setTimeout(send, 450 * attempt);
           return;
         }
-        reject(new Error(data?.error || t('uploadFailedRetry') || 'Upload failed after retries. Please try again.'));
+        const err = new Error(data?.error || t('uploadFailedRetry') || 'Upload failed after retries. Please try again.');
+        err.status = xhr.status;
+        err.data = data || null;
+        if (data?.error) err.code = data.error;
+        if (data?.reason) err.reason = data.reason;
+        reject(err);
       });
       xhr.addEventListener('error', () => {
         if (attempt < maxRetries) {
@@ -2500,9 +2555,12 @@ function isFriendRequestPending(userId) {
  *  - Resolves with `{ message }` on success or `{ error }` on server rejection.
  *  - Rejects only on transport / network failures.
  */
-async function sendMessageResilient({ roomType, roomId, text, reply_to_id, ackTimeoutMs = 8000 }) {
+async function sendMessageResilient({ roomType, roomId, text, reply_to_id, ackTimeoutMs = 12000 }) {
   const socket = state.socket;
   const socketReady = socket && socket.connected;
+  // AI moderation can take a couple of seconds, especially on cold starts or
+  // when the deepseek proxy is slow. Use a generous ack timeout so we don't
+  // fall through to HTTP and double-bill the user with two LLM round-trips.
   if (socketReady) {
     try {
       const res = await new Promise((resolve, reject) => {
@@ -2512,9 +2570,13 @@ async function sendMessageResilient({ roomType, roomId, text, reply_to_id, ackTi
           resolve(r);
         });
       });
+      // Don't fall through to HTTP when the message was *decisively rejected*
+      // — re-running the moderator would bill the user a second time and
+      // could even produce a different verdict.
+      if (res && res.error) return res;
       return res || {};
     } catch (_) {
-      // fall through to HTTP
+      // socket transport problem → fall through to HTTP
     }
   }
   const httpPath = roomType === 'dm'
@@ -2526,6 +2588,10 @@ async function sendMessageResilient({ roomType, roomId, text, reply_to_id, ackTi
     const data = await apiPost(httpPath, body);
     return data && data.message ? { message: data.message } : (data || {});
   } catch (err) {
+    const code = err?.code || '';
+    if (code === 'AI_MOD_BLOCK') {
+      return { error: 'AI_MOD_BLOCK', reason: err?.reason || '', category: err?.data?.category || 'other' };
+    }
     const raw = err && err.message ? String(err.message) : '';
     if (/spam/i.test(raw)) return { error: 'NO SPAMMING!' };
     return { error: raw || 'Network error' };
@@ -3342,6 +3408,14 @@ function voiceBroadcastMediaState() {
 function voiceSendChatMessage(content) {
   if (!content?.trim() || !state._voiceJoined) return;
   state.socket?.emit('message:send', { roomType: 'group', roomId: 'voice_chat', content: content.trim(), msg_type: 'text' }, (res) => {
+    if (res?.error) {
+      if (res.error === 'AI_MOD_BLOCK') {
+        showAiModerationModal(res.reason || '');
+        return;
+      }
+      showToast(res.error);
+      return;
+    }
     if (res?.message) {
       state._voiceChatMessages.push(res.message);
       render();
@@ -6916,7 +6990,14 @@ function bindMain() {
       const reply_to_id = state.replyTo?.id || null;
             state.socket?.emit('message:send', { roomType, roomId, content: `/file ${fileId}`, msg_type: 'file', reply_to_id }, (res) => {
             state._sendingMessage = false;
-            if (res?.error) { showToast(res.error); return; }
+            if (res?.error) {
+              if (res.error === 'AI_MOD_BLOCK') {
+                showAiModerationModal(res.reason || '');
+                return;
+              }
+              showToast(res.error);
+              return;
+            }
             if (res?.message) addMessageLocal(res.message);
             setState({ replyTo: null });
             input.value = '';
@@ -6998,8 +7079,18 @@ function bindMain() {
           if (roomType === 'dm') loadMessages('dm', roomId).then(render);
           done();
         }).catch((err) => {
-          showToast(err.message || t('uploadFailedRetry') || 'Upload failed after retries. Please try again.');
           done();
+          // AI moderator blocked the upload caption. Keep the staged file
+          // and the typed text so the user can edit and try again.
+          if (err?.code === 'AI_MOD_BLOCK') {
+            const pendingEl = document.getElementById('pending-file-indicator');
+            const progressEl = document.getElementById('upload-progress');
+            if (progressEl) progressEl.style.display = 'none';
+            if (pendingEl) pendingEl.style.display = '';
+            showAiModerationModal(err.reason || err.data?.reason || '');
+            return;
+          }
+          showToast(err?.message || t('uploadFailedRetry') || 'Upload failed after retries. Please try again.');
         });
         return;
       }
@@ -7007,6 +7098,12 @@ function bindMain() {
         .then((res) => {
           done();
           if (res?.error) {
+            // AI moderator blocked the message. Keep the user's draft so they
+            // can edit and try again.
+            if (res.error === 'AI_MOD_BLOCK') {
+              showAiModerationModal(res.reason || '');
+              return;
+            }
             showToast(res.error);
             if (res.error === 'NO SPAMMING!') {
               state._spamBlockedUntil = Date.now() + 5000;
@@ -7235,7 +7332,13 @@ function bindMain() {
       if (data.message) addMessageLocal(data.message);
       setState({ replyTo: null });
       if (roomType === 'dm') loadMessages('dm', roomId).then(render);
-    }).catch((err) => showToast(err.message || t('uploadFailedRetry') || 'Upload failed after retries. Please try again.'));
+    }).catch((err) => {
+      if (err?.code === 'AI_MOD_BLOCK') {
+        showAiModerationModal(err.reason || err.data?.reason || '');
+        return;
+      }
+      showToast(err.message || t('uploadFailedRetry') || 'Upload failed after retries. Please try again.');
+    });
   });
 
   document.getElementById('recording-cancel')?.addEventListener('click', () => {
@@ -7348,6 +7451,10 @@ function bindMain() {
           if (roomType === 'dm') loadMessages('dm', roomId).then(render);
         })
         .catch((err) => {
+          if (err?.code === 'AI_MOD_BLOCK') {
+            showAiModerationModal(err.reason || err.data?.reason || '');
+            return;
+          }
           showToast(err.message || t('uploadFailedRetry') || 'Upload failed after retries. Please try again.');
         })
         .finally(() => { state._sendingMessage = false; });
