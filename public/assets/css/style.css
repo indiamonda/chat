@@ -6268,11 +6268,40 @@ input[type="checkbox"]:checked::after {
   overflow-x: auto;
   text-align: center;
   color: inherit;
+  max-width: 100%;
 }
 
 .language-block-latex .katex,
 .language-block-latex .katex * {
   color: inherit !important;
+}
+
+/* Allow long display-mode equations to wrap to the next line so the
+   message bubble doesn't show a horizontal scrollbar. KaTeX's recommended
+   wrap technique – see https://katex.org/docs/issues.html */
+.language-block-latex .katex-display {
+  margin: 0.25em 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.language-block-latex .katex-display > .katex {
+  white-space: normal;
+  max-width: 100%;
+}
+
+.language-block-latex .katex-display > .katex > .katex-html {
+  white-space: normal;
+  max-width: 100%;
+}
+
+.language-block-latex .katex-display > .katex > .katex-html > .base {
+  margin: 0.25em 0;
+}
+
+.language-block-latex .katex {
+  max-width: 100%;
 }
 
 .language-block-latex pre,
