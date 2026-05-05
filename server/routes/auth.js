@@ -3,12 +3,14 @@ import { randomBytes } from 'node:crypto';
 import { register, login, resetPassword, getCurrentUser, sessionMiddleware, requireAuth } from '../auth.js';
 import { issueToken, revokeToken, extractToken, resolveToken } from '../tokens.js';
 import { db, isEmailBanned } from '../db.js';
-import { sendEmail, buildResetEmail, getPublicBaseUrl } from '../email.js';
+import { sendEmail, buildResetEmail, buildVerificationCodeEmail, getPublicBaseUrl } from '../email.js';
 import { recordAuditLog } from '../audit.js';
 
 const router = Router();
 
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const VERIFY_CODE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+const VERIFY_RESEND_COOLDOWN_MS = 60 * 1000; // 60 seconds between resends
 // Per-IP / per-identifier rate limiter keyed in memory. Resets on restart.
 const _resetLimiter = new Map();
 function rateLimitKey(req, identifier) {
@@ -62,9 +64,69 @@ function wantsToken(req) {
   return true;
 }
 
+function generateVerifyCode() {
+  const n = randomBytes(4).readUInt32BE(0) % 1000000;
+  return String(n).padStart(6, '0');
+}
+
+router.post('/send-code', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+    const normalized = String(email).trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+    if (isEmailBanned(normalized)) {
+      return res.status(403).json({ error: 'This email address has been permanently banned.' });
+    }
+    const existingUser = db.prepare(
+      'SELECT id FROM users WHERE email IS NOT NULL AND LOWER(email) = ?'
+    ).get(normalized);
+    if (existingUser) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
+    const now = Date.now();
+    const lastSent = db.prepare(
+      'SELECT created_at FROM email_verification_codes WHERE LOWER(email) = ? ORDER BY created_at DESC LIMIT 1'
+    ).get(normalized);
+    if (lastSent && (now - lastSent.created_at) < VERIFY_RESEND_COOLDOWN_MS) {
+      const wait = Math.ceil((VERIFY_RESEND_COOLDOWN_MS - (now - lastSent.created_at)) / 1000);
+      return res.status(429).json({ error: `Please wait ${wait} seconds before requesting another code.`, retry_after: wait });
+    }
+
+    const code = generateVerifyCode();
+    const expiresAt = now + VERIFY_CODE_TTL_MS;
+    const ip = (req.headers['x-forwarded-for']?.toString().split(',')[0] || req.ip || '').trim() || null;
+
+    db.prepare('UPDATE email_verification_codes SET used = 1 WHERE LOWER(email) = ? AND used = 0')
+      .run(normalized);
+    db.prepare(
+      'INSERT INTO email_verification_codes (email, code, created_at, expires_at, used, ip) VALUES (?, ?, ?, ?, 0, ?)'
+    ).run(normalized, code, now, expiresAt, ip);
+
+    const { html, text } = buildVerificationCodeEmail({ code });
+    const result = await sendEmail({
+      to: normalized,
+      subject: `${code} — JimmyQrg Chat verification code`,
+      html,
+      text,
+    });
+    if (!result.ok) {
+      console.error('[send-code] email delivery failed:', result.error);
+      return res.status(500).json({ error: 'Failed to send verification email. Please try again.' });
+    }
+    res.json({ ok: true, expires_in: Math.round(VERIFY_CODE_TTL_MS / 1000) });
+  } catch (err) {
+    console.error('[send-code] error:', err);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
 router.post('/register', async (req, res, next) => {
   try {
-    const { username, email, password, display_name, recaptcha_token } = req.body || {};
+    const { username, email, password, display_name, recaptcha_token, email_code } = req.body || {};
     if (!username || !email || !password) return res.status(400).json({ error: 'Username, email and password required' });
     if (process.env.RECAPTCHA_SECRET_KEY && !wantsToken(req)) {
       const recaptcha = await verifyRecaptcha(recaptcha_token);
@@ -72,6 +134,23 @@ router.post('/register', async (req, res, next) => {
         return res.status(400).json({ error: 'Please complete the reCAPTCHA check.' });
       }
     }
+
+    const normalized = String(email).trim().toLowerCase();
+    if (!email_code) return res.status(400).json({ error: 'Verification code is required' });
+    const codeRow = db.prepare(
+      'SELECT rowid, code, expires_at, used FROM email_verification_codes WHERE LOWER(email) = ? ORDER BY created_at DESC LIMIT 1'
+    ).get(normalized);
+    if (!codeRow || codeRow.used) {
+      return res.status(400).json({ error: 'No verification code found. Please request a new one.' });
+    }
+    if (Date.now() > codeRow.expires_at) {
+      return res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
+    }
+    if (String(email_code).trim() !== codeRow.code) {
+      return res.status(400).json({ error: 'Incorrect verification code.' });
+    }
+    db.prepare('UPDATE email_verification_codes SET used = 1 WHERE rowid = ?').run(codeRow.rowid);
+
     const result = await register(username, email, password, display_name);
     if (result.error) return res.status(400).json({ error: result.error });
     req.session.userId = result.user.id;

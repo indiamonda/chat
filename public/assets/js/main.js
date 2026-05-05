@@ -580,6 +580,26 @@ const DEFAULT_STRINGS = {
     adminMessageBody: 'Message body',
     adminDuration: 'Duration',
     adminDurationPlaceholder: 'e.g. 5 minute, 1 hour, forever',
+    adminTimeoutPickUser: 'Pick a user',
+    adminTimeoutSearchUsers: 'Search users…',
+    adminTimeoutNoUserMatch: 'No user matches your search.',
+    adminTimeoutPreset5min: '5 min',
+    adminTimeoutPreset10min: '10 min',
+    adminTimeoutPreset30min: '30 min',
+    adminTimeoutPreset1h: '1 hour',
+    adminTimeoutPreset6h: '6 hours',
+    adminTimeoutPreset12h: '12 hours',
+    adminTimeoutPreset1day: '1 day',
+    adminTimeoutPreset3day: '3 days',
+    adminTimeoutPreset1week: '1 week',
+    adminTimeoutCustom: 'Custom…',
+    adminTimeoutCustomNumber: 'Number',
+    adminTimeoutCustomUnitMinute: 'minutes',
+    adminTimeoutCustomUnitHour: 'hours',
+    adminTimeoutCustomUnitDay: 'days',
+    adminTimeoutCustomUnitWeek: 'weeks',
+    adminTimeoutCustomInvalid: 'Enter a valid number for the custom duration.',
+    adminTimeoutPickDuration: 'Pick a duration first.',
     adminOnlyICanRelease: 'Only I can release',
     adminNoPermissions: 'You have no action permissions. Ask an admin to grant Send mail, Broadcast, or Time out.',
     adminRecalledMessages: 'Recalled messages',
@@ -3375,6 +3395,13 @@ function renderAuth(isSignup = false, initialError = '', redirect = null) {
             <input class="auth-ani-18" name="reg_username" type="text" autocomplete="username" placeholder="Username" />
             <label class="auth-ani-19">${t('email')}</label>
             <input class="auth-ani-20" name="email" type="email" autocomplete="email" placeholder="${t('email')}" />
+            <div id="auth-verify-row" class="auth-verify-row" style="display:none">
+              <div class="auth-verify-info">A 6-digit verification code has been sent to your email from <strong>ikunbeautiful@gmail.com</strong>. The code is valid for 2 minutes.</div>
+              <label>Verification code</label>
+              <input name="email_code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000" />
+              <button type="button" id="auth-resend-code" class="auth-resend-btn" disabled>Resend code (<span id="auth-resend-timer">60</span>s)</button>
+            </div>
+            <button type="button" id="auth-send-code" class="auth-send-code-btn" style="display:none">Send verification code</button>
             <label class="auth-ani-21">${t('password')}</label>
             <input class="auth-ani-22" name="reg_password" type="password" autocomplete="new-password" placeholder="${t('password')}" />
             <label class="auth-ani-23">${t('confirmPassword')}</label>
@@ -3664,6 +3691,36 @@ function loadRecaptchaAndRender(siteKey, container) {
   });
 }
 
+function _startResendTimer(resendBtn, timerSpan) {
+  let sec = 60;
+  resendBtn.disabled = true;
+  timerSpan.textContent = sec;
+  resendBtn.textContent = `Resend code (${sec}s)`;
+  const iv = setInterval(() => {
+    sec--;
+    if (sec <= 0) {
+      clearInterval(iv);
+      resendBtn.disabled = false;
+      resendBtn.textContent = 'Resend code';
+      return;
+    }
+    timerSpan.textContent = sec;
+    resendBtn.textContent = `Resend code (${sec}s)`;
+  }, 1000);
+  return iv;
+}
+
+async function _sendVerifyCode(email, errEl) {
+  const res = await fetch('/api/auth/send-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to send code');
+  return data;
+}
+
 function bindAuth(isSignup) {
   const isRegister = !!isSignup;
   document.querySelectorAll('.auth-box .auth-switch-link').forEach(link => {
@@ -3672,6 +3729,8 @@ function bindAuth(isSignup) {
   const form = document.getElementById('auth-form');
   if (!form) return;
   let recaptchaWidgetId = null;
+  let emailCodeSent = false;
+  let resendInterval = null;
   if (isRegister) {
     loadConfig().then((config) => {
       const wrap = document.getElementById('auth-recaptcha-wrap');
@@ -3679,6 +3738,63 @@ function bindAuth(isSignup) {
         loadRecaptchaAndRender(config.recaptchaSiteKey, wrap).then((id) => { recaptchaWidgetId = id; }).catch(() => {});
       }
     });
+    const emailInput = form.querySelector('input[name="email"]');
+    const sendCodeBtn = document.getElementById('auth-send-code');
+    const verifyRow = document.getElementById('auth-verify-row');
+    const resendBtn = document.getElementById('auth-resend-code');
+    const timerSpan = document.getElementById('auth-resend-timer');
+    if (emailInput && sendCodeBtn) {
+      sendCodeBtn.style.display = 'block';
+      emailInput.addEventListener('input', () => {
+        if (emailCodeSent) {
+          emailCodeSent = false;
+          if (verifyRow) verifyRow.style.display = 'none';
+          sendCodeBtn.style.display = 'block';
+          if (resendInterval) { clearInterval(resendInterval); resendInterval = null; }
+        }
+      });
+      const doSend = async () => {
+        const errEl = document.getElementById('auth-error');
+        errEl.textContent = '';
+        const email = (emailInput.value || '').trim();
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          errEl.textContent = 'Please enter a valid email address.';
+          return;
+        }
+        sendCodeBtn.disabled = true;
+        sendCodeBtn.textContent = 'Sending…';
+        try {
+          await _sendVerifyCode(email, errEl);
+          emailCodeSent = true;
+          sendCodeBtn.style.display = 'none';
+          if (verifyRow) verifyRow.style.display = 'block';
+          if (resendBtn && timerSpan) {
+            resendInterval = _startResendTimer(resendBtn, timerSpan);
+          }
+        } catch (err) {
+          errEl.textContent = err.message || 'Failed to send code';
+        } finally {
+          sendCodeBtn.disabled = false;
+          sendCodeBtn.textContent = 'Send verification code';
+        }
+      };
+      sendCodeBtn.addEventListener('click', doSend);
+      if (resendBtn) {
+        resendBtn.addEventListener('click', async () => {
+          const errEl = document.getElementById('auth-error');
+          errEl.textContent = '';
+          const email = (emailInput.value || '').trim();
+          resendBtn.disabled = true;
+          try {
+            await _sendVerifyCode(email, errEl);
+            if (timerSpan) resendInterval = _startResendTimer(resendBtn, timerSpan);
+          } catch (err) {
+            errEl.textContent = err.message || 'Failed to resend code';
+            resendBtn.disabled = false;
+          }
+        });
+      }
+    }
   }
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -3691,9 +3807,12 @@ function bindAuth(isSignup) {
       const email = (form.email?.value || '').trim();
       const password = form.reg_password?.value || '';
       const confirm = form.confirm_password?.value || '';
+      const email_code = (form.email_code?.value || '').trim();
       if (!display_name) { errEl.textContent = 'Display name is required'; return; }
       if (!username) { errEl.textContent = 'Username is required'; return; }
       if (!email) { errEl.textContent = 'Email is required'; return; }
+      if (!emailCodeSent) { errEl.textContent = 'Please send and enter the email verification code first.'; return; }
+      if (!email_code || email_code.length !== 6) { errEl.textContent = 'Please enter the 6-digit verification code.'; return; }
       if (!password) { errEl.textContent = t('passwordRequired'); return; }
       if (password !== confirm) { errEl.textContent = t('passwordsDoNotMatch'); return; }
       let recaptchaToken = null;
@@ -3707,7 +3826,7 @@ function bindAuth(isSignup) {
         return;
       }
       try {
-        const body = { username, email, password, display_name };
+        const body = { username, email, password, display_name, email_code };
         if (recaptchaToken != null) body.recaptcha_token = recaptchaToken;
         const data = await doLogin(true, body);
         if (data.user) {
@@ -3978,6 +4097,7 @@ const ICON_SETTINGS = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height
 const ICON_COLLECTION = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>';
 const ICON_CHEVRON_RIGHT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
 const ICON_CHEVRON_LEFT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>';
+const ICON_CHEVRON_DOWN_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
 const ICON_SEARCH = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
 const ICON_MIC = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
 const ICON_COMMAND = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/></svg>';
@@ -6936,6 +7056,216 @@ function replaceAdminUserCardInPlace(userId) {
   return true;
 }
 
+/* Preset durations the admin can pick with one click. Values are in the format
+ * the server's parseDuration() understands ("<n> <unit>" or "forever"). */
+const TIMEOUT_DURATION_PRESETS = [
+  { value: '5 minute', labelKey: 'adminTimeoutPreset5min', defaultLabel: '5 min' },
+  { value: '10 minute', labelKey: 'adminTimeoutPreset10min', defaultLabel: '10 min' },
+  { value: '30 minute', labelKey: 'adminTimeoutPreset30min', defaultLabel: '30 min' },
+  { value: '1 hour', labelKey: 'adminTimeoutPreset1h', defaultLabel: '1 hour' },
+  { value: '6 hour', labelKey: 'adminTimeoutPreset6h', defaultLabel: '6 hours' },
+  { value: '12 hour', labelKey: 'adminTimeoutPreset12h', defaultLabel: '12 hours' },
+  { value: '1 day', labelKey: 'adminTimeoutPreset1day', defaultLabel: '1 day' },
+  { value: '3 day', labelKey: 'adminTimeoutPreset3day', defaultLabel: '3 days' },
+  { value: '1 week', labelKey: 'adminTimeoutPreset1week', defaultLabel: '1 week' },
+  { value: 'forever', labelKey: 'adminTimeoutForever', defaultLabel: 'Forever' },
+];
+
+function getTimeoutFormState() {
+  if (!state._adminTimeoutForm) {
+    state._adminTimeoutForm = {
+      userId: '',
+      duration: '',
+      customNum: '',
+      customUnit: 'minute',
+      scope: 'group',
+    };
+  }
+  return state._adminTimeoutForm;
+}
+
+/* Build the label shown on a duration chip when it's a preset. The chip's
+ * text comes from translations so it stays consistent across languages. */
+function getTimeoutPresetLabel(preset) {
+  return tx(preset.labelKey, preset.defaultLabel);
+}
+
+/* Render the searchable user picker + duration chips form used by both the
+ * Action tab and the dedicated Timeout sub-tab. `suffix` differentiates the
+ * DOM ids and radio names so both forms can co-exist if ever rendered side by
+ * side. State lives on state._adminTimeoutForm so selections persist across
+ * the socket-driven re-renders that fire while the admin is interacting. */
+function renderTimeoutForm(suffix, eligibleUsers) {
+  const sfx = suffix || '';
+  const candidates = (eligibleUsers || []).filter((u) => u && u.id);
+  const formState = getTimeoutFormState();
+  const userId = String(formState.userId || '');
+  const selected = userId ? candidates.find((u) => u.id === userId) : null;
+  const duration = String(formState.duration || '');
+  const isCustom = duration === 'custom';
+  const customNum = String(formState.customNum || '');
+  const customUnit = ['minute', 'hour', 'day', 'week'].includes(formState.customUnit) ? formState.customUnit : 'minute';
+  const scope = formState.scope === 'dm' ? 'dm' : 'group';
+  const presetButtons = TIMEOUT_DURATION_PRESETS.map((p) => {
+    const active = duration === p.value;
+    const extra = p.value === 'forever' ? ' admin-duration-chip-forever' : '';
+    return `<button type="button" class="admin-duration-chip${active ? ' active' : ''}${extra}" data-duration="${escapeHtml(p.value)}">${escapeHtml(getTimeoutPresetLabel(p))}</button>`;
+  }).join('');
+
+  const triggerInner = selected
+    ? `<img class="admin-user-picker-trigger-avatar" src="${escapeHtml((selected.avatar_url && String(selected.avatar_url).trim()) ? selected.avatar_url : getDefaultAvatarUrl(selected.id))}" data-fallback="${escapeHtml(getDefaultAvatarUrl(selected.id))}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
+       <span class="admin-user-picker-trigger-label">
+         <span class="admin-user-picker-trigger-name">${escapeHtml(selected.display_name || selected.username || selected.id)}</span>
+         <span class="admin-user-picker-trigger-handle">@${escapeHtml(selected.username || selected.id)}</span>
+       </span>`
+    : `<span class="admin-user-picker-trigger-icon" aria-hidden="true">${ICON_USERS}</span>
+       <span class="admin-user-picker-trigger-label admin-user-picker-trigger-empty">${escapeHtml(tx('adminTimeoutPickUser', 'Pick a user'))}</span>`;
+
+  return `
+    <div class="admin-form admin-timeout-form" data-suffix="${escapeHtml(sfx)}">
+      <label class="admin-form-label">${t('users')}</label>
+      <div class="admin-user-picker">
+        <button type="button" class="admin-user-picker-trigger${selected ? ' admin-user-picker-trigger-filled' : ''}" data-action="timeout-open-picker" aria-haspopup="listbox" aria-expanded="false">
+          ${triggerInner}
+          <span class="admin-user-picker-trigger-caret" aria-hidden="true">${ICON_CHEVRON_DOWN_SM}</span>
+        </button>
+        <div class="admin-user-picker-panel" hidden>
+          <div class="admin-user-picker-search">
+            <span class="admin-user-picker-search-icon" aria-hidden="true">${ICON_SEARCH_SM}</span>
+            <input type="search" class="admin-user-picker-search-input" data-action="timeout-search-users" placeholder="${escapeHtml(tx('adminTimeoutSearchUsers', 'Search users…'))}" autocomplete="off" />
+          </div>
+          <div class="admin-user-picker-list" role="listbox">
+            ${candidates.map((u) => {
+              const av = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : getDefaultAvatarUrl(u.id);
+              const fallback = getDefaultAvatarUrl(u.id);
+              const haystack = [u.id, u.username, u.display_name, u.email].filter(Boolean).join(' ').toLowerCase();
+              return `<button type="button" class="admin-user-picker-item${userId === u.id ? ' active' : ''}" role="option" aria-selected="${userId === u.id}" data-user-id="${escapeHtml(u.id)}" data-haystack="${escapeHtml(haystack)}">
+                <img class="admin-user-picker-item-avatar" src="${escapeHtml(av)}" data-fallback="${escapeHtml(fallback)}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
+                <span class="admin-user-picker-item-meta">
+                  <span class="admin-user-picker-item-name">${escapeHtml(u.display_name || u.username || u.id)}</span>
+                  <span class="admin-user-picker-item-handle">@${escapeHtml(u.username || u.id)}</span>
+                </span>
+                ${userId === u.id ? `<span class="admin-user-picker-item-check" aria-hidden="true">${ICON_CHECK_SM}</span>` : ''}
+              </button>`;
+            }).join('')}
+            <p class="admin-user-picker-empty" hidden>${escapeHtml(tx('adminTimeoutNoUserMatch', 'No user matches your search.'))}</p>
+          </div>
+        </div>
+      </div>
+      <input type="hidden" id="admin-timeout-user${sfx}" value="${escapeHtml(userId)}" />
+      <label class="admin-form-label">${tx('adminTimeoutScopeLabel', 'Apply timeout to')}</label>
+      <div class="admin-timeout-scope" role="radiogroup">
+        <label class="admin-timeout-scope-option">
+          <input type="radio" name="admin-timeout-scope${sfx}" value="group" data-action="timeout-scope" ${scope === 'group' ? 'checked' : ''} />
+          <span>${tx('adminTimeoutScopeGroup', 'Group chat')}</span>
+        </label>
+        <label class="admin-timeout-scope-option">
+          <input type="radio" name="admin-timeout-scope${sfx}" value="dm" data-action="timeout-scope" ${scope === 'dm' ? 'checked' : ''} />
+          <span>${tx('adminTimeoutScopeDm', 'Private messages')}</span>
+        </label>
+      </div>
+      <p class="admin-section-subhint">${tx('adminTimeoutScopeHint', 'Private-chat timeouts still let the user message jimmyqrg.')}</p>
+      <label class="admin-form-label">${t('adminDuration')}</label>
+      <div class="admin-duration-chips" role="radiogroup">
+        ${presetButtons}
+        <button type="button" class="admin-duration-chip admin-duration-chip-custom${isCustom ? ' active' : ''}" data-duration="custom">${escapeHtml(tx('adminTimeoutCustom', 'Custom…'))}</button>
+      </div>
+      <div class="admin-duration-custom" ${isCustom ? '' : 'hidden'}>
+        <input type="number" min="1" step="1" class="admin-duration-custom-num" data-action="timeout-custom-num" placeholder="${escapeHtml(tx('adminTimeoutCustomNumber', 'Number'))}" value="${escapeHtml(customNum)}" />
+        <select class="admin-duration-custom-unit" data-action="timeout-custom-unit">
+          <option value="minute"${customUnit === 'minute' ? ' selected' : ''}>${escapeHtml(tx('adminTimeoutCustomUnitMinute', 'minutes'))}</option>
+          <option value="hour"${customUnit === 'hour' ? ' selected' : ''}>${escapeHtml(tx('adminTimeoutCustomUnitHour', 'hours'))}</option>
+          <option value="day"${customUnit === 'day' ? ' selected' : ''}>${escapeHtml(tx('adminTimeoutCustomUnitDay', 'days'))}</option>
+          <option value="week"${customUnit === 'week' ? ' selected' : ''}>${escapeHtml(tx('adminTimeoutCustomUnitWeek', 'weeks'))}</option>
+        </select>
+      </div>
+      <input type="hidden" id="admin-timeout-duration${sfx}" value="${escapeHtml(duration)}" />
+      ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked${sfx}" /> ${t('adminOnlyICanRelease')}</label>` : ''}
+      <button type="button" id="admin-timeout-submit${sfx}" class="btn-primary admin-timeout-submit" data-action="timeout-submit"><span class="icon" aria-hidden="true">${ICON_CLOCK_SM}</span>${t('adminPermTimeout')}</button>
+    </div>
+  `;
+}
+
+/* Resolve the user-friendly duration the picker is currently set to into the
+ * exact string the server expects (e.g. "15 minute" or "forever"). Returns
+ * null if the admin hasn't picked a duration yet, or if "Custom" is active
+ * but the number input is empty/invalid. */
+function resolveTimeoutDurationFromState() {
+  const f = getTimeoutFormState();
+  if (!f.duration) return null;
+  if (f.duration !== 'custom') return f.duration;
+  const num = parseInt(String(f.customNum || '').trim(), 10);
+  if (!Number.isFinite(num) || num < 1) return null;
+  const unit = ['minute', 'hour', 'day', 'week'].includes(f.customUnit) ? f.customUnit : 'minute';
+  return `${num} ${unit}`;
+}
+
+/* Submit the timeout form. Called from the click delegation. The button is
+ * inside a .admin-timeout-form so we use it to scope DOM lookups (locked
+ * checkbox, hidden inputs) which differ between the action tab and the
+ * dedicated timeout sub-tab. */
+async function submitTimeoutForm(submitBtn) {
+  const form = submitBtn.closest('.admin-timeout-form');
+  if (!form) return;
+  const formState = getTimeoutFormState();
+  const userIdInput = form.querySelector('input[id^="admin-timeout-user"]');
+  const userId = String(userIdInput?.value || formState.userId || '').trim();
+  if (!userId) {
+    showToast(t('adminTimeoutPickUser') || tx('adminTimeoutPickUser', 'Pick a user'));
+    return;
+  }
+  if (userId === 'jimmyqrg') {
+    showToast(tx('cannotTimeoutJimmy', 'jimmyqrg cannot be timed out'));
+    return;
+  }
+  const duration = resolveTimeoutDurationFromState();
+  if (!duration) {
+    if (formState.duration === 'custom') {
+      showToast(tx('adminTimeoutCustomInvalid', 'Enter a valid number for the custom duration.'));
+    } else {
+      showToast(tx('adminTimeoutPickDuration', 'Pick a duration first.'));
+    }
+    return;
+  }
+  const lockedCheckbox = form.querySelector('input[id^="admin-timeout-locked"]');
+  const locked = !!lockedCheckbox?.checked;
+  const scopeRadio = form.querySelector('input[data-action="timeout-scope"]:checked');
+  const scope = (scopeRadio?.value === 'dm') ? 'dm' : (formState.scope || 'group');
+  submitBtn.disabled = true;
+  submitBtn.classList.add('is-loading');
+  try {
+    await apiPost('/api/admin/timeout', { user_id: userId, duration, locked_release: locked, scope });
+    const u = (state.users || []).find((x) => x.id === userId);
+    const userLabel = u ? (u.display_name || u.username || u.id) : userId;
+    const scopeLabel = scope === 'dm'
+      ? tx('adminTimeoutScopeDmBadge', 'Private messages')
+      : tx('adminTimeoutScopeGroupBadge', 'Group chat');
+    const durationLabel = duration === 'forever' ? tx('adminTimeoutForever', 'Forever') : duration;
+    showToast(tx('adminTimeoutAppliedToast', '{user} timed out for {duration} ({scope})')
+      .replace('{user}', userLabel)
+      .replace('{duration}', durationLabel)
+      .replace('{scope}', scopeLabel), 'success');
+    // Reset duration but keep the picked user — admins often issue several
+    // timeouts in a row for the same person.
+    formState.duration = '';
+    formState.customNum = '';
+    const customRow = form.querySelector('.admin-duration-custom');
+    if (customRow) customRow.setAttribute('hidden', '');
+    form.querySelectorAll('.admin-duration-chip.active').forEach((c) => c.classList.remove('active'));
+    const hiddenDur = form.querySelector('input[id^="admin-timeout-duration"]');
+    if (hiddenDur) hiddenDur.value = '';
+    const numInput = form.querySelector('.admin-duration-custom-num');
+    if (numInput) numInput.value = '';
+    if (lockedCheckbox) lockedCheckbox.checked = false;
+    loadAdminTimeouts();
+  } catch (err) {
+    showToast(err?.message || 'Failed to apply timeout');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.classList.remove('is-loading');
+  }
+}
+
 function renderAdminContent() {
   const adminTab = new URLSearchParams(window.location.search || '').get('tab') || 'action';
   const users = state.users || [];
@@ -6978,29 +7308,7 @@ function renderAdminContent() {
           <div class="admin-section">
             <h2 class="admin-section-title">${t('adminTimeoutUser')}</h2>
             <p class="admin-section-desc">${t('adminTimeoutDurationDesc')}</p>
-            <div class="admin-form">
-              <label>${t('users')}</label>
-              <select id="admin-timeout-user">
-                <option value="">${t('adminSelectUser')}</option>
-                ${otherUsers.filter(u => u.id !== 'jimmyqrg').map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
-              </select>
-              <label>${tx('adminTimeoutScopeLabel', 'Apply timeout to')}</label>
-              <div class="admin-timeout-scope" role="radiogroup">
-                <label class="admin-timeout-scope-option">
-                  <input type="radio" name="admin-timeout-scope" value="group" checked />
-                  <span>${tx('adminTimeoutScopeGroup', 'Group chat')}</span>
-                </label>
-                <label class="admin-timeout-scope-option">
-                  <input type="radio" name="admin-timeout-scope" value="dm" />
-                  <span>${tx('adminTimeoutScopeDm', 'Private messages')}</span>
-                </label>
-              </div>
-              <p class="admin-section-subhint">${tx('adminTimeoutScopeHint', 'Private-chat timeouts still let the user message jimmyqrg.')}</p>
-              <label>${t('adminDuration')}</label>
-              <input type="text" id="admin-timeout-duration" placeholder="${t('adminDurationPlaceholder')}" />
-              ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked" /> ${t('adminOnlyICanRelease')}</label>` : ''}
-              <button type="button" id="admin-timeout-submit" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_CLOCK_SM}</span>${t('adminPermTimeout')}</button>
-            </div>
+            ${renderTimeoutForm('', otherUsers.filter(u => u.id !== 'jimmyqrg'))}
             <div id="admin-timeout-list" class="admin-timeout-list"></div>
           </div>
           ` : ''}
@@ -7017,40 +7325,22 @@ function renderAdminContent() {
           <div class="admin-section">
             <h2 class="admin-section-title">${t('adminTimeoutUser')}</h2>
             <p class="admin-section-desc">${t('adminTimeoutUserDesc')}</p>
-            <div class="admin-form">
-              <label>${t('users')}</label>
-              <select id="admin-timeout-user-tab">
-                <option value="">${t('adminSelectUser')}</option>
-                ${otherUsers.filter(u => u.id !== 'jimmyqrg').map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('')}
-              </select>
-              <label>${tx('adminTimeoutScopeLabel', 'Apply timeout to')}</label>
-              <div class="admin-timeout-scope" role="radiogroup">
-                <label class="admin-timeout-scope-option">
-                  <input type="radio" name="admin-timeout-scope-tab" value="group" checked />
-                  <span>${tx('adminTimeoutScopeGroup', 'Group chat')}</span>
-                </label>
-                <label class="admin-timeout-scope-option">
-                  <input type="radio" name="admin-timeout-scope-tab" value="dm" />
-                  <span>${tx('adminTimeoutScopeDm', 'Private messages')}</span>
-                </label>
-              </div>
-              <p class="admin-section-subhint">${tx('adminTimeoutScopeHint', 'Private-chat timeouts still let the user message jimmyqrg.')}</p>
-              <label>${t('adminDuration')}</label>
-              <input type="text" id="admin-timeout-duration-tab" placeholder="${t('adminDurationPlaceholder')}" />
-              ${state.user?.id === 'jimmyqrg' ? `<label class="admin-timeout-locked"><input type="checkbox" id="admin-timeout-locked-tab" /> ${t('adminOnlyICanRelease')}</label>` : ''}
-              <button type="button" id="admin-timeout-submit-tab" class="btn-primary"><span class="icon" aria-hidden="true">${ICON_CLOCK_SM}</span>${t('adminPermTimeout')}</button>
-            </div>
+            ${renderTimeoutForm('-tab', otherUsers.filter(u => u.id !== 'jimmyqrg'))}
             <div id="admin-timeout-list-tab" class="admin-timeout-list"></div>
           </div>
           ` : `<p class="admin-section-desc">${t('adminNoPermissions')}</p>`) : ''}
           ${adminTab === 'users' ? (() => {
             const userSearch = (state._adminUserSearch || '').trim().toLowerCase();
-            const filteredUsers = userSearch
-              ? users.filter((u) => {
-                  const blob = [u.id, u.username, u.display_name, u.email].filter(Boolean).join(' ').toLowerCase();
-                  return blob.includes(userSearch);
-                })
-              : users;
+            // Render ALL user cards every time and use the `hidden` attribute
+            // for filtering. This way `applyAdminUserSearchFilter` can broaden
+            // a search after a re-render without missing cards. It also keeps
+            // every card in the DOM so click/permission listeners on
+            // #admin-user-list work for any user the admin reveals later.
+            const userMatches = users.map((u) => {
+              const blob = [u.id, u.username, u.display_name, u.email].filter(Boolean).join(' ').toLowerCase();
+              return !userSearch || blob.includes(userSearch);
+            });
+            const shownCount = userMatches.filter(Boolean).length;
             return `
           <div class="admin-section">
             <h2 class="admin-section-title">${t('adminUsersSection')}</h2>
@@ -7058,12 +7348,12 @@ function renderAdminContent() {
             <div class="admin-users-toolbar">
               <input type="search" id="admin-user-search" class="admin-user-search" placeholder="${tx('adminUserSearchPlaceholder', 'Search by name, username, or email…')}" value="${escapeHtml(state._adminUserSearch || '')}" />
               <span class="admin-user-count">${tx('adminUserCount', '{shown} / {total} users')
-                .replace('{shown}', filteredUsers.length)
+                .replace('{shown}', shownCount)
                 .replace('{total}', users.length)}</span>
             </div>
-            ${filteredUsers.length === 0 ? `<p class="admin-section-desc">${tx('adminUserSearchEmpty', 'No users match your search.')}</p>` : ''}
+            ${shownCount === 0 && userSearch ? `<p class="admin-section-desc admin-user-empty">${tx('adminUserSearchEmpty', 'No users match your search.')}</p>` : ''}
             <div class="admin-users-list" id="admin-user-list">
-              ${filteredUsers.map((u) => `<div class="admin-user-card" data-user-id="${escapeHtml(u.id)}">${renderAdminUserCardInner(u)}</div>`).join('')}
+              ${users.map((u, i) => `<div class="admin-user-card" data-user-id="${escapeHtml(u.id)}"${userMatches[i] ? '' : ' hidden'}>${renderAdminUserCardInner(u)}</div>`).join('')}
             </div>
             <div class="admin-audit-section">
               <h3 class="admin-section-title">${tx('adminAuditLog', 'Audit log')}</h3>
@@ -7325,14 +7615,15 @@ function applyAdminUserSearchFilter(rawQuery) {
   });
   const countEl = document.querySelector('.admin-users-toolbar .admin-user-count');
   if (countEl) {
+    const total = (state.users || []).length || cards.length;
     countEl.textContent = tx('adminUserCount', '{shown} / {total} users')
       .replace('{shown}', shown)
-      .replace('{total}', cards.length);
+      .replace('{total}', total);
   }
   const section = list.closest('.admin-section');
   if (section) {
     let emptyMsg = section.querySelector('.admin-user-empty');
-    if (shown === 0) {
+    if (shown === 0 && query) {
       if (!emptyMsg) {
         emptyMsg = document.createElement('p');
         emptyMsg.className = 'admin-section-desc admin-user-empty';
@@ -7377,30 +7668,10 @@ function bindAdmin() {
   loadAdminTimeouts();
   loadAdminAudit();
 
-  document.getElementById('admin-timeout-submit')?.addEventListener('click', async () => {
-    const userId = document.getElementById('admin-timeout-user')?.value;
-    const duration = document.getElementById('admin-timeout-duration')?.value?.trim();
-    const locked = document.getElementById('admin-timeout-locked')?.checked;
-    const scope = document.querySelector('input[name="admin-timeout-scope"]:checked')?.value || 'group';
-    if (!userId) { showToast(t('adminSelectUser')); return; }
-    try {
-      await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked, scope });
-      document.getElementById('admin-timeout-duration').value = '';
-      loadAdminTimeouts();
-    } catch (err) { showToast(err.message); }
-  });
-  document.getElementById('admin-timeout-submit-tab')?.addEventListener('click', async () => {
-    const userId = document.getElementById('admin-timeout-user-tab')?.value;
-    const duration = document.getElementById('admin-timeout-duration-tab')?.value?.trim();
-    const locked = document.getElementById('admin-timeout-locked-tab')?.checked;
-    const scope = document.querySelector('input[name="admin-timeout-scope-tab"]:checked')?.value || 'group';
-    if (!userId) { showToast(t('adminSelectUser')); return; }
-    try {
-      await apiPost('/api/admin/timeout', { user_id: userId, duration: duration || 'forever', locked_release: !!locked, scope });
-      document.getElementById('admin-timeout-duration-tab').value = '';
-      loadAdminTimeouts();
-    } catch (err) { showToast(err.message); }
-  });
+  // The new timeout form (user picker, duration chips, custom row, submit
+  // button) is wired up via delegated listeners on #app — see init(). Those
+  // listeners survive socket-driven re-renders the same way the admin search
+  // does, so the form stays interactive even if presence:snapshot fires.
 
   document.querySelector('.admin-timeout-list')?.closest('.admin-section')?.addEventListener('click', async (e) => {
     const releaseBtn = e.target.closest('.admin-timeout-release');
@@ -7476,21 +7747,9 @@ function bindAdmin() {
     } catch (e) { showToast(e.message); }
   });
 
-  let auditSearchTimer = null;
-  document.getElementById('admin-audit-search')?.addEventListener('input', (e) => {
-    const value = e.target.value;
-    state._adminAuditSearch = value;
-    clearTimeout(auditSearchTimer);
-    auditSearchTimer = setTimeout(() => {
-      loadAdminAudit(value);
-    }, 250);
-  });
-
-  document.getElementById('admin-user-search')?.addEventListener('input', (e) => {
-    const value = e.target.value;
-    state._adminUserSearch = value;
-    applyAdminUserSearchFilter(value);
-  });
+  // The admin-user-search and admin-audit-search inputs use a delegated
+  // listener attached once to #app in init(), so they survive re-renders
+  // (e.g. socket-driven render() calls without bindAdmin()).
 
   // Moderation queue tab
   const adminTab = new URLSearchParams(window.location.search || '').get('tab') || 'action';
@@ -7504,13 +7763,8 @@ function bindAdmin() {
         loadModerationQueue(status, state._modReports?.search || '');
       });
     });
-    let modSearchTimer = null;
-    document.getElementById('mod-queue-search')?.addEventListener('input', (e) => {
-      const value = e.target.value;
-      state._modReports.search = value;
-      clearTimeout(modSearchTimer);
-      modSearchTimer = setTimeout(() => loadModerationQueue(state._modReports.status, value), 250);
-    });
+    // mod-queue-search uses a delegated input listener attached once to #app
+    // in init(), so it survives re-renders without bindAdmin() being called.
     document.querySelectorAll('[data-mod-action]').forEach((btn) => {
       btn.addEventListener('click', async (ev) => {
         const action = btn.dataset.modAction;
@@ -8332,6 +8586,205 @@ async function init() {
         } else {
           navigateTo(`/chat/group/?panel=${encodeURIComponent(PANEL_TO_URL[item.room_id] || item.room_id)}`);
         }
+      }
+      // Admin timeout form: searchable user picker + duration chips. All
+      // interactions are delegated so they survive re-renders.
+      // First, close any open picker when the user clicks outside the picker
+      // (e.g. on a chip, submit button, scope radio, or empty space) so the
+      // dropdown doesn't linger after the admin moves on.
+      if (!e.target.closest('.admin-user-picker')) {
+        const open = document.querySelectorAll('.admin-user-picker-panel:not([hidden])');
+        if (open.length) {
+          open.forEach((p) => p.setAttribute('hidden', ''));
+          document.querySelectorAll('[data-action="timeout-open-picker"][aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+        }
+      }
+      const pickerTrigger = e.target.closest('[data-action="timeout-open-picker"]');
+      if (pickerTrigger) {
+        e.preventDefault();
+        const picker = pickerTrigger.closest('.admin-user-picker');
+        if (!picker) return;
+        const panel = picker.querySelector('.admin-user-picker-panel');
+        if (!panel) return;
+        const willOpen = panel.hasAttribute('hidden');
+        // Close any other open pickers on the page first.
+        document.querySelectorAll('.admin-user-picker-panel:not([hidden])').forEach((p) => {
+          if (p !== panel) p.setAttribute('hidden', '');
+        });
+        document.querySelectorAll('[data-action="timeout-open-picker"][aria-expanded="true"]').forEach((b) => {
+          if (b !== pickerTrigger) b.setAttribute('aria-expanded', 'false');
+        });
+        if (willOpen) {
+          panel.removeAttribute('hidden');
+          pickerTrigger.setAttribute('aria-expanded', 'true');
+          const search = panel.querySelector('.admin-user-picker-search-input');
+          if (search) {
+            search.value = '';
+            // Reset visibility from any prior filter.
+            panel.querySelectorAll('.admin-user-picker-item').forEach((i) => { i.hidden = false; });
+            const empty = panel.querySelector('.admin-user-picker-empty');
+            if (empty) empty.hidden = true;
+            requestAnimationFrame(() => { try { search.focus(); } catch (_) {} });
+          }
+        } else {
+          panel.setAttribute('hidden', '');
+          pickerTrigger.setAttribute('aria-expanded', 'false');
+        }
+        return;
+      }
+      const pickerItem = e.target.closest('.admin-user-picker-item');
+      if (pickerItem) {
+        e.preventDefault();
+        const userId = pickerItem.dataset.userId || '';
+        const formState = getTimeoutFormState();
+        formState.userId = userId;
+        const form = pickerItem.closest('.admin-timeout-form');
+        const panel = pickerItem.closest('.admin-user-picker-panel');
+        const trigger = form?.querySelector('[data-action="timeout-open-picker"]');
+        const hidden = form?.querySelector('input[id^="admin-timeout-user"]');
+        if (hidden) hidden.value = userId;
+        if (panel) panel.setAttribute('hidden', '');
+        if (trigger) {
+          trigger.setAttribute('aria-expanded', 'false');
+          const u = (state.users || []).find((x) => x.id === userId);
+          if (u) {
+            const av = (u.avatar_url && String(u.avatar_url).trim()) ? u.avatar_url : getDefaultAvatarUrl(u.id);
+            const fallback = getDefaultAvatarUrl(u.id);
+            trigger.classList.add('admin-user-picker-trigger-filled');
+            trigger.innerHTML = `
+              <img class="admin-user-picker-trigger-avatar" src="${escapeHtml(av)}" data-fallback="${escapeHtml(fallback)}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
+              <span class="admin-user-picker-trigger-label">
+                <span class="admin-user-picker-trigger-name">${escapeHtml(u.display_name || u.username || u.id)}</span>
+                <span class="admin-user-picker-trigger-handle">@${escapeHtml(u.username || u.id)}</span>
+              </span>
+              <span class="admin-user-picker-trigger-caret" aria-hidden="true">${ICON_CHEVRON_DOWN_SM}</span>
+            `;
+          }
+        }
+        // Refresh active states + check icons in the list.
+        if (panel) {
+          panel.querySelectorAll('.admin-user-picker-item').forEach((it) => {
+            const isActive = it.dataset.userId === userId;
+            it.classList.toggle('active', isActive);
+            it.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            const existingCheck = it.querySelector('.admin-user-picker-item-check');
+            if (isActive && !existingCheck) {
+              const span = document.createElement('span');
+              span.className = 'admin-user-picker-item-check';
+              span.setAttribute('aria-hidden', 'true');
+              span.innerHTML = ICON_CHECK_SM;
+              it.appendChild(span);
+            } else if (!isActive && existingCheck) {
+              existingCheck.remove();
+            }
+          });
+        }
+        return;
+      }
+      const durationChip = e.target.closest('.admin-duration-chip[data-duration]');
+      if (durationChip) {
+        e.preventDefault();
+        const value = durationChip.dataset.duration || '';
+        const formState = getTimeoutFormState();
+        formState.duration = value;
+        const form = durationChip.closest('.admin-timeout-form');
+        if (!form) return;
+        form.querySelectorAll('.admin-duration-chip').forEach((c) => c.classList.toggle('active', c === durationChip));
+        const hidden = form.querySelector('input[id^="admin-timeout-duration"]');
+        if (hidden) hidden.value = value;
+        const customRow = form.querySelector('.admin-duration-custom');
+        if (customRow) {
+          if (value === 'custom') {
+            customRow.removeAttribute('hidden');
+            requestAnimationFrame(() => { try { customRow.querySelector('.admin-duration-custom-num')?.focus(); } catch (_) {} });
+          } else {
+            customRow.setAttribute('hidden', '');
+          }
+        }
+        return;
+      }
+      const submitBtn = e.target.closest('[data-action="timeout-submit"]');
+      if (submitBtn) {
+        e.preventDefault();
+        submitTimeoutForm(submitBtn);
+        return;
+      }
+    });
+    // Close any open user picker on Escape.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const open = document.querySelectorAll('.admin-user-picker-panel:not([hidden])');
+      if (!open.length) return;
+      open.forEach((p) => p.setAttribute('hidden', ''));
+      document.querySelectorAll('[data-action="timeout-open-picker"][aria-expanded="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    });
+    // Track scope radio + custom-unit select changes for the timeout form.
+    appEl.addEventListener('change', (e) => {
+      const scopeRadio = e.target.closest('input[data-action="timeout-scope"]');
+      if (scopeRadio && scopeRadio.checked) {
+        const formState = getTimeoutFormState();
+        formState.scope = scopeRadio.value === 'dm' ? 'dm' : 'group';
+        return;
+      }
+      const customUnit = e.target.closest('select[data-action="timeout-custom-unit"]');
+      if (customUnit) {
+        const formState = getTimeoutFormState();
+        formState.customUnit = ['minute', 'hour', 'day', 'week'].includes(customUnit.value) ? customUnit.value : 'minute';
+        return;
+      }
+    });
+    // Delegated input listeners for admin search boxes. These survive re-renders
+    // (e.g. socket-driven render() calls like presence:snapshot or permissions:changed)
+    // because #app itself is never replaced — only its children are.
+    let _adminAuditSearchTimer = null;
+    let _modQueueSearchTimer = null;
+    appEl.addEventListener('input', (e) => {
+      const target = e.target;
+      if (!target) return;
+      if (target.id === 'admin-user-search') {
+        const value = target.value;
+        state._adminUserSearch = value;
+        applyAdminUserSearchFilter(value);
+        return;
+      }
+      if (target.id === 'admin-audit-search') {
+        const value = target.value;
+        state._adminAuditSearch = value;
+        clearTimeout(_adminAuditSearchTimer);
+        _adminAuditSearchTimer = setTimeout(() => {
+          loadAdminAudit(value);
+        }, 250);
+        return;
+      }
+      if (target.id === 'mod-queue-search') {
+        const value = target.value;
+        if (!state._modReports) state._modReports = { items: [], status: 'open', search: '', loading: false };
+        state._modReports.search = value;
+        clearTimeout(_modQueueSearchTimer);
+        _modQueueSearchTimer = setTimeout(() => {
+          loadModerationQueue(state._modReports?.status || 'open', value);
+        }, 250);
+        return;
+      }
+      if (target.dataset?.action === 'timeout-search-users') {
+        const panel = target.closest('.admin-user-picker-panel');
+        if (!panel) return;
+        const q = String(target.value || '').trim().toLowerCase();
+        let visible = 0;
+        panel.querySelectorAll('.admin-user-picker-item').forEach((item) => {
+          const haystack = item.dataset.haystack || '';
+          const match = !q || haystack.includes(q);
+          item.hidden = !match;
+          if (match) visible += 1;
+        });
+        const empty = panel.querySelector('.admin-user-picker-empty');
+        if (empty) empty.hidden = visible !== 0;
+        return;
+      }
+      if (target.dataset?.action === 'timeout-custom-num') {
+        const formState = getTimeoutFormState();
+        formState.customNum = String(target.value || '');
+        return;
       }
     });
   }

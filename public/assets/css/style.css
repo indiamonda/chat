@@ -556,6 +556,74 @@ select:focus {
   margin: 0.75rem 0;
   min-height: 78px;
 }
+.auth-verify-row {
+  margin: 0.6rem 0 0.2rem;
+}
+.auth-verify-info {
+  font-size: 0.82rem;
+  color: var(--text-secondary, #8a8fa0);
+  line-height: 1.4;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  background: rgba(124,58,237,.08);
+  border-radius: 8px;
+  border-left: 3px solid #7c3aed;
+}
+.auth-verify-info strong {
+  color: var(--text-primary, #e0e0e8);
+}
+.auth-verify-row label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+  color: var(--text-secondary, #8a8fa0);
+}
+.auth-verify-row input {
+  width: 100%;
+  font-size: 1.3rem;
+  letter-spacing: 0.4em;
+  text-align: center;
+  font-weight: 700;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border, #333);
+  background: var(--bg-input, #1a1a2e);
+  color: var(--text-primary, #e0e0e8);
+  box-sizing: border-box;
+}
+.auth-resend-btn {
+  display: block;
+  margin-top: 0.4rem;
+  background: none;
+  border: none;
+  color: #7c3aed;
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0.25rem 0;
+  text-decoration: underline;
+}
+.auth-resend-btn:disabled {
+  color: var(--text-secondary, #8a8fa0);
+  cursor: default;
+  text-decoration: none;
+}
+.auth-send-code-btn {
+  width: 100%;
+  padding: 0.55rem 0;
+  border-radius: 8px;
+  border: 1px solid #7c3aed;
+  background: rgba(124,58,237,.1);
+  color: #7c3aed;
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  margin-top: 0.3rem;
+  transition: background 0.15s;
+}
+.auth-send-code-btn:hover {
+  background: rgba(124,58,237,.2);
+}
 .auth-ani-25 { animation: authBounceIn 0.6s ease-out 0.5s both; }
 .auth-ani-26 { animation: authFadeIn 0.35s ease-out 0.55s both; }
 .auth-box::before {
@@ -4642,6 +4710,368 @@ input[type="checkbox"]:checked::after {
 
 .admin-form button {
   margin-top: 0.25rem;
+}
+
+/* === Admin timeout form: searchable user picker + duration chips === */
+
+.admin-timeout-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.admin-timeout-form .admin-form-label {
+  display: block;
+  margin: 0.6rem 0 0.25rem;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.admin-timeout-form .admin-form-label:first-child {
+  margin-top: 0;
+}
+.admin-timeout-form .admin-section-subhint {
+  margin: 0.1rem 0 0.25rem;
+}
+.admin-timeout-form .admin-timeout-scope {
+  margin: 0;
+}
+.admin-timeout-form .admin-timeout-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.25rem 0 0.25rem;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.admin-timeout-form .admin-timeout-locked input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+.admin-timeout-form .admin-timeout-submit {
+  align-self: flex-start;
+  margin-top: 0.6rem;
+}
+.admin-timeout-form .admin-timeout-submit.is-loading {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+/* User picker trigger button — shows the currently selected user (or a
+ * placeholder) and opens the panel below on click. */
+.admin-user-picker {
+  position: relative;
+  margin-bottom: 0.4rem;
+}
+.admin-form .admin-user-picker-trigger,
+.admin-user-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  margin: 0;
+  border: var(--border-width) solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-main);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.admin-user-picker-trigger:hover {
+  border-color: var(--accent, #8c5fff);
+}
+.admin-user-picker-trigger[aria-expanded="true"] {
+  border-color: var(--accent, #8c5fff);
+  box-shadow: 0 0 0 3px rgba(140, 95, 255, 0.15);
+}
+.admin-user-picker-trigger-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+}
+.admin-user-picker-trigger-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--bg-panel);
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.admin-user-picker-trigger-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.admin-user-picker-trigger-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.admin-user-picker-trigger-name {
+  font-size: 0.95rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-user-picker-trigger-handle {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-user-picker-trigger-empty {
+  display: block;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+}
+.admin-user-picker-trigger-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+.admin-user-picker-trigger[aria-expanded="true"] .admin-user-picker-trigger-caret {
+  transform: rotate(180deg);
+}
+
+/* The dropdown panel sits absolutely below the trigger and contains a
+ * sticky search bar plus the scrollable list of candidate users. */
+.admin-user-picker-panel {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  overflow: hidden;
+  background: var(--bg-panel, var(--bg-main));
+  border: var(--border-width) solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  animation: adminPickerPanelIn 0.14s ease;
+}
+.admin-user-picker-panel[hidden] { display: none; }
+@keyframes adminPickerPanelIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.admin-user-picker-search {
+  position: relative;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel, var(--bg-main));
+  flex-shrink: 0;
+}
+.admin-user-picker-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 0.95rem;
+  transform: translateY(-50%);
+  color: var(--text-dim);
+  pointer-events: none;
+  display: inline-flex;
+}
+.admin-form .admin-user-picker-search-input,
+.admin-user-picker-search-input {
+  width: 100%;
+  padding: 0.45rem 0.6rem 0.45rem 2.1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-main);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  margin: 0;
+}
+.admin-form .admin-user-picker-search-input:focus,
+.admin-user-picker-search-input:focus {
+  outline: none;
+  border-color: var(--accent, #8c5fff);
+  box-shadow: 0 0 0 3px rgba(140, 95, 255, 0.18);
+}
+.admin-user-picker-list {
+  overflow-y: auto;
+  padding: 0.25rem;
+  flex: 1;
+  scrollbar-width: thin;
+}
+.admin-user-picker-list::-webkit-scrollbar {
+  width: 8px;
+}
+.admin-user-picker-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+.admin-form .admin-user-picker-item,
+.admin-user-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  margin: 0;
+}
+.admin-user-picker-item[hidden] { display: none; }
+.admin-user-picker-item:hover {
+  background: rgba(140, 95, 255, 0.08);
+}
+.admin-user-picker-item.active {
+  background: rgba(140, 95, 255, 0.15);
+}
+.admin-user-picker-item-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+}
+.admin-user-picker-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1;
+  min-width: 0;
+}
+.admin-user-picker-item-name {
+  font-size: 0.92rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-user-picker-item-handle {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-user-picker-item-check {
+  display: inline-flex;
+  color: var(--accent, #8c5fff);
+  flex-shrink: 0;
+}
+.admin-user-picker-empty {
+  margin: 0.6rem 0.6rem 0.4rem;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+/* Duration chips: clickable preset buttons for common timeout lengths. */
+.admin-duration-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 0.5rem;
+}
+.admin-form .admin-duration-chip,
+.admin-duration-chip {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-panel, var(--bg-main));
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
+  margin: 0;
+  width: auto;
+}
+.admin-duration-chip:hover {
+  border-color: var(--accent, #8c5fff);
+  color: var(--accent, #8c5fff);
+}
+.admin-duration-chip:active {
+  transform: scale(0.97);
+}
+.admin-duration-chip.active {
+  background: rgba(140, 95, 255, 0.15);
+  border-color: var(--accent, #8c5fff);
+  color: var(--accent, #8c5fff);
+  font-weight: 600;
+}
+.admin-duration-chip-forever {
+  border-style: dashed;
+}
+.admin-duration-chip-forever.active {
+  border-style: solid;
+}
+.admin-duration-chip-custom {
+  font-style: italic;
+}
+.admin-duration-custom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.6rem;
+}
+.admin-duration-custom[hidden] { display: none; }
+.admin-form .admin-duration-custom-num,
+.admin-duration-custom-num {
+  flex: 1 1 8rem;
+  min-width: 6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-main);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  margin: 0;
+}
+.admin-form .admin-duration-custom-num:focus,
+.admin-duration-custom-num:focus {
+  outline: none;
+  border-color: var(--accent, #8c5fff);
+  box-shadow: 0 0 0 3px rgba(140, 95, 255, 0.18);
+}
+.admin-form .admin-duration-custom-unit,
+.admin-duration-custom-unit {
+  flex: 0 1 8rem;
+  min-width: 7rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-main);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  margin: 0;
+  width: auto;
+}
+
+/* Mobile-friendly tweaks for the picker so the panel doesn't overflow on
+ * narrow screens. */
+@media (max-width: 480px) {
+  .admin-user-picker-panel { max-height: 60vh; }
+  .admin-duration-chip { padding: 0.5rem 0.75rem; font-size: 0.85rem; }
 }
 
 .admin-users-toolbar {
