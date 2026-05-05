@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, getCurrentUser, changePassword, canManageUsers } from '../auth.js';
-import { db, GROUP_ID } from '../db.js';
+import { db, GROUP_ID, isEmailBanned } from '../db.js';
 import { upload } from '../upload.js';
 
 const router = Router();
@@ -120,6 +120,8 @@ router.patch('/profile', requireAuth, upload.single('avatar'), (req, res) => {
       mail = null;
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       return res.status(400).json({ error: 'Valid email required' });
+    } else if (isEmailBanned(trimmed)) {
+      return res.status(400).json({ error: 'This email address has been permanently banned.' });
     } else {
       const lower = trimmed.toLowerCase().slice(0, 255);
       const existing = db.prepare('SELECT id FROM users WHERE email IS NOT NULL AND LOWER(email) = LOWER(?) AND id != ?').get(lower, user.id);
