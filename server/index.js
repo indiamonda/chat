@@ -892,19 +892,27 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
     return res.status(401).json({ error: 'Not authenticated' });
   }
   const { roomType, roomId } = req.params;
-  if (roomType === 'group') {
-    if (isBlacklisted(user.id)) {
-      if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
-      return res.status(403).json({ error: 'Access denied. You are blacklisted from group chat.' });
-    }
-    if (!['free_chat', 'support', 'voice_chat'].includes(roomId)) {
-      if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
-      return res.status(400).json({ error: 'Invalid panel' });
-    }
-    if (isTimedOut(user.id)) {
-      if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
-      return res.status(403).json({ error: 'You are timed out from group chat' });
-    }
+  // Only group rooms use this endpoint. DMs must use /api/conversations/:id/messages
+  // so they go through the full set of security checks (blacklist, dm timeout,
+  // friendship limits, blocking). Previously this endpoint silently accepted DM
+  // payloads with ZERO checks – effectively letting a timed-out/blacklisted user
+  // spam any conversation whose id they could guess. Reject anything that isn't
+  // a real group panel.
+  if (roomType !== 'group') {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+    return res.status(400).json({ error: 'Invalid room type for this endpoint' });
+  }
+  if (isBlacklisted(user.id)) {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+    return res.status(403).json({ error: 'Access denied. You are blacklisted from group chat.' });
+  }
+  if (!['free_chat', 'support', 'voice_chat'].includes(roomId)) {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+    return res.status(400).json({ error: 'Invalid panel' });
+  }
+  if (isTimedOut(user.id)) {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+    return res.status(403).json({ error: 'You are timed out from group chat' });
   }
   const { content, msg_type, reply_to_id } = req.body || {};
   let finalContent = typeof content === 'string' ? content : '';
@@ -951,11 +959,9 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
     WHERE m.id = ?
   `).get(id);
   const msg = { ...row, likes: 0, reactions: [], edit_history: null };
-  if (roomType === 'group') {
-    io.to(`group:${GROUP_ID}`).emit('message', msg);
-    if (user.id !== HELPER_USER_ID && HELPER_RE.test(finalContent || '')) {
-      helperReply(id, finalContent, roomType, roomId);
-    }
+  io.to(`group:${GROUP_ID}`).emit('message', msg);
+  if (user.id !== HELPER_USER_ID && HELPER_RE.test(finalContent || '')) {
+    helperReply(id, finalContent, roomType, roomId);
   }
   res.status(201).json({ message: msg });
 });
@@ -974,6 +980,10 @@ app.patch('/api/messages/:id/recall', requireAuth, (req, res) => {
     if (target?.can_unlimited_edit_recall && user.id !== 'jimmyqrg') return res.status(403).json({ error: 'Forbidden' });
   }
   db.prepare('UPDATE messages SET recalled_at = ? WHERE id = ?').run(Date.now(), msg.id);
+  try {
+    if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:recalled', { id: msg.id });
+    else io.to(`group:${GROUP_ID}`).emit('message:recalled', { id: msg.id });
+  } catch (_) {}
   res.json({ ok: true });
 });
 
@@ -996,6 +1006,11 @@ app.patch('/api/messages/:id/edit', requireAuth, (req, res) => {
   const now = Date.now();
   db.prepare('UPDATE messages SET content = ?, edit_history = ?, updated_at = ? WHERE id = ?')
     .run(newContent, JSON.stringify(history), now, msg.id);
+  const payloadOut = { id: msg.id, content: newContent, edit_history: history, updated_at: now };
+  try {
+    if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:edited', payloadOut);
+    else io.to(`group:${GROUP_ID}`).emit('message:edited', payloadOut);
+  } catch (_) {}
   res.json({ ok: true, content: newContent, edit_history: history });
 });
 
@@ -1132,9 +1147,37 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
     return res.status(404).json({ error: 'Not found' });
   }
   const otherId = conv.user1_id === user.id ? conv.user2_id : conv.user1_id;
+  // Mirror the socket-side checks so HTTP fallback cannot be used to bypass
+  // moderation actions (blacklist, dm timeout, friendship limits, blocking).
+  if (isBlacklisted(user.id)) {
+    const other = db.prepare('SELECT id, is_allowed FROM users WHERE id = ?').get(otherId);
+    if (!other || (other.id !== 'jimmyqrg' && !other.is_allowed)) {
+      if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+      return res.status(403).json({ error: 'Access denied. Blacklisted users can only DM with JimmyQrg or allowed users.' });
+    }
+  }
   if (blockedByDmTimeout(user.id, otherId)) {
     if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
     return res.status(403).json({ error: 'You are timed out from private chat. You can still message jimmyqrg.' });
+  }
+  // Non-friends have a 10-msg head-start limit until the other side responds.
+  if (!areFriends(user.id, otherId)) {
+    const myCount = db.prepare('SELECT COUNT(*) as c FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?').get('dm', req.params.convId, user.id).c;
+    const otherCount = db.prepare('SELECT COUNT(*) as c FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?').get('dm', req.params.convId, otherId).c;
+    const clientMsgType = typeof req.body?.msg_type === 'string' ? req.body.msg_type : null;
+    const wantsNonText = (clientMsgType && clientMsgType !== 'text') || !!req.file;
+    if (otherCount > 0) {
+      if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+      return res.status(403).json({ error: 'Accept their friend request to continue chatting' });
+    }
+    if (myCount >= 10) {
+      if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+      return res.status(403).json({ error: 'Add as friend to send more messages' });
+    }
+    if (wantsNonText) {
+      if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+      return res.status(403).json({ error: 'Add as friend to send files' });
+    }
   }
   const { content, msg_type, reply_to_id } = req.body || {};
   let finalContent = typeof content === 'string' ? content : '';
@@ -1231,6 +1274,10 @@ const io = new Server(httpServer, {
   connectTimeout: 45000,
 });
 app.set('io', io);
+// Expose socket-management helpers so admin routes can force-disconnect
+// abusive users or refresh their permissions the moment an action lands.
+app.set('disconnectAllSocketsFor', (uid) => disconnectAllSocketsFor(uid));
+app.set('refreshUserSocketState', (uid) => refreshUserSocketState(uid));
 
 io.use((socket, next) => {
   const fakeRes = {
@@ -1422,6 +1469,47 @@ function pruneExpiredTyping() {
 
 setInterval(pruneExpiredTyping, 2000);
 
+/** Force-disconnect every active socket for a user. Used when an admin bans,
+ *  removes, or permanently-deletes a user so they can't keep their session
+ *  alive and continue spamming. */
+function disconnectAllSocketsFor(userId) {
+  if (!userId || !io) return;
+  try {
+    const room = io.sockets.adapter.rooms.get(`user:${userId}`);
+    if (!room) return;
+    for (const socketId of Array.from(room)) {
+      const s = io.sockets.sockets.get(socketId);
+      if (!s) continue;
+      try { s.emit('force_logout', { reason: 'admin_action' }); } catch (_) {}
+      try { s.disconnect(true); } catch (_) {}
+    }
+  } catch (err) {
+    console.warn('[disconnectAllSocketsFor] failed:', err?.message || err);
+  }
+}
+
+/** Ask every active socket for a user to refresh their permissions state
+ *  (group room membership, blacklist, timeouts) without logging them out. */
+function refreshUserSocketState(userId) {
+  if (!userId || !io) return;
+  try {
+    const room = io.sockets.adapter.rooms.get(`user:${userId}`);
+    if (!room) return;
+    const isBl = isBlacklisted(userId);
+    for (const socketId of Array.from(room)) {
+      const s = io.sockets.sockets.get(socketId);
+      if (!s) continue;
+      try {
+        if (isBl) s.leave(`group:${GROUP_ID}`);
+        else s.join(`group:${GROUP_ID}`);
+      } catch (_) {}
+      try { s.emit('permissions:changed', {}); } catch (_) {}
+    }
+  } catch (err) {
+    console.warn('[refreshUserSocketState] failed:', err?.message || err);
+  }
+}
+
 // Voice chat: in-memory participant tracking (userId → socketId)
 const voiceParticipants = new Map();
 
@@ -1531,6 +1619,10 @@ io.on('connection', (socket) => {
       if (isBlacklisted(socket.userId)) return ack?.({ error: 'Access denied. You are blacklisted from group chat.' });
       if (!['free_chat', 'support', 'voice_chat'].includes(roomId)) return ack?.({ error: 'Invalid panel' });
       if (isTimedOut(socket.userId)) return ack?.({ error: 'You are timed out from group chat' });
+    } else {
+      // Any non-dm, non-group room type is invalid — previously this silently
+      // fell through and inserted the message bypassing every moderation check.
+      return ack?.({ error: 'Invalid roomType' });
     }
     const id = randomUUID();
     const now = Date.now();
@@ -1673,7 +1765,13 @@ io.on('connection', (socket) => {
     if (!target) return ack?.({ error: 'User not found' });
     if (target.deleted_at) return ack?.({ error: 'Account already removed' });
     db.prepare('UPDATE users SET deleted_at = ? WHERE id = ?').run(Date.now(), userId);
+    try { recordAuditLog('account.soft_delete', socket.userId, userId, { via: 'socket' }); } catch (_) {}
     io.to(`user:${userId}`).emit('account_removed', {});
+    // Also revoke auth tokens and disconnect their sockets so the removed
+    // user can't keep spamming on a stale session. Without this, a client
+    // with a cached session can keep sending messages until their tab reloads.
+    try { db.prepare('DELETE FROM auth_tokens WHERE user_id = ?').run(userId); } catch (_) {}
+    try { disconnectAllSocketsFor(userId); } catch (_) {}
     ack?.({ ok: true });
   });
 

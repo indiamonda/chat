@@ -21,6 +21,24 @@ for (const col of PERM_COLS) {
 // Backfill: give existing admins new permissions
 try { db.exec(`UPDATE users SET can_pin_messages = 1 WHERE is_allowed = 1 AND can_pin_messages = 0`); } catch (_) {}
 try { db.exec(`UPDATE users SET can_unlimited_edit_recall = 1 WHERE id = 'jimmyqrg' AND can_unlimited_edit_recall = 0`); } catch (_) {}
+// Safety net: jimmyqrg must ALWAYS retain every admin power. Without this,
+// an upgrade from an old DB schema could leave jimmyqrg unable to moderate
+// during an incident. Runs on every startup and is idempotent.
+try {
+  db.exec(`UPDATE users SET
+    is_allowed = 1,
+    can_send_inbox = 1,
+    can_broadcast = 1,
+    can_edit_docs = 1,
+    can_kick = 1,
+    can_delete_messages = 1,
+    can_manage_users = 1,
+    can_timeout = 1,
+    can_pin_messages = 1,
+    can_unlimited_edit_recall = 1,
+    deleted_at = NULL
+  WHERE id = 'jimmyqrg'`);
+} catch (err) { console.error('[db.boot] Failed to ensure jimmyqrg admin powers:', err?.message || err); }
 try { db.exec('ALTER TABLE users ADD COLUMN website TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN profile_links TEXT'); } catch (_) {} // JSON array of {label, url}
 try { db.exec('ALTER TABLE users ADD COLUMN description TEXT'); } catch (_) {}

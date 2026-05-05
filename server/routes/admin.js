@@ -37,6 +37,13 @@ router.post('/blacklist', requireAuth, (req, res) => {
   db.prepare('INSERT OR REPLACE INTO blacklist (user_id, created_by, created_at) VALUES (?, ?, ?)')
     .run(user_id, admin.id, Date.now());
   recordAuditLog('blacklist.add', admin.id, user_id);
+  // Immediately kick them out of the group room + refresh their client so
+  // the blacklist takes effect without needing a reload.
+  try { req.app.get('refreshUserSocketState')?.(user_id); } catch (_) {}
+  try {
+    const io = req.app.get('io');
+    io?.to(`user:${user_id}`).emit('blacklist:changed', { blacklisted: true });
+  } catch (_) {}
   res.json({ ok: true });
 });
 
@@ -46,6 +53,11 @@ router.delete('/blacklist/:userId', requireAuth, (req, res) => {
   if (!canKick(admin)) return res.status(403).json({ error: 'Not allowed' });
   db.prepare('DELETE FROM blacklist WHERE user_id = ?').run(req.params.userId);
   recordAuditLog('blacklist.remove', admin.id, req.params.userId);
+  try { req.app.get('refreshUserSocketState')?.(req.params.userId); } catch (_) {}
+  try {
+    const io = req.app.get('io');
+    io?.to(`user:${req.params.userId}`).emit('blacklist:changed', { blacklisted: false });
+  } catch (_) {}
   res.json({ ok: true });
 });
 
@@ -107,8 +119,12 @@ router.post('/remove-account', requireAuth, (req, res) => {
   if (!target) return res.status(404).json({ error: 'User not found' });
   if (target.deleted_at) return res.status(400).json({ error: 'Account already removed' });
   db.prepare('UPDATE users SET deleted_at = ? WHERE id = ?').run(Date.now(), user_id);
+  // Revoke every active session so the removed user can't continue spamming
+  // with a cached token until they reload. Also disconnect live sockets.
+  try { db.prepare('DELETE FROM auth_tokens WHERE user_id = ?').run(user_id); } catch (_) {}
   const io = req.app.get('io');
   if (io) io.to(`user:${user_id}`).emit('account_removed', {});
+  try { req.app.get('disconnectAllSocketsFor')?.(user_id); } catch (_) {}
   recordAuditLog('account.soft_delete', admin.id, user_id);
   res.json({ ok: true });
 });
@@ -219,6 +235,9 @@ router.post('/delete-account-permanently', requireAuth, (req, res) => {
 
     db.prepare('DELETE FROM users WHERE id = ?').run(user_id);
     recordAuditLog('account.delete_permanent', admin.id, user_id, { delete_group_messages: delGroupMsgs });
+    // Kick the user out of every live socket so any cached session in their
+    // browser cannot keep sending messages until they reload.
+    try { req.app.get('disconnectAllSocketsFor')?.(user_id); } catch (_) {}
     res.json({ ok: true });
   } catch (err) {
     console.error('[delete-permanently] Failed to delete user', user_id, err);
@@ -231,12 +250,23 @@ router.post('/messages/:id/delete', requireAuth, (req, res) => {
   const admin = assertAllowed(req, res);
   if (admin === undefined) return;
   if (!canDeleteMessages(admin)) return res.status(403).json({ error: 'Not allowed to delete messages' });
-  const msg = db.prepare('SELECT id, sender_id FROM messages WHERE id = ?').get(req.params.id);
+  const msg = db.prepare('SELECT id, sender_id, room_type, room_id FROM messages WHERE id = ?').get(req.params.id);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
   if (msg.sender_id === 'jimmyqrg') return res.status(403).json({ error: 'Cannot delete jimmyqrg\'s messages' });
   db.prepare('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE id = ?').run('deleted', req.params.id);
   markUploadOrphan(req.params.id);
   recordAuditLog('message.delete', admin.id, msg.sender_id, { message_id: req.params.id });
+  // Broadcast so every viewer's client removes the message in real time — an
+  // admin deletion that only hits the DB is useless during an active spam raid.
+  // All group subscribers join `group:${GROUP_ID}` (not `group:<room_id>`),
+  // so we emit to that canonical room.
+  const io = req.app.get('io');
+  if (io) {
+    try {
+      if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:deleted', { id: req.params.id });
+      else io.to(`group:${GROUP_ID}`).emit('message:deleted', { id: req.params.id });
+    } catch (_) {}
+  }
   res.json({ ok: true });
 });
 
@@ -382,6 +412,7 @@ function notifyTimeoutChanged(req, userId) {
   const io = req.app.get('io');
   if (!io || !userId) return;
   try { io.to(`user:${userId}`).emit('timeouts:changed'); } catch (_) {}
+  try { io.to(`user:${userId}`).emit('permissions:changed', {}); } catch (_) {}
 }
 
 router.get('/audit', requireAuth, (req, res) => {

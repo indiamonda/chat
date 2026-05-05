@@ -2659,6 +2659,27 @@ function connectSocket() {
     showToast('Your account has been removed.');
     window.location.reload();
   });
+  s.on('force_logout', () => {
+    // Server asked us to hard-kill this session (admin removed the account or
+    // similar). Clear any cached auth and reload so the user lands on login.
+    try { localStorage.removeItem('auth_token'); } catch (_) {}
+    try { document.cookie = 'session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT'; } catch (_) {}
+    window.location.reload();
+  });
+  s.on('blacklist:changed', ({ blacklisted } = {}) => {
+    // If you just got blacklisted, reload so the UI drops you out of the
+    // group and the banner renders. Same on removal so you regain access.
+    showToast(blacklisted
+      ? tx('blacklistedNotice', 'You have been blacklisted from group chat.')
+      : tx('blacklistClearedNotice', 'Your blacklist has been lifted.'));
+    setTimeout(() => window.location.reload(), 300);
+  });
+  s.on('permissions:changed', () => {
+    // Re-pull the user profile so new timeout/permission state is picked up
+    // without a full reload. Used for timeouts and perm-grant/revoke.
+    loadMe().then(() => render()).catch(() => {});
+    try { loadMyTimeouts?.().then(() => render()); } catch (_) {}
+  });
   s.on('message:pinned', ({ room_type, room_id, pinned }) => {
     if (pinned) {
       state._pinnedMessage[roomKey(room_type, room_id)] = pinned;
