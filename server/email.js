@@ -272,6 +272,107 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+export function buildAccountKeyViewEmail({ code }) {
+  const text = [
+    'Someone (hopefully you) is trying to view your JimmyQrg account recovery key.',
+    '',
+    'Your one-time view code is:',
+    '',
+    `    ${code}`,
+    '',
+    'This code expires in 2 minutes. If this was not you, ignore this email and consider changing your password — someone may have access to your account.',
+    '',
+    '— JimmyQrg Chat',
+  ].join('\n');
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1f2937;">
+      <h2 style="margin:0 0 16px;font-size:20px;">View account key request</h2>
+      <p>Someone (hopefully you) is trying to view your JimmyQrg account recovery key. Use the code below to confirm.</p>
+      <p style="margin:24px 0;text-align:center;">
+        <span style="display:inline-block;padding:16px 32px;background:#7c3aed;color:#fff;font-size:28px;font-weight:700;letter-spacing:.3em;border-radius:8px;">${escapeHtml(code)}</span>
+      </p>
+      <p style="font-size:13px;color:#4b5563;">This code expires in <strong>2 minutes</strong>.</p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;" />
+      <p style="font-size:12px;color:#b91c1c;">If this was <strong>not</strong> you, ignore this email and change your password immediately — someone may have access to your account.</p>
+      <p style="font-size:12px;color:#6b7280;">— JimmyQrg Chat</p>
+    </div>`;
+  return { html, text };
+}
+
+export function buildRecoveryCodeEmail({ code, ip, username }) {
+  const greeting = username ? `Hi ${username},` : 'Hi,';
+  const text = [
+    greeting,
+    '',
+    `Someone is trying to recover access to your account from IP ${ip || 'unknown'}.`,
+    '',
+    'If this was you, your recovery code is:',
+    '',
+    `    ${code}`,
+    '',
+    'This code expires in 2 minutes.',
+    '',
+    'If this was NOT you: someone has your account recovery key. Ignore this email — without this code they cannot complete the recovery. After they fail you should view your recovery key (in account settings) and rotate your password.',
+    '',
+    '— JimmyQrg Chat',
+  ].join('\n');
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1f2937;">
+      <h2 style="margin:0 0 16px;font-size:20px;">Account recovery code</h2>
+      <p>${escapeHtml(greeting)}</p>
+      <p>Someone is trying to recover access to your account from IP <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:13px;">${escapeHtml(ip || 'unknown')}</code>.</p>
+      <p>If this was you, your recovery code is:</p>
+      <p style="margin:24px 0;text-align:center;">
+        <span style="display:inline-block;padding:16px 32px;background:#7c3aed;color:#fff;font-size:28px;font-weight:700;letter-spacing:.3em;border-radius:8px;">${escapeHtml(code)}</span>
+      </p>
+      <p style="font-size:13px;color:#4b5563;">This code expires in <strong>2 minutes</strong>.</p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;" />
+      <p style="font-size:12px;color:#b91c1c;"><strong>If this was NOT you:</strong> someone has your account recovery key. Ignore this email — without the code they cannot complete recovery. We strongly recommend you sign in, view your recovery key in account settings to rotate it, and change your password.</p>
+      <p style="font-size:12px;color:#6b7280;">— JimmyQrg Chat</p>
+    </div>`;
+  return { html, text };
+}
+
+export function buildRecoveryAttemptEmail({ outcome, ip, kind, username, ua }) {
+  const greeting = username ? `Hi ${username},` : 'Hi,';
+  const success = outcome === 'success';
+  const headline = success
+    ? 'Your account was recovered'
+    : 'A failed recovery attempt was made on your account';
+  const text = [
+    greeting,
+    '',
+    success
+      ? `Your account was just recovered from IP ${ip || 'unknown'} using a ${kind === 'payment_key' ? 'payment key' : 'account recovery key'}.`
+      : `Someone tried to recover your account from IP ${ip || 'unknown'} using a ${kind === 'payment_key' ? 'payment key' : 'account recovery key'} but the attempt FAILED.`,
+    '',
+    success
+      ? 'Your password has been reset and an active session was issued. If this was NOT you, sign back in immediately, change your password, and contact support.'
+      : 'No changes were made to your account. If this was NOT you, the attacker has at least your username — consider rotating your password and recovery key.',
+    '',
+    `User agent: ${ua || 'unknown'}`,
+    '',
+    '— JimmyQrg Chat',
+  ].join('\n');
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1f2937;">
+      <h2 style="margin:0 0 16px;font-size:20px;color:${success ? '#059669' : '#b91c1c'};">${escapeHtml(headline)}</h2>
+      <p>${escapeHtml(greeting)}</p>
+      <p>${escapeHtml(
+        success
+          ? `Your account was just recovered from IP ${ip || 'unknown'} using a ${kind === 'payment_key' ? 'payment key' : 'account recovery key'}.`
+          : `Someone tried to recover your account from IP ${ip || 'unknown'} using a ${kind === 'payment_key' ? 'payment key' : 'account recovery key'} but the attempt FAILED.`
+      )}</p>
+      <p style="font-size:13px;color:#4b5563;">User agent: <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-size:12px;">${escapeHtml(ua || 'unknown')}</code></p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;" />
+      ${success
+        ? '<p style="font-size:13px;color:#b91c1c;">If this was <strong>NOT</strong> you, sign back in immediately, change your password, and contact support — your account may be compromised.</p>'
+        : '<p style="font-size:13px;color:#4b5563;">No changes were made to your account. If this was <strong>NOT</strong> you, the attacker has at least your username and may have one of your keys — consider rotating your password and viewing your account key in settings to refresh it.</p>'}
+      <p style="font-size:12px;color:#6b7280;">— JimmyQrg Chat</p>
+    </div>`;
+  return { html, text };
+}
+
 export function buildVerificationCodeEmail({ code }) {
   const text = [
     'Your verification code for JimmyQrg Chat is:',

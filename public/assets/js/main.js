@@ -3417,6 +3417,8 @@ function renderAuth(isSignup = false, initialError = '', redirect = null) {
             <input class="auth-ani-13" name="login_password" type="password" autocomplete="current-password" />
             <p class="auth-forgot-link">
               <a href="/forgot-password" class="auth-switch-link">${tx('forgotPasswordLink', 'Forgot password?')}</a>
+              <span style="margin:0 8px;color:rgba(255,255,255,.3)">\u00B7</span>
+              <a href="#" id="auth-recover-link" class="auth-switch-link">Recover Account</a>
             </p>
         </div>
           <div id="auth-fields-register" class="auth-ani-14" style="display:${isSignup ? 'block' : 'none'}">
@@ -3722,6 +3724,497 @@ function loadRecaptchaAndRender(siteKey, container) {
   });
 }
 
+function showRecoveryModal() {
+  const old = document.getElementById('jq-recovery-modal');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'jq-recovery-modal';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(6px)';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#1a1028;border:1px solid rgba(136,65,214,.4);border-radius:16px;padding:24px;max-width:520px;width:100%;color:#e0e0e8;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6);max-height:90vh;overflow-y:auto';
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+
+  const closeXBtn = document.createElement('button');
+  closeXBtn.textContent = '\u00D7';
+  closeXBtn.setAttribute('aria-label', 'Close');
+  closeXBtn.style.cssText = 'position:absolute;top:6px;right:10px;background:transparent;border:0;color:rgba(255,255,255,.5);font-size:24px;cursor:pointer;line-height:1';
+  closeXBtn.onclick = () => ov.remove();
+  box.style.position = 'relative';
+  box.appendChild(closeXBtn);
+
+  let recoveryToken = null;
+  let recognition = null;
+  let username = null;
+  let frozen = false;
+
+  function clearBox() {
+    const children = Array.from(box.children).filter(c => c !== closeXBtn);
+    children.forEach(c => c.remove());
+  }
+  function addH(text) {
+    const h = document.createElement('h2');
+    h.style.cssText = 'margin:0 0 12px;font-size:19px;font-weight:700;color:#a78bfa';
+    h.textContent = text;
+    box.appendChild(h);
+    return h;
+  }
+  function addP(html) {
+    const p = document.createElement('p');
+    p.style.cssText = 'margin:0 0 12px;font-size:13px;line-height:1.55;color:rgba(255,255,255,.8)';
+    p.innerHTML = html;
+    box.appendChild(p);
+    return p;
+  }
+  function addInput(opts) {
+    const i = document.createElement('input');
+    i.type = opts.type || 'text';
+    i.placeholder = opts.placeholder || '';
+    if (opts.maxlength) i.maxLength = opts.maxlength;
+    if (opts.inputmode) i.inputMode = opts.inputmode;
+    if (opts.pattern) i.pattern = opts.pattern;
+    if (opts.value) i.value = opts.value;
+    i.style.cssText = (opts.style || '') + 'width:100%;padding:10px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:10px;font-family:inherit;font-size:14px;outline:none;box-sizing:border-box;margin-bottom:10px';
+    box.appendChild(i);
+    return i;
+  }
+  function addBtn(label, primary) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = primary
+      ? 'width:100%;padding:11px;background:linear-gradient(135deg,#8841d6,#6d28d9);border:0;color:#fff;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:8px'
+      : 'width:100%;padding:9px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.7);border-radius:10px;font-size:13px;cursor:pointer;font-family:inherit;margin-bottom:8px';
+    box.appendChild(b);
+    return b;
+  }
+  function addLink(label) {
+    const a = document.createElement('a');
+    a.textContent = label;
+    a.href = '#';
+    a.style.cssText = 'display:inline-block;color:#a78bfa;font-size:12px;text-decoration:underline;cursor:pointer;margin-top:6px';
+    a.onclick = (e) => e.preventDefault();
+    box.appendChild(a);
+    return a;
+  }
+  function addErr() {
+    const e = document.createElement('div');
+    e.style.cssText = 'color:#ff7a7a;font-size:13px;min-height:18px;margin:-4px 0 8px';
+    box.appendChild(e);
+    return e;
+  }
+  function addOk() {
+    const e = document.createElement('div');
+    e.style.cssText = 'color:#7affa0;font-size:13px;min-height:18px;margin:-4px 0 8px';
+    box.appendChild(e);
+    return e;
+  }
+
+  // Step 1: enter key
+  function stepEnterKey(initialError) {
+    clearBox();
+    addH('Recover Account');
+    addP('Enter your <strong>account key</strong> or <strong>payment key</strong> to recover access to your account.');
+    addP('<span style="color:rgba(255,255,255,.6);font-size:12px"><strong style="color:#fbbf24">Account key:</strong> almost gives access \u2014 still requires a code from your email.<br><strong style="color:#ff7a7a">Payment key:</strong> gives <strong>FULL</strong> access \u2014 immediate password reset.</span>');
+    const input = addInput({ placeholder: 'paste your key here', style: 'font-family:monospace;font-size:13px' });
+    const err = addErr();
+    if (initialError) err.textContent = initialError;
+    const submit = addBtn('Continue', true);
+    submit.onclick = async () => {
+      err.textContent = '';
+      const k = (input.value || '').trim();
+      if (k.length < 20) { err.textContent = 'That does not look like a valid key.'; return; }
+      submit.disabled = true; submit.textContent = 'Checking\u2026';
+      try {
+        const r = await fetch('/api/auth/recover/start', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: k }),
+        });
+        const d = await r.json();
+        if (!r.ok) {
+          err.textContent = d.error || 'Recovery failed.';
+          submit.disabled = false; submit.textContent = 'Continue';
+          return;
+        }
+        recoveryToken = d.recovery_token;
+        recognition = d.recognition;
+        username = d.username;
+        frozen = !!d.frozen;
+        if (recognition === 'full') stepFullReset();
+        else stepHalfEmailEntry();
+      } catch (e) {
+        err.textContent = 'Network error. Please try again.';
+        submit.disabled = false; submit.textContent = 'Continue';
+      }
+    };
+  }
+
+  // Step 2 (half): enter email
+  function stepHalfEmailEntry() {
+    clearBox();
+    addH('Verify your email');
+    addP('We recognized your account key for <strong>' + (username || 'this account') + '</strong>. To finish, enter the email on file. We\u2019ll send a 6-digit code to confirm it\u2019s you.');
+    const emailIn = addInput({ type: 'email', placeholder: 'your email' });
+    const err = addErr();
+    const send = addBtn('Send code to my email', true);
+    let resendIv = null;
+    let resendCount = 0;
+    send.onclick = async () => {
+      err.textContent = '';
+      const email = (emailIn.value || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err.textContent = 'Enter a valid email.'; return; }
+      send.disabled = true; send.textContent = 'Sending\u2026';
+      try {
+        const r = await fetch('/api/auth/recover/send-code', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recovery_token: recoveryToken, email }),
+        });
+        const d = await r.json();
+        if (!r.ok) {
+          err.textContent = d.error || 'Could not send code.';
+          send.disabled = false; send.textContent = 'Send code to my email';
+          return;
+        }
+        stepHalfEnterCode(email);
+      } catch (e) {
+        err.textContent = 'Network error.';
+        send.disabled = false; send.textContent = 'Send code to my email';
+      }
+    };
+
+    const sep = document.createElement('hr');
+    sep.style.cssText = 'border:none;border-top:1px solid rgba(255,255,255,.1);margin:12px 0';
+    box.appendChild(sep);
+    const altLink = addLink('Email was changed, or email inaccessible \u2192');
+    altLink.onclick = (e) => { e.preventDefault(); stepHalfFallback(); };
+  }
+
+  // Step 2b: enter code
+  function stepHalfEnterCode(emailUsed) {
+    clearBox();
+    addH('Enter the code');
+    addP('A 6-digit code was sent to <strong>' + emailUsed + '</strong>. It expires in 2 minutes.');
+    const codeIn = addInput({ inputmode: 'numeric', maxlength: 6, pattern: '[0-9]{6}', placeholder: '000000', style: 'font-size:18px;letter-spacing:.4em;text-align:center;font-weight:700' });
+    addP('<strong style="color:#e0e0e8">Set a new password:</strong>');
+    const pwIn = addInput({ type: 'password', placeholder: 'New password (6+ chars)' });
+    const err = addErr();
+    const submit = addBtn('Recover & sign in', true);
+    submit.onclick = async () => {
+      err.textContent = '';
+      const code = (codeIn.value || '').trim();
+      const pw = pwIn.value || '';
+      if (!/^\d{6}$/.test(code)) { err.textContent = 'Enter the 6-digit code.'; return; }
+      if (pw.length < 6) { err.textContent = 'Password must be 6+ characters.'; return; }
+      submit.disabled = true; submit.textContent = 'Recovering\u2026';
+      try {
+        const r = await fetch('/api/auth/recover/complete', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recovery_token: recoveryToken, code, new_password: pw }),
+        });
+        const d = await r.json();
+        if (!r.ok) {
+          err.textContent = d.error || 'Recovery failed.';
+          submit.disabled = false; submit.textContent = 'Recover & sign in';
+          return;
+        }
+        stepSuccess(d.account_key);
+      } catch (e) {
+        err.textContent = 'Network error.';
+        submit.disabled = false; submit.textContent = 'Recover & sign in';
+      }
+    };
+  }
+
+  // Step 2c: fallback - email changed/inaccessible
+  function stepHalfFallback() {
+    clearBox();
+    addH('Email changed or inaccessible');
+    addP('We understand \u2014 sometimes you lose access to the email on file. Two paths forward:');
+    addP('<strong style="color:#e0e0e8">A. Use your payment key</strong><br>If you have ever paid for a subscription, your <strong>payment key</strong> gives full account recovery without email verification.');
+    const payInput = addInput({ placeholder: 'paste your payment key', style: 'font-family:monospace;font-size:13px' });
+    const err = addErr();
+    const payBtn = addBtn('Recover with payment key', true);
+    payBtn.onclick = async () => {
+      err.textContent = '';
+      const k = (payInput.value || '').trim();
+      if (k.length < 20) { err.textContent = 'That does not look like a valid payment key.'; return; }
+      payBtn.disabled = true; payBtn.textContent = 'Verifying\u2026';
+      try {
+        const r = await fetch('/api/auth/recover/start', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: k }),
+        });
+        const d = await r.json();
+        if (!r.ok || d.recognition !== 'full') {
+          err.textContent = d.error || 'That payment key did not match.';
+          payBtn.disabled = false; payBtn.textContent = 'Recover with payment key';
+          return;
+        }
+        recoveryToken = d.recovery_token;
+        recognition = 'full';
+        stepFullReset();
+      } catch (e) {
+        err.textContent = 'Network error.';
+        payBtn.disabled = false; payBtn.textContent = 'Recover with payment key';
+      }
+    };
+
+    const moreToggle = document.createElement('details');
+    moreToggle.style.cssText = 'margin-top:14px';
+    const summary = document.createElement('summary');
+    summary.textContent = 'More options';
+    summary.style.cssText = 'color:rgba(255,255,255,.6);font-size:12px;cursor:pointer';
+    moreToggle.appendChild(summary);
+    const moreBox = document.createElement('div');
+    moreBox.style.cssText = 'margin-top:10px;padding:10px;background:rgba(255,255,255,.04);border-radius:8px;font-size:12px;line-height:1.5;color:rgba(255,255,255,.7)';
+    box.appendChild(moreToggle);
+    moreToggle.appendChild(moreBox);
+
+    moreBox.innerHTML = 'Loading email hint\u2026';
+    fetch('/api/auth/recover/email-hint', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recovery_token: recoveryToken }),
+    }).then(r => r.json()).then(d => {
+      if (d && d.hint) {
+        moreBox.innerHTML = '<p style="margin:0 0 6px"><strong style="color:#e0e0e8">Hint of the email on file:</strong></p><p style="margin:0 0 6px;font-family:monospace;color:#c4b5fd;font-size:13px">' + d.hint + '</p><p style="margin:0;color:rgba(255,255,255,.55)">If this looks like an email you control \u2014 perhaps an alias or an old address you can still log into \u2014 go back and try entering the full address.</p>';
+        const cantConfirm = document.createElement('button');
+        cantConfirm.textContent = 'Can\u2019t confirm?';
+        cantConfirm.style.cssText = 'margin-top:8px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit';
+        moreBox.appendChild(cantConfirm);
+        cantConfirm.onclick = () => stepCannotConfirm();
+      } else {
+        moreBox.textContent = 'No additional hints available.';
+      }
+    }).catch(() => { moreBox.textContent = 'Could not load email hint.'; });
+
+    const back = addLink('\u2190 Back');
+    back.onclick = (e) => { e.preventDefault(); stepHalfEmailEntry(); };
+  }
+
+  // Step 2d: cannot confirm anything
+  function stepCannotConfirm() {
+    clearBox();
+    addH('Unable to confirm');
+    addP('We are sorry. Without access to the email on file <em>and</em> without a payment key, we are unable to identify you as the account owner.');
+    addP('<strong style="color:#fbbf24">What you can still do:</strong>');
+    addP('\u2022 If you ever <strong>paid</strong> for a subscription, find your payment key (it was shown once during checkout) and try again.<br>\u2022 You may <strong>freeze</strong> the account so the attacker can no longer use it. We will not be able to give it to anyone, including you, until you can prove ownership.');
+    const freezeBtn = addBtn('Freeze the account', true);
+    freezeBtn.style.background = 'linear-gradient(135deg,#dc2626,#991b1b)';
+    freezeBtn.onclick = async () => {
+      if (!confirm('Freeze this account? The account will be locked and nobody (including you) can sign in until proof is provided. This will email everyone on the account.')) return;
+      try {
+        const r = await fetch('/api/auth/recover/freeze', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recovery_token: recoveryToken }),
+        });
+        const d = await r.json();
+        if (!r.ok) { alert(d.error || 'Freeze failed.'); return; }
+        clearBox();
+        addH('Account frozen');
+        addP('The account has been frozen. We have notified the email on file. To unfreeze, you will need a valid payment key.');
+        const ok = addBtn('Close', true);
+        ok.onclick = () => ov.remove();
+      } catch (e) {
+        alert('Network error.');
+      }
+    };
+    const back = addLink('\u2190 Back');
+    back.onclick = (e) => { e.preventDefault(); stepHalfFallback(); };
+  }
+
+  // Step 3 (full): just set new password
+  function stepFullReset() {
+    clearBox();
+    addH('Set a new password');
+    addP('Your <strong>payment key</strong> is verified. Set a new password and we will sign you in immediately.' + (frozen ? ' This will also <strong>unfreeze</strong> the account.' : ''));
+    const pwIn = addInput({ type: 'password', placeholder: 'New password (6+ chars)' });
+    const err = addErr();
+    const submit = addBtn(frozen ? 'Unfreeze & sign in' : 'Sign in', true);
+    submit.onclick = async () => {
+      err.textContent = '';
+      const pw = pwIn.value || '';
+      if (pw.length < 6) { err.textContent = 'Password must be 6+ characters.'; return; }
+      submit.disabled = true; submit.textContent = 'Signing in\u2026';
+      try {
+        const r = await fetch('/api/auth/recover/complete', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recovery_token: recoveryToken, new_password: pw }),
+        });
+        const d = await r.json();
+        if (!r.ok) {
+          err.textContent = d.error || 'Recovery failed.';
+          submit.disabled = false; submit.textContent = frozen ? 'Unfreeze & sign in' : 'Sign in';
+          return;
+        }
+        stepSuccess(d.account_key);
+      } catch (e) {
+        err.textContent = 'Network error.';
+        submit.disabled = false; submit.textContent = frozen ? 'Unfreeze & sign in' : 'Sign in';
+      }
+    };
+  }
+
+  // Final success step
+  function stepSuccess(newAccountKey) {
+    clearBox();
+    addH('Recovered \u2014 you are signed in');
+    const ok = addOk();
+    ok.textContent = 'Your password has been reset and a fresh account key was issued.';
+    if (newAccountKey) {
+      addP('<strong style="color:#fbbf24">Save your new account key now:</strong>');
+      const keyBox = document.createElement('div');
+      keyBox.style.cssText = 'background:#0d0915;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:12px;font-family:monospace;font-size:13px;word-break:break-all;line-height:1.5;color:#c4b5fd;user-select:all;cursor:text;letter-spacing:.02em;margin-bottom:10px';
+      keyBox.textContent = newAccountKey;
+      box.appendChild(keyBox);
+      const copy = addBtn('Copy new account key', false);
+      copy.onclick = () => { try { navigator.clipboard.writeText(newAccountKey); copy.textContent = 'Copied!'; } catch (_) {} };
+    }
+    const goBtn = addBtn('Continue to chat', true);
+    goBtn.onclick = () => {
+      ov.remove();
+      window.location.reload();
+    };
+  }
+
+  stepEnterKey();
+}
+
+function showAccountKeyModal(key, opts) {
+  opts = opts || {};
+  return new Promise((resolve) => {
+    const old = document.getElementById('jq-account-key-modal');
+    if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 'jq-account-key-modal';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(6px)';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1a1028;border:1px solid rgba(136,65,214,.4);border-radius:16px;padding:28px 24px;max-width:520px;width:100%;color:#e0e0e8;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6);max-height:90vh;overflow-y:auto';
+    const title = document.createElement('h2');
+    title.textContent = opts.title || 'Your Account Recovery Key';
+    title.style.cssText = 'margin:0 0 12px;font-size:20px;font-weight:700;color:#a78bfa';
+    box.appendChild(title);
+    const warn = document.createElement('div');
+    warn.style.cssText = 'margin:0 0 16px;font-size:13px;line-height:1.55;color:rgba(255,255,255,.85)';
+    warn.innerHTML = '<strong style="color:#ff7a7a;font-size:14px">\u26A0\uFE0F You will only see this key once.</strong>'
+      + '<p style="margin:10px 0 0">This is your <strong style="color:#c4b5fd">Account Key</strong> \u2014 a living proof that this account belongs to you. <strong>Save it somewhere safe right now.</strong></p>'
+      + '<p style="margin:8px 0 0"><strong>What this key can do:</strong></p>'
+      + '<ul style="margin:4px 0 0;padding-left:18px;color:rgba(255,255,255,.8)">'
+      + '<li style="margin-bottom:4px"><strong style="color:#e0e0e8">Recover a lost or stolen account</strong> \u2014 if your password is changed by an attacker, this key plus a code we email to you will let you reset the password and reclaim ownership.</li>'
+      + '<li style="margin-bottom:4px"><strong style="color:#e0e0e8">Acts as your living identity proof</strong> \u2014 we trust this key as evidence that you are the original account owner.</li>'
+      + '</ul>'
+      + '<p style="margin:10px 0 0"><strong style="color:#fbbf24">Risk if leaked:</strong> If someone else gets your account key, they can <strong>almost</strong> take over your account. They will still need access to the email on file to finish recovery, but they would only need to phish or compromise that one email to get in. Treat this key like your password.</p>'
+      + '<p style="margin:10px 0 0;color:rgba(255,255,255,.55);font-size:12px">Do <strong>not</strong> share this with anyone. Store it in a password manager, a secure note, or write it down somewhere private.</p>';
+    box.appendChild(warn);
+    const keyBox = document.createElement('div');
+    keyBox.style.cssText = 'background:#0d0915;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 16px;font-family:monospace;font-size:14px;word-break:break-all;line-height:1.6;color:#c4b5fd;user-select:all;cursor:text;letter-spacing:.02em';
+    keyBox.textContent = key;
+    box.appendChild(keyBox);
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy to clipboard';
+    copyBtn.style.cssText = 'margin-top:14px;width:100%;padding:10px;background:linear-gradient(135deg,#8841d6,#6d28d9);border:0;color:#fff;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit';
+    copyBtn.onclick = () => {
+      try {
+        navigator.clipboard.writeText(key).then(() => {
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = 'Copy to clipboard'; }, 2000);
+        });
+      } catch (_) {}
+    };
+    box.appendChild(copyBtn);
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = 'I\u2019ve saved my key';
+    closeBtn.style.cssText = 'margin-top:8px;width:100%;padding:10px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.7);border-radius:10px;font-size:13px;cursor:pointer;font-family:inherit';
+    closeBtn.onclick = () => { ov.remove(); resolve(); };
+    box.appendChild(closeBtn);
+    const footer = document.createElement('p');
+    footer.style.cssText = 'margin:14px 0 0;font-size:11px;color:rgba(255,255,255,.4);text-align:center';
+    footer.textContent = opts.footer || 'You can view this key again from Account Settings (with email verification).';
+    box.appendChild(footer);
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+  });
+}
+
+function showViewAccountKeyModal() {
+  const old = document.getElementById('jq-view-key-modal');
+  if (old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'jq-view-key-modal';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:24px;backdrop-filter:blur(6px)';
+  const box = document.createElement('div');
+  box.style.cssText = 'position:relative;background:#1a1028;border:1px solid rgba(136,65,214,.4);border-radius:16px;padding:24px;max-width:480px;width:100%;color:#e0e0e8;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6);max-height:90vh;overflow-y:auto';
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+  const closeXBtn = document.createElement('button');
+  closeXBtn.textContent = '\u00D7';
+  closeXBtn.style.cssText = 'position:absolute;top:6px;right:10px;background:transparent;border:0;color:rgba(255,255,255,.5);font-size:24px;cursor:pointer';
+  closeXBtn.onclick = () => ov.remove();
+  box.appendChild(closeXBtn);
+
+  const title = document.createElement('h2');
+  title.textContent = 'View account key';
+  title.style.cssText = 'margin:0 0 12px;font-size:19px;font-weight:700;color:#a78bfa';
+  box.appendChild(title);
+  const desc = document.createElement('p');
+  desc.style.cssText = 'margin:0 0 12px;font-size:13px;line-height:1.5;color:rgba(255,255,255,.75)';
+  desc.textContent = 'For your safety, we will email a 6-digit code to the address on file. Enter it to reveal your account key.';
+  box.appendChild(desc);
+  const err = document.createElement('div');
+  err.style.cssText = 'color:#ff7a7a;font-size:13px;min-height:18px;margin-bottom:8px';
+  box.appendChild(err);
+  const sendBtn = document.createElement('button');
+  sendBtn.textContent = 'Send code to my email';
+  sendBtn.style.cssText = 'width:100%;padding:11px;background:linear-gradient(135deg,#8841d6,#6d28d9);border:0;color:#fff;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:8px';
+  box.appendChild(sendBtn);
+
+  let codeIn, viewBtn;
+  sendBtn.onclick = async () => {
+    err.textContent = '';
+    sendBtn.disabled = true; sendBtn.textContent = 'Sending\u2026';
+    try {
+      const r = await fetch('/api/auth/account-key/request-view', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const d = await r.json();
+      if (!r.ok) {
+        err.textContent = d.error || 'Failed to send code.';
+        sendBtn.disabled = false; sendBtn.textContent = 'Send code to my email';
+        return;
+      }
+      sendBtn.style.display = 'none';
+      if (codeIn) return;
+      codeIn = document.createElement('input');
+      codeIn.type = 'text'; codeIn.inputMode = 'numeric'; codeIn.maxLength = 6; codeIn.placeholder = '000000';
+      codeIn.style.cssText = 'width:100%;padding:10px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:10px;font-size:18px;letter-spacing:.4em;text-align:center;font-weight:700;outline:none;box-sizing:border-box;margin-bottom:10px';
+      box.insertBefore(codeIn, sendBtn);
+      const sub = document.createElement('p');
+      sub.textContent = 'Code sent. Check your inbox (expires in 2 minutes).';
+      sub.style.cssText = 'font-size:12px;color:rgba(255,255,255,.6);margin:-4px 0 8px';
+      box.insertBefore(sub, codeIn);
+      viewBtn = document.createElement('button');
+      viewBtn.textContent = 'Reveal my account key';
+      viewBtn.style.cssText = sendBtn.style.cssText;
+      viewBtn.style.display = '';
+      box.insertBefore(viewBtn, sendBtn);
+      viewBtn.onclick = async () => {
+        err.textContent = '';
+        const code = (codeIn.value || '').trim();
+        if (!/^\d{6}$/.test(code)) { err.textContent = 'Enter the 6-digit code.'; return; }
+        viewBtn.disabled = true; viewBtn.textContent = 'Verifying\u2026';
+        try {
+          const r2 = await fetch('/api/auth/account-key/view', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
+          const d2 = await r2.json();
+          if (!r2.ok) { err.textContent = d2.error || 'Failed.'; viewBtn.disabled = false; viewBtn.textContent = 'Reveal my account key'; return; }
+          ov.remove();
+          showAccountKeyModal(d2.account_key, { title: 'Your account key', footer: 'You can request to view this key again from Account Settings.' });
+        } catch (e) {
+          err.textContent = 'Network error.'; viewBtn.disabled = false; viewBtn.textContent = 'Reveal my account key';
+        }
+      };
+    } catch (e) {
+      err.textContent = 'Network error.';
+      sendBtn.disabled = false; sendBtn.textContent = 'Send code to my email';
+    }
+  };
+}
+
 function _startResendTimer(resendBtn, timerSpan) {
   let sec = 60;
   resendBtn.disabled = true;
@@ -3755,8 +4248,13 @@ async function _sendVerifyCode(email, errEl) {
 function bindAuth(isSignup) {
   const isRegister = !!isSignup;
   document.querySelectorAll('.auth-box .auth-switch-link').forEach(link => {
+    if (link.id === 'auth-recover-link') return;
     link.addEventListener('click', (e) => { e.preventDefault(); navigateTo(link.getAttribute('href')); });
   });
+  const recoverLink = document.getElementById('auth-recover-link');
+  if (recoverLink) {
+    recoverLink.addEventListener('click', (e) => { e.preventDefault(); showRecoveryModal(); });
+  }
   const form = document.getElementById('auth-form');
   if (!form) return;
   let recaptchaWidgetId = null;
@@ -3868,7 +4366,10 @@ function bindAuth(isSignup) {
             await loadFriends();
             await loadBlocks();
             setTimeout(() => connectSocket(), 200);
-          navigateTo(getRedirectOrDefault());
+            if (data.account_key) {
+              await showAccountKeyModal(data.account_key);
+            }
+            navigateTo(getRedirectOrDefault());
         } catch (e) {
           state.user = null;
           state.authError = e.message || 'Session could not be established. Please try again.';
@@ -8088,6 +8589,11 @@ function renderSettingsContent() {
       ${tab === 'account' ? `
       <div class="settings-account">
         <div class="settings-account-block">
+          <h3 class="settings-section-title">Account recovery key</h3>
+          <p class="settings-account-desc">A living proof that this account is yours. Required to recover access if your password is changed by an attacker. We will email a one-time code to confirm before showing it.</p>
+          <button type="button" id="view-account-key-btn" class="btn-secondary"><span class="icon" aria-hidden="true">${ICON_KEY_SM}</span>View account key</button>
+        </div>
+        <div class="settings-account-block">
           <h3 class="settings-section-title">${t('password')}</h3>
           <p class="settings-account-desc">${t('changePasswordDesc')}</p>
           <button type="button" id="open-password-modal" class="btn-secondary"><span class="icon" aria-hidden="true">${ICON_KEY_SM}</span>${t('changePassword')}</button>
@@ -9114,6 +9620,7 @@ function bindSettings() {
   });
   document.getElementById('notif-dnd-enter-city')?.addEventListener('click', showDndCityModal);
   document.getElementById('open-password-modal')?.addEventListener('click', showPasswordModal);
+  document.getElementById('view-account-key-btn')?.addEventListener('click', showViewAccountKeyModal);
   document.getElementById('sign-out-btn')?.addEventListener('click', async () => {
     await apiPost('/api/auth/logout');
     state.user = null;
