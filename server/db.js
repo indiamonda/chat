@@ -390,6 +390,28 @@ try {
   console.error('[db migrate] banned_emails migration failed:', err?.message || err);
 }
 
+// Password reset tokens. One token = one reset attempt. Tokens are invalidated
+// either by use, by expiry, or by superseded request (only the most recent
+// outstanding token for a user remains valid).
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      email TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER,
+      ip TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_password_reset_expires ON password_reset_tokens(expires_at);
+  `);
+} catch (err) {
+  console.error('[db migrate] password_reset_tokens migration failed:', err?.message || err);
+}
+
 /** Check whether a given email is on the permanent ban list. */
 export function isEmailBanned(email) {
   if (!email) return false;

