@@ -59,6 +59,11 @@ let state = {
   _chatSidePanelTab: 'users',
   _chatSearchQuery: '',
   _chatSearchFilter: '',
+  _chatSearchFromUser: '',
+  _chatSearchDateRange: 'any',
+  _chatSearchAfter: '',
+  _chatSearchBefore: '',
+  _chatSearchAttachmentType: '',
   _chatSearchResults: [],
   _chatSearchLoading: false,
   _pinnedMessage: {},
@@ -5661,8 +5666,14 @@ function bindMain() {
     const roomTypeNow = state.dmUserId ? 'dm' : 'group';
     const roomIdNow = state.dmUserId ? state.convId : state.panel;
     state._chatSearchQuery = document.getElementById('chat-search-query')?.value || '';
-    state._chatSearchFilter = document.getElementById('chat-search-filter')?.value || '';
+    state._chatSearchFromUser = document.getElementById('chat-search-from')?.value || '';
+    state._chatSearchDateRange = document.getElementById('chat-search-daterange')?.value || 'any';
     state._chatSearchAttachmentType = document.getElementById('chat-search-attachment')?.value || '';
+    if (state._chatSearchDateRange === 'custom') {
+      state._chatSearchAfter = document.getElementById('chat-search-after')?.value || '';
+      state._chatSearchBefore = document.getElementById('chat-search-before')?.value || '';
+    }
+    state._chatSearchFilter = buildChatSearchFilterString();
     state._chatSearchLoading = true;
     render();
     try {
@@ -5690,8 +5701,36 @@ function bindMain() {
       runSearch();
     }
   });
-  document.getElementById('chat-search-attachment')?.addEventListener('change', () => {
-    runSearch();
+  document.getElementById('chat-search-from')?.addEventListener('change', () => runSearch());
+  document.getElementById('chat-search-attachment')?.addEventListener('change', () => runSearch());
+  document.getElementById('chat-search-daterange')?.addEventListener('change', (e) => {
+    state._chatSearchDateRange = e.target.value || 'any';
+    if (state._chatSearchDateRange !== 'custom') {
+      state._chatSearchAfter = '';
+      state._chatSearchBefore = '';
+      runSearch();
+    } else {
+      render();
+      requestAnimationFrame(() => document.getElementById('chat-search-after')?.focus());
+    }
+  });
+  const customChange = () => {
+    state._chatSearchAfter = document.getElementById('chat-search-after')?.value || '';
+    state._chatSearchBefore = document.getElementById('chat-search-before')?.value || '';
+    if (state._chatSearchAfter || state._chatSearchBefore) runSearch();
+  };
+  document.getElementById('chat-search-after')?.addEventListener('change', customChange);
+  document.getElementById('chat-search-before')?.addEventListener('change', customChange);
+  document.querySelector('.chat-search-reset')?.addEventListener('click', () => {
+    state._chatSearchQuery = '';
+    state._chatSearchFromUser = '';
+    state._chatSearchDateRange = 'any';
+    state._chatSearchAfter = '';
+    state._chatSearchBefore = '';
+    state._chatSearchAttachmentType = '';
+    state._chatSearchFilter = '';
+    state._chatSearchResults = [];
+    render();
   });
   document.querySelector('.chat-search-results')?.addEventListener('click', async (e) => {
     const result = e.target.closest('.chat-search-result[data-msg-id]');
@@ -7587,17 +7626,63 @@ function renderChatSearchView(roomType, roomId) {
     ['file', tx('searchAttachFile', 'Files')],
     ['gif', tx('searchAttachGif', 'GIFs')],
   ];
+  const dateRanges = [
+    ['any', tx('searchDateAny', 'Any time')],
+    ['today', tx('searchDateToday', 'Today')],
+    ['week', tx('searchDateWeek', 'Last 7 days')],
+    ['month30', tx('searchDateMonth30', 'Last 30 days')],
+    ['thismonth', tx('searchDateThisMonth', 'This month')],
+    ['thisyear', tx('searchDateThisYear', 'This year')],
+    ['custom', tx('searchDateCustom', 'Custom…')],
+  ];
+  const selectedRange = state._chatSearchDateRange || 'any';
+  const fromUserId = state._chatSearchFromUser || '';
+  const senderUsers = getChatSearchSenderOptions(roomType, roomId);
   return `
     <div class="chat-search-view" data-room-type="${roomType}" data-room-id="${roomId}">
       <div class="chat-search-top">
         <div class="chat-search-fields">
-          <input type="search" id="chat-search-query" placeholder="${tx('searchMessages', 'Search messages')}" value="${escapeHtml(state._chatSearchQuery || '')}" />
-          <input type="text" id="chat-search-filter" placeholder="${tx('searchFilterHint', 'e.g. 2026/5, 2025/01/01~2025/02/01, from:@jimmyqrg')}" value="${escapeHtml(state._chatSearchFilter || '')}" />
-          <select id="chat-search-attachment" class="chat-search-attachment">
-            ${types.map(([val, label]) => `<option value="${val}" ${val === attachmentType ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
-          </select>
+          <div class="chat-search-row">
+            <input type="search" id="chat-search-query" placeholder="${tx('searchMessages', 'Search messages')}" value="${escapeHtml(state._chatSearchQuery || '')}" />
+            <button type="button" class="chat-search-run icon-btn" title="${tx('search', 'Search')}"><span class="icon" aria-hidden="true">${ICON_SEARCH_SM}</span></button>
+          </div>
+          <div class="chat-search-filters">
+            <label class="chat-search-field">
+              <span class="chat-search-label">${tx('searchFromLabel', 'From')}</span>
+              <select id="chat-search-from" class="chat-search-select">
+                <option value="" ${fromUserId === '' ? 'selected' : ''}>${tx('searchFromAnyone', 'Anyone')}</option>
+                ${senderUsers.map((u) => `<option value="${escapeHtml(u.id)}" ${fromUserId === u.id ? 'selected' : ''}>${escapeHtml(u.display_name || u.username || u.id)}${u.username ? ` (@${escapeHtml(u.username)})` : ''}</option>`).join('')}
+              </select>
+            </label>
+            <label class="chat-search-field">
+              <span class="chat-search-label">${tx('searchWhenLabel', 'When')}</span>
+              <select id="chat-search-daterange" class="chat-search-select">
+                ${dateRanges.map(([val, label]) => `<option value="${val}" ${val === selectedRange ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+              </select>
+            </label>
+            <label class="chat-search-field">
+              <span class="chat-search-label">${tx('searchAttachLabel', 'Attachment')}</span>
+              <select id="chat-search-attachment" class="chat-search-select">
+                ${types.map(([val, label]) => `<option value="${val}" ${val === attachmentType ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+              </select>
+            </label>
+          </div>
+          ${selectedRange === 'custom' ? `
+          <div class="chat-search-filters chat-search-custom-dates">
+            <label class="chat-search-field">
+              <span class="chat-search-label">${tx('searchDateAfter', 'After')}</span>
+              <input type="date" id="chat-search-after" value="${escapeHtml(state._chatSearchAfter || '')}" />
+            </label>
+            <label class="chat-search-field">
+              <span class="chat-search-label">${tx('searchDateBefore', 'Before')}</span>
+              <input type="date" id="chat-search-before" value="${escapeHtml(state._chatSearchBefore || '')}" />
+            </label>
+          </div>
+          ` : ''}
+          <div class="chat-search-actions">
+            <button type="button" class="chat-search-reset btn-secondary btn-small" title="${tx('searchReset', 'Reset')}">${tx('searchReset', 'Reset')}</button>
+          </div>
         </div>
-        <button type="button" class="chat-search-run icon-btn" title="${tx('search', 'Search')}"><span class="icon" aria-hidden="true">${ICON_SEARCH_SM}</span></button>
       </div>
       <div class="chat-search-results">
         ${loading ? `<div class="chat-search-empty">${t('loading')}</div>` : ''}
@@ -7614,6 +7699,59 @@ function renderChatSearchView(roomType, roomId) {
       </div>
     </div>
   `;
+}
+
+/** Build the list of users that can be selected for the "From" filter in chat search. */
+function getChatSearchSenderOptions(roomType, roomId) {
+  const all = state.users || [];
+  if (roomType === 'dm') {
+    const otherId = state.convIdToUserId?.[roomId] || state.dmUserId;
+    const ids = new Set([state.user?.id, otherId].filter(Boolean));
+    return all.filter((u) => ids.has(u.id));
+  }
+  return all.filter((u) => !u.deleted_at);
+}
+
+/** Translate structured chat-search UI fields into the backend filter string. */
+function buildChatSearchFilterString() {
+  const parts = [];
+  const fromId = state._chatSearchFromUser || '';
+  if (fromId) {
+    const u = (state.users || []).find((x) => x.id === fromId);
+    const uname = u?.username || fromId;
+    parts.push(`from:@${uname}`);
+  }
+  const range = state._chatSearchDateRange || 'any';
+  const fmt = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}/${m}/${day}`;
+  };
+  const now = new Date();
+  if (range === 'today') {
+    const day = fmt(now);
+    parts.push(`${day}~${day}`);
+  } else if (range === 'week') {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 7);
+    parts.push(`${fmt(start)}~${fmt(now)}`);
+  } else if (range === 'month30') {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 30);
+    parts.push(`${fmt(start)}~${fmt(now)}`);
+  } else if (range === 'thismonth') {
+    parts.push(`in ${now.getFullYear()}/${now.getMonth() + 1}`);
+  } else if (range === 'thisyear') {
+    parts.push(`in ${now.getFullYear()}`);
+  } else if (range === 'custom') {
+    const after = (state._chatSearchAfter || '').replace(/-/g, '/');
+    const before = (state._chatSearchBefore || '').replace(/-/g, '/');
+    if (after && before) parts.push(`${after}~${before}`);
+    else if (after) parts.push(`after ${after}`);
+    else if (before) parts.push(`before ${before}`);
+  }
+  return parts.join(' ').trim();
 }
 
 function applyRoute(route) {
