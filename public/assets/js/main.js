@@ -5419,13 +5419,41 @@ function bindMain() {
       const userId = a.dataset.userId;
       const friend = a.dataset.friend === '1';
       const pending = isFriendRequestPending(userId);
-      const items = [
-        { label: t('profile'), action: 'profile' },
-        { label: t('chat'), action: 'chat' },
-      ];
-      if (!friend) items.push({ label: pending ? t('requestPending') : t('sendFriendRequest'), action: 'friend-request', disabled: pending });
-      items.push({ label: t('block'), action: 'block', danger: true });
+      const isSelf = userId === state.user?.id;
+      const canQuickTimeout = !!state.user?.can_timeout && userId && userId !== 'jimmyqrg' && !isSelf;
+
+      const items = [];
+      // ── Group 1: navigation
+      items.push({ label: t('profile'), action: 'profile' });
+      items.push({ label: t('chat'), action: 'chat' });
+
+      // ── Group 2: relationship (friend / block)
+      if (!isSelf) {
+        items.push({ separator: true });
+        if (!friend) items.push({ label: pending ? t('requestPending') : t('sendFriendRequest'), action: 'friend-request', disabled: pending });
+        items.push({ label: t('block'), action: 'block', danger: true });
+      }
+
+      // ── Group 3: timeout shortcuts (admin only)
+      if (canQuickTimeout) {
+        items.push({ separator: true });
+        items.push({ label: tx('timeout10m', 'Timeout 10 min') + ' (group)', action: 'timeout:10 minute:group' });
+        items.push({ label: tx('timeout30m', 'Timeout 30 min') + ' (group)', action: 'timeout:30 minute:group' });
+        items.push({ label: tx('timeout1h', 'Timeout 1 h') + ' (group)', action: 'timeout:1 hour:group' });
+        items.push({ label: tx('timeoutForever', 'Timeout forever') + ' (group)', action: 'timeout:forever:group', danger: true });
+        items.push({ separator: true });
+        items.push({ label: tx('timeout10m', 'Timeout 10 min') + ' (DM)', action: 'timeout:10 minute:dm' });
+        items.push({ label: tx('timeout30m', 'Timeout 30 min') + ' (DM)', action: 'timeout:30 minute:dm' });
+        items.push({ label: tx('timeout1h', 'Timeout 1 h') + ' (DM)', action: 'timeout:1 hour:dm' });
+        items.push({ label: tx('timeoutForever', 'Timeout forever') + ' (DM)', action: 'timeout:forever:dm', danger: true });
+      }
+
       showContextMenu(e.clientX, e.clientY, items, async (action) => {
+        if (typeof action === 'string' && action.startsWith('timeout:')) {
+          const [, duration, scope] = action.split(':');
+          quickTimeoutUser(userId, duration, scope || 'group');
+          return;
+        }
         if (action === 'profile') navigateTo(`/chat/${encodeURIComponent(userId)}?view=profile`);
         else if (action === 'chat') navigateTo(`/chat/${encodeURIComponent(userId)}`);
         else if (action === 'friend-request') {
@@ -5598,25 +5626,61 @@ function bindMain() {
       }
 
       const items = [];
+
+      // ── Group 1: basic message actions (copy / reply / file id)
+      items.push({ label: t('copy'), action: 'copy' });
+      items.push({ label: t('reply'), action: 'reply' });
+      const fileRef = parseFileRef(msg.content, msg.msg_type);
+      if (fileRef) items.push({ label: t('getFileId'), action: 'get-file-id' });
+      items.push({ label: tx('addToCollection', 'Add to collection'), action: 'add-to-collection' });
+
+      // ── Group 2: own-message edit / recall / delete
       if (canRecallEditOwn || canRecallEditOther) {
+        items.push({ separator: true });
         items.push({ label: t('recall'), action: 'recall' });
         items.push({ label: t('edit'), action: 'edit' });
       }
-      if (isOwn) items.push({ label: t('delete'), action: 'delete', danger: true });
-      items.push({ label: tx('addToCollection', 'Add to collection'), action: 'add-to-collection' });
-      if (state.user?.can_delete_messages && !isOwn && senderId !== 'jimmyqrg') items.push({ label: t('adminDeleteAdmin'), action: 'delete', danger: true });
-      if (state.user?.can_kick && senderId !== 'jimmyqrg') items.push({ label: t('adminRemoveAccount'), action: 'remove-account' });
+      if (isOwn) {
+        if (!(canRecallEditOwn || canRecallEditOther)) items.push({ separator: true });
+        items.push({ label: t('delete'), action: 'delete', danger: true });
+      }
+
+      // ── Group 3: moderation (pin, solve, admin delete)
+      const moderationItems = [];
       if (state.user?.can_pin_messages && roomType === 'group') {
         const isPinned = state._pinnedMessage?.[roomKey(roomType, roomId)]?.message_id === msgId;
-        items.push({ label: isPinned ? tx('unpinMessage', 'Unpin message') : tx('pinMessage', 'Pin message'), action: isPinned ? 'unpin' : 'pin' });
+        moderationItems.push({ label: isPinned ? tx('unpinMessage', 'Unpin message') : tx('pinMessage', 'Pin message'), action: isPinned ? 'unpin' : 'pin' });
       }
-      if (canSolve) items.push({ label: t('solve'), action: 'solve' });
-      const fileRef = parseFileRef(msg.content, msg.msg_type);
-      if (fileRef) items.push({ label: t('getFileId'), action: 'get-file-id' });
-      items.push({ label: t('copy'), action: 'copy' });
-      items.push({ label: t('reply'), action: 'reply' });
+      if (canSolve) moderationItems.push({ label: t('solve'), action: 'solve' });
+      if (state.user?.can_delete_messages && !isOwn && senderId !== 'jimmyqrg') {
+        moderationItems.push({ label: t('adminDeleteAdmin'), action: 'delete', danger: true });
+      }
+      if (moderationItems.length) {
+        items.push({ separator: true });
+        items.push(...moderationItems);
+      }
+
+      // ── Group 4: timeout shortcuts (admin only, non-own, not jimmyqrg)
+      const canQuickTimeout = !!state.user?.can_timeout && !isOwn && senderId && senderId !== 'jimmyqrg';
+      if (canQuickTimeout) {
+        const timeoutScope = roomType === 'dm' ? 'dm' : 'group';
+        items.push({ separator: true });
+        items.push({ label: tx('timeout10m', 'Timeout 10 min'), action: `timeout:10 minute:${timeoutScope}` });
+        items.push({ label: tx('timeout30m', 'Timeout 30 min'), action: `timeout:30 minute:${timeoutScope}` });
+        items.push({ label: tx('timeout1h', 'Timeout 1 h'), action: `timeout:1 hour:${timeoutScope}` });
+        items.push({ label: tx('timeoutForever', 'Timeout forever'), action: `timeout:forever:${timeoutScope}`, danger: true });
+      }
+
+      // ── Group 5: account-level admin actions
+      if (state.user?.can_kick && senderId !== 'jimmyqrg' && !isOwn) {
+        items.push({ separator: true });
+        items.push({ label: t('adminRemoveAccount'), action: 'remove-account', danger: true });
+      }
+
+      // ── Group 6: report (always last)
       if (!isOwn && senderId !== 'jimmyqrg') {
-        items.push({ label: tx('reportMessage', 'Report message'), action: 'report' });
+        items.push({ separator: true });
+        items.push({ label: tx('reportMessage', 'Report message'), action: 'report', danger: true });
       }
 
       showContextMenu(e.clientX, e.clientY, items, (action) => {
@@ -5650,6 +5714,11 @@ function bindMain() {
         }
         if (action === 'unpin') {
           apiDelete(`/api/admin/pin/${roomType}/${roomId}`).catch((err) => showToast(err.message || 'Failed to unpin'));
+        }
+        if (typeof action === 'string' && action.startsWith('timeout:')) {
+          const [, duration, scope] = action.split(':');
+          quickTimeoutUser(senderId, duration, scope || 'group');
+          return;
         }
         if (action === 'remove-account') removeAccount(senderId);
         if (action === 'solve') {
@@ -6427,7 +6496,30 @@ function showContextMenu(x, y, items, onSelect) {
   menu.style.visibility = 'hidden';
   menu.style.left = x + 'px';
   menu.style.top = y + 'px';
-  items.forEach(({ label, action, danger, disabled }) => {
+  // Collapse duplicate/leading/trailing separators so the menu never renders
+  // two dividers in a row when groups are conditionally hidden.
+  const normalizedItems = [];
+  items.forEach((item) => {
+    if (!item) return;
+    if (item.separator) {
+      const prev = normalizedItems[normalizedItems.length - 1];
+      if (normalizedItems.length === 0 || (prev && prev.separator)) return;
+      normalizedItems.push(item);
+      return;
+    }
+    normalizedItems.push(item);
+  });
+  while (normalizedItems.length && normalizedItems[normalizedItems.length - 1].separator) {
+    normalizedItems.pop();
+  }
+  normalizedItems.forEach((item) => {
+    if (item.separator) {
+      const hr = document.createElement('hr');
+      hr.className = 'context-menu-separator';
+      menu.appendChild(hr);
+      return;
+    }
+    const { label, action, danger, disabled } = item;
     const btn = document.createElement('button');
     btn.textContent = label;
     if (danger) btn.classList.add('danger');
@@ -6436,7 +6528,7 @@ function showContextMenu(x, y, items, onSelect) {
       btn.style.opacity = '0.6';
       btn.style.cursor = 'not-allowed';
     } else {
-    btn.addEventListener('click', () => { onSelect(action); menu.remove(); });
+      btn.addEventListener('click', () => { onSelect(action); menu.remove(); });
     }
     menu.appendChild(btn);
   });
@@ -6466,6 +6558,30 @@ async function removeAccount(userId) {
     render();
     bindAdmin();
   } catch (err) { showToast(err.message); }
+}
+
+/** Quick-timeout shortcut used by the right-click context menus. Sends the
+ *  duration in the same format the admin UI already uses. `scope` defaults
+ *  to 'group' for group-chat contexts; pass 'dm' for DM contexts. */
+async function quickTimeoutUser(userId, duration, scope = 'group') {
+  if (!userId) return;
+  if (userId === 'jimmyqrg') {
+    showToast(tx('cannotTimeoutJimmy', 'jimmyqrg cannot be timed out'));
+    return;
+  }
+  try {
+    await apiPost('/api/admin/timeout', { user_id: userId, duration, scope });
+    const scopeLabel = scope === 'dm'
+      ? tx('adminTimeoutScopeDmBadge', 'Private messages')
+      : tx('adminTimeoutScopeGroupBadge', 'Group chat');
+    const durationLabel = duration === 'forever'
+      ? tx('adminTimeoutForever', 'Forever')
+      : duration;
+    showToast(tx('timeoutAppliedToast', 'Timeout applied: {duration} ({scope})')
+      .replace('{duration}', durationLabel)
+      .replace('{scope}', scopeLabel), 'success');
+    loadAdminTimeouts?.();
+  } catch (err) { showToast(err?.message || 'Failed to apply timeout'); }
 }
 
 async function restoreAccount(userId) {

@@ -4015,6 +4015,13 @@ input[type="checkbox"]:checked::after {
   color: #f87171;
 }
 
+.context-menu hr.context-menu-separator {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.25rem 0;
+  opacity: 0.7;
+}
+
 /* Modal */
 /* Voice recording overlay */
 .recording-overlay {
