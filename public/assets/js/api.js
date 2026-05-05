@@ -19,6 +19,12 @@ export async function api(path, options = {}) {
   if (!res.ok) {
     const err = new Error(data?.error || res.statusText);
     err.status = res.status;
+    // Attach the full server payload so callers can read structured fields
+    // (e.g. AI moderation reason/category, validation details) without
+    // needing a second roundtrip or string-matching the message.
+    err.data = data || null;
+    if (data?.error) err.code = data.error;
+    if (data?.reason) err.reason = data.reason;
     throw err;
   }
   return data;
@@ -56,7 +62,14 @@ export async function uploadFile(path, file, extra = {}) {
     body: form,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) {
+    const err = new Error(data?.error || res.statusText);
+    err.status = res.status;
+    err.data = data || null;
+    if (data?.error) err.code = data.error;
+    if (data?.reason) err.reason = data.reason;
+    throw err;
+  }
   return data;
 }
 
