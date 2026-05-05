@@ -1890,6 +1890,8 @@ function parseRoute() {
   const path = getPath();
   if (path === '/login') return { page: 'login', redirect };
   if (path === '/signup') return { page: 'signup', redirect };
+  if (path === '/forgot-password') return { page: 'forgot-password', redirect };
+  if (path === '/reset-password') return { page: 'reset-password', token: params.get('token') || '' };
   if (path === '/settings') return { page: 'settings', tab: params.get('tab') || 'profile' };
   if (path === '/inbox') return { page: 'inbox' };
   if (path === '/collections') return { page: 'collections' };
@@ -3309,6 +3311,20 @@ function render() {
   if (!state.user) {
     document.documentElement.removeAttribute('data-theme');
     document.body.classList.add('auth-page');
+    if (route.page === 'forgot-password') {
+      app.innerHTML = renderForgotPassword(state.authError || '');
+      state.authError = null;
+      bindForgotPassword();
+      state.authPrevSignup = null;
+      return;
+    }
+    if (route.page === 'reset-password') {
+      app.innerHTML = renderResetPassword(route.token || '', state.authError || '');
+      state.authError = null;
+      bindResetPassword(route.token || '');
+      state.authPrevSignup = null;
+      return;
+    }
     const isSignup = route.page === 'signup';
     const redirect = route.redirect || null;
     const authError = state.authError || '';
@@ -3348,6 +3364,9 @@ function renderAuth(isSignup = false, initialError = '', redirect = null) {
             <input class="auth-ani-11" name="login_identifier" type="text" autocomplete="username" placeholder="${t('usernameOrEmail')}" />
             <label class="auth-ani-12">${t('password')}</label>
             <input class="auth-ani-13" name="login_password" type="password" autocomplete="current-password" />
+            <p class="auth-forgot-link">
+              <a href="/forgot-password" class="auth-switch-link">${tx('forgotPasswordLink', 'Forgot password?')}</a>
+            </p>
         </div>
           <div id="auth-fields-register" class="auth-ani-14" style="display:${isSignup ? 'block' : 'none'}">
             <label class="auth-ani-15">${t('displayName')}</label>
@@ -3371,6 +3390,180 @@ function renderAuth(isSignup = false, initialError = '', redirect = null) {
       </div>
     </div>
   `;
+}
+
+function renderForgotPassword(initialError = '') {
+  return `
+    <div class="auth-screen auth-ani-1">
+      <div class="auth-box auth-ani-2">
+        <h1 class="auth-ani-3">${tx('forgotPasswordTitle', 'Forgot password')}</h1>
+        <p class="auth-subtitle auth-ani-4">${tx('forgotPasswordIntro', 'Enter your username or the email on your account. We\u2019ll send you a link to choose a new password.')}</p>
+        <form id="forgot-form" class="auth-ani-7" novalidate>
+          <div id="auth-error" class="error auth-ani-8">${initialError ? escapeHtml(initialError) : ''}</div>
+          <div id="auth-success" class="auth-success" style="display:none"></div>
+          <label class="auth-ani-10">${t('usernameOrEmail')}</label>
+          <input class="auth-ani-11" name="forgot_identifier" type="text" autocomplete="username" placeholder="${t('usernameOrEmail')}" />
+          <div id="forgot-recaptcha-wrap" class="auth-recaptcha-wrap" aria-live="polite"></div>
+          <button type="submit" id="forgot-submit" class="auth-ani-25">${tx('sendResetLink', 'Send reset link')}</button>
+          <p class="auth-switch auth-ani-26">
+            <a href="/login" class="auth-switch-link">${tx('backToLogin', 'Back to login')}</a>
+          </p>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+function bindForgotPassword() {
+  const form = document.getElementById('forgot-form');
+  if (!form) return;
+  const errEl = form.querySelector('#auth-error');
+  const successEl = form.querySelector('#auth-success');
+  let recaptchaWidgetId = null;
+  loadConfig().then((config) => {
+    const wrap = document.getElementById('forgot-recaptcha-wrap');
+    if (wrap && config?.recaptchaSiteKey) {
+      loadRecaptchaAndRender(config.recaptchaSiteKey, wrap).then((id) => { recaptchaWidgetId = id; }).catch(() => {});
+    }
+  });
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (errEl) errEl.textContent = '';
+    if (successEl) successEl.style.display = 'none';
+    const identifier = (form.forgot_identifier?.value || '').trim();
+    if (!identifier) { errEl.textContent = tx('usernameOrEmailRequired', 'Username or email is required'); return; }
+    let recaptchaToken = null;
+    if (state.recaptchaSiteKey && window.grecaptcha) {
+      try {
+        recaptchaToken = recaptchaWidgetId != null ? window.grecaptcha.getResponse(recaptchaWidgetId) : window.grecaptcha.getResponse();
+      } catch { recaptchaToken = ''; }
+      if (!recaptchaToken) { errEl.textContent = 'Please complete the reCAPTCHA check.'; return; }
+    }
+    try {
+      const body = { identifier };
+      if (recaptchaToken != null) body.recaptcha_token = recaptchaToken;
+      await apiPost('/api/auth/forgot-password', body);
+      if (successEl) {
+        successEl.style.display = '';
+        successEl.textContent = tx('forgotPasswordSent', 'If an account matches that, we just sent a reset link to its email. Check your inbox (and spam folder).');
+      }
+      const submitBtn = form.querySelector('#forgot-submit');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = tx('forgotPasswordSentBtn', 'Reset link sent');
+      }
+    } catch (err) {
+      errEl.textContent = err?.message || 'Failed to send reset link';
+      if (state.recaptchaSiteKey && window.grecaptcha && recaptchaWidgetId != null) {
+        try { window.grecaptcha.reset(recaptchaWidgetId); } catch (_) {}
+      }
+    }
+  };
+}
+
+function renderResetPassword(token, initialError = '') {
+  if (!token) {
+    return `
+      <div class="auth-screen auth-ani-1">
+        <div class="auth-box auth-ani-2">
+          <h1 class="auth-ani-3">${tx('resetPasswordTitle', 'Reset password')}</h1>
+          <p class="error">${tx('resetPasswordMissingToken', 'This reset link is missing its token. Please request a new one.')}</p>
+          <p class="auth-switch">
+            <a href="/forgot-password" class="auth-switch-link">${tx('requestNewResetLink', 'Request a new link')}</a>
+          </p>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="auth-screen auth-ani-1">
+      <div class="auth-box auth-ani-2">
+        <h1 class="auth-ani-3">${tx('resetPasswordTitle', 'Reset password')}</h1>
+        <p id="reset-info" class="auth-subtitle auth-ani-4" data-loading="1">${tx('resetPasswordChecking', 'Checking your link\u2026')}</p>
+        <form id="reset-form" class="auth-ani-7" novalidate style="display:none">
+          <div id="auth-error" class="error auth-ani-8">${initialError ? escapeHtml(initialError) : ''}</div>
+          <label class="auth-ani-12">${tx('newPassword', 'New password')}</label>
+          <input class="auth-ani-13" name="reset_password" type="password" autocomplete="new-password" />
+          <label class="auth-ani-12">${t('confirmPassword')}</label>
+          <input class="auth-ani-13" name="reset_password_confirm" type="password" autocomplete="new-password" />
+          <div id="reset-recaptcha-wrap" class="auth-recaptcha-wrap" aria-live="polite"></div>
+          <button type="submit" id="reset-submit" class="auth-ani-25">${tx('saveNewPassword', 'Save new password')}</button>
+          <p class="auth-switch auth-ani-26">
+            <a href="/login" class="auth-switch-link">${tx('backToLogin', 'Back to login')}</a>
+          </p>
+        </form>
+        <div id="reset-bad" class="auth-error-block" style="display:none">
+          <p class="error" id="reset-bad-msg"></p>
+          <p class="auth-switch">
+            <a href="/forgot-password" class="auth-switch-link">${tx('requestNewResetLink', 'Request a new link')}</a>
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function bindResetPassword(token) {
+  if (!token) return;
+  const form = document.getElementById('reset-form');
+  const info = document.getElementById('reset-info');
+  const bad = document.getElementById('reset-bad');
+  const badMsg = document.getElementById('reset-bad-msg');
+
+  const showError = (msg) => {
+    if (info) info.style.display = 'none';
+    if (form) form.style.display = 'none';
+    if (bad) bad.style.display = '';
+    if (badMsg) badMsg.textContent = msg;
+  };
+
+  apiGet(`/api/auth/reset-password/${encodeURIComponent(token)}`).then((data) => {
+    if (info) {
+      const name = data.display_name || data.username || '';
+      info.textContent = name
+        ? tx('resetPasswordFor', 'Resetting password for {name}').replace('{name}', name)
+        : tx('resetPasswordReady', 'Choose a new password.');
+      info.removeAttribute('data-loading');
+    }
+    if (form) form.style.display = '';
+    loadConfig().then((config) => {
+      const wrap = document.getElementById('reset-recaptcha-wrap');
+      if (wrap && config?.recaptchaSiteKey) {
+        loadRecaptchaAndRender(config.recaptchaSiteKey, wrap).then((id) => { wrap._widgetId = id; }).catch(() => {});
+      }
+    });
+  }).catch((err) => {
+    showError(err?.message || tx('resetPasswordInvalidLink', 'This reset link is invalid or has expired.'));
+  });
+
+  if (form) {
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const errEl = form.querySelector('#auth-error');
+      if (errEl) errEl.textContent = '';
+      const pw = form.reset_password?.value || '';
+      const pw2 = form.reset_password_confirm?.value || '';
+      if (!pw || pw.length < 6) { errEl.textContent = tx('passwordTooShort', 'Password must be at least 6 characters'); return; }
+      if (pw !== pw2) { errEl.textContent = t('passwordsDoNotMatch'); return; }
+      let recaptchaToken = null;
+      if (state.recaptchaSiteKey && window.grecaptcha) {
+        const wrap = document.getElementById('reset-recaptcha-wrap');
+        try {
+          recaptchaToken = wrap?._widgetId != null ? window.grecaptcha.getResponse(wrap._widgetId) : window.grecaptcha.getResponse();
+        } catch { recaptchaToken = ''; }
+        if (!recaptchaToken) { errEl.textContent = 'Please complete the reCAPTCHA check.'; return; }
+      }
+      try {
+        const body = { token, password: pw };
+        if (recaptchaToken != null) body.recaptcha_token = recaptchaToken;
+        await apiPost('/api/auth/reset-password', body);
+        showToast(tx('resetPasswordSuccess', 'Password updated. Please log in with your new password.'), 'success');
+        navigateTo('/login');
+      } catch (err) {
+        if (errEl) errEl.textContent = err?.message || 'Failed to reset password';
+      }
+    };
+  }
 }
 
 function authTransition(container, fromSignup, toSignup, authError, redirect) {
@@ -3681,7 +3874,7 @@ function renderMain() {
           <a href="/manage?tab=action" class="panel-tab ${(route.adminTab || 'action') === 'action' ? 'active' : ''}">${t('action')}</a>
           <a href="/manage?tab=users" class="panel-tab ${route.adminTab === 'users' ? 'active' : ''}">${tx('users', 'Users')}</a>
           <a href="/manage?tab=recalled" class="panel-tab ${route.adminTab === 'recalled' ? 'active' : ''}">${t('recalled')}</a>
-          <a href="/manage?tab=timeout" class="panel-tab ${route.adminTab === 'timeout' ? 'active' : ''}">${t('timeout')}</a>
+          ${state.user?.can_timeout ? `<a href="/manage?tab=timeout" class="panel-tab ${route.adminTab === 'timeout' ? 'active' : ''}">${t('timeout')}</a>` : ''}
           <a href="/manage?tab=moderation" class="panel-tab ${route.adminTab === 'moderation' ? 'active' : ''}">${tx('adminModeration', 'Moderation')}${(state._reportCounts?.open || 0) > 0 ? `<span class="panel-list-badge panel-list-badge-count">${state._reportCounts.open > 99 ? '99+' : state._reportCounts.open}</span>` : ''}</a>
           ${state.user?.id === 'jimmyqrg' ? `<a href="/manage?tab=export" class="panel-tab ${route.adminTab === 'export' ? 'active' : ''}">${tx('adminExportTab', 'Export')}</a>` : ''}
         </div>
@@ -5441,7 +5634,11 @@ function bindMain() {
       const friend = a.dataset.friend === '1';
       const pending = isFriendRequestPending(userId);
       const isSelf = userId === state.user?.id;
-      const canQuickTimeout = !!state.user?.can_timeout && userId && userId !== 'jimmyqrg' && !isSelf;
+      // Each admin shortcut is gated on its OWN power so admins only see what
+      // they can actually do. Never offer them on yourself or on jimmyqrg.
+      const targetable = !!userId && userId !== 'jimmyqrg' && !isSelf;
+      const canQuickTimeout = targetable && !!state.user?.can_timeout;
+      const canRemoveAccount = targetable && !!state.user?.can_kick;
 
       const items = [];
       // ── Group 1: navigation
@@ -5455,7 +5652,7 @@ function bindMain() {
         items.push({ label: t('block'), action: 'block', danger: true });
       }
 
-      // ── Group 3: timeout shortcuts (admin only)
+      // ── Group 3: timeout shortcuts — requires can_timeout
       if (canQuickTimeout) {
         items.push({ separator: true });
         items.push({ label: tx('timeout10m', 'Timeout 10 min') + ' (group)', action: 'timeout:10 minute:group' });
@@ -5469,12 +5666,19 @@ function bindMain() {
         items.push({ label: tx('timeoutForever', 'Timeout forever') + ' (DM)', action: 'timeout:forever:dm', danger: true });
       }
 
+      // ── Group 4: account-level admin actions — requires can_kick
+      if (canRemoveAccount) {
+        items.push({ separator: true });
+        items.push({ label: t('adminRemoveAccount'), action: 'remove-account', danger: true });
+      }
+
       showContextMenu(e.clientX, e.clientY, items, async (action) => {
         if (typeof action === 'string' && action.startsWith('timeout:')) {
           const [, duration, scope] = action.split(':');
           quickTimeoutUser(userId, duration, scope || 'group');
           return;
         }
+        if (action === 'remove-account') return removeAccount(userId);
         if (action === 'profile') navigateTo(`/chat/${encodeURIComponent(userId)}?view=profile`);
         else if (action === 'chat') navigateTo(`/chat/${encodeURIComponent(userId)}`);
         else if (action === 'friend-request') {
@@ -6809,7 +7013,7 @@ function renderAdminContent() {
             <div id="admin-recalled-list" class="admin-recalled-list"></div>
           </div>
           ` : ''}
-          ${adminTab === 'timeout' ? `
+          ${adminTab === 'timeout' ? (state.user?.can_timeout ? `
           <div class="admin-section">
             <h2 class="admin-section-title">${t('adminTimeoutUser')}</h2>
             <p class="admin-section-desc">${t('adminTimeoutUserDesc')}</p>
@@ -6838,7 +7042,7 @@ function renderAdminContent() {
             </div>
             <div id="admin-timeout-list-tab" class="admin-timeout-list"></div>
           </div>
-          ` : ''}
+          ` : `<p class="admin-section-desc">${t('adminNoPermissions')}</p>`) : ''}
           ${adminTab === 'users' ? (() => {
             const userSearch = (state._adminUserSearch || '').trim().toLowerCase();
             const filteredUsers = userSearch

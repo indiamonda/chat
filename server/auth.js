@@ -167,6 +167,21 @@ export async function login(usernameOrEmail, password) {
   return { user: getNormalizedUserById(u.id) };
 }
 
+/** Reset a user's password without knowing the current one. Used by the forgot-
+ *  password flow once the reset token has been validated. Also revokes every
+ *  active auth_token so any old sessions need to log in again. */
+export function resetPassword(userId, newPassword) {
+  if (!userId) return { error: 'User not found' };
+  const u = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+  if (!u) return { error: 'User not found' };
+  const newPass = (newPassword || '').trim();
+  if (!newPass || newPass.length < 6) return { error: 'New password must be at least 6 characters' };
+  const hash = bcrypt.hashSync(newPass, 10);
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, userId);
+  try { db.prepare('DELETE FROM auth_tokens WHERE user_id = ?').run(userId); } catch (_) {}
+  return { ok: true };
+}
+
 export async function changePassword(userId, currentPassword, newPassword) {
   const u = db.prepare('SELECT id, password_hash FROM users WHERE id = ?').get(userId);
   if (!u) return { error: 'User not found' };
