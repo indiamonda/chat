@@ -272,6 +272,31 @@ function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
+export function buildVerificationCodeEmail({ code }) {
+  const text = [
+    'Your verification code for JimmyQrg Chat is:',
+    '',
+    `    ${code}`,
+    '',
+    'This code expires in 2 minutes. If you did not request this, you can safely ignore this email.',
+    '',
+    '— JimmyQrg Chat',
+  ].join('\n');
+  const html = `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1f2937;">
+      <h2 style="margin:0 0 16px;font-size:20px;">Verify your email</h2>
+      <p>Use the code below to verify your email address for JimmyQrg Chat.</p>
+      <p style="margin:24px 0;text-align:center;">
+        <span style="display:inline-block;padding:16px 32px;background:#7c3aed;color:#fff;font-size:28px;font-weight:700;letter-spacing:.3em;border-radius:8px;">${escapeHtml(code)}</span>
+      </p>
+      <p style="font-size:13px;color:#4b5563;">This code expires in <strong>2 minutes</strong>.</p>
+      <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;" />
+      <p style="font-size:12px;color:#6b7280;">If you did not request this code you can safely ignore this email.</p>
+      <p style="font-size:12px;color:#6b7280;">— JimmyQrg Chat</p>
+    </div>`;
+  return { html, text };
+}
+
 export function buildResetEmail({ displayName, resetUrl, expiresMinutes }) {
   const greeting = displayName ? `Hi ${displayName},` : 'Hi,';
   const linkLine = `${resetUrl}`;

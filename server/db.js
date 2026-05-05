@@ -458,6 +458,22 @@ try {
   banEmail('weeee@outlook.com', { reason: 'Admin-requested permanent ban', actorId: 'jimmyqrg' });
 } catch (_) {}
 
+// Email verification codes for registration. 6-digit codes with 2-minute TTL.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS email_verification_codes (
+      email TEXT NOT NULL,
+      code TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      ip TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_email_verify_email ON email_verification_codes(email, expires_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_email_verify_expires ON email_verification_codes(expires_at);
+  `);
+} catch (_) {}
+
 // Game / app progress saves. A generic per-user key/value store used by jimmyqrg.github.io
 // games to persist save data to the server. The `origin` column namespaces keys across
 // different sites/games (typically 'jimmyqrg' or 'chat') so one account can hold data for many apps.
