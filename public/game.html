@@ -323,7 +323,31 @@
     let deathCamYaw = 0;
     let deathCamPitch = 0;
     let deathBaseFov = 75;
-    const socket = io("https://chat.jimmyqrg.com/game");
+
+    function createOfflineSocketStub() {
+      return {
+        id: "offline",
+        get connected() { return false; },
+        on() {},
+        emit(_ev, ...args) {
+          const last = args[args.length - 1];
+          if (typeof last === "function") {
+            queueMicrotask(() => last({ error: "Network unavailable" }));
+          }
+        },
+        disconnect() {},
+      };
+    }
+
+    const socket = typeof io === "function"
+      ? io(`${window.location.origin}/game`, {
+          transports: ["websocket", "polling"],
+          reconnection: true,
+          reconnectionAttempts: 10,
+          reconnectionDelay: 800,
+        })
+      : (console.warn("Socket.IO client not loaded — single-player only."), createOfflineSocketStub());
+
     let activeRoomId = "";
 
     const remotePlayers = new Map();
@@ -710,8 +734,8 @@
     }
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a2235);
-    scene.fog = new THREE.Fog(0x1a2235, 40, 160);
+    scene.background = new THREE.Color(0x121820);
+    scene.fog = new THREE.Fog(0x121820, 28, 125);
 
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -728,10 +752,10 @@
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     app.appendChild(renderer.domElement);
 
-    const hemi = new THREE.HemisphereLight(0xa0bcff, 0x404050, 1.8);
+    const hemi = new THREE.HemisphereLight(0x8899bb, 0x353540, 1.05);
     scene.add(hemi);
 
-    const moon = new THREE.DirectionalLight(0xf0f0ff, 1.6);
+    const moon = new THREE.DirectionalLight(0xd8dcff, 0.88);
     moon.position.set(28, 34, 22);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
@@ -1232,9 +1256,9 @@
       const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.05), eyeGlowMat);
       eyeL.position.set(-0.10, 0.06, 0.215); headGroup.add(eyeL);
       const eyeR = eyeL.clone(); eyeR.position.x = 0.10; headGroup.add(eyeR);
-      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 0.3, 2.0);
+      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 1.75, 9.0, 2);
       glowL.position.set(-0.10, 0.06, 0.24); headGroup.add(glowL);
-      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 0.3, 2.0);
+      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 1.75, 9.0, 2);
       glowR.position.set(0.10, 0.06, 0.24); headGroup.add(glowR);
 
       const brow = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, 0.08), matSkinD);
@@ -1346,7 +1370,8 @@
         new THREE.SpriteMaterial({
           map: hpTexture,
           transparent: true,
-          depthTest: false
+          depthTest: true,
+          depthWrite: false
         })
       );
       hpSprite.scale.set(1.7, 0.32, 1);
@@ -1534,6 +1559,14 @@ return {
 
     camera.position.copy(player.position);
     scene.add(camera);
+
+    const playerLightTarget = new THREE.Object3D();
+    playerLightTarget.position.set(0, 0, -1);
+    const playerSpot = new THREE.SpotLight(0xfff1e0, 2.4, 48, Math.PI / 4.2, 0.48, 1.35);
+    playerSpot.position.set(0, 0.18, 0.12);
+    camera.add(playerSpot);
+    camera.add(playerLightTarget);
+    playerSpot.target = playerLightTarget;
 
     const weaponRoot = new THREE.Group();
     camera.add(weaponRoot);
