@@ -816,10 +816,16 @@ app.use(cookieParser());
  *  Bearer tokens work for the rest. The allow-list is permissive: the chat API is read/write
  *  only after requireAuth anyway, and tokens are long random strings. */
 const CORS_ALLOW_LIST = new Set([
+  'https://tintly555.github.io',
   'https://jimmyqrg.github.io',
-  'https://www.jimmyqrg.github.io',
-  'https://jchat.fly.dev',
+  'https://chat.jimmyqrg.com',
+  'https://lausd.schoology.com',
+  'https://unlinewize.jimmyqrg.com',
+  'https://abs-unlinewize.jimmyqrg.com',
   'https://mcraft.fly.dev',
+  'https://rammerhead.fly.dev',
+  'https://ulw-app.fly.dev',
+  'https://jchat.fly.dev',
 ]);
 
 app.use((req, res, next) => {
@@ -827,9 +833,7 @@ app.use((req, res, next) => {
   if (origin) {
     const allowed = CORS_ALLOW_LIST.has(origin)
       || /^https?:\/\/localhost(?::\d+)?$/i.test(origin)
-      || /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin)
-      || /^https?:\/\/.+\.github\.io$/i.test(origin)
-      || /^https?:\/\/.+\.jimmyqrg\.com$/i.test(origin);
+      || /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin);
     if (allowed) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
@@ -1558,7 +1562,7 @@ app.use((err, req, res, next) => {
 });
 
 const io = new Server(httpServer, {
-  cors: { origin: true },
+  cors: { origin: [...CORS_ALLOW_LIST], credentials: true },
   pingInterval: 20000,
   pingTimeout: 10000,
   connectTimeout: 45000,
