@@ -223,6 +223,13 @@
     <button class="overlay-btn" id="btnPauseRestart" style="display:none;">RESTART</button>
     <button class="overlay-btn" id="btnPauseQuit">QUIT</button>
   </div>
+  <div id="chatBox" style="position:fixed;top:10px;left:10px;z-index:40;pointer-events:none;font-family:'Audiowide',sans-serif;">
+    <div id="chatMessages" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;margin-bottom:6px;"></div>
+    <div id="chatInputWrap" style="display:none;pointer-events:auto;">
+      <input id="chatInput" type="text" maxlength="200" placeholder="Type a message..." style="font-family:'Audiowide',sans-serif;width:280px;padding:6px 10px;font-size:13px;border:1px solid rgba(79,209,255,0.5);border-radius:6px;background:rgba(13,17,27,0.8);color:#fff;outline:none;">
+    </div>
+  </div>
+  <div id="hitDirContainer" style="position:fixed;inset:0;z-index:35;pointer-events:none;display:flex;justify-content:center;align-items:center;"></div>
   <div id="nameModal" style="position:fixed;inset:0;z-index:65;display:none;justify-content:center;align-items:center;background:rgba(0,0,0,0.7);">
     <div style="background:#1a2236;border-radius:14px;padding:32px 38px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
       <h2 style="font-family:'Audiowide',sans-serif;margin:0 0 16px 0;font-size:22px;">ENTER YOUR NAME</h2>
@@ -258,11 +265,18 @@
     const nameModal = document.getElementById("nameModal");
     const nameInput = document.getElementById("nameInput");
     const btnNameOk = document.getElementById("btnNameOk");
+    const chatBox = document.getElementById("chatBox");
+    const chatMessages = document.getElementById("chatMessages");
+    const chatInputWrap = document.getElementById("chatInputWrap");
+    const chatInput = document.getElementById("chatInput");
+    const hitDirContainer = document.getElementById("hitDirContainer");
     let CURRENT_MAP = "arena";
     let started = false;
     let paused = false;
+    let chatOpen = false;
     let playerName = "Player";
     let killerEnemy = null;
+    const hitIndicators = [];
     let deathAnimTime = 0;
     const DEATH_ANIM_DURATION = 2.0;
     let deathCamYaw = 0;
@@ -291,6 +305,13 @@
         rp.name = data.name;
         updateNameSprite(rp, data.name);
       }
+      if (data.weapon != null && data.weapon !== rp.currentWeapon) {
+        rp.rightArm.remove(rp.gunModel);
+        rp.gunModel = makeThirdPersonGun(data.weapon);
+        rp.gunModel.position.set(0.15, -0.42, -0.28);
+        rp.rightArm.add(rp.gunModel);
+        rp.currentWeapon = data.weapon;
+      }
       rp.group.visible = true;
     });
 
@@ -301,6 +322,99 @@
         remotePlayers.delete(data.id);
       }
     });
+
+    socket.on("enemyShoot", (data) => {
+      const pt = new THREE.Vector3(data.x, data.y, data.z);
+      if (data.type === "blood") {
+        createBlood(pt);
+      } else {
+        createSparks(pt, data.color || 0xffdd88);
+        const n = new THREE.Vector3(data.nx, data.ny, data.nz);
+        if (n.lengthSq() > 0) createBulletMark(pt, n);
+      }
+    });
+
+    socket.on("chat", (data) => {
+      const rp = remotePlayers.get(data.id);
+      const who = data.id === socket.id ? playerName : (rp ? rp.name : "???");
+      addChatMessage(who, data.text);
+    });
+
+    function addChatMessage(who, text) {
+      const el = document.createElement("div");
+      el.style.cssText = "font-size:12px;color:#fff;background:rgba(0,0,0,0.45);padding:3px 8px;border-radius:4px;max-width:300px;word-break:break-word;";
+      el.textContent = `${who}: ${text}`;
+      chatMessages.appendChild(el);
+      if (chatMessages.children.length > 40) chatMessages.removeChild(chatMessages.children[0]);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      el._fadeTime = performance.now() + 8000;
+      setTimeout(() => { if (el.parentNode && !chatOpen) el.style.opacity = "0"; }, 8000);
+    }
+
+    function openChat() {
+      if (chatOpen) return;
+      chatOpen = true;
+      chatInputWrap.style.display = "block";
+      chatInput.value = "";
+      chatInput.focus();
+      for (const c of chatMessages.children) c.style.opacity = "1";
+    }
+
+    function closeChat() {
+      if (!chatOpen) return;
+      chatOpen = false;
+      chatInputWrap.style.display = "none";
+      const now = performance.now();
+      for (const c of chatMessages.children) {
+        if (c._fadeTime && c._fadeTime < now) c.style.opacity = "0";
+      }
+    }
+
+    function sendChat() {
+      const text = chatInput.value.trim();
+      if (text && CURRENT_MAP === "crossfire") {
+        socket.emit("chat", text);
+      } else if (text) {
+        addChatMessage(playerName, text);
+      }
+      closeChat();
+      renderer.domElement.requestPointerLock();
+    }
+
+    function addHitIndicator(fromX, fromZ) {
+      const dx = fromX - player.position.x;
+      const dz = fromZ - player.position.z;
+      const worldAngle = Math.atan2(dx, dz);
+      const relAngle = worldAngle - player.yaw;
+      const el = document.createElement("div");
+      el.style.cssText = "position:absolute;width:60px;height:12px;border-radius:6px;background:rgba(255,40,40,0.7);pointer-events:none;transition:opacity 0.3s;";
+      hitDirContainer.appendChild(el);
+      const indicator = { el, relAngle, life: 1.5 };
+      hitIndicators.push(indicator);
+      updateHitIndicatorPos(indicator);
+    }
+
+    function updateHitIndicatorPos(ind) {
+      const angle = ind.relAngle;
+      const r = 90;
+      const cx = r * Math.sin(angle);
+      const cy = -r * Math.cos(angle);
+      ind.el.style.transform = `translate(${cx - 30}px, ${cy - 6}px) rotate(${angle}rad)`;
+    }
+
+    function updateHitIndicators(dt) {
+      for (let i = hitIndicators.length - 1; i >= 0; i--) {
+        const ind = hitIndicators[i];
+        ind.life -= dt;
+        ind.el.style.opacity = Math.max(0, ind.life / 1.5).toString();
+        const dx = ind.el._fromX != null ? ind.el._fromX - player.position.x : 0;
+        const dz = ind.el._fromZ != null ? ind.el._fromZ - player.position.z : 0;
+        if (ind.life <= 0) {
+          hitDirContainer.removeChild(ind.el);
+          hitIndicators.splice(i, 1);
+        }
+      }
+    }
 
     function makeNameSprite(name) {
       const canvas = document.createElement("canvas");
@@ -337,21 +451,118 @@
       rp.nameTex.needsUpdate = true;
     }
 
+    function makeThirdPersonGun(type) {
+      const g = new THREE.Group();
+      const metalColor = [0x3b4450, 0x374151, 0x6b7280, 0x4b5563][type] || 0x555555;
+      const lengths = [0.32, 0.6, 0.6, 0.5];
+      const widths = [0.06, 0.08, 0.1, 0.07];
+      const barrel = new THREE.Mesh(
+        new THREE.BoxGeometry(widths[type], 0.06, lengths[type]),
+        new THREE.MeshStandardMaterial({ color: metalColor })
+      );
+      g.add(barrel);
+      if (type === 1 || type === 3) {
+        const mag = new THREE.Mesh(
+          new THREE.BoxGeometry(0.04, 0.14, 0.06),
+          new THREE.MeshStandardMaterial({ color: 0x20242c })
+        );
+        mag.position.set(0, -0.08, 0.05);
+        g.add(mag);
+      }
+      if (type === 2) {
+        const pump = new THREE.Mesh(
+          new THREE.BoxGeometry(0.08, 0.05, 0.14),
+          new THREE.MeshStandardMaterial({ color: 0x7c5a3a })
+        );
+        pump.position.set(0, -0.04, -0.06);
+        g.add(pump);
+      }
+      g.scale.set(0.9, 0.9, 0.9);
+      return g;
+    }
+
     function createRemotePlayer(name) {
       const group = new THREE.Group();
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(0.7, 1.0, 0.4),
+
+      const torso = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 0.7, 0.3),
         new THREE.MeshStandardMaterial({ color: 0x4fd1ff })
       );
-      body.position.y = 1.1;
-      group.add(body);
+      torso.position.y = 1.15;
+      group.add(torso);
+
+      const belt = new THREE.Mesh(
+        new THREE.BoxGeometry(0.62, 0.1, 0.32),
+        new THREE.MeshStandardMaterial({ color: 0x2a3a4f })
+      );
+      belt.position.y = 0.78;
+      group.add(belt);
 
       const head = new THREE.Mesh(
-        new THREE.BoxGeometry(0.42, 0.42, 0.42),
+        new THREE.BoxGeometry(0.36, 0.36, 0.36),
         new THREE.MeshStandardMaterial({ color: 0xf1c27d })
       );
-      head.position.y = 1.85;
+      head.position.y = 1.78;
       group.add(head);
+
+      const helmet = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.18, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x2d3748 })
+      );
+      helmet.position.y = 2.0;
+      group.add(helmet);
+
+      const rightArm = new THREE.Group();
+      const rUpperArm = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.4, 0.16),
+        new THREE.MeshStandardMaterial({ color: 0x3a8fcc })
+      );
+      rUpperArm.position.y = -0.2;
+      rightArm.add(rUpperArm);
+      const rHand = new THREE.Mesh(
+        new THREE.BoxGeometry(0.13, 0.13, 0.13),
+        new THREE.MeshStandardMaterial({ color: 0xc89d7c })
+      );
+      rHand.position.y = -0.44;
+      rightArm.add(rHand);
+      rightArm.position.set(0.42, 1.45, 0);
+      rightArm.rotation.x = -1.0;
+      group.add(rightArm);
+
+      const leftArm = new THREE.Group();
+      const lUpperArm = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.4, 0.16),
+        new THREE.MeshStandardMaterial({ color: 0x3a8fcc })
+      );
+      lUpperArm.position.y = -0.2;
+      leftArm.add(lUpperArm);
+      const lHand = new THREE.Mesh(
+        new THREE.BoxGeometry(0.13, 0.13, 0.13),
+        new THREE.MeshStandardMaterial({ color: 0xb98562 })
+      );
+      lHand.position.y = -0.44;
+      leftArm.add(lHand);
+      leftArm.position.set(-0.42, 1.45, 0);
+      leftArm.rotation.x = -0.8;
+      group.add(leftArm);
+
+      const rightLeg = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.5, 0.18),
+        new THREE.MeshStandardMaterial({ color: 0x2c3e50 })
+      );
+      rightLeg.position.set(0.15, 0.45, 0);
+      group.add(rightLeg);
+
+      const leftLeg = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.5, 0.18),
+        new THREE.MeshStandardMaterial({ color: 0x2c3e50 })
+      );
+      leftLeg.position.set(-0.15, 0.45, 0);
+      group.add(leftLeg);
+
+      const gunModel = makeThirdPersonGun(1);
+      gunModel.position.set(0.15, -0.42, -0.28);
+      rightArm.add(gunModel);
 
       const ns = makeNameSprite(name || "Player");
       ns.sprite.position.set(0, 2.5, 0);
@@ -359,7 +570,8 @@
 
       group.visible = false;
       return { group, x: 0, y: 1.65, z: 0, yaw: 0, name: name || "Player",
-               nameSprite: ns.sprite, nameCanvas: ns.canvas, nameCtx: ns.ctx, nameTex: ns.tex };
+               nameSprite: ns.sprite, nameCanvas: ns.canvas, nameCtx: ns.ctx, nameTex: ns.tex,
+               rightArm, leftArm, gunModel, currentWeapon: 1 };
     }
 
     const scene = new THREE.Scene();
@@ -675,8 +887,8 @@
       const w = weapon();
       hud.innerHTML = `
         3D Zombie FPS<br>
-        Move with WASD | Space to jump | R to refill bullets<br>
-        Move mouse | Right click zoomin | Switch weapons: 1 2 3 4<br>
+        WASD move | Space jump | R reload | T chat<br>
+        Mouse aim | RMB zoom | Weapons: 1 2 3 4<br>
         Map: ${CURRENT_MAP}<br>
         Weapon: ${w.name}<br>
         Bullets: ${w.ammo} / ${w.magSize}${state.reloading ? "（Refilling...）" : ""}<br>
@@ -1266,7 +1478,18 @@ return {
     }
 
     document.addEventListener("keydown", (e) => {
+      if (chatOpen) {
+        if (e.key === "Enter") { sendChat(); e.preventDefault(); }
+        if (e.key === "Escape") { closeChat(); renderer.domElement.requestPointerLock(); e.preventDefault(); }
+        return;
+      }
       const k = e.key.toLowerCase();
+      if (k === "t" && started && !paused && player.health > 0) {
+        e.preventDefault();
+        document.exitPointerLock();
+        openChat();
+        return;
+      }
       if (k === "w") keys.w = true;
       if (k === "a") keys.a = true;
       if (k === "s") keys.s = true;
@@ -1337,7 +1560,7 @@ return {
         keys.shift = false;
         state.mouseDown = false;
         state.ads = false;
-        if (started && player.health > 0 && menuEl.style.display === "none") {
+        if (started && player.health > 0 && menuEl.style.display === "none" && !chatOpen) {
           showPause();
         }
       } else {
@@ -1521,10 +1744,14 @@ return {
         if (hitEnemyFirst && bestEnemy && bestEnemyHit) {
           const zone = getBodyZone(bestEnemy, bestEnemyHit.point);
           applyDamage(bestEnemy, zone, w);
-          createBlood(bestEnemyHit.point.clone());
-          createTracer(muzzleStart, bestEnemyHit.point.clone(), w.color);
+          const bp = bestEnemyHit.point.clone();
+          createBlood(bp);
+          createTracer(muzzleStart, bp.clone(), w.color);
           state.hitmarkerTimer = 0.08;
           hitmarkerEl.classList.add("show");
+          if (CURRENT_MAP === "crossfire") {
+            socket.emit("shoot", { x: bp.x, y: bp.y, z: bp.z, nx: 0, ny: 0, nz: 0, color: w.color, type: "blood" });
+          }
 
           if (bestEnemy.hp <= 0 && bestEnemy.alive) {
             bestEnemy.alive = false;
@@ -1537,6 +1764,9 @@ return {
           createSparks(wallHit.point.clone(), w.color);
           const normal = wallHit.face.normal.clone().transformDirection(wallHit.object.matrixWorld);
           createBulletMark(wallHit.point.clone(), normal);
+          if (CURRENT_MAP === "crossfire") {
+            socket.emit("shoot", { x: wallHit.point.x, y: wallHit.point.y, z: wallHit.point.z, nx: normal.x, ny: normal.y, nz: normal.z, color: w.color, type: "spark" });
+          }
         } else {
           createTracer(muzzleStart, muzzleStart.clone().add(dir.multiplyScalar(12)), w.color);
         }
@@ -1702,7 +1932,8 @@ return {
           y: player.position.y,
           z: player.position.z,
           yaw: player.yaw,
-          name: playerName
+          name: playerName,
+          weapon: state.weaponIndex
         });
       }
     }
@@ -1790,6 +2021,9 @@ return {
       player.health = Math.max(0, player.health - amount);
       player.regenTimer = 0;
       state.flashTimer = 0.14;
+      if (attacker && attacker.group) {
+        addHitIndicator(attacker.group.position.x, attacker.group.position.z);
+      }
       updateHud();
       if (player.health <= 0) {
         showDeathScreen(attacker);
@@ -2136,6 +2370,7 @@ return {
       updateBlood(dt);
       updateSparks(dt);
       updateTracers(dt);
+      updateHitIndicators(dt);
 
       if (state.flashTimer > 0) {
         state.flashTimer -= dt;
@@ -2205,6 +2440,10 @@ return {
     function startGame(mapName) {
       hideDeathScreen();
       hidePause();
+      closeChat();
+      chatMessages.innerHTML = "";
+      hitDirContainer.innerHTML = "";
+      hitIndicators.length = 0;
       CURRENT_MAP = mapName;
       menuEl.style.display = "none";
 

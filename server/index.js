@@ -1593,7 +1593,26 @@ gameNsp.on('connection', (socket) => {
       z: +data.z || 0,
       yaw: +data.yaw || 0,
       name: typeof data.name === 'string' ? data.name.slice(0, 16) : undefined,
+      weapon: Number.isFinite(+data.weapon) ? (+data.weapon | 0) : undefined,
     });
+  });
+
+  socket.on('shoot', (data) => {
+    if (!currentRoom || typeof data !== 'object' || data === null) return;
+    socket.to(currentRoom).emit('enemyShoot', {
+      id: socket.id,
+      x: +data.x || 0, y: +data.y || 0, z: +data.z || 0,
+      nx: +data.nx || 0, ny: +data.ny || 0, nz: +data.nz || 0,
+      color: +data.color || 0xffffff,
+      type: data.type === 'blood' ? 'blood' : 'spark',
+    });
+  });
+
+  socket.on('chat', (msg) => {
+    if (!currentRoom || typeof msg !== 'string') return;
+    const text = msg.slice(0, 200).trim();
+    if (!text) return;
+    gameNsp.to(currentRoom).emit('chat', { id: socket.id, text });
   });
 
   socket.on('disconnect', () => {
