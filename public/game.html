@@ -538,29 +538,35 @@
 
     function makeThirdPersonGun(type) {
       const g = new THREE.Group();
-      const metalColor = [0x3b4450, 0x374151, 0x6b7280, 0x4b5563][type] || 0x555555;
-      const lengths = [0.32, 0.6, 0.6, 0.5];
-      const widths = [0.06, 0.08, 0.1, 0.07];
-      const barrel = new THREE.Mesh(
-        new THREE.BoxGeometry(widths[type], 0.06, lengths[type]),
-        new THREE.MeshStandardMaterial({ color: metalColor })
-      );
-      g.add(barrel);
-      if (type === 1 || type === 3) {
-        const mag = new THREE.Mesh(
-          new THREE.BoxGeometry(0.04, 0.14, 0.06),
-          new THREE.MeshStandardMaterial({ color: 0x20242c })
-        );
-        mag.position.set(0, -0.08, 0.05);
-        g.add(mag);
-      }
-      if (type === 2) {
-        const pump = new THREE.Mesh(
-          new THREE.BoxGeometry(0.08, 0.05, 0.14),
-          new THREE.MeshStandardMaterial({ color: 0x7c5a3a })
-        );
-        pump.position.set(0, -0.04, -0.06);
-        g.add(pump);
+      const mDark = new THREE.MeshStandardMaterial({ color: 0x1a1f28, roughness: 0.6, metalness: 0.4 });
+      const mMetal = new THREE.MeshStandardMaterial({ color: 0x3a4455, roughness: 0.5, metalness: 0.5 });
+      const mLight = new THREE.MeshStandardMaterial({ color: 0x5a6575, roughness: 0.4, metalness: 0.6 });
+      const mWood = new THREE.MeshStandardMaterial({ color: 0x6e4a2a, roughness: 0.8 });
+      const mBlack = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.3 });
+
+      if (type === 0) {
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.10, 0.30), mMetal), { position: new THREE.Vector3(0, 0, 0) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.035, 0.16), mLight), { position: new THREE.Vector3(0, 0.05, -0.05) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.07), mDark), { position: new THREE.Vector3(0, -0.10, 0.08) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.015, 0.015), mBlack), { position: new THREE.Vector3(0, 0.065, -0.14) }));
+      } else if (type === 1) {
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.10, 0.58), mMetal), { position: new THREE.Vector3(0, 0, 0) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.36), mDark), { position: new THREE.Vector3(0, 0.06, -0.04) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.10, 0.18), mDark), { position: new THREE.Vector3(0, 0, 0.34) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.16, 0.07), mDark), { position: new THREE.Vector3(0, -0.12, 0.08) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.18, 0.06), mBlack), { position: new THREE.Vector3(0, -0.10, -0.02) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.10), mLight), { position: new THREE.Vector3(0, -0.06, -0.18) }));
+      } else if (type === 2) {
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 0.56), mLight), { position: new THREE.Vector3(0, 0, 0) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.30), mMetal), { position: new THREE.Vector3(0, -0.015, -0.18) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.16), mWood), { position: new THREE.Vector3(0, -0.06, -0.08) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 0.20), mWood), { position: new THREE.Vector3(0, 0, 0.34) }));
+      } else if (type === 3) {
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.46), mMetal), { position: new THREE.Vector3(0, 0, 0) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.22), mDark), { position: new THREE.Vector3(0, 0.05, -0.04) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.12), mDark), { position: new THREE.Vector3(0, 0.01, 0.26) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.06), mDark), { position: new THREE.Vector3(0, -0.10, 0.06) }));
+        g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.14, 0.05), mBlack), { position: new THREE.Vector3(0, -0.08, -0.04) }));
       }
       g.scale.set(0.9, 0.9, 0.9);
       return g;
@@ -568,154 +574,119 @@
 
     function createRemotePlayer(name) {
       const group = new THREE.Group();
-      const matJacket = new THREE.MeshStandardMaterial({ color: 0x2c5282 });
-      const matJacketD = new THREE.MeshStandardMaterial({ color: 0x1a3a5c });
-      const matSkin = new THREE.MeshStandardMaterial({ color: 0xe8c9a0 });
-      const matSkinD = new THREE.MeshStandardMaterial({ color: 0xc8a580 });
-      const matPants = new THREE.MeshStandardMaterial({ color: 0x2d3748 });
-      const matBoot = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
-      const matHelmet = new THREE.MeshStandardMaterial({ color: 0x3a4a5e });
-      const matVisor = new THREE.MeshStandardMaterial({ color: 0x4fd1ff, transparent: true, opacity: 0.6 });
-      const matVest = new THREE.MeshStandardMaterial({ color: 0x4a5568 });
-      const matBelt = new THREE.MeshStandardMaterial({ color: 0x2d2d2d });
+      const mCamo1 = new THREE.MeshStandardMaterial({ color: 0x3b5a3e, roughness: 0.85 });
+      const mCamo2 = new THREE.MeshStandardMaterial({ color: 0x2d4a30, roughness: 0.85 });
+      const mSkin = new THREE.MeshStandardMaterial({ color: 0xe0b890, roughness: 0.7 });
+      const mSkinD = new THREE.MeshStandardMaterial({ color: 0xc49a70, roughness: 0.7 });
+      const mPants = new THREE.MeshStandardMaterial({ color: 0x3a3d32, roughness: 0.9 });
+      const mBoot = new THREE.MeshStandardMaterial({ color: 0x2a2218, roughness: 0.9 });
+      const mBootS = new THREE.MeshStandardMaterial({ color: 0x1a1610, roughness: 0.9 });
+      const mHelm = new THREE.MeshStandardMaterial({ color: 0x4a5a4e, roughness: 0.7 });
+      const mVisor = new THREE.MeshStandardMaterial({ color: 0x80ddff, transparent: true, opacity: 0.45, roughness: 0.2, metalness: 0.8 });
+      const mVest = new THREE.MeshStandardMaterial({ color: 0x5c6b54, roughness: 0.8 });
+      const mGear = new THREE.MeshStandardMaterial({ color: 0x2e3028, roughness: 0.9 });
+      const mMetal = new THREE.MeshStandardMaterial({ color: 0x7a7a7a, roughness: 0.4, metalness: 0.6 });
+      const mGlove = new THREE.MeshStandardMaterial({ color: 0x3a3528, roughness: 0.9 });
+      const mKnee = new THREE.MeshStandardMaterial({ color: 0x505548, roughness: 0.8 });
 
-      // --- torso ---
-      const chest = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.52, 0.32), matJacket);
-      chest.position.y = 1.24;
-      group.add(chest);
-      const belly = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.26, 0.30), matJacket);
-      belly.position.y = 0.88;
-      group.add(belly);
-      // tactical vest
-      const vestFront = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.40, 0.08), matVest);
-      vestFront.position.set(0, 1.18, 0.18);
-      group.add(vestFront);
-      const vestBack = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.40, 0.06), matVest);
-      vestBack.position.set(0, 1.18, -0.17);
-      group.add(vestBack);
-      // pouches on vest
-      const pouch1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.10, 0.06), matBelt);
-      pouch1.position.set(-0.14, 1.04, 0.22);
-      group.add(pouch1);
-      const pouch2 = pouch1.clone();
-      pouch2.position.x = 0.14;
-      group.add(pouch2);
-      // collar
-      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.08, 0.28), matJacketD);
-      collar.position.set(0, 1.52, 0);
-      group.add(collar);
-      // belt
-      const belt = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.08, 0.34), matBelt);
-      belt.position.y = 0.74;
-      group.add(belt);
-      const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.04), new THREE.MeshStandardMaterial({ color: 0x888888 }));
-      buckle.position.set(0, 0.74, 0.18);
-      group.add(buckle);
+      const chest = new THREE.Mesh(new THREE.BoxGeometry(0.60, 0.48, 0.30), mCamo1);
+      chest.position.y = 1.24; group.add(chest);
+      const belly = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.24, 0.28), mCamo2);
+      belly.position.y = 0.90; group.add(belly);
+      const vestF = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.44, 0.06), mVest);
+      vestF.position.set(0, 1.20, 0.17); group.add(vestF);
+      const vestB = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.44, 0.05), mVest);
+      vestB.position.set(0, 1.20, -0.16); group.add(vestB);
+      const vestS1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.24), mVest);
+      vestS1.position.set(0.30, 1.20, 0); group.add(vestS1);
+      const vestS2 = vestS1.clone(); vestS2.position.x = -0.30; group.add(vestS2);
+      for (let px of [-0.16, 0, 0.16]) {
+        const p = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 0.05), mGear);
+        p.position.set(px, 1.04, 0.21); group.add(p);
+      }
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.07, 0.26), mCamo2);
+      collar.position.set(0, 1.50, 0); group.add(collar);
+      const belt = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.06, 0.32), mGear);
+      belt.position.y = 0.76; group.add(belt);
+      const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.05, 0.03), mMetal);
+      buckle.position.set(0, 0.76, 0.17); group.add(buckle);
+      const holster = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.08), mGear);
+      holster.position.set(0.28, 0.68, 0.06); group.add(holster);
 
-      // --- head ---
       const headGroup = new THREE.Group();
-      const skull = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.40, 0.38), matSkin);
+      const skull = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.38, 0.36), mSkin);
       headGroup.add(skull);
-      // jaw
-      const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.10, 0.30), matSkinD);
-      jaw.position.set(0, -0.18, 0.02);
-      headGroup.add(jaw);
-      // eyes
-      const eyeWhite = new THREE.MeshBasicMaterial({ color: 0xffffff });
-      const eyePupil = new THREE.MeshBasicMaterial({ color: 0x2c1810 });
-      const ewL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.03), eyeWhite);
-      ewL.position.set(-0.09, 0.04, 0.19);
-      headGroup.add(ewL);
-      const ewR = ewL.clone(); ewR.position.x = 0.09;
-      headGroup.add(ewR);
-      const epL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.02), eyePupil);
-      epL.position.set(-0.09, 0.04, 0.205);
-      headGroup.add(epL);
-      const epR = epL.clone(); epR.position.x = 0.09;
-      headGroup.add(epR);
-      // nose
-      const nose = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 0.06), matSkinD);
-      nose.position.set(0, -0.04, 0.20);
-      headGroup.add(nose);
-      // ears
-      const ear = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.10, 0.06), matSkin);
-      const earL = ear.clone(); earL.position.set(-0.22, 0.02, 0);
-      headGroup.add(earL);
-      const earR = ear.clone(); earR.position.set(0.22, 0.02, 0);
-      headGroup.add(earR);
-      // helmet
-      const helmetTop = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.20, 0.44), matHelmet);
-      helmetTop.position.set(0, 0.24, 0);
-      headGroup.add(helmetTop);
-      const helmetBrim = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.06, 0.48), matHelmet);
-      helmetBrim.position.set(0, 0.16, -0.02);
-      headGroup.add(helmetBrim);
-      // visor
-      const visor = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.10, 0.04), matVisor);
-      visor.position.set(0, 0.08, 0.21);
-      headGroup.add(visor);
-      // neck
-      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.10, 0.18), matSkin);
-      neck.position.set(0, -0.26, 0);
-      headGroup.add(neck);
+      const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.10, 0.28), mSkinD);
+      jaw.position.set(0, -0.18, 0.02); headGroup.add(jaw);
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.04, 0.06), mSkinD);
+      brow.position.set(0, 0.10, 0.17); headGroup.add(brow);
+      const ewMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const epMat = new THREE.MeshBasicMaterial({ color: 0x1a1208 });
+      const ewL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.02), ewMat);
+      ewL.position.set(-0.08, 0.04, 0.185); headGroup.add(ewL);
+      const ewR = ewL.clone(); ewR.position.x = 0.08; headGroup.add(ewR);
+      const epL = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.04, 0.01), epMat);
+      epL.position.set(-0.08, 0.04, 0.195); headGroup.add(epL);
+      const epR = epL.clone(); epR.position.x = 0.08; headGroup.add(epR);
+      const nose = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.05, 0.05), mSkinD);
+      nose.position.set(0, -0.04, 0.19); headGroup.add(nose);
+      const earL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.05), mSkin);
+      earL.position.set(-0.20, 0.02, 0); headGroup.add(earL);
+      const earR = earL.clone(); earR.position.x = 0.20; headGroup.add(earR);
+      const helmShell = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.22, 0.42), mHelm);
+      helmShell.position.set(0, 0.22, -0.01); headGroup.add(helmShell);
+      const helmRim = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.04, 0.46), mHelm);
+      helmRim.position.set(0, 0.13, -0.02); headGroup.add(helmRim);
+      const helmBand = new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.04, 0.43), mGear);
+      helmBand.position.set(0, 0.18, -0.01); headGroup.add(helmBand);
+      const visor = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.03), mVisor);
+      visor.position.set(0, 0.07, 0.20); headGroup.add(visor);
+      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.10, 0.16), mSkin);
+      neck.position.set(0, -0.26, 0); headGroup.add(neck);
+      headGroup.position.y = 1.80; group.add(headGroup);
 
-      headGroup.position.y = 1.82;
-      group.add(headGroup);
-
-      // --- arms ---
       const rightArm = new THREE.Group();
       const leftArm = new THREE.Group();
-
-      const makePlayerArm = (armGroup) => {
-        const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.12, 0.20), matJacketD);
-        shoulder.position.set(0, -0.02, 0);
-        armGroup.add(shoulder);
-        const upper = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.34, 0.18), matJacket);
-        upper.position.set(0, -0.22, 0);
-        armGroup.add(upper);
-        const forearm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.32, 0.16), matJacketD);
-        forearm.position.set(0, -0.50, 0.06);
-        armGroup.add(forearm);
-        const glove = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.14, 0.18), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-        glove.position.set(0, -0.70, 0.10);
-        armGroup.add(glove);
+      const makePlayerArm = (ag) => {
+        const sh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.10, 0.18), mCamo2);
+        sh.position.set(0, -0.02, 0); ag.add(sh);
+        const pad = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.10, 0.20), mKnee);
+        pad.position.set(0, -0.02, 0); ag.add(pad);
+        const up = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.32, 0.17), mCamo1);
+        up.position.set(0, -0.22, 0); ag.add(up);
+        const elbPad = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.10), mKnee);
+        elbPad.position.set(0, -0.38, 0.06); ag.add(elbPad);
+        const fa = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.30, 0.15), mCamo2);
+        fa.position.set(0, -0.50, 0.06); ag.add(fa);
+        const glv = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.13, 0.16), mGlove);
+        glv.position.set(0, -0.70, 0.10); ag.add(glv);
+        const fng = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.04, 0.08), mGlove);
+        fng.position.set(0, -0.78, 0.12); ag.add(fng);
       };
+      makePlayerArm(rightArm); makePlayerArm(leftArm);
+      rightArm.position.set(0.42, 1.46, 0); rightArm.rotation.x = -1.0;
+      leftArm.position.set(-0.42, 1.46, 0); leftArm.rotation.x = -0.8;
+      group.add(rightArm, leftArm);
 
-      makePlayerArm(rightArm);
-      makePlayerArm(leftArm);
-      rightArm.position.set(0.44, 1.48, 0);
-      rightArm.rotation.x = -1.0;
-      leftArm.position.set(-0.44, 1.48, 0);
-      leftArm.rotation.x = -0.8;
-      group.add(rightArm);
-      group.add(leftArm);
-
-      // --- legs ---
       const makePlayerLeg = (px) => {
-        const legGroup = new THREE.Group();
-        const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.40, 0.22), matPants);
-        thigh.position.set(0, -0.20, 0);
-        legGroup.add(thigh);
-        const shin = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.36, 0.20), matPants);
-        shin.position.set(0, -0.54, 0);
-        legGroup.add(shin);
-        const boot = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.30), matBoot);
-        boot.position.set(0, -0.78, 0.04);
-        legGroup.add(boot);
-        // boot sole
-        const sole = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 0.30), new THREE.MeshStandardMaterial({ color: 0x333333 }));
-        sole.position.set(0, -0.86, 0.04);
-        legGroup.add(sole);
-        legGroup.position.set(px, 0.62, 0);
-        return legGroup;
+        const lg = new THREE.Group();
+        const th = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.38, 0.20), mPants);
+        th.position.set(0, -0.19, 0); lg.add(th);
+        const kp = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.10, 0.12), mKnee);
+        kp.position.set(0, -0.38, 0.06); lg.add(kp);
+        const sh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.34, 0.18), mPants);
+        sh.position.set(0, -0.54, 0); lg.add(sh);
+        const bt = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.16, 0.28), mBoot);
+        bt.position.set(0, -0.78, 0.03); lg.add(bt);
+        const sl = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.04, 0.30), mBootS);
+        sl.position.set(0, -0.88, 0.04); lg.add(sl);
+        const lace = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.10, 0.02), mGear);
+        lace.position.set(0, -0.74, 0.15); lg.add(lace);
+        lg.position.set(px, 0.62, 0);
+        return lg;
       };
+      group.add(makePlayerLeg(0.15), makePlayerLeg(-0.15));
 
-      const rightLegGroup = makePlayerLeg(0.16);
-      const leftLegGroup = makePlayerLeg(-0.16);
-      group.add(rightLegGroup);
-      group.add(leftLegGroup);
-
-      // weapon
       const gunModel = makeThirdPersonGun(1);
       gunModel.position.set(0.08, -0.68, -0.18);
       rightArm.add(gunModel);
@@ -724,6 +695,7 @@
       ns.sprite.position.set(0, 2.55, 0);
       group.add(ns.sprite);
 
+      group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       group.visible = false;
       return { group, x: 0, y: 1.65, z: 0, yaw: 0, name: name || "Player",
                nameSprite: ns.sprite, nameCanvas: ns.canvas, nameCtx: ns.ctx, nameTex: ns.tex,
@@ -731,8 +703,8 @@
     }
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0d111b);
-    scene.fog = new THREE.Fog(0x0d111b, 28, 130);
+    scene.background = new THREE.Color(0x1a2235);
+    scene.fog = new THREE.Fog(0x1a2235, 40, 160);
 
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -749,10 +721,10 @@
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     app.appendChild(renderer.domElement);
 
-    const hemi = new THREE.HemisphereLight(0x8ea9ff, 0x2c2c2c, 1.1);
+    const hemi = new THREE.HemisphereLight(0xa0bcff, 0x404050, 1.8);
     scene.add(hemi);
 
-    const moon = new THREE.DirectionalLight(0xe8ecff, 1.05);
+    const moon = new THREE.DirectionalLight(0xf0f0ff, 1.6);
     moon.position.set(28, 34, 22);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
@@ -1181,155 +1153,180 @@
       } else if (type === "gunner") {
         skinColor = 0xb07070; skinDark = 0x7a3f3f; shirtColor = 0x5a2a2a;
         pantsColor = 0x3a2525; woundColor = 0xcc3333; eyeColor = 0xff6666;
-        hp = 75; speed = 1.10; attackDamage = 4; attackCooldown = 1.35;
-        ranged = true; rangeDistance = 11;
+        hp = 75; speed = 1.10; attackDamage = 4; attackCooldown = 1.6;
+        ranged = true; rangeDistance = 16;
       } else if (type === "tank") {
         skinColor = 0x6888a0; skinDark = 0x3f5367; shirtColor = 0x384858;
         pantsColor = 0x2a3540; woundColor = 0x6a4444; eyeColor = 0x80c0ff;
         hp = 180; speed = 1.05; attackDamage = 14; attackCooldown = 0.70;
       }
 
-      const matSkin = new THREE.MeshStandardMaterial({ color: skinColor });
-      const matSkinD = new THREE.MeshStandardMaterial({ color: skinDark });
-      const matShirt = new THREE.MeshStandardMaterial({ color: shirtColor });
-      const matPants = new THREE.MeshStandardMaterial({ color: pantsColor });
-      const matWound = new THREE.MeshStandardMaterial({ color: woundColor });
+      const matSkin = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.85 });
+      const matSkinD = new THREE.MeshStandardMaterial({ color: skinDark, roughness: 0.85 });
+      const matShirt = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.9 });
+      const matPants = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.9 });
+      const matWound = new THREE.MeshStandardMaterial({ color: woundColor, roughness: 0.6 });
+      const matBone = new THREE.MeshStandardMaterial({ color: 0xd4c8a8, roughness: 0.7 });
+      const matBlood = new THREE.MeshStandardMaterial({ color: 0x551111, roughness: 0.5 });
 
-      // --- torso ---
-      const chest = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.6, 0.36), matShirt);
-      chest.position.y = 1.20;
-      torsoRoot.add(chest);
-      const belly = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.36, 0.34), matShirt);
-      belly.position.y = 0.82;
-      torsoRoot.add(belly);
-      // exposed ribs/wound on chest
-      const ribWound = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.05), matWound);
-      ribWound.position.set(0.12, 1.10, 0.19);
-      torsoRoot.add(ribWound);
-      // torn collar
-      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.50, 0.08, 0.30), matShirt);
-      collar.position.set(0, 1.52, 0);
-      torsoRoot.add(collar);
+      const chest = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.56, 0.34), matShirt);
+      chest.position.y = 1.22; torsoRoot.add(chest);
+      const belly = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.32, 0.32), matShirt);
+      belly.position.y = 0.84; torsoRoot.add(belly);
+      const ribWound = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.16, 0.05), matWound);
+      ribWound.position.set(0.14, 1.12, 0.18); torsoRoot.add(ribWound);
+      const rib1 = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.03), matBone);
+      rib1.position.set(0.14, 1.16, 0.20); torsoRoot.add(rib1);
+      const rib2 = rib1.clone(); rib2.position.y = 1.10; torsoRoot.add(rib2);
+      const tearL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.04), matSkin);
+      tearL.position.set(-0.24, 0.94, 0.18); torsoRoot.add(tearL);
+      const bloodStain = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.10, 0.04), matBlood);
+      bloodStain.position.set(-0.10, 0.88, 0.18); torsoRoot.add(bloodStain);
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.06, 0.28), matShirt);
+      collar.position.set(0, 1.52, 0); torsoRoot.add(collar);
+      const collarTear = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.08, 0.06), matSkin);
+      collarTear.position.set(0.18, 1.52, 0.12); torsoRoot.add(collarTear);
 
       if (type === "tank") {
-        const armor = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.46, 0.40), new THREE.MeshStandardMaterial({ color: 0x505e6e }));
-        armor.position.y = 1.22;
-        torsoRoot.add(armor);
-        const shoulderL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.28), new THREE.MeshStandardMaterial({ color: 0x505e6e }));
-        shoulderL.position.set(-0.48, 1.46, 0);
-        torsoRoot.add(shoulderL);
-        const shoulderR = shoulderL.clone();
-        shoulderR.position.x = 0.48;
-        torsoRoot.add(shoulderR);
+        const armorMat = new THREE.MeshStandardMaterial({ color: 0x505e6e, roughness: 0.5, metalness: 0.4 });
+        const armorF = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.42, 0.08), armorMat);
+        armorF.position.set(0, 1.22, 0.20); torsoRoot.add(armorF);
+        const armorB = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.42, 0.06), armorMat);
+        armorB.position.set(0, 1.22, -0.18); torsoRoot.add(armorB);
+        const shoulderL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.14, 0.26), armorMat);
+        shoulderL.position.set(-0.50, 1.46, 0); torsoRoot.add(shoulderL);
+        const shoulderR = shoulderL.clone(); shoulderR.position.x = 0.50; torsoRoot.add(shoulderR);
+        const spikeL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.04), armorMat);
+        spikeL.position.set(-0.50, 1.56, 0); torsoRoot.add(spikeL);
+        const spikeR = spikeL.clone(); spikeR.position.x = 0.50; torsoRoot.add(spikeR);
       }
 
-      // --- head ---
-      const headGroup = new THREE.Group();
-      const skull = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.48, 0.44), matSkin);
-      headGroup.add(skull);
-      const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.12, 0.34), matSkinD);
-      jaw.position.set(0, -0.22, 0.02);
-      headGroup.add(jaw);
-
-      // eyes
-      const eyeMat = new THREE.MeshBasicMaterial({ color: eyeColor });
-      const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.04), eyeMat);
-      eyeL.position.set(-0.10, 0.06, 0.22);
-      headGroup.add(eyeL);
-      const eyeR = eyeL.clone();
-      eyeR.position.x = 0.10;
-      headGroup.add(eyeR);
-
-      // brow ridge
-      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.05, 0.08), matSkinD);
-      brow.position.set(0, 0.14, 0.20);
-      headGroup.add(brow);
-
-      // mouth scar
-      const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.04), matWound);
-      mouth.position.set(0.04, -0.14, 0.22);
-      headGroup.add(mouth);
-
-      // patchy hair
-      const hairMat = new THREE.MeshStandardMaterial({ color: 0x25201d });
-      const hair1 = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.10, 0.30), hairMat);
-      hair1.position.set(0, 0.26, -0.06);
-      headGroup.add(hair1);
-      const hair2 = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.12, 0.46), hairMat);
-      hair2.position.set(-0.14, 0.22, 0);
-      headGroup.add(hair2);
-
-      if (type === "fast") {
-        headGroup.children.forEach(c => { if (c.material === hairMat) c.visible = false; });
-      }
-
-      // neck
-      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.14, 0.20), matSkin);
-      neck.position.set(0, -0.30, 0);
-      headGroup.add(neck);
-
-      headGroup.position.y = 1.82;
-      torsoRoot.add(headGroup);
-
-      // --- arms ---
-      leftArmRoot.position.set(-0.50, 1.48, 0);
-      rightArmRoot.position.set(0.50, 1.48, 0);
-
-      const makeArm = (armRoot, side) => {
-        const upper = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.44, 0.20), matShirt);
-        upper.position.set(0, -0.22, 0);
-        armRoot.add(upper);
-        const forearm = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.40, 0.18), matSkin);
-        forearm.position.set(0, -0.58, 0.08);
-        armRoot.add(forearm);
-        if (side === "left" && type !== "fast") {
-          const wound = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.08, 0.06), matWound);
-          wound.position.set(0.06, -0.50, 0.14);
-          armRoot.add(wound);
+      if (type === "gunner") {
+        const bandolier = new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.8 });
+        const strap = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.50, 0.06), bandolier);
+        strap.position.set(-0.18, 1.10, 0.14); strap.rotation.z = 0.3; torsoRoot.add(strap);
+        for (let i = 0; i < 3; i++) {
+          const shell = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.03), new THREE.MeshStandardMaterial({ color: 0xc0a040 }));
+          shell.position.set(-0.18 + i * 0.05, 1.18 - i * 0.08, 0.18); torsoRoot.add(shell);
         }
-        const hand = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.20), matSkin);
-        hand.position.set(0, -0.82, 0.14);
-        armRoot.add(hand);
-        // fingers
-        const finger = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.08), matSkinD);
-        finger.position.set(0, -0.90, 0.18);
-        armRoot.add(finger);
-      };
-      makeArm(leftArmRoot, "left");
-      makeArm(rightArmRoot, "right");
+      }
 
-      // --- legs ---
+      const headGroup = new THREE.Group();
+      const skull = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.46, 0.42), matSkin);
+      headGroup.add(skull);
+      const jawBone = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.12, 0.32), matSkinD);
+      jawBone.position.set(0, -0.24, 0.02); headGroup.add(jawBone);
+
+      const eyeGlowMat = new THREE.MeshBasicMaterial({ color: eyeColor });
+      const eyeSocketMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+      const sockL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.10, 0.04), eyeSocketMat);
+      sockL.position.set(-0.10, 0.06, 0.20); headGroup.add(sockL);
+      const sockR = sockL.clone(); sockR.position.x = 0.10; headGroup.add(sockR);
+      const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.05), eyeGlowMat);
+      eyeL.position.set(-0.10, 0.06, 0.215); headGroup.add(eyeL);
+      const eyeR = eyeL.clone(); eyeR.position.x = 0.10; headGroup.add(eyeR);
+      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 0.3, 2.0);
+      glowL.position.set(-0.10, 0.06, 0.24); headGroup.add(glowL);
+      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 0.3, 2.0);
+      glowR.position.set(0.10, 0.06, 0.24); headGroup.add(glowR);
+
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, 0.08), matSkinD);
+      brow.position.set(0, 0.15, 0.19); headGroup.add(brow);
+      const cheekL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.10, 0.10), matSkinD);
+      cheekL.position.set(-0.20, -0.06, 0.14); headGroup.add(cheekL);
+      const cheekR = cheekL.clone(); cheekR.position.x = 0.20; headGroup.add(cheekR);
+      const mouthWound = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.04), matWound);
+      mouthWound.position.set(0.03, -0.14, 0.21); headGroup.add(mouthWound);
+      const teeth = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.03, 0.03), matBone);
+      teeth.position.set(0, -0.18, 0.20); headGroup.add(teeth);
+      const noseBridge = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.06), matSkinD);
+      noseBridge.position.set(0, -0.02, 0.22); headGroup.add(noseBridge);
+
+      const hairMat = new THREE.MeshStandardMaterial({ color: 0x25201d, roughness: 0.9 });
+      if (type !== "fast") {
+        const h1 = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.08, 0.28), hairMat);
+        h1.position.set(0, 0.26, -0.06); headGroup.add(h1);
+        const h2 = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.10, 0.44), hairMat);
+        h2.position.set(-0.14, 0.22, 0); headGroup.add(h2);
+        if (type === "gunner") {
+          const h3 = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.06, 0.44), hairMat);
+          h3.position.set(0, 0.24, 0); headGroup.add(h3);
+        }
+      }
+      if (type === "fast") {
+        const scarTop = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.20, 0.04), matWound);
+        scarTop.position.set(0.08, 0.14, 0.21); headGroup.add(scarTop);
+      }
+
+      const earMat = matSkinD;
+      const earL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.10, 0.06), earMat);
+      earL.position.set(-0.24, 0.02, 0); headGroup.add(earL);
+      const earR = earL.clone(); earR.position.x = 0.24; headGroup.add(earR);
+
+      const neck = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.14, 0.20), matSkin);
+      neck.position.set(0, -0.32, 0); headGroup.add(neck);
+      const neckVein = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.03), matWound);
+      neckVein.position.set(0.06, -0.30, 0.08); headGroup.add(neckVein);
+
+      headGroup.position.y = 1.84; torsoRoot.add(headGroup);
+
+      leftArmRoot.position.set(-0.48, 1.48, 0);
+      rightArmRoot.position.set(0.48, 1.48, 0);
+      const makeArm = (ar, side) => {
+        const up = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.42, 0.19), matShirt);
+        up.position.set(0, -0.22, 0); ar.add(up);
+        const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.08, 0.20), matShirt);
+        sleeve.position.set(0, -0.04, 0); ar.add(sleeve);
+        const fa = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.38, 0.17), matSkin);
+        fa.position.set(0, -0.58, 0.06); ar.add(fa);
+        if (side === "left" && type !== "fast") {
+          const w = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 0.06), matWound);
+          w.position.set(0.05, -0.50, 0.12); ar.add(w);
+          const b = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.04), matBone);
+          b.position.set(0.05, -0.48, 0.14); ar.add(b);
+        }
+        if (side === "right") {
+          const scratch = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.14, 0.04), matWound);
+          scratch.position.set(-0.06, -0.42, 0.10); ar.add(scratch);
+        }
+        const hand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.14, 0.18), matSkin);
+        hand.position.set(0, -0.82, 0.12); ar.add(hand);
+        const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.06), matSkinD);
+        f1.position.set(-0.04, -0.92, 0.16); ar.add(f1);
+        const f2 = f1.clone(); f2.position.x = 0; ar.add(f2);
+        const f3 = f1.clone(); f3.position.x = 0.04; ar.add(f3);
+        const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.04), matSkinD);
+        thumb.position.set(side === "left" ? 0.08 : -0.08, -0.86, 0.16); ar.add(thumb);
+      };
+      makeArm(leftArmRoot, "left"); makeArm(rightArmRoot, "right");
+
       leftLegRoot.position.set(-0.18, 0.62, 0);
       rightLegRoot.position.set(0.18, 0.62, 0);
-
-      const makeLeg = (legRoot, side) => {
-        const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.46, 0.24), matPants);
-        thigh.position.set(0, -0.23, 0);
-        legRoot.add(thigh);
-        const shin = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.42, 0.20), matPants);
-        shin.position.set(0, -0.60, 0);
-        legRoot.add(shin);
+      const makeLeg = (lr, side) => {
+        const th = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.44, 0.22), matPants);
+        th.position.set(0, -0.22, 0); lr.add(th);
+        const sh = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.40, 0.20), matPants);
+        sh.position.set(0, -0.60, 0); lr.add(sh);
         if (side === "right") {
-          const tornPant = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.10, 0.10), matSkin);
-          tornPant.position.set(0, -0.70, 0.10);
-          legRoot.add(tornPant);
+          const tear = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.08), matSkin);
+          tear.position.set(0, -0.68, 0.10); lr.add(tear);
+          const kw = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.04), matWound);
+          kw.position.set(0, -0.40, 0.12); lr.add(kw);
+        }
+        if (side === "left") {
+          const bloodDrip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.04), matBlood);
+          bloodDrip.position.set(0.06, -0.52, 0.10); lr.add(bloodDrip);
         }
         const foot = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.10, 0.28), matSkinD);
-        foot.position.set(0, -0.86, 0.04);
-        legRoot.add(foot);
+        foot.position.set(0, -0.86, 0.04); lr.add(foot);
+        const toe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 0.06), matSkinD);
+        toe.position.set(0, -0.88, 0.16); lr.add(toe);
       };
-      makeLeg(leftLegRoot, "left");
-      makeLeg(rightLegRoot, "right");
+      makeLeg(leftLegRoot, "left"); makeLeg(rightLegRoot, "right");
 
       root.add(torsoRoot, leftArmRoot, rightArmRoot, leftLegRoot, rightLegRoot);
       root.position.set(x, 0, z);
-
-      root.traverse((o) => {
-        if (o.isMesh) {
-          o.castShadow = true;
-          o.receiveShadow = true;
-        }
-      });
+      root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
 
       scene.add(root);
 
@@ -1539,203 +1536,94 @@ return {
       const gunGroup = new THREE.Group();
       let adsOffset = new THREE.Vector3();
 
-      const skinMain = 0xc89d7c;
-      const skinOff  = 0xb98562;
+      const mHand = new THREE.MeshStandardMaterial({ color: 0xc89d7c, roughness: 0.7 });
+      const mHandOff = new THREE.MeshStandardMaterial({ color: 0xb98562, roughness: 0.7 });
+      const mGlove = new THREE.MeshStandardMaterial({ color: 0x3a3528, roughness: 0.9 });
+      const mDark = new THREE.MeshStandardMaterial({ color: 0x1a1f28, roughness: 0.55, metalness: 0.45 });
+      const mMetal = new THREE.MeshStandardMaterial({ color: 0x3a4455, roughness: 0.45, metalness: 0.55 });
+      const mLight = new THREE.MeshStandardMaterial({ color: 0x6a7585, roughness: 0.35, metalness: 0.65 });
+      const mBlack = new THREE.MeshStandardMaterial({ color: 0x111115, roughness: 0.6, metalness: 0.3 });
+      const mWood = new THREE.MeshStandardMaterial({ color: 0x6e4a2a, roughness: 0.8 });
+      const mWoodD = new THREE.MeshStandardMaterial({ color: 0x4a3018, roughness: 0.8 });
+      const mSight = new THREE.MeshStandardMaterial({ color: 0xd1d5db, roughness: 0.3, metalness: 0.7 });
+      const mDot = new THREE.MeshBasicMaterial({ color: 0xff2d2d });
 
       if (type === 0) {
-        const frame = new THREE.Mesh(
-          new THREE.BoxGeometry(0.085, 0.13, 0.46),
-          new THREE.MeshStandardMaterial({ color: 0x3b4450 })
-        );
-        gunGroup.add(frame);
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 0.44), mMetal), { position: new THREE.Vector3(0, 0, 0) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.04, 0.26), mLight), { position: new THREE.Vector3(0, 0.055, -0.04) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.025, 0.14), mDark), { position: new THREE.Vector3(0, -0.04, -0.10) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.020, 0.04), mBlack), { position: new THREE.Vector3(0, -0.065, 0.06) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.018, 0.018), mSight), { position: new THREE.Vector3(0, 0.074, 0.085) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.055, 0.016), mSight), { position: new THREE.Vector3(0, 0.088, -0.19) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.004, 8, 8), mDot), { position: new THREE.Vector3(0, 0.114, -0.19) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.20, 0.11), mBlack), { position: new THREE.Vector3(0, -0.16, 0.08) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.04, 0.09), mBlack), { position: new THREE.Vector3(0, -0.06, 0.08) }));
 
-        const slide = new THREE.Mesh(
-          new THREE.BoxGeometry(0.070, 0.045, 0.26),
-          new THREE.MeshStandardMaterial({ color: 0x8891a0 })
-        );
-        slide.position.set(0, 0.055, -0.04);
-        gunGroup.add(slide);
-
-        const rearSight = new THREE.Mesh(
-          new THREE.BoxGeometry(0.065, 0.020, 0.020),
-          new THREE.MeshStandardMaterial({ color: 0xd1d5db })
-        );
-        rearSight.position.set(0, 0.078, 0.085);
-        gunGroup.add(rearSight);
-
-        const frontSight = new THREE.Mesh(
-          new THREE.BoxGeometry(0.010, 0.060, 0.018),
-          new THREE.MeshStandardMaterial({ color: 0xd1d5db })
-        );
-        frontSight.position.set(0, 0.092, -0.19);
-        gunGroup.add(frontSight);
-
-        const frontDot = new THREE.Mesh(
-          new THREE.SphereGeometry(0.005, 8, 8),
-          new THREE.MeshBasicMaterial({ color: 0xff2d2d })
-        );
-        frontDot.position.set(0, 0.118, -0.19);
-        gunGroup.add(frontDot);
-
-        const grip = new THREE.Mesh(
-          new THREE.BoxGeometry(0.10, 0.22, 0.12),
-          new THREE.MeshStandardMaterial({ color: 0x20242c })
-        );
-        grip.position.set(0, -0.17, 0.08);
-        gunGroup.add(grip);
-
-        const rHand = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.18), new THREE.MeshStandardMaterial({ color: skinMain }));
-        rHand.position.set(0, -0.12, 0.08);
-        gunGroup.add(rHand);
+        const rH = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.17), mGlove);
+        rH.position.set(0, -0.12, 0.08); gunGroup.add(rH);
+        const fng = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.04), mHand);
+        fng.position.set(0, -0.065, 0.04); gunGroup.add(fng);
 
         gunGroup.position.set(0.26, -0.22, -0.72);
         adsOffset.set(-0.26, 0.095, 0.26);
 
       } else if (type === 1) {
-        const body = new THREE.Mesh(
-          new THREE.BoxGeometry(0.14, 0.16, 0.90),
-          new THREE.MeshStandardMaterial({ color: 0x374151 })
-        );
-        gunGroup.add(body);
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.14, 0.88), mMetal), { position: new THREE.Vector3(0, 0, 0) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.05, 0.50), mDark), { position: new THREE.Vector3(0, 0.08, -0.05) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.24), mMetal), { position: new THREE.Vector3(0, 0.04, -0.28) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.06), mDark), { position: new THREE.Vector3(0, -0.065, -0.20) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.14, 0.24), mDark), { position: new THREE.Vector3(0, 0, 0.52) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.10), mBlack), { position: new THREE.Vector3(0, -0.06, 0.46) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.22, 0.11), mDark), { position: new THREE.Vector3(0, -0.17, 0.12) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.28, 0.10), mBlack), { position: new THREE.Vector3(0, -0.15, 0.00) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.03, 0.08), mBlack), { position: new THREE.Vector3(0, -0.28, -0.01) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.04), mDark), { position: new THREE.Vector3(0, 0.09, 0.18) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.04, 0.014), mSight), { position: new THREE.Vector3(0, 0.09, -0.38) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.004, 6, 6), mDot), { position: new THREE.Vector3(0, 0.108, -0.38) }));
 
-        const upper = new THREE.Mesh(
-          new THREE.BoxGeometry(0.10, 0.06, 0.52),
-          new THREE.MeshStandardMaterial({ color: 0x1f2937 })
-        );
-        upper.position.set(0, 0.08, -0.05);
-        gunGroup.add(upper);
-
-        const stock = new THREE.Mesh(
-          new THREE.BoxGeometry(0.12, 0.16, 0.26),
-          new THREE.MeshStandardMaterial({ color: 0x222831 })
-        );
-        stock.position.set(0, 0, 0.52);
-        gunGroup.add(stock);
-
-        const grip = new THREE.Mesh(
-          new THREE.BoxGeometry(0.10, 0.24, 0.12),
-          new THREE.MeshStandardMaterial({ color: 0x1f2937 })
-        );
-        grip.position.set(0, -0.18, 0.12);
-        gunGroup.add(grip);
-
-        const mag = new THREE.Mesh(
-          new THREE.BoxGeometry(0.08, 0.30, 0.12),
-          new THREE.MeshStandardMaterial({ color: 0x20242c })
-        );
-        mag.position.set(0, -0.16, 0.00);
-        gunGroup.add(mag);
-
-        const rHand = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.18), new THREE.MeshStandardMaterial({ color: skinMain }));
-        rHand.position.set(0, -0.12, 0.12);
-        gunGroup.add(rHand);
-        const lHand = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.16), new THREE.MeshStandardMaterial({ color: skinOff }));
-        lHand.position.set(0, -0.10, -0.22);
-        gunGroup.add(lHand);
+        const rH = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.17), mGlove);
+        rH.position.set(0, -0.12, 0.12); gunGroup.add(rH);
+        const lH = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.15), mGlove);
+        lH.position.set(0, -0.09, -0.22); gunGroup.add(lH);
 
         gunGroup.position.set(0.25, -0.22, -0.80);
         adsOffset.set(-0.25, 0.10, 0.28);
 
       } else if (type === 2) {
-        const body = new THREE.Mesh(
-          new THREE.BoxGeometry(0.18, 0.16, 0.92),
-          new THREE.MeshStandardMaterial({ color: 0x6b7280 })
-        );
-        gunGroup.add(body);
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.14, 0.90), mLight), { position: new THREE.Vector3(0, 0, 0) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.40), mMetal), { position: new THREE.Vector3(0, 0, -0.30) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.26), mDark), { position: new THREE.Vector3(0, -0.015, -0.36) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.09, 0.22), mWood), { position: new THREE.Vector3(0, -0.07, -0.08) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.24), mWoodD), { position: new THREE.Vector3(0, 0, 0.48) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 0.12), mWoodD), { position: new THREE.Vector3(0, -0.06, 0.38) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.03, 0.04), mBlack), { position: new THREE.Vector3(0, -0.06, 0.14) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.035, 0.018), mSight), { position: new THREE.Vector3(0, 0.085, 0.18) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.06, 0.018), mSight), { position: new THREE.Vector3(0, 0.095, -0.34) }));
 
-        const pump = new THREE.Mesh(
-          new THREE.BoxGeometry(0.16, 0.10, 0.24),
-          new THREE.MeshStandardMaterial({ color: 0x7c5a3a })
-        );
-        pump.position.set(0, -0.08, -0.1);
-        gunGroup.add(pump);
-
-        const stock = new THREE.Mesh(
-          new THREE.BoxGeometry(0.16, 0.16, 0.26),
-          new THREE.MeshStandardMaterial({ color: 0x5d4633 })
-        );
-        stock.position.set(0, 0, 0.48);
-        gunGroup.add(stock);
-
-        const rearSight = new THREE.Mesh(
-          new THREE.BoxGeometry(0.06, 0.04, 0.02),
-          new THREE.MeshStandardMaterial({ color: 0xd1d5db })
-        );
-        rearSight.position.set(0, 0.09, 0.18);
-        gunGroup.add(rearSight);
-
-        const frontSight = new THREE.Mesh(
-          new THREE.BoxGeometry(0.03, 0.08, 0.02),
-          new THREE.MeshStandardMaterial({ color: 0xd1d5db })
-        );
-        frontSight.position.set(0, 0.10, -0.34);
-        gunGroup.add(frontSight);
-
-        const rHand = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.18), new THREE.MeshStandardMaterial({ color: skinMain }));
-        rHand.position.set(0, -0.12, 0.14);
-        gunGroup.add(rHand);
-        const lHand = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.16), new THREE.MeshStandardMaterial({ color: skinOff }));
-        lHand.position.set(0, -0.08, -0.12);
-        gunGroup.add(lHand);
+        const rH = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.17), mGlove);
+        rH.position.set(0, -0.11, 0.14); gunGroup.add(rH);
+        const lH = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.15), mGlove);
+        lH.position.set(0, -0.07, -0.10); gunGroup.add(lH);
 
         gunGroup.position.set(0.23, -0.20, -0.82);
         adsOffset.set(-0.175, 0.105, 0.24);
 
       } else if (type === 3) {
-        const body = new THREE.Mesh(
-          new THREE.BoxGeometry(0.12, 0.14, 0.72),
-          new THREE.MeshStandardMaterial({ color: 0x4b5563 })
-        );
-        gunGroup.add(body);
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.70), mMetal), { position: new THREE.Vector3(0, 0, 0) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.04, 0.32), mDark), { position: new THREE.Vector3(0, 0.065, -0.06) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.03, 0.16), mMetal), { position: new THREE.Vector3(0, 0.03, -0.24) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.16), mDark), { position: new THREE.Vector3(0, 0.01, 0.38) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.08), mBlack), { position: new THREE.Vector3(0, -0.04, 0.34) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.09), mDark), { position: new THREE.Vector3(0, -0.15, 0.10) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.08), mBlack), { position: new THREE.Vector3(0, -0.11, -0.02) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.06), mBlack), { position: new THREE.Vector3(0, -0.22, -0.03) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.04, 0.018), mSight), { position: new THREE.Vector3(0, 0.075, -0.28) }));
+        gunGroup.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.018, 0.018), mSight), { position: new THREE.Vector3(0, 0.065, 0.14) }));
 
-        const top = new THREE.Mesh(
-          new THREE.BoxGeometry(0.08, 0.05, 0.34),
-          new THREE.MeshStandardMaterial({ color: 0x1f2937 })
-        );
-        top.position.set(0, 0.07, -0.06);
-        gunGroup.add(top);
-
-        const stock = new THREE.Mesh(
-          new THREE.BoxGeometry(0.10, 0.10, 0.18),
-          new THREE.MeshStandardMaterial({ color: 0x232a34 })
-        );
-        stock.position.set(0, 0.01, 0.40);
-        gunGroup.add(stock);
-
-        const grip = new THREE.Mesh(
-          new THREE.BoxGeometry(0.08, 0.20, 0.10),
-          new THREE.MeshStandardMaterial({ color: 0x1f2937 })
-        );
-        grip.position.set(0, -0.16, 0.10);
-        gunGroup.add(grip);
-
-        const mag = new THREE.Mesh(
-          new THREE.BoxGeometry(0.07, 0.24, 0.10),
-          new THREE.MeshStandardMaterial({ color: 0x20242c })
-        );
-        mag.position.set(0, -0.12, -0.02);
-        gunGroup.add(mag);
-
-        const frontSight = new THREE.Mesh(
-          new THREE.BoxGeometry(0.02, 0.05, 0.02),
-          new THREE.MeshStandardMaterial({ color: 0xd1d5db })
-        );
-        frontSight.position.set(0, 0.08, -0.28);
-        gunGroup.add(frontSight);
-
-        const rearSight = new THREE.Mesh(
-          new THREE.BoxGeometry(0.05, 0.02, 0.02),
-          new THREE.MeshStandardMaterial({ color: 0xd1d5db })
-        );
-        rearSight.position.set(0, 0.07, 0.14);
-        gunGroup.add(rearSight);
-
-        const rHand = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.18), new THREE.MeshStandardMaterial({ color: skinMain }));
-        rHand.position.set(0, -0.12, 0.10);
-        gunGroup.add(rHand);
-        const lHand = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.16), new THREE.MeshStandardMaterial({ color: skinOff }));
-        lHand.position.set(0, -0.10, -0.16);
-        gunGroup.add(lHand);
+        const rH = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.17), mGlove);
+        rH.position.set(0, -0.11, 0.10); gunGroup.add(rH);
+        const lH = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.15), mGlove);
+        lH.position.set(0, -0.09, -0.16); gunGroup.add(lH);
 
         gunGroup.position.set(0.24, -0.22, -0.76);
         adsOffset.set(-0.22, 0.085, 0.24);
@@ -2698,12 +2586,12 @@ return {
               enemy.attackCooldownTimer = enemy.attackCooldown;
               damagePlayer(enemy.attackDamage, enemy);
             }
-          } else if (dist < enemy.rangeDistance && enemy.attackCooldownTimer <= 0 && isTargetLocal) {
+          } else if (enemy.ranged && dist < enemy.rangeDistance && enemy.attackCooldownTimer <= 0 && isTargetLocal) {
             _visOrigin.set(enemy.group.position.x, 1.6, enemy.group.position.z);
             _visDir.set(dx, player.position.y - 0.3 - 1.6, dz).normalize();
             _visRay.set(_visOrigin, _visDir);
             _visRay.near = 0;
-            _visRay.far = dist;
+            _visRay.far = Math.min(dist, enemy.rangeDistance);
             if (_visRay.intersectObjects(wallMeshes, false).length === 0) {
               enemy.attackCooldownTimer = enemy.attackCooldown;
               damagePlayer(enemy.attackDamage, enemy);
