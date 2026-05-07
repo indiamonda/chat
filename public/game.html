@@ -260,7 +260,8 @@
       <button class="overlay-btn" id="btnNameOk" style="margin-top:16px;">JOIN</button>
     </div>
   </div>
-  <script src="/socket.io.min.js" defer></script>
+  <!-- Sync load so `io` exists before the module runs (defer can race; absolute URL can 404). -->
+  <script src="https://chat.jimmyqrg.com/socket.io.min.js"></script>
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js";
 
@@ -324,6 +325,13 @@
     let deathCamPitch = 0;
     let deathBaseFov = 75;
 
+    const PLAYER_FLASH_COLOR = 0xfff6ec;
+    const PLAYER_FLASH_INTENSITY = 3.05;
+    const PLAYER_FLASH_DISTANCE = 62;
+    const PLAYER_FLASH_ANGLE = Math.PI / 4.05;
+    const PLAYER_FLASH_PEN = 0.44;
+    const PLAYER_FLASH_DECAY = 1.28;
+
     function createOfflineSocketStub() {
       return {
         id: "offline",
@@ -346,7 +354,7 @@
           reconnectionAttempts: 10,
           reconnectionDelay: 800,
         })
-      : (console.warn("Socket.IO client not loaded — single-player only."), createOfflineSocketStub());
+      : createOfflineSocketStub();
 
     let activeRoomId = "";
 
@@ -726,16 +734,34 @@
       ns.sprite.position.set(0, 2.55, 0);
       group.add(ns.sprite);
 
+      const flashTarget = new THREE.Object3D();
+      flashTarget.position.set(0, 0, -1);
+      const flashSpot = new THREE.SpotLight(
+        PLAYER_FLASH_COLOR,
+        PLAYER_FLASH_INTENSITY,
+        PLAYER_FLASH_DISTANCE,
+        PLAYER_FLASH_ANGLE,
+        PLAYER_FLASH_PEN,
+        PLAYER_FLASH_DECAY
+      );
+      flashSpot.position.set(0, 0.16, 0.14);
+      const flashMount = new THREE.Group();
+      flashMount.position.set(0, 1.62, 0);
+      flashMount.add(flashSpot);
+      flashMount.add(flashTarget);
+      flashSpot.target = flashTarget;
+      group.add(flashMount);
+
       group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       group.visible = false;
       return { group, x: 0, y: 1.65, z: 0, yaw: 0, name: name || "Player",
                nameSprite: ns.sprite, nameCanvas: ns.canvas, nameCtx: ns.ctx, nameTex: ns.tex,
-               rightArm, leftArm, gunModel, currentWeapon: 1 };
+               rightArm, leftArm, gunModel, currentWeapon: 1, flashSpot };
     }
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x121820);
-    scene.fog = new THREE.Fog(0x121820, 28, 125);
+    scene.background = new THREE.Color(0x0c1018);
+    scene.fog = new THREE.Fog(0x0c1018, 24, 108);
 
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -752,10 +778,10 @@
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     app.appendChild(renderer.domElement);
 
-    const hemi = new THREE.HemisphereLight(0x8899bb, 0x353540, 1.05);
+    const hemi = new THREE.HemisphereLight(0x7088aa, 0x2a2c34, 0.72);
     scene.add(hemi);
 
-    const moon = new THREE.DirectionalLight(0xd8dcff, 0.88);
+    const moon = new THREE.DirectionalLight(0xc8cfe8, 0.52);
     moon.position.set(28, 34, 22);
     moon.castShadow = true;
     moon.shadow.mapSize.set(2048, 2048);
@@ -1256,9 +1282,9 @@
       const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.05), eyeGlowMat);
       eyeL.position.set(-0.10, 0.06, 0.215); headGroup.add(eyeL);
       const eyeR = eyeL.clone(); eyeR.position.x = 0.10; headGroup.add(eyeR);
-      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 1.75, 9.0, 2);
+      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 1.15, 6.5, 2);
       glowL.position.set(-0.10, 0.06, 0.24); headGroup.add(glowL);
-      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 1.75, 9.0, 2);
+      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 1.15, 6.5, 2);
       glowR.position.set(0.10, 0.06, 0.24); headGroup.add(glowR);
 
       const brow = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, 0.08), matSkinD);
@@ -1562,7 +1588,14 @@ return {
 
     const playerLightTarget = new THREE.Object3D();
     playerLightTarget.position.set(0, 0, -1);
-    const playerSpot = new THREE.SpotLight(0xfff1e0, 2.4, 48, Math.PI / 4.2, 0.48, 1.35);
+    const playerSpot = new THREE.SpotLight(
+      PLAYER_FLASH_COLOR,
+      PLAYER_FLASH_INTENSITY,
+      PLAYER_FLASH_DISTANCE,
+      PLAYER_FLASH_ANGLE,
+      PLAYER_FLASH_PEN,
+      PLAYER_FLASH_DECAY
+    );
     playerSpot.position.set(0, 0.18, 0.12);
     camera.add(playerSpot);
     camera.add(playerLightTarget);
