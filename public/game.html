@@ -906,16 +906,43 @@
       crossfire: buildMapCrossfire
     };
 
-    const MAP_SPAWNS = {
-      arena: [
-        [30, 30], [35, 20], [20, 35], [38, 0],
-        [0, 38], [30, -30], [-30, 30], [35, 10]
-      ],
-      crossfire: [
-        [38, 38], [-38, 38], [38, -38], [-38, -38],
-        [0, 40], [0, -40], [40, 0], [-40, 0]
-      ]
-    };
+    const ZOMBIE_COUNT = 8;
+    const SPAWN_MIN_DIST_BASE = 18;
+    const SPAWN_MIN_DIST_FLOOR = 4;
+
+    function getAllPlayerPositions() {
+      const positions = [{ x: player.position.x, z: player.position.z }];
+      if (MULTIPLAYER) {
+        for (const rp of remotePlayers.values()) {
+          if (rp.group.visible) positions.push({ x: rp.x, z: rp.z });
+        }
+      }
+      return positions;
+    }
+
+    function findSpawnPosition(minDist) {
+      const S = CURRENT_MAP === "crossfire" ? 43 : 40;
+      const players = getAllPlayerPositions();
+      let dist = minDist;
+      for (let attempt = 0; attempt < 60; attempt++) {
+        if (attempt > 0 && attempt % 15 === 0) {
+          dist = Math.max(SPAWN_MIN_DIST_FLOOR, dist * 0.6);
+        }
+        const x = (Math.random() * 2 - 1) * S;
+        const z = (Math.random() * 2 - 1) * S;
+        if (enemyCollidesWall(x, z, 0.5)) continue;
+        let tooClose = false;
+        for (const p of players) {
+          const dx = x - p.x, dz = z - p.z;
+          if (dx * dx + dz * dz < dist * dist) { tooClose = true; break; }
+        }
+        if (tooClose) continue;
+        return { x, z, usedDist: dist };
+      }
+      const x = (Math.random() * 2 - 1) * S;
+      const z = (Math.random() * 2 - 1) * S;
+      return { x, z, usedDist: 0 };
+    }
 
     const player = {
       position: new THREE.Vector3(-30, 1.65, -30),
@@ -997,9 +1024,9 @@
         fireDelay: 520,
         auto: false,
         pellets: 7,
-        spreadBase: 0.028,
-        spreadBloomAdd: 0.006,
-        spreadBloomMax: 0.045,
+        spreadBase: 0.055,
+        spreadBloomAdd: 0.010,
+        spreadBloomMax: 0.080,
         recover: 0.050,
         recoil: 0.055,
         damageHead: 26,
@@ -1820,10 +1847,6 @@ return {
     });
 
     /* ==== PART 2 STARTS HERE ==== */
-        function getSpawnPoints() {
-      return MAP_SPAWNS[CURRENT_MAP] || MAP_SPAWNS.arena;
-    }
-
     function rebuildMapAndEnemies() {
       clearMap();
       MAP_BUILDERS[CURRENT_MAP]();
@@ -1847,19 +1870,17 @@ return {
       return false;
     }
 
+    const ZOMBIE_TYPES = ["normal", "fast", "gunner", "normal", "normal", "fast", "gunner", "tank"];
+
     function rebuildEnemyRoster() {
       for (const enemy of state.enemies) {
         scene.remove(enemy.group);
       }
       state.enemies.length = 0;
 
-      const spawnPoints = getSpawnPoints();
-      for (let i = 0; i < spawnPoints.length; i++) {
-        const [x, z] = spawnPoints[i];
-        let type = "normal";
-        if (i === 1 || i === 5) type = "fast";
-        if (i === 2 || i === 6) type = "gunner";
-        if (i === 7) type = "tank";
+      for (let i = 0; i < ZOMBIE_COUNT; i++) {
+        const { x, z } = findSpawnPosition(SPAWN_MIN_DIST_BASE);
+        const type = ZOMBIE_TYPES[i % ZOMBIE_TYPES.length];
         const zombie = makeZombie(x, z, type);
         drawEnemyHp(zombie);
         state.enemies.push(zombie);
@@ -2546,7 +2567,8 @@ return {
             enemy.alive = true;
             enemy.hp = enemy.maxHp;
             enemy.group.visible = true;
-            enemy.group.position.copy(enemy.spawn);
+            const sp = findSpawnPosition(SPAWN_MIN_DIST_BASE);
+            enemy.group.position.set(sp.x, 0, sp.z);
             enemy.aware = false;
             enemy.hiddenTimer = 0;
             enemy.targetId = null;
