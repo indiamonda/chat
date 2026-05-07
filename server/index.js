@@ -1676,6 +1676,20 @@ gameNsp.on('connection', (socket) => {
     });
   });
 
+  socket.on('hit', (data) => {
+    if (typeof data !== 'object' || data === null) return;
+    const target = data.target;
+    if (typeof target !== 'string') return;
+    const targetSocket = gameNsp.sockets.get(target);
+    if (!targetSocket) return;
+    targetSocket.emit('damaged', {
+      by: socket.id,
+      damage: Math.min(200, Math.max(0, +data.damage || 0)),
+      x: +data.x || 0,
+      z: +data.z || 0,
+    });
+  });
+
   socket.on('chat', (msg) => {
     if (!currentRoom || typeof msg !== 'string') return;
     const text = msg.slice(0, 200).trim();
