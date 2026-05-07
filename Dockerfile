@@ -12,6 +12,8 @@ ENV PORT=8080
 RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs nodejs
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Socket.IO browser bundle for game.html (/socket.io.min.js); file may be untracked in git
+RUN cp -f node_modules/socket.io/client-dist/socket.io.min.js public/socket.io.min.js
 RUN mkdir -p /data && chown -R nodejs:nodejs /data
 USER nodejs
 EXPOSE 8080
