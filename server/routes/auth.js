@@ -71,6 +71,12 @@ function generateVerifyCode() {
   return String(n).padStart(6, '0');
 }
 
+const BLOCKED_EMAIL_DOMAINS = ['student.auhsd.us'];
+function isEmailBlocked(email) {
+  const domain = String(email || '').split('@')[1]?.toLowerCase();
+  return domain && BLOCKED_EMAIL_DOMAINS.includes(domain);
+}
+
 router.post('/send-code', async (req, res) => {
   try {
     const { email } = req.body || {};
@@ -81,6 +87,9 @@ router.post('/send-code', async (req, res) => {
     }
     if (isEmailBanned(normalized)) {
       return res.status(403).json({ error: 'This email address has been permanently banned.' });
+    }
+    if (isEmailBlocked(normalized)) {
+      return res.json({ ok: true, skipped: true, reason: 'blocked_domain' });
     }
     const existingUser = db.prepare(
       'SELECT id FROM users WHERE email IS NOT NULL AND LOWER(email) = ?'
@@ -126,6 +135,25 @@ router.post('/send-code', async (req, res) => {
   }
 });
 
+router.post('/report-blocked-email', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+    const normalized = String(email).trim().toLowerCase();
+    const domain = normalized.split('@')[1] || '';
+    await sendEmail({
+      to: 'ikunbeautiful@gmail.com',
+      subject: 'Blocked email report: ' + normalized,
+      html: '<p>A user reported they cannot receive mail at: <strong>' + normalized + '</strong></p><p>Domain: <strong>' + domain + '</strong></p><p>If their organization blocks external mail, consider adding this domain to the blocked-email bypass list.</p>',
+      text: 'A user reported they cannot receive mail at: ' + normalized + '\nDomain: ' + domain,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[report-blocked-email]', err);
+    res.status(500).json({ error: 'Failed to send report.' });
+  }
+});
+
 router.post('/register', async (req, res, next) => {
   try {
     const { username, email, password, display_name, recaptcha_token, email_code } = req.body || {};
@@ -138,20 +166,22 @@ router.post('/register', async (req, res, next) => {
     }
 
     const normalized = String(email).trim().toLowerCase();
-    if (!email_code) return res.status(400).json({ error: 'Verification code is required' });
-    const codeRow = db.prepare(
-      'SELECT rowid, code, expires_at, used FROM email_verification_codes WHERE LOWER(email) = ? ORDER BY created_at DESC LIMIT 1'
-    ).get(normalized);
-    if (!codeRow || codeRow.used) {
-      return res.status(400).json({ error: 'No verification code found. Please request a new one.' });
+    if (!isEmailBlocked(normalized)) {
+      if (!email_code) return res.status(400).json({ error: 'Verification code is required' });
+      const codeRow = db.prepare(
+        'SELECT rowid, code, expires_at, used FROM email_verification_codes WHERE LOWER(email) = ? ORDER BY created_at DESC LIMIT 1'
+      ).get(normalized);
+      if (!codeRow || codeRow.used) {
+        return res.status(400).json({ error: 'No verification code found. Please request a new one.' });
+      }
+      if (Date.now() > codeRow.expires_at) {
+        return res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
+      }
+      if (String(email_code).trim() !== codeRow.code) {
+        return res.status(400).json({ error: 'Incorrect verification code.' });
+      }
+      db.prepare('UPDATE email_verification_codes SET used = 1 WHERE rowid = ?').run(codeRow.rowid);
     }
-    if (Date.now() > codeRow.expires_at) {
-      return res.status(400).json({ error: 'Verification code has expired. Please request a new one.' });
-    }
-    if (String(email_code).trim() !== codeRow.code) {
-      return res.status(400).json({ error: 'Incorrect verification code.' });
-    }
-    db.prepare('UPDATE email_verification_codes SET used = 1 WHERE rowid = ?').run(codeRow.rowid);
 
     const result = await register(username, email, password, display_name);
     if (result.error) return res.status(400).json({ error: result.error });
@@ -690,6 +720,11 @@ router.post('/recover/send-code', async (req, res) => {
       recordAttempt({ userId: user.id, kind: 'account_key', outcome: 'failure', req, detail: { reason: 'wrong_email', claimed: claimedEmail } });
       await notifyAccountEmails({ userId: user.id, outcome: 'failure', kind: 'account_key', req });
       return res.status(400).json({ error: 'That email does not match the address on file. If your email was changed or is inaccessible, use the payment key option below.' });
+    }
+
+    if (isEmailBlocked(user.email)) {
+      db.prepare("UPDATE recovery_sessions SET recognition = 'full' WHERE token = ?").run(session.token);
+      return res.json({ ok: true, skipped: true, reason: 'blocked_domain' });
     }
 
     const lastSent = db.prepare(
