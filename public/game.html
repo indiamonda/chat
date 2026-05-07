@@ -196,10 +196,32 @@
 </head>
 <body>
   <div id="menu" class="menu">
-    <h1>3D Zombie FPS</h1>
-    <p>by Tintly555 and JimmyQrg</p>
-    <button id="btnArena">Zombie Arena</button>
-    <button id="btnCrossfire">Crossfire</button>
+    <div id="menuMain">
+      <h1>3D Zombie FPS</h1>
+      <p>by Tintly555 and JimmyQrg</p>
+      <button id="btnArena">Zombie Arena</button>
+      <button id="btnCrossfire">Crossfire</button>
+    </div>
+    <div id="menuArenaMode" style="display:none;">
+      <h2 style="font-family:'Audiowide',sans-serif;font-size:28px;margin:0 0 24px 0;letter-spacing:3px;">ZOMBIE ARENA</h2>
+      <button id="btnArenaSingle">SINGLEPLAYER</button>
+      <button id="btnArenaCoop">CO-OP MODE</button>
+      <button id="btnArenaBack" style="margin-top:12px;opacity:0.6;font-size:14px;">← BACK</button>
+    </div>
+    <div id="menuLobby" style="display:none;">
+      <h2 id="lobbyTitle" style="font-family:'Audiowide',sans-serif;font-size:24px;margin:0 0 20px 0;letter-spacing:2px;">MULTIPLAYER</h2>
+      <button id="btnQuickplay">QUICK PLAY</button>
+      <button id="btnCreateRoom">CREATE A ROOM</button>
+      <button id="btnJoinCode">JOIN VIA CODE</button>
+      <button id="btnLobbyBack" style="margin-top:12px;opacity:0.6;font-size:14px;">← BACK</button>
+    </div>
+    <div id="menuJoinCode" style="display:none;">
+      <h2 style="font-family:'Audiowide',sans-serif;font-size:24px;margin:0 0 16px 0;letter-spacing:2px;">JOIN VIA CODE</h2>
+      <input id="codeInput" type="text" maxlength="10" placeholder="ROOM CODE" style="font-family:'Audiowide',sans-serif;width:180px;padding:10px 14px;font-size:18px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;text-transform:uppercase;letter-spacing:4px;">
+      <p id="codeError" style="font-family:'Audiowide',sans-serif;color:#e53e3e;font-size:13px;margin:8px 0 0 0;min-height:18px;"></p>
+      <button id="btnCodeJoin" style="margin-top:8px;">JOIN</button>
+      <button id="btnCodeBack" style="margin-top:8px;opacity:0.6;font-size:14px;">← BACK</button>
+    </div>
   </div>
 
   <div id="app"></div>
@@ -249,8 +271,24 @@
     const crosshairEl = document.getElementById("crosshair");
     const hitmarkerEl = document.getElementById("hitmarker");
     const menuEl = document.getElementById("menu");
+    const menuMain = document.getElementById("menuMain");
+    const menuArenaMode = document.getElementById("menuArenaMode");
+    const menuLobby = document.getElementById("menuLobby");
+    const lobbyTitle = document.getElementById("lobbyTitle");
+    const menuJoinCode = document.getElementById("menuJoinCode");
+    const codeInput = document.getElementById("codeInput");
+    const codeError = document.getElementById("codeError");
     const btnArena = document.getElementById("btnArena");
     const btnCrossfire = document.getElementById("btnCrossfire");
+    const btnArenaSingle = document.getElementById("btnArenaSingle");
+    const btnArenaCoop = document.getElementById("btnArenaCoop");
+    const btnArenaBack = document.getElementById("btnArenaBack");
+    const btnQuickplay = document.getElementById("btnQuickplay");
+    const btnCreateRoom = document.getElementById("btnCreateRoom");
+    const btnJoinCode = document.getElementById("btnJoinCode");
+    const btnLobbyBack = document.getElementById("btnLobbyBack");
+    const btnCodeJoin = document.getElementById("btnCodeJoin");
+    const btnCodeBack = document.getElementById("btnCodeBack");
     const deathOverlay = document.getElementById("deathOverlay");
     const deathFade = document.getElementById("deathFade");
     const deathUI = document.getElementById("deathUI");
@@ -271,6 +309,9 @@
     const chatInput = document.getElementById("chatInput");
     const hitDirContainer = document.getElementById("hitDirContainer");
     let CURRENT_MAP = "arena";
+    let MULTIPLAYER = false;
+    let ROOM_CODE = "";
+    let pendingLobbyMode = "";
     let started = false;
     let paused = false;
     let chatOpen = false;
@@ -283,7 +324,7 @@
     let deathCamPitch = 0;
     let deathBaseFov = 75;
     const socket = io("https://chat.jimmyqrg.com/game");
-    const ROOM_ID = "room1";
+    let activeRoomId = "";
 
     const remotePlayers = new Map();
 
@@ -372,7 +413,7 @@
 
     function sendChat() {
       const text = chatInput.value.trim();
-      if (text && CURRENT_MAP === "crossfire") {
+      if (text && MULTIPLAYER) {
         socket.emit("chat", text);
       } else if (text) {
         addChatMessage(playerName, text);
@@ -885,11 +926,13 @@
 
     function updateHud() {
       const w = weapon();
+      const roomLine = (MULTIPLAYER && ROOM_CODE) ? `<b style="color:#4fd1ff;">Room: ${ROOM_CODE}</b><br>` : "";
       hud.innerHTML = `
+        ${roomLine}
         3D Zombie FPS<br>
         WASD move | Space jump | R reload | T chat<br>
         Mouse aim | RMB zoom | Weapons: 1 2 3 4<br>
-        Map: ${CURRENT_MAP}<br>
+        Map: ${CURRENT_MAP}${MULTIPLAYER ? " (MP)" : ""}<br>
         Weapon: ${w.name}<br>
         Bullets: ${w.ammo} / ${w.magSize}${state.reloading ? "（Refilling...）" : ""}<br>
         Health: ${Math.max(0, Math.floor(player.health))} / ${player.maxHealth}<br>
@@ -1749,7 +1792,7 @@ return {
           createTracer(muzzleStart, bp.clone(), w.color);
           state.hitmarkerTimer = 0.08;
           hitmarkerEl.classList.add("show");
-          if (CURRENT_MAP === "crossfire") {
+          if (MULTIPLAYER) {
             socket.emit("shoot", { x: bp.x, y: bp.y, z: bp.z, nx: 0, ny: 0, nz: 0, color: w.color, type: "blood" });
           }
 
@@ -1764,7 +1807,7 @@ return {
           createSparks(wallHit.point.clone(), w.color);
           const normal = wallHit.face.normal.clone().transformDirection(wallHit.object.matrixWorld);
           createBulletMark(wallHit.point.clone(), normal);
-          if (CURRENT_MAP === "crossfire") {
+          if (MULTIPLAYER) {
             socket.emit("shoot", { x: wallHit.point.x, y: wallHit.point.y, z: wallHit.point.z, nx: normal.x, ny: normal.y, nz: normal.z, color: w.color, type: "spark" });
           }
         } else {
@@ -1926,7 +1969,7 @@ return {
       camera.position.y += headBob;
       camera.rotation.y = player.yaw;
       camera.rotation.x = player.pitch;
-      if (CURRENT_MAP === "crossfire") {
+      if (MULTIPLAYER) {
         socket.emit("move", {
           x: player.position.x,
           y: player.position.y,
@@ -2389,7 +2432,7 @@ return {
     function animate() {
       const dt = Math.min(clock.getDelta(), 0.033);
 
-      if (CURRENT_MAP === "crossfire") {
+      if (MULTIPLAYER) {
         for (const rp of remotePlayers.values()) {
           rp.group.position.set(rp.x, 0, rp.z);
           rp.group.rotation.y = rp.yaw;
@@ -2397,7 +2440,7 @@ return {
       }
 
       if (paused) {
-        if (CURRENT_MAP === "crossfire") {
+        if (MULTIPLAYER) {
           updatePlayer(dt);
         }
         renderer.render(scene, camera);
@@ -2408,14 +2451,14 @@ return {
       updatePlayer(dt);
       updateWeapon(dt);
 
-      if (CURRENT_MAP !== "crossfire") {
+      if (CURRENT_MAP === "arena") {
         if (player.health > 0) {
           updateEnemies(dt);
         }
         updateDeathAnim(dt);
       }
 
-      if (CURRENT_MAP === "crossfire" && player.health <= 0) {
+      if (CURRENT_MAP === "crossfire" && MULTIPLAYER && player.health <= 0) {
         const first = remotePlayers.values().next().value;
         if (first) {
           camera.position.set(first.x, first.y, first.z);
@@ -2437,7 +2480,7 @@ return {
 
     const clock = new THREE.Clock();
 
-    function startGame(mapName) {
+    function startGame(mapName, multiplayer) {
       hideDeathScreen();
       hidePause();
       closeChat();
@@ -2445,6 +2488,7 @@ return {
       hitDirContainer.innerHTML = "";
       hitIndicators.length = 0;
       CURRENT_MAP = mapName;
+      if (multiplayer !== undefined) MULTIPLAYER = multiplayer;
       menuEl.style.display = "none";
 
       clearMap();
@@ -2456,10 +2500,11 @@ return {
       }
       state.enemies.length = 0;
 
-      if (mapName !== "crossfire") {
+      if (MULTIPLAYER && activeRoomId) {
+        socket.emit("joinRoom", activeRoomId);
+      }
+      if (CURRENT_MAP === "arena") {
         rebuildEnemyRoster();
-      } else {
-        socket.emit("joinRoom", ROOM_ID);
       }
 
       if (CURRENT_MAP === "crossfire") {
@@ -2503,7 +2548,11 @@ return {
     function goToMenu() {
       hideDeathScreen();
       hidePause();
+      MULTIPLAYER = false;
+      ROOM_CODE = "";
+      activeRoomId = "";
       menuEl.style.display = "flex";
+      showMenuPanel("menuMain");
       player.health = 100;
       weaponRoot.visible = true;
       camera.fov = 75;
@@ -2518,18 +2567,80 @@ return {
       remotePlayers.clear();
     }
 
-    btnArena.addEventListener("click", () => startGame("arena"));
+    function showMenuPanel(id) {
+      for (const p of [menuMain, menuArenaMode, menuLobby, menuJoinCode]) p.style.display = "none";
+      document.getElementById(id).style.display = "";
+    }
 
-    btnCrossfire.addEventListener("click", () => {
+    function showLobby(mode, title) {
+      pendingLobbyMode = mode;
+      lobbyTitle.textContent = title;
+      showMenuPanel("menuLobby");
+    }
+
+    function beginMultiplayerGame(mapName, code) {
+      activeRoomId = "";
+      ROOM_CODE = code || "";
       nameModal.style.display = "flex";
       nameInput.value = "";
       nameInput.focus();
+      nameModal._pendingMap = mapName;
+    }
+
+    btnArena.addEventListener("click", () => showMenuPanel("menuArenaMode"));
+    btnArenaSingle.addEventListener("click", () => startGame("arena", false));
+    btnArenaCoop.addEventListener("click", () => showLobby("arena-coop", "ARENA CO-OP"));
+    btnArenaBack.addEventListener("click", () => showMenuPanel("menuMain"));
+
+    btnCrossfire.addEventListener("click", () => showLobby("crossfire", "CROSSFIRE"));
+
+    btnQuickplay.addEventListener("click", () => {
+      socket.emit("quickplay", pendingLobbyMode, (res) => {
+        if (res.error) { codeError.textContent = res.error; return; }
+        const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
+        beginMultiplayerGame(map, res.room);
+      });
+    });
+
+    btnCreateRoom.addEventListener("click", () => {
+      socket.emit("createRoom", pendingLobbyMode, (res) => {
+        if (res.error) { codeError.textContent = res.error; return; }
+        const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
+        beginMultiplayerGame(map, res.code);
+      });
+    });
+
+    btnJoinCode.addEventListener("click", () => {
+      codeError.textContent = "";
+      codeInput.value = "";
+      showMenuPanel("menuJoinCode");
+    });
+
+    btnCodeJoin.addEventListener("click", () => {
+      const code = codeInput.value.trim().toUpperCase();
+      if (!code) { codeError.textContent = "Enter a code"; return; }
+      socket.emit("joinByCode", { code, mode: pendingLobbyMode }, (res) => {
+        if (res.error) { codeError.textContent = res.error; return; }
+        const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
+        beginMultiplayerGame(map, code);
+      });
+    });
+
+    codeInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") btnCodeJoin.click();
+    });
+
+    btnCodeBack.addEventListener("click", () => showMenuPanel("menuLobby"));
+    btnLobbyBack.addEventListener("click", () => {
+      if (pendingLobbyMode === "crossfire") showMenuPanel("menuMain");
+      else showMenuPanel("menuArenaMode");
     });
 
     btnNameOk.addEventListener("click", () => {
       playerName = nameInput.value.trim().slice(0, 16) || "Player";
       nameModal.style.display = "none";
-      startGame("crossfire");
+      const map = nameModal._pendingMap || "crossfire";
+      startGame(map, true);
     });
 
     nameInput.addEventListener("keydown", (e) => {

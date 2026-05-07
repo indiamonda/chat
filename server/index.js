@@ -1572,16 +1572,84 @@ app.set('io', io);
 // ── Game multiplayer namespace (no auth required) ──
 const gameNsp = io.of('/game');
 const gameRooms = new Map();
+const QUICKPLAY_MAX = 8;
+
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+function leaveCurrentRoom(socket, currentRoom) {
+  if (!currentRoom) return;
+  socket.leave(currentRoom);
+  const members = gameRooms.get(currentRoom);
+  if (members) {
+    members.delete(socket.id);
+    if (!members.size) gameRooms.delete(currentRoom);
+  }
+  socket.to(currentRoom).emit('enemyLeft', { id: socket.id });
+}
 
 gameNsp.on('connection', (socket) => {
   let currentRoom = null;
 
   socket.on('joinRoom', (roomId) => {
     if (typeof roomId !== 'string' || roomId.length > 64) return;
+    leaveCurrentRoom(socket, currentRoom);
     currentRoom = `game:${roomId}`;
     socket.join(currentRoom);
     if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
     gameRooms.get(currentRoom).add(socket.id);
+  });
+
+  socket.on('quickplay', (mode, cb) => {
+    if (typeof cb !== 'function') return;
+    if (typeof mode !== 'string') return cb({ error: 'bad mode' });
+    leaveCurrentRoom(socket, currentRoom);
+    const prefix = `qp:${mode}:`;
+    let target = null;
+    for (const [key, members] of gameRooms) {
+      if (key.startsWith(prefix) && members.size < QUICKPLAY_MAX) { target = key; break; }
+    }
+    if (!target) target = `${prefix}${generateRoomCode()}`;
+    currentRoom = target;
+    socket.join(currentRoom);
+    if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
+    gameRooms.get(currentRoom).add(socket.id);
+    cb({ room: currentRoom.replace(prefix, ''), count: gameRooms.get(currentRoom).size });
+  });
+
+  socket.on('createRoom', (mode, cb) => {
+    if (typeof cb !== 'function') return;
+    if (typeof mode !== 'string') return cb({ error: 'bad mode' });
+    leaveCurrentRoom(socket, currentRoom);
+    let code;
+    for (let i = 0; i < 50; i++) {
+      code = generateRoomCode();
+      if (!gameRooms.has(`cr:${mode}:${code}`)) break;
+    }
+    currentRoom = `cr:${mode}:${code}`;
+    socket.join(currentRoom);
+    gameRooms.set(currentRoom, new Set([socket.id]));
+    cb({ code });
+  });
+
+  socket.on('joinByCode', (data, cb) => {
+    if (typeof cb !== 'function') return;
+    if (typeof data !== 'object' || !data) return cb({ error: 'bad data' });
+    const code = ('' + (data.code || '')).toUpperCase().trim();
+    const mode = '' + (data.mode || '');
+    if (!code || code.length > 10) return cb({ error: 'invalid code' });
+    leaveCurrentRoom(socket, currentRoom);
+    const key = `cr:${mode}:${code}`;
+    if (!gameRooms.has(key)) return cb({ error: 'Room not found' });
+    if (gameRooms.get(key).size >= QUICKPLAY_MAX) return cb({ error: 'Room is full' });
+    currentRoom = key;
+    socket.join(currentRoom);
+    gameRooms.get(currentRoom).add(socket.id);
+    cb({ ok: true, code });
   });
 
   socket.on('move', (data) => {
@@ -1616,14 +1684,8 @@ gameNsp.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    if (currentRoom) {
-      const members = gameRooms.get(currentRoom);
-      if (members) {
-        members.delete(socket.id);
-        if (!members.size) gameRooms.delete(currentRoom);
-      }
-      socket.to(currentRoom).emit('enemyLeft', { id: socket.id });
-    }
+    leaveCurrentRoom(socket, currentRoom);
+    currentRoom = null;
   });
 });
 
