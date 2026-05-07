@@ -871,10 +871,18 @@ app.use((req, res, next) => {
 });
 app.use(tokenAuthMiddleware);
 
+// Serve the multiplayer game page
+app.get('/game', (req, res) => {
+  const p = join(publicDir, 'game.html');
+  if (!existsSync(p)) return res.status(404).send('Game not found');
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.type('html').send(readFileSync(p, 'utf8'));
+});
+
 // Serve SPA HTML with cache-busting for all document routes (before static so "/" gets it too)
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-  if (req.path === '/redirect.html' || req.path.startsWith('/api') || req.path.startsWith('/assets') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
+  if (req.path === '/redirect.html' || req.path === '/game' || req.path.startsWith('/api') || req.path.startsWith('/assets') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
   try {
     const p = join(publicDir, 'index.html');
     if (!existsSync(p)) return next();
@@ -1556,6 +1564,45 @@ const io = new Server(httpServer, {
   connectTimeout: 45000,
 });
 app.set('io', io);
+
+// ── Game multiplayer namespace (no auth required) ──
+const gameNsp = io.of('/game');
+const gameRooms = new Map();
+
+gameNsp.on('connection', (socket) => {
+  let currentRoom = null;
+
+  socket.on('joinRoom', (roomId) => {
+    if (typeof roomId !== 'string' || roomId.length > 64) return;
+    currentRoom = `game:${roomId}`;
+    socket.join(currentRoom);
+    if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
+    gameRooms.get(currentRoom).add(socket.id);
+  });
+
+  socket.on('move', (data) => {
+    if (!currentRoom || typeof data !== 'object' || data === null) return;
+    socket.to(currentRoom).emit('enemyMove', {
+      id: socket.id,
+      x: +data.x || 0,
+      y: +data.y || 0,
+      z: +data.z || 0,
+      yaw: +data.yaw || 0,
+    });
+  });
+
+  socket.on('disconnect', () => {
+    if (currentRoom) {
+      const members = gameRooms.get(currentRoom);
+      if (members) {
+        members.delete(socket.id);
+        if (!members.size) gameRooms.delete(currentRoom);
+      }
+      socket.to(currentRoom).emit('enemyLeft', { id: socket.id });
+    }
+  });
+});
+
 // Expose socket-management helpers so admin routes can force-disconnect
 // abusive users or refresh their permissions the moment an action lands.
 app.set('disconnectAllSocketsFor', (uid) => disconnectAllSocketsFor(uid));
