@@ -1592,6 +1592,7 @@ gameNsp.on('connection', (socket) => {
       y: +data.y || 0,
       z: +data.z || 0,
       yaw: +data.yaw || 0,
+      name: typeof data.name === 'string' ? data.name.slice(0, 16) : undefined,
     });
   });
 
