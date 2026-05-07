@@ -884,8 +884,10 @@ app.get('/game', (req, res) => {
 });
 
 // Serve SPA HTML with cache-busting for all document routes (before static so "/" gets it too)
+const SPA_SKIP_EXT = /\.(?:js|mjs|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|map|json|txt|xml|webmanifest)$/i;
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (SPA_SKIP_EXT.test(req.path)) return next();
   if (req.path === '/redirect.html' || req.path === '/game' || req.path.startsWith('/api') || req.path.startsWith('/assets') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
   try {
     const p = join(publicDir, 'index.html');
