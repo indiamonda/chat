@@ -1587,6 +1587,150 @@ const gameNsp = io.of('/game');
 const gameRooms = new Map();
 const QUICKPLAY_MAX = 8;
 
+/** Last-known player names and positions (game namespace) for /tp etc. */
+const gamePlayerNames = new Map();
+const gamePlayerPositions = new Map();
+
+function cleanupGamePlayerTracking(socketId) {
+  gamePlayerNames.delete(socketId);
+  gamePlayerPositions.delete(socketId);
+}
+
+function getRoomSocketIds(roomId) {
+  const s = gameRooms.get(roomId);
+  return s ? [...s] : [];
+}
+
+function roomAllowsTeleport(roomId) {
+  return typeof roomId === 'string' && roomId.length > 0 && !roomId.startsWith('qp:');
+}
+
+/** Co-op arena rooms carry zombies; used for @e. */
+function roomHasZombies(roomId) {
+  const m = /^cr:([^:]+):/.exec(roomId || '');
+  return !!(m && m[1] === 'arena-coop');
+}
+
+function parseTeleportCommand(text) {
+  const t = text.trim();
+  if (!t.toLowerCase().startsWith('/tp')) return null;
+  const rest = t.slice(3).trim();
+  if (!rest) return null;
+  const parts = rest.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return { srcRaw: '@s', dstRaw: parts[0] };
+  if (parts.length === 2) return { srcRaw: parts[0], dstRaw: parts[1] };
+  return null;
+}
+
+function isInvalidTeleportDestination(tok) {
+  const u = tok.toLowerCase();
+  return u === '@a' || u === '@e';
+}
+
+function findSocketByPlayerName(name, roomSockets) {
+  const want = name.trim().toLowerCase();
+  if (!want) return null;
+  let exact = null;
+  for (const id of roomSockets) {
+    const n = (gamePlayerNames.get(id) || '').toLowerCase();
+    if (n === want) {
+      if (exact != null && exact !== id) return null;
+      exact = id;
+    }
+  }
+  if (exact != null) return exact;
+  const partial = [];
+  for (const id of roomSockets) {
+    const n = (gamePlayerNames.get(id) || '').toLowerCase();
+    if (n.includes(want)) partial.push(id);
+  }
+  if (partial.length === 1) return partial[0];
+  return null;
+}
+
+function resolveClosestOther(executorId, roomSockets) {
+  const ep = gamePlayerPositions.get(executorId);
+  if (!ep) return null;
+  let best = null;
+  let bd = Infinity;
+  for (const id of roomSockets) {
+    if (id === executorId) continue;
+    const p = gamePlayerPositions.get(id);
+    if (!p) continue;
+    const d = (p.x - ep.x) ** 2 + (p.z - ep.z) ** 2;
+    if (d < bd) {
+      bd = d;
+      best = id;
+    }
+  }
+  return best;
+}
+
+function resolveDestSocket(executorId, tok, roomSockets) {
+  const u = tok.toLowerCase();
+  if (u === '@s') return executorId;
+  if (u === '@p') return resolveClosestOther(executorId, roomSockets);
+  if (u === '@r') {
+    const pool = roomSockets.filter((id) => id !== executorId);
+    if (!pool.length) return null;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+  if (u === '@a' || u === '@e') return null;
+  return findSocketByPlayerName(tok, roomSockets);
+}
+
+function resolveSourceBundle(executorId, tok, roomSockets) {
+  const u = tok.toLowerCase();
+  if (u === '@s') return { ids: [executorId], zombies: false };
+  if (u === '@a') return { ids: [...roomSockets], zombies: false };
+  if (u === '@e') return { ids: [...roomSockets], zombies: true };
+  if (u === '@p') {
+    const id = resolveClosestOther(executorId, roomSockets);
+    return { ids: id ? [id] : [], zombies: false };
+  }
+  if (u === '@r') {
+    const pool = roomSockets.filter((id) => id !== executorId);
+    if (!pool.length) return { ids: [], zombies: false };
+    return { ids: [pool[Math.floor(Math.random() * pool.length)]], zombies: false };
+  }
+  const id = findSocketByPlayerName(tok, roomSockets);
+  return { ids: id ? [id] : [], zombies: false };
+}
+
+function executeTeleport(socket, currentRoom, parsed) {
+  const roomSockets = getRoomSocketIds(currentRoom);
+  if (!roomSockets.includes(socket.id)) {
+    return { ok: false, msg: 'Not in room.' };
+  }
+  if (isInvalidTeleportDestination(parsed.dstRaw)) {
+    return { ok: false, msg: 'Cannot teleport to @a or @e.' };
+  }
+  const destSocket = resolveDestSocket(socket.id, parsed.dstRaw, roomSockets);
+  if (!destSocket) {
+    return { ok: false, msg: 'Destination player not found.' };
+  }
+  const destPos = gamePlayerPositions.get(destSocket);
+  if (!destPos) {
+    return { ok: false, msg: 'Destination position unknown (move once and retry).' };
+  }
+  const src = resolveSourceBundle(socket.id, parsed.srcRaw, roomSockets);
+  if (!src.ids.length && !src.zombies) {
+    return { ok: false, msg: 'No source players matched.' };
+  }
+  const tx = destPos.x;
+  const ty = destPos.y != null ? destPos.y : 1.65;
+  const tz = destPos.z;
+  for (const id of src.ids) {
+    gameNsp.to(id).emit('teleport', { x: tx, y: ty, z: tz });
+  }
+  if (src.zombies && roomHasZombies(currentRoom)) {
+    gameNsp.to(currentRoom).emit('teleportZombies', { x: tx, z: tz });
+  }
+  let msg = `Teleported ${src.ids.length} player(s).`;
+  if (src.zombies && roomHasZombies(currentRoom)) msg += ' Zombies moved.';
+  return { ok: true, msg };
+}
+
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -1689,6 +1833,14 @@ gameNsp.on('connection', (socket) => {
 
   socket.on('move', (data) => {
     if (!currentRoom || typeof data !== 'object' || data === null) return;
+    if (typeof data.name === 'string') {
+      gamePlayerNames.set(socket.id, data.name.slice(0, 16).trim());
+    }
+    gamePlayerPositions.set(socket.id, {
+      x: +data.x || 0,
+      y: +data.y || 1.65,
+      z: +data.z || 0,
+    });
     socket.to(currentRoom).emit('enemyMove', {
       id: socket.id,
       x: +data.x || 0,
@@ -1755,10 +1907,23 @@ gameNsp.on('connection', (socket) => {
     if (!currentRoom || typeof msg !== 'string') return;
     const text = msg.slice(0, 200).trim();
     if (!text) return;
+
+    const tp = parseTeleportCommand(text);
+    if (tp) {
+      if (!roomAllowsTeleport(currentRoom)) {
+        gameNsp.to(socket.id).emit('chat', { id: 'system', text: 'Teleport is disabled in quickplay.' });
+        return;
+      }
+      const result = executeTeleport(socket, currentRoom, tp);
+      gameNsp.to(socket.id).emit('chat', { id: 'system', text: result.msg });
+      return;
+    }
+
     gameNsp.to(currentRoom).emit('chat', { id: socket.id, text });
   });
 
   socket.on('disconnect', () => {
+    cleanupGamePlayerTracking(socket.id);
     leaveCurrentRoom(socket, currentRoom);
     currentRoom = null;
   });
