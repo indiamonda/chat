@@ -760,8 +760,8 @@
     }
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0c1018);
-    scene.fog = new THREE.Fog(0x0c1018, 24, 108);
+    scene.background = new THREE.Color(0x020305);
+    scene.fog = new THREE.Fog(0x020305, 16, 72);
 
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -771,20 +771,20 @@
     );
     camera.rotation.order = "YXZ";
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     app.appendChild(renderer.domElement);
 
-    const hemi = new THREE.HemisphereLight(0x7088aa, 0x2a2c34, 0.72);
+    const hemi = new THREE.HemisphereLight(0x2c3848, 0x0f1114, 0.14);
     scene.add(hemi);
 
-    const moon = new THREE.DirectionalLight(0xc8cfe8, 0.52);
+    const moon = new THREE.DirectionalLight(0x5a6880, 0.11);
     moon.position.set(28, 34, 22);
     moon.castShadow = true;
-    moon.shadow.mapSize.set(2048, 2048);
+    moon.shadow.mapSize.set(1024, 1024);
     moon.shadow.camera.left = -100;
     moon.shadow.camera.right = 100;
     moon.shadow.camera.top = 100;
@@ -2455,6 +2455,8 @@ return {
     const VIS_OFFSETS = [[0, 1.8], [0, 1.1], [0, 0.5], [-0.3, 1.3], [0.3, 1.3]];
     const _visOrigin = new THREE.Vector3();
     const _visDir = new THREE.Vector3();
+    const _enemyShotDir = new THREE.Vector3();
+    const _tracerEnd = new THREE.Vector3();
     const _visRay = new THREE.Raycaster();
     let visFrameCounter = 0;
 
@@ -2468,6 +2470,10 @@ return {
       _visRay.near = 0;
       _visRay.far = d;
       return _visRay.intersectObjects(wallMeshes, false).length === 0;
+    }
+
+    function clearLosToTarget(ex, ez, tx, tz, ty = 1.65) {
+      return canSeePoint(ex, 1.6, ez, tx, ty, tz);
     }
 
     function computeVisibility(ex, ez, px, pz) {
@@ -2564,8 +2570,8 @@ return {
         }
       }
 
-      rebuildFlowField();
       visFrameCounter++;
+      if ((visFrameCounter & 1) === 0) rebuildFlowField();
 
       for (let ei = 0; ei < state.enemies.length; ei++) {
         const enemy = state.enemies[ei];
@@ -2613,8 +2619,34 @@ return {
           if (!shouldStopForRanged && dist > 1.8) {
             const step = enemy.speed * dt;
             const dLen = Math.sqrt(dx * dx + dz * dz);
-            let sx = (dx / dLen) * step;
-            let sz = (dz / dLen) * step;
+            let sx;
+            let sz;
+            const flow = getFlowDirection(enemy.group.position.x, enemy.group.position.z);
+            const losClear = clearLosToTarget(
+              enemy.group.position.x,
+              enemy.group.position.z,
+              target.x,
+              target.z,
+              target.y ?? 1.65
+            );
+
+            if (!losClear && flow) {
+              const fLen = Math.sqrt(flow.x * flow.x + flow.z * flow.z);
+              if (fLen > 0.015) {
+                sx = (flow.x / fLen) * step;
+                sz = (flow.z / fLen) * step;
+              }
+            }
+            if (losClear || sx === undefined) {
+              if (dLen > 0.01) {
+                sx = (dx / dLen) * step;
+                sz = (dz / dLen) * step;
+              } else {
+                sx = 0;
+                sz = 0;
+              }
+            }
+
             let nx = enemy.group.position.x + sx;
             let nz = enemy.group.position.z + sz;
 
@@ -2625,23 +2657,20 @@ return {
               enemy.group.position.x = nx;
             } else if (!enemyCollidesWall(enemy.group.position.x, nz)) {
               enemy.group.position.z = nz;
-            } else {
-              const flow = getFlowDirection(enemy.group.position.x, enemy.group.position.z);
-              if (flow) {
-                const fLen = Math.sqrt(flow.x * flow.x + flow.z * flow.z);
-                if (fLen > 0.01) {
-                  sx = (flow.x / fLen) * step;
-                  sz = (flow.z / fLen) * step;
-                  nx = enemy.group.position.x + sx;
-                  nz = enemy.group.position.z + sz;
-                  if (!enemyCollidesWall(nx, nz)) {
-                    enemy.group.position.x = nx;
-                    enemy.group.position.z = nz;
-                  } else if (!enemyCollidesWall(nx, enemy.group.position.z)) {
-                    enemy.group.position.x = nx;
-                  } else if (!enemyCollidesWall(enemy.group.position.x, nz)) {
-                    enemy.group.position.z = nz;
-                  }
+            } else if (flow) {
+              const fLen = Math.sqrt(flow.x * flow.x + flow.z * flow.z);
+              if (fLen > 0.01) {
+                sx = (flow.x / fLen) * step;
+                sz = (flow.z / fLen) * step;
+                nx = enemy.group.position.x + sx;
+                nz = enemy.group.position.z + sz;
+                if (!enemyCollidesWall(nx, nz)) {
+                  enemy.group.position.x = nx;
+                  enemy.group.position.z = nz;
+                } else if (!enemyCollidesWall(nx, enemy.group.position.z)) {
+                  enemy.group.position.x = nx;
+                } else if (!enemyCollidesWall(enemy.group.position.x, nz)) {
+                  enemy.group.position.z = nz;
                 }
               }
             }
@@ -2660,15 +2689,24 @@ return {
             }
           } else if (enemy.ranged && dist < enemy.rangeDistance && enemy.attackCooldownTimer <= 0 && isTargetLocal) {
             _visOrigin.set(enemy.group.position.x, 1.6, enemy.group.position.z);
-            _visDir.set(dx, player.position.y - 0.3 - 1.6, dz).normalize();
-            _visRay.set(_visOrigin, _visDir);
+            _enemyShotDir.set(dx, player.position.y - 0.3 - 1.6, dz);
+            const spr = 0.16 + Math.random() * 0.14;
+            _enemyShotDir.x += (Math.random() - 0.5) * spr * 2;
+            _enemyShotDir.z += (Math.random() - 0.5) * spr * 2;
+            _enemyShotDir.y += (Math.random() - 0.5) * spr * 0.5;
+            _enemyShotDir.normalize();
+            _visRay.set(_visOrigin, _enemyShotDir);
             _visRay.near = 0;
             _visRay.far = Math.min(dist, enemy.rangeDistance);
             if (_visRay.intersectObjects(wallMeshes, false).length === 0) {
               enemy.attackCooldownTimer = enemy.attackCooldown;
               damagePlayer(enemy.attackDamage, enemy);
-              const end = player.position.clone().add(new THREE.Vector3(0, 1.3, 0));
-              createTracer(_visOrigin.clone(), end, 0xff6666);
+              _tracerEnd.set(
+                player.position.x + (Math.random() - 0.5) * 0.45,
+                player.position.y + 1.25 + (Math.random() - 0.5) * 0.45,
+                player.position.z + (Math.random() - 0.5) * 0.45
+              );
+              createTracer(_visOrigin.clone(), _tracerEnd.clone(), 0xff6666);
             }
           }
         } else {
