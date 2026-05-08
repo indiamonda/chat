@@ -334,6 +334,7 @@
     const hitIndicators = [];
     const HIT_DIR_SVG_W = 100;
     const HIT_DIR_SVG_H = Math.round((HIT_DIR_SVG_W * 81) / 256);
+    /** Chevron points upward in viewBox (+y down); rotation aligns tip toward screen center. */
     const HIT_DIR_SVG_PATH =
       "M133.333 13.0913C184.371 14.8246 229.131 41.3388 256 81C226.143 45.1073 179.905 22.0718 128 22.0718C76.096 22.0718 29.8567 45.107 0 81C26.8684 41.339 71.6293 14.8249 122.666 13.0913L128 0L133.333 13.0913Z";
     let deathAnimTime = 0;
@@ -572,7 +573,10 @@
       const cy = -r * Math.cos(angle);
       const hw = HIT_DIR_SVG_W / 2;
       const hh = HIT_DIR_SVG_H / 2;
-      ind.el.style.transform = `translate(${cx - hw}px, ${cy - hh}px) rotate(${angle}rad)`;
+      // SVG asset points upward (−y). Aim that axis at screen center (where damage “reads” inward).
+      const inward = Math.atan2(-cy, -cx);
+      const rot = inward + Math.PI / 2;
+      ind.el.style.transform = `translate(${cx - hw}px, ${cy - hh}px) rotate(${rot}rad)`;
     }
 
     function updateHitIndicators(dt) {
