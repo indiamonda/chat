@@ -910,8 +910,8 @@
     }
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x020305);
-    scene.fog = new THREE.Fog(0x020305, 16, 72);
+    scene.background = new THREE.Color(0x060a12);
+    scene.fog = new THREE.Fog(0x060a12, 22, 96);
 
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -930,6 +930,7 @@
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.BasicShadowMap;
     renderer.sortObjects = false;
@@ -940,10 +941,11 @@
       renderer.compile(scene, camera);
     }
 
-    const hemi = new THREE.HemisphereLight(0x2c3848, 0x0f1114, 0.14);
+    // Physically-based lighting (Three r155+): old ~0.1–0.2 intensities read as black; keep moonlit mood but usable.
+    const hemi = new THREE.HemisphereLight(0x3d4a5c, 0x181c22, 1.05);
     scene.add(hemi);
 
-    const moon = new THREE.DirectionalLight(0x5a6880, 0.11);
+    const moon = new THREE.DirectionalLight(0x7a8cac, 0.72);
     moon.position.set(28, 34, 22);
     moon.castShadow = true;
     moon.shadow.mapSize.set(256, 256);
@@ -1506,9 +1508,9 @@
       const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.05), eyeGlowMat);
       eyeL.position.set(-0.10, 0.06, 0.215); headGroup.add(eyeL);
       const eyeR = eyeL.clone(); eyeR.position.x = 0.10; headGroup.add(eyeR);
-      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 1.15, 6.5, 2);
+      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 4.2, 7.5, 2);
       glowL.position.set(-0.10, 0.06, 0.24); headGroup.add(glowL);
-      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 1.15, 6.5, 2);
+      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 4.2, 7.5, 2);
       glowR.position.set(0.10, 0.06, 0.24); headGroup.add(glowR);
 
       const brow = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, 0.08), matSkinD);
