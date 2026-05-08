@@ -201,39 +201,266 @@
       background: rgba(255,255,255,0.18);
       border-color: rgba(255,255,255,0.6);
     }
+
+    .menu {
+      background-image: url("game-ui/game-ui-menu-background.png");
+      background-size: cover;
+      background-position: center;
+      justify-content: space-between;
+      padding: 28px 16px 22px;
+      box-sizing: border-box;
+    }
+
+    .menu-panels-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .menu-textured-btn {
+      background-image: url("game-ui/game-ui-button-texture.png");
+      background-size: 100% 100%;
+      background-repeat: no-repeat;
+      color: #e8eef8;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+      border: 1px solid rgba(255,255,255,0.22);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
+    }
+
+    .menu button:not(.menu-footer-settings) {
+      background-image: url("game-ui/game-ui-button-texture.png");
+      background-size: 100% 100%;
+      background-repeat: no-repeat;
+      color: #e8eef8;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.85);
+      border: 1px solid rgba(255,255,255,0.22);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
+    }
+
+    .menu-footer-settings {
+      margin-top: 8px;
+      width: 220px;
+      padding: 12px 18px;
+      font-size: 15px;
+      letter-spacing: 3px;
+      cursor: pointer;
+      font-family: 'Audiowide', sans-serif;
+      border-radius: 10px;
+    }
+
+    #settingsModal {
+      position: fixed;
+      inset: 0;
+      z-index: 72;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(6px);
+    }
+
+    .settings-shell {
+      width: min(1080px, 94vw);
+      height: min(680px, 88vh);
+      display: flex;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.14);
+      box-shadow: 0 18px 60px rgba(0,0,0,0.65);
+      background-image: url("game-ui/game-ui-settings-panel-bg.png");
+      background-size: cover;
+      background-position: center;
+    }
+
+    .settings-tabs {
+      width: 200px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 22px 14px;
+      border-right: 1px solid rgba(255,255,255,0.1);
+      background: rgba(6,10,18,0.55);
+    }
+
+    .settings-tab {
+      text-align: left;
+      padding: 12px 14px;
+      font-family: 'Audiowide', sans-serif;
+      font-size: 14px;
+      letter-spacing: 1px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      background: rgba(255,255,255,0.04);
+      color: rgba(230,238,255,0.85);
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .settings-tab:hover,
+    .settings-tab.active {
+      background: rgba(79,209,255,0.12);
+      border-color: rgba(79,209,255,0.35);
+      color: #fff;
+    }
+
+    .settings-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px 32px 36px;
+      scroll-behavior: smooth;
+    }
+
+    .settings-section {
+      margin-bottom: 44px;
+      scroll-margin-top: 12px;
+    }
+
+    .settings-section h2 {
+      margin: 0 0 18px 0;
+      font-size: 22px;
+      letter-spacing: 3px;
+      color: #c8d4ec;
+    }
+
+    .settings-row {
+      margin-bottom: 18px;
+      max-width: 520px;
+    }
+
+    .settings-row label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      letter-spacing: 1px;
+      opacity: 0.88;
+    }
+
+    .settings-row input[type="range"] {
+      width: 100%;
+      accent-color: #4fd1ff;
+    }
+
+    .settings-row .value-pill {
+      float: right;
+      font-size: 12px;
+      opacity: 0.75;
+    }
+
+    .settings-cycle {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 6px;
+    }
+
+    .settings-cycle button.cycle-arrow {
+      width: 44px;
+      height: 38px;
+      font-size: 18px;
+      cursor: pointer;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(0,0,0,0.35);
+      color: #fff;
+      font-family: 'Audiowide', sans-serif;
+    }
+
+    .settings-cycle .cycle-value {
+      flex: 1;
+      text-align: center;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.38);
+      letter-spacing: 2px;
+      font-size: 14px;
+    }
+
+    .settings-close {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.25);
+      background: rgba(0,0,0,0.45);
+      color: #fff;
+      cursor: pointer;
+      font-size: 22px;
+      line-height: 1;
+      z-index: 5;
+    }
+
+    .settings-modal-inner-wrap {
+      position: relative;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    #warFilmOverlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 14;
+      opacity: 0;
+      transition: opacity 0.35s ease;
+      background:
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0,0,0,0.045) 2px,
+          rgba(0,0,0,0.045) 3px
+        ),
+        radial-gradient(ellipse at center, transparent 35%, rgba(15,12,8,0.28) 100%),
+        rgba(58,48,32,0.07);
+      mix-blend-mode: multiply;
+    }
   </style>
 </head>
 <body>
   <div id="menu" class="menu">
+    <div class="menu-panels-wrap">
     <div id="menuMain" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
       <h1>3D Zombie FPS</h1>
       <p>by Tintly555 and JimmyQrg</p>
-      <button id="btnArena">Zombie Arena</button>
-      <button id="btnCrossfire">Crossfire (PVP)</button>
+      <button type="button" id="btnArena">Zombie Arena</button>
+      <button type="button" id="btnMaze">Infinite Maze</button>
+      <button type="button" id="btnCrossfire">Crossfire (PVP)</button>
     </div>
     <div id="menuArenaMode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
       <h2 style="font-family:'Audiowide',sans-serif;font-size:28px;margin:0 0 14px 0;letter-spacing:3px;">ZOMBIE ARENA</h2>
-      <button id="btnArenaSingle">SINGLEPLAYER</button>
-      <button id="btnArenaCoop">CO-OP MODE</button>
-      <button id="btnArenaBack" style="margin-top:6px;font-size:14px;">← BACK</button>
+      <button type="button" id="btnArenaSingle">SINGLEPLAYER</button>
+      <button type="button" id="btnArenaCoop">CO-OP MODE</button>
+      <button type="button" id="btnArenaBack" style="margin-top:6px;font-size:14px;">← BACK</button>
     </div>
     <div id="menuLobby" style="display:none;flex-direction:column;align-items:center;gap:10px;">
       <h2 id="lobbyTitle" style="font-family:'Audiowide',sans-serif;font-size:24px;margin:0 0 10px 0;letter-spacing:2px;">MULTIPLAYER</h2>
-      <button id="btnQuickplay">QUICK PLAY</button>
-      <button id="btnCreateRoom">CREATE A ROOM</button>
-      <button id="btnJoinCode">JOIN VIA CODE</button>
-      <button id="btnLobbyBack" style="margin-top:6px;font-size:14px;">← BACK</button>
+      <button type="button" id="btnQuickplay">QUICK PLAY</button>
+      <button type="button" id="btnCreateRoom">CREATE A ROOM</button>
+      <button type="button" id="btnJoinCode">JOIN VIA CODE</button>
+      <button type="button" id="btnLobbyBack" style="margin-top:6px;font-size:14px;">← BACK</button>
     </div>
     <div id="menuJoinCode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
       <h2 style="font-family:'Audiowide',sans-serif;font-size:24px;margin:0 0 6px 0;letter-spacing:2px;">JOIN VIA CODE</h2>
       <input id="codeInput" type="text" maxlength="10" placeholder="ROOM CODE" style="font-family:'Audiowide',sans-serif;width:180px;padding:10px 14px;font-size:18px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;text-transform:uppercase;letter-spacing:4px;">
       <p id="codeError" style="font-family:'Audiowide',sans-serif;color:#e53e3e;font-size:13px;margin:4px 0 0 0;min-height:18px;"></p>
-      <button id="btnCodeJoin">JOIN</button>
-      <button id="btnCodeBack" style="font-size:14px;">← BACK</button>
+      <button type="button" id="btnCodeJoin">JOIN</button>
+      <button type="button" id="btnCodeBack" style="font-size:14px;">← BACK</button>
     </div>
+    </div>
+    <button type="button" class="menu-textured-btn menu-footer-settings" id="btnMenuSettings">SETTINGS</button>
   </div>
 
   <div id="app"></div>
+  <div id="warFilmOverlay" aria-hidden="true"></div>
   <div class="hud" id="hud"></div>
   <div id="fpsOverlay" style="position:fixed;top:10px;right:14px;z-index:45;pointer-events:none;text-align:right;font-family:'Audiowide',sans-serif;font-size:13px;color:rgba(245,248,255,0.92);text-shadow:0 1px 5px rgba(0,0,0,0.85);line-height:1.4;">
     <div id="fpsValue">— FPS</div>
@@ -248,15 +475,17 @@
     <div id="deathUI" style="position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;align-items:center;gap:14px;pointer-events:auto;">
       <h1 id="deathTitle" style="font-family:'Audiowide',sans-serif;font-size:52px;margin:0 0 6px 0;color:#e53e3e;text-shadow:0 0 30px rgba(229,62,62,0.5);letter-spacing:4px;">DEFEAT</h1>
       <p id="deathScore" style="font-family:'Audiowide',sans-serif;font-size:16px;margin:0 0 18px 0;opacity:0.8;">Score: 0</p>
-      <button class="overlay-btn" id="btnDeathRestart">RESTART</button>
-      <button class="overlay-btn" id="btnDeathQuit">QUIT</button>
+      <button class="overlay-btn" type="button" id="btnDeathRestart">RESTART</button>
+      <button class="overlay-btn menu-textured-btn" type="button" id="btnDeathSettings" style="border-color:rgba(79,209,255,0.45);">SETTINGS</button>
+      <button class="overlay-btn" type="button" id="btnDeathQuit">QUIT</button>
     </div>
   </div>
   <div id="pauseOverlay" style="position:fixed;inset:0;z-index:55;display:none;flex-direction:column;justify-content:center;align-items:center;gap:14px;background:rgba(0,0,0,0.5);">
     <h1 style="font-family:'Audiowide',sans-serif;font-size:48px;margin:0 0 10px 0;color:#fff;letter-spacing:4px;">PAUSED</h1>
-    <button class="overlay-btn" id="btnResume">RESUME</button>
-    <button class="overlay-btn" id="btnPauseRestart" style="display:none;">RESTART</button>
-    <button class="overlay-btn" id="btnPauseQuit">QUIT</button>
+    <button class="overlay-btn" type="button" id="btnResume">RESUME</button>
+    <button class="overlay-btn menu-textured-btn" type="button" id="btnPauseSettings" style="border-color:rgba(79,209,255,0.45);">SETTINGS</button>
+    <button class="overlay-btn" type="button" id="btnPauseRestart" style="display:none;">RESTART</button>
+    <button class="overlay-btn" type="button" id="btnPauseQuit">QUIT</button>
   </div>
   <div id="chatBox" style="position:fixed;bottom:10px;left:10px;z-index:40;pointer-events:none;font-family:'Audiowide',sans-serif;display:flex;flex-direction:column;justify-content:flex-end;">
     <div id="chatMessages" style="display:flex;flex-direction:column;gap:2px;margin-bottom:6px;overflow:hidden;"></div>
@@ -270,9 +499,61 @@
       <h2 style="font-family:'Audiowide',sans-serif;margin:0 0 16px 0;font-size:22px;">ENTER YOUR NAME</h2>
       <input id="nameInput" type="text" maxlength="16" placeholder="Player" style="font-family:'Audiowide',sans-serif;width:200px;padding:10px 14px;font-size:16px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;">
       <br>
-      <button class="overlay-btn" id="btnNameOk" style="margin-top:16px;">JOIN</button>
+      <button class="overlay-btn" type="button" id="btnNameOk" style="margin-top:16px;">JOIN</button>
     </div>
   </div>
+
+  <div id="settingsModal">
+    <div class="settings-shell">
+      <aside class="settings-tabs">
+        <button type="button" class="settings-tab active" data-scroll-target="settingsSectionAudio">AUDIO</button>
+        <button type="button" class="settings-tab" data-scroll-target="settingsSectionGraphics">GRAPHICS</button>
+      </aside>
+      <div class="settings-modal-inner-wrap">
+        <button type="button" class="settings-close" id="btnCloseSettings" title="Close">×</button>
+        <div class="settings-scroll" id="settingsScroll">
+          <section class="settings-section" id="settingsSectionAudio">
+            <h2>AUDIO</h2>
+            <div class="settings-row">
+              <label>Master volume <span class="value-pill" id="lblMasterVol">100%</span></label>
+              <input type="range" id="rngMasterVol" min="0" max="100" value="100" />
+            </div>
+            <div class="settings-row">
+              <label>Music volume <span class="value-pill" id="lblMusicVol">35%</span></label>
+              <input type="range" id="rngMusicVol" min="0" max="100" value="35" />
+            </div>
+            <div class="settings-row">
+              <label>Sound volume <span class="value-pill" id="lblSfxVol">100%</span></label>
+              <input type="range" id="rngSfxVol" min="0" max="100" value="100" />
+            </div>
+          </section>
+          <section class="settings-section" id="settingsSectionGraphics">
+            <h2>GRAPHICS</h2>
+            <div class="settings-row">
+              <label>Quality <span class="value-pill">performance / fidelity</span></label>
+              <div class="settings-cycle">
+                <button type="button" class="cycle-arrow" id="btnQualityPrev" aria-label="Lower quality">◀</button>
+                <div class="cycle-value" id="qualityLabel">REGULAR</div>
+                <button type="button" class="cycle-arrow" id="btnQualityNext" aria-label="Higher quality">▶</button>
+              </div>
+              <p style="font-size:11px;opacity:0.65;margin-top:10px;max-width:480px;line-height:1.45;">
+                Does not change zombie sync or gameplay — rendering only. Brightness is matched across tiers so difficulty stays fair.
+              </p>
+            </div>
+            <div class="settings-row">
+              <label>Texture detail</label>
+              <div class="settings-cycle">
+                <button type="button" class="cycle-arrow" id="btnTexturePrev" aria-label="Previous">◀</button>
+                <div class="cycle-value" id="textureLabel">ON</div>
+                <button type="button" class="cycle-arrow" id="btnTextureNext" aria-label="Next">▶</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js";
 
@@ -292,6 +573,7 @@
     const codeInput = document.getElementById("codeInput");
     const codeError = document.getElementById("codeError");
     const btnArena = document.getElementById("btnArena");
+    const btnMaze = document.getElementById("btnMaze");
     const btnCrossfire = document.getElementById("btnCrossfire");
     const btnArenaSingle = document.getElementById("btnArenaSingle");
     const btnArenaCoop = document.getElementById("btnArenaCoop");
@@ -308,19 +590,74 @@
     const deathTitle = document.getElementById("deathTitle");
     const deathScore = document.getElementById("deathScore");
     const btnDeathRestart = document.getElementById("btnDeathRestart");
+    const btnDeathSettings = document.getElementById("btnDeathSettings");
     const btnDeathQuit = document.getElementById("btnDeathQuit");
     const pauseOverlay = document.getElementById("pauseOverlay");
     const btnResume = document.getElementById("btnResume");
+    const btnPauseSettings = document.getElementById("btnPauseSettings");
     const btnPauseRestart = document.getElementById("btnPauseRestart");
     const btnPauseQuit = document.getElementById("btnPauseQuit");
     const nameModal = document.getElementById("nameModal");
     const nameInput = document.getElementById("nameInput");
     const btnNameOk = document.getElementById("btnNameOk");
+    const btnMenuSettings = document.getElementById("btnMenuSettings");
+    const settingsModal = document.getElementById("settingsModal");
+    const settingsScroll = document.getElementById("settingsScroll");
+    const SETTINGS_SECTION_IDS = ["settingsSectionAudio", "settingsSectionGraphics"];
+    const btnCloseSettings = document.getElementById("btnCloseSettings");
+    const rngMasterVol = document.getElementById("rngMasterVol");
+    const rngMusicVol = document.getElementById("rngMusicVol");
+    const rngSfxVol = document.getElementById("rngSfxVol");
+    const lblMasterVol = document.getElementById("lblMasterVol");
+    const lblMusicVol = document.getElementById("lblMusicVol");
+    const lblSfxVol = document.getElementById("lblSfxVol");
+    const btnQualityPrev = document.getElementById("btnQualityPrev");
+    const btnQualityNext = document.getElementById("btnQualityNext");
+    const qualityLabel = document.getElementById("qualityLabel");
+    const btnTexturePrev = document.getElementById("btnTexturePrev");
+    const btnTextureNext = document.getElementById("btnTextureNext");
+    const textureLabel = document.getElementById("textureLabel");
+    const warFilmOverlay = document.getElementById("warFilmOverlay");
     const chatBox = document.getElementById("chatBox");
     const chatMessages = document.getElementById("chatMessages");
     const chatInputWrap = document.getElementById("chatInputWrap");
     const chatInput = document.getElementById("chatInput");
     const hitDirContainer = document.getElementById("hitDirContainer");
+
+    const SETTINGS_STORAGE_KEY = "fpsGameSettingsV1";
+    const QUALITY_LEVELS = ["potato", "regular", "high", "extreme"];
+    const QUALITY_LABELS = ["POTATO", "REGULAR", "HIGH", "EXTREME"];
+
+    let gameSettings = {
+      masterVolume: 1,
+      musicVolume: 0.35,
+      soundVolume: 1,
+      qualityIndex: 1,
+      texturesOn: true,
+    };
+    let settingsModalOpen = false;
+
+    function loadGameSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+        if (!raw) return;
+        const o = JSON.parse(raw);
+        if (typeof o.masterVolume === "number") gameSettings.masterVolume = THREE.MathUtils.clamp(o.masterVolume, 0, 1);
+        if (typeof o.musicVolume === "number") gameSettings.musicVolume = THREE.MathUtils.clamp(o.musicVolume, 0, 1);
+        if (typeof o.soundVolume === "number") gameSettings.soundVolume = THREE.MathUtils.clamp(o.soundVolume, 0, 1);
+        if (typeof o.qualityIndex === "number") gameSettings.qualityIndex = THREE.MathUtils.clamp(o.qualityIndex | 0, 0, QUALITY_LEVELS.length - 1);
+        if (typeof o.texturesOn === "boolean") gameSettings.texturesOn = o.texturesOn;
+      } catch (_) {}
+    }
+
+    function saveGameSettings() {
+      try {
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(gameSettings));
+      } catch (_) {}
+    }
+
+    loadGameSettings();
+
     let CURRENT_MAP = "arena";
     let MULTIPLAYER = false;
     /** True only for Zombie Arena played via ARENA CO-OP lobby (no damage vs other players). */
@@ -494,6 +831,7 @@
       player.regenTimer = 0;
       state.flashTimer = 0.14;
       addHitIndicator(data.x || 0, data.z || 0);
+      triggerCamShake(0.085);
       updateHud();
       if (player.health <= 0) {
         showDeathScreen(null);
@@ -910,8 +1248,8 @@
     }
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x060a12);
-    scene.fog = new THREE.Fog(0x060a12, 22, 96);
+    scene.background = new THREE.Color(0x020305);
+    scene.fog = new THREE.Fog(0x020305, 16, 72);
 
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -930,7 +1268,6 @@
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.BasicShadowMap;
     renderer.sortObjects = false;
@@ -941,11 +1278,12 @@
       renderer.compile(scene, camera);
     }
 
-    // Physically-based lighting (Three r155+): old ~0.1–0.2 intensities read as black; keep moonlit mood but usable.
-    const hemi = new THREE.HemisphereLight(0x3d4a5c, 0x181c22, 1.05);
+    // Same luminance as pre–r155 legacy lights: physically correct shading drops ~π× vs old scaling.
+    const _LEGACY_L = Math.PI;
+    const hemi = new THREE.HemisphereLight(0x2c3848, 0x0f1114, 0.14 * _LEGACY_L);
     scene.add(hemi);
 
-    const moon = new THREE.DirectionalLight(0x7a8cac, 0.72);
+    const moon = new THREE.DirectionalLight(0x5a6880, 0.11 * _LEGACY_L);
     moon.position.set(28, 34, 22);
     moon.castShadow = true;
     moon.shadow.mapSize.set(256, 256);
@@ -954,6 +1292,53 @@
     moon.shadow.camera.top = 100;
     moon.shadow.camera.bottom = -100;
     scene.add(moon);
+
+    function getPixelRatioForQuality() {
+      const dpr = window.devicePixelRatio || 1;
+      const q = QUALITY_LEVELS[gameSettings.qualityIndex] || "regular";
+      if (q === "potato") return Math.min(0.6, dpr);
+      if (q === "regular") return Math.min(1, dpr);
+      if (q === "high") return Math.min(1.25, dpr);
+      return Math.min(1.6, dpr);
+    }
+
+    function getQualityId() {
+      return QUALITY_LEVELS[gameSettings.qualityIndex] || "regular";
+    }
+
+    /** Local rendering only: resolution, shadows, film overlay. Light intensities stay fixed so brightness stays fair. */
+    function applyGraphicsQuality() {
+      const q = getQualityId();
+      let shadowSz = 256;
+      let shadowType = THREE.BasicShadowMap;
+
+      if (q === "potato") {
+        shadowSz = 128;
+        shadowType = THREE.BasicShadowMap;
+      } else if (q === "regular") {
+        shadowSz = 256;
+        shadowType = THREE.BasicShadowMap;
+      } else if (q === "high") {
+        shadowSz = 512;
+        shadowType = THREE.PCFSoftShadowMap;
+      } else if (q === "extreme") {
+        shadowSz = 1024;
+        shadowType = THREE.PCFSoftShadowMap;
+      }
+
+      renderer.setPixelRatio(getPixelRatioForQuality());
+      renderer.shadowMap.type = shadowType;
+      moon.shadow.mapSize.set(shadowSz, shadowSz);
+
+      if (warFilmOverlay) {
+        warFilmOverlay.style.opacity = q === "extreme" ? "0.22" : "0";
+      }
+
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      compileSceneShaders();
+    }
+
+    applyGraphicsQuality();
 
     const worldSize = 260;
 
@@ -988,7 +1373,7 @@
 
     function makeWallMaterial(repeatX, repeatY, color) {
       const tint = color || fallbackWallColor;
-      if (wallTextureLoaded && wallTexture) {
+      if (wallTextureLoaded && wallTexture && gameSettings.texturesOn) {
         const t = wallTexture.clone();
         t.needsUpdate = true;
         t.wrapS = THREE.RepeatWrapping;
@@ -1004,14 +1389,19 @@
       if (!wallTexture) return;
       for (const entry of _texturedMeshes) {
         const { mesh, rx, ry, tint } = entry;
-        const t = wallTexture.clone();
-        t.needsUpdate = true;
-        t.wrapS = THREE.RepeatWrapping;
-        t.wrapT = THREE.RepeatWrapping;
-        t.repeat.set(rx, ry);
-        t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-        mesh.material.map = t;
-        mesh.material.color.set(tint || 0xaaaaaa);
+        if (gameSettings.texturesOn) {
+          const t = wallTexture.clone();
+          t.needsUpdate = true;
+          t.wrapS = THREE.RepeatWrapping;
+          t.wrapT = THREE.RepeatWrapping;
+          t.repeat.set(rx, ry);
+          t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+          mesh.material.map = t;
+          mesh.material.color.set(tint || 0xaaaaaa);
+        } else {
+          mesh.material.map = null;
+          mesh.material.color.set(tint || fallbackWallColor);
+        }
         mesh.material.needsUpdate = true;
       }
     }
@@ -1026,7 +1416,7 @@
     scene.add(floor);
     _texturedMeshes.push({ mesh: floor, rx: 32, ry: 32, tint: 0x666670 });
 
-    const ceilingMat = makeWallMaterial(24, 24, 0x333344);
+    const ceilingMat = makeWallMaterial(32, 32, 0x5c6272);
     const ceiling = new THREE.Mesh(
       new THREE.PlaneGeometry(worldSize, worldSize, 1, 1),
       ceilingMat
@@ -1034,7 +1424,7 @@
     ceiling.position.y = 4.5;
     ceiling.rotation.x = Math.PI / 2;
     scene.add(ceiling);
-    _texturedMeshes.push({ mesh: ceiling, rx: 24, ry: 24, tint: 0x333344 });
+    _texturedMeshes.push({ mesh: ceiling, rx: 32, ry: 32, tint: 0x5c6272 });
 
     const wallMeshes = [];
     const wallBoxes = [];
@@ -1075,7 +1465,395 @@
       return mesh;
     }
 
+    /** ── Infinite procedural maze (chunk-streamed; walls texture on floor/roof per chunk) ── */
+    const MAZE_CHUNK_WORLD = 52;
+    const MAZE_CELLS = 15;
+    const MAZE_CELL_SIZE = MAZE_CHUNK_WORLD / MAZE_CELLS;
+    const MAZE_WALL_H = 4.5;
+    const MAZE_WALL_THICK = 0.42;
+    const MAZE_LIGHT_HEIGHT_ROOF = 4.26;
+    let mazeChunks = new Map();
+    let mazeWorldSeed = 2166136261;
+    let mazeChunkPollAcc = 0;
+
+    function mazeHashSeed(cx, cz, salt = 0) {
+      let h = mazeWorldSeed ^ salt ^ (cx * 73856093) ^ (cz * 19349663) ^ (cx * cz * 83492791);
+      h >>>= 0;
+      return mulberry32(h);
+    }
+
+    function mazeEastPortalRow(cx, cz) {
+      const r = mazeHashSeed(cx, cz, 0x451234)();
+      return (r >>> 0) % MAZE_CELLS;
+    }
+
+    function mazeNorthPortalCol(cx, cz) {
+      const r = mazeHashSeed(cx, cz, 0x89237412)();
+      return (r >>> 0) % MAZE_CELLS;
+    }
+
+    function generateMazeChunkGrid(cx, cz) {
+      const rng = mazeHashSeed(cx, cz, 0x10203040);
+      const w = MAZE_CELLS;
+      const h = MAZE_CELLS;
+      const vert = Array(w + 1)
+        .fill(0)
+        .map(() => Array(h).fill(true));
+      const horiz = Array(w)
+        .fill(0)
+        .map(() => Array(h + 1).fill(true));
+      const vis = Array(w)
+        .fill(0)
+        .map(() => Array(h).fill(false));
+
+      function shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = (rng() * (i + 1)) | 0;
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+      }
+
+      function carve(x, y) {
+        vis[y][x] = true;
+        const dirs = shuffle([
+          [0, -1],
+          [1, 0],
+          [0, 1],
+          [-1, 0],
+        ]);
+        for (const [dx, dy] of dirs) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h || vis[ny][nx]) continue;
+          if (dx === 1) vert[x + 1][y] = false;
+          if (dx === -1) vert[x][y] = false;
+          if (dy === 1) horiz[x][y + 1] = false;
+          if (dy === -1) horiz[x][y] = false;
+          carve(nx, ny);
+        }
+      }
+
+      carve((rng() * w) | 0, (rng() * h) | 0);
+
+      const ew = mazeEastPortalRow(cx - 1, cz);
+      const ee = mazeEastPortalRow(cx, cz);
+      vert[0][ew] = false;
+      vert[w][ee] = false;
+      const ns = mazeNorthPortalCol(cx, cz - 1);
+      const nn = mazeNorthPortalCol(cx, cz);
+      horiz[ns][0] = false;
+      horiz[nn][h] = false;
+
+      const lights = [];
+      const carveCells = [];
+
+      const sampleStride = 2;
+      for (let gy = 1; gy < h - 1; gy += sampleStride) {
+        for (let gx = 1; gx < w - 1; gx += sampleStride) {
+          if (rng() > 0.38) continue;
+          const u = rng();
+          const pRoof = 1 / (1 + 0.7);
+          let kind = u < pRoof ? "roof" : "wall";
+          if (kind === "wall" && rng() < 0.1) kind = "area";
+
+          if (kind === "area") {
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                const xi = gx + dx;
+                const yi = gy + dy;
+                if (xi < 0 || xi >= w || yi < 0 || yi >= h) continue;
+                vert[xi][yi] = false;
+                vert[xi + 1][yi] = false;
+                horiz[xi][yi] = false;
+                horiz[xi][yi + 1] = false;
+              }
+            }
+            carveCells.push({ gx, gy, kind: "area" });
+          } else {
+            carveCells.push({ gx, gy, kind });
+          }
+        }
+      }
+
+      return { vert, horiz, lightsPlan: carveCells };
+    }
+
+    function buildMazeChunk(cx, cz) {
+      const key = `${cx},${cz}`;
+      if (mazeChunks.has(key)) return;
+
+      const ox = cx * MAZE_CHUNK_WORLD;
+      const oz = cz * MAZE_CHUNK_WORLD;
+      const cw = MAZE_CELL_SIZE;
+      const { vert, horiz, lightsPlan } = generateMazeChunkGrid(cx, cz);
+      const w = MAZE_CELLS;
+      const h = MAZE_CELLS;
+
+      const chunkMeshes = [];
+      const chunkLights = [];
+
+      const floorPl = new THREE.Mesh(
+        new THREE.PlaneGeometry(MAZE_CHUNK_WORLD - 0.02, MAZE_CHUNK_WORLD - 0.02),
+        makeWallMaterial(MAZE_CHUNK_WORLD / 4, MAZE_CHUNK_WORLD / 4, 0x666670)
+      );
+      floorPl.rotation.x = -Math.PI / 2;
+      floorPl.position.set(ox + MAZE_CHUNK_WORLD / 2, 0, oz + MAZE_CHUNK_WORLD / 2);
+      floorPl.receiveShadow = true;
+      scene.add(floorPl);
+      chunkMeshes.push(floorPl);
+      _texturedMeshes.push({
+        mesh: floorPl,
+        rx: MAZE_CHUNK_WORLD / 4,
+        ry: MAZE_CHUNK_WORLD / 4,
+        tint: 0x666670,
+      });
+
+      const ceilPl = new THREE.Mesh(
+        new THREE.PlaneGeometry(MAZE_CHUNK_WORLD - 0.02, MAZE_CHUNK_WORLD - 0.02),
+        makeWallMaterial(MAZE_CHUNK_WORLD / 4, MAZE_CHUNK_WORLD / 4, 0x5c6272)
+      );
+      ceilPl.rotation.x = Math.PI / 2;
+      ceilPl.position.set(ox + MAZE_CHUNK_WORLD / 2, MAZE_WALL_H, oz + MAZE_CHUNK_WORLD / 2);
+      ceilPl.receiveShadow = true;
+      scene.add(ceilPl);
+      chunkMeshes.push(ceilPl);
+      _texturedMeshes.push({
+        mesh: ceilPl,
+        rx: MAZE_CHUNK_WORLD / 4,
+        ry: MAZE_CHUNK_WORLD / 4,
+        tint: 0x5c6272,
+      });
+
+      const pushWall = (mw, mh, md, px, py, pz, tint = 0x6b7384) => {
+        const mesh = addWallBox(mw, mh, md, px, py, pz, tint);
+        chunkMeshes.push(mesh);
+        mesh.userData.mazeChunkKey = key;
+      };
+
+      for (let ix = 0; ix <= w; ix++) {
+        for (let iy = 0; iy < h; iy++) {
+          if (!vert[ix][iy]) continue;
+          const wx = ox + ix * cw;
+          const wz = oz + (iy + 0.5) * cw;
+          pushWall(
+            MAZE_WALL_THICK,
+            MAZE_WALL_H,
+            cw + 0.02,
+            wx,
+            MAZE_WALL_H / 2,
+            wz,
+            0x6b7384
+          );
+        }
+      }
+
+      for (let ix = 0; ix < w; ix++) {
+        for (let iy = 0; iy <= h; iy++) {
+          if (!horiz[ix][iy]) continue;
+          const wx = ox + (ix + 0.5) * cw;
+          const wz = oz + iy * cw;
+          pushWall(
+            cw + 0.02,
+            MAZE_WALL_H,
+            MAZE_WALL_THICK,
+            wx,
+            MAZE_WALL_H / 2,
+            wz,
+            0x6b7384
+          );
+        }
+      }
+
+      const wxMid = (gx, gy) => ox + (gx + 0.5) * cw;
+      const wzMid = (gx, gy) => oz + (gy + 0.5) * cw;
+
+      for (const plan of lightsPlan) {
+        const { gx, gy, kind } = plan;
+        const px = wxMid(gx, gy);
+        const pz = wzMid(gx, gy);
+
+        if (kind === "roof") {
+          const L = new THREE.PointLight(0xfff2dd, 95, 46, 2.1);
+          L.position.set(px, MAZE_LIGHT_HEIGHT_ROOF, pz);
+          L.castShadow = false;
+          scene.add(L);
+          chunkLights.push(L);
+
+          const bulb = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.14, 0.18, 0.12, 8),
+            new THREE.MeshStandardMaterial({
+              color: 0xfff6ec,
+              emissive: 0xffeed0,
+              emissiveIntensity: 0.9,
+              roughness: 0.35,
+              metalness: 0.2,
+            })
+          );
+          bulb.position.set(px, MAZE_WALL_H - 0.08, pz);
+          bulb.castShadow = false;
+          scene.add(bulb);
+          chunkMeshes.push(bulb);
+        } else if (kind === "wall") {
+          const edge = mazeHashSeed(cx, cz, gx * 9973 + gy * 7919)();
+          const face = edge % 4;
+          const inset = cw * 0.42;
+          let lx = px;
+          let lz = pz;
+          let yaw = 0;
+          if (face === 0) {
+            lz = oz + gy * cw + inset;
+            yaw = 0;
+          } else if (face === 1) {
+            lx = ox + (gx + 1) * cw - inset;
+            yaw = Math.PI / 2;
+          } else if (face === 2) {
+            lz = oz + (gy + 1) * cw - inset;
+            yaw = Math.PI;
+          } else {
+            lx = ox + gx * cw + inset;
+            yaw = -Math.PI / 2;
+          }
+
+          const sconce = new THREE.Mesh(
+            new THREE.BoxGeometry(0.22, 0.55, 0.14),
+            new THREE.MeshStandardMaterial({
+              color: 0x8a93a5,
+              emissive: 0xffe8cc,
+              emissiveIntensity: 0.35,
+              roughness: 0.55,
+            })
+          );
+          sconce.position.set(lx, 2.05, lz);
+          sconce.rotation.y = yaw;
+          sconce.castShadow = false;
+          scene.add(sconce);
+          chunkMeshes.push(sconce);
+
+          const spot = new THREE.SpotLight(0xffecd8, 220, 26, Math.PI / 5.5, 0.42, 1.85);
+          spot.position.set(lx, 2.25, lz);
+          spot.target.position.set(px, 0.15, pz);
+          scene.add(spot);
+          scene.add(spot.target);
+          chunkLights.push(spot);
+        } else if (kind === "area") {
+          const fill = new THREE.PointLight(0xfff5ee, 155, 34, 2.0);
+          fill.position.set(px, 2.6, pz);
+          scene.add(fill);
+          chunkLights.push(fill);
+
+          const ring = new THREE.Mesh(
+            new THREE.RingGeometry(cw * 1.1, cw * 1.55, 24),
+            new THREE.MeshBasicMaterial({
+              color: 0xffeedd,
+              transparent: true,
+              opacity: 0.22,
+              side: THREE.DoubleSide,
+            })
+          );
+          ring.rotation.x = -Math.PI / 2;
+          ring.position.set(px, 0.03, pz);
+          scene.add(ring);
+          chunkMeshes.push(ring);
+        }
+      }
+
+      mazeChunks.set(key, { meshes: chunkMeshes, lights: chunkLights });
+    }
+
+    function unloadMazeChunk(cx, cz) {
+      const key = `${cx},${cz}`;
+      const ch = mazeChunks.get(key);
+      if (!ch) return;
+      for (const mesh of ch.meshes) {
+        scene.remove(mesh);
+        const wi = wallMeshes.indexOf(mesh);
+        if (wi >= 0) wallMeshes.splice(wi, 1);
+        const ti = _texturedMeshes.findIndex((e) => e.mesh === mesh);
+        if (ti >= 0) _texturedMeshes.splice(ti, 1);
+        if (mesh.geometry) mesh.geometry.dispose();
+        if (mesh.material) {
+          if (mesh.material.map) mesh.material.map.dispose();
+          mesh.material.dispose();
+        }
+      }
+      for (const L of ch.lights) {
+        scene.remove(L);
+        if (L.target) scene.remove(L.target);
+        if (L.dispose) L.dispose();
+      }
+      wallBoxes.length = 0;
+      for (const m of wallMeshes) {
+        wallBoxes.push(new THREE.Box3().setFromObject(m));
+      }
+      mazeChunks.delete(key);
+    }
+
+    function clearAllMazeChunks() {
+      for (const k of [...mazeChunks.keys()]) {
+        const [sx, sz] = k.split(",").map(Number);
+        unloadMazeChunk(sx, sz);
+      }
+      mazeChunks.clear();
+    }
+
+    function updateInfiniteMaze(dt) {
+      if (CURRENT_MAP !== "maze") return;
+      mazeChunkPollAcc += dt;
+      if (mazeChunkPollAcc < 0.18) return;
+      mazeChunkPollAcc = 0;
+
+      const pcx = Math.floor(player.position.x / MAZE_CHUNK_WORLD);
+      const pcz = Math.floor(player.position.z / MAZE_CHUNK_WORLD);
+      const R = 2;
+
+      for (let dz = -R; dz <= R; dz++) {
+        for (let dx = -R; dx <= R; dx++) {
+          buildMazeChunk(pcx + dx, pcz + dz);
+        }
+      }
+
+      for (const key of [...mazeChunks.keys()]) {
+        const [cx, cz] = key.split(",").map(Number);
+        if (Math.abs(cx - pcx) > R + 1 || Math.abs(cz - pcz) > R + 1) {
+          unloadMazeChunk(cx, cz);
+        }
+      }
+
+      rebuildMazeNavGrid(pcx, pcz);
+    }
+
+    let mazeNavAnchorCx = null;
+    let mazeNavAnchorCz = null;
+
+    function rebuildMazeNavGrid(pcx, pcz) {
+      if (CURRENT_MAP !== "maze") return;
+      if (mazeNavAnchorCx === pcx && mazeNavAnchorCz === pcz && navGrid) return;
+      mazeNavAnchorCx = pcx;
+      mazeNavAnchorCz = pcz;
+      const padChunks = 4;
+      navMinX = (pcx - padChunks) * MAZE_CHUNK_WORLD;
+      navMinZ = (pcz - padChunks) * MAZE_CHUNK_WORLD;
+      const span = padChunks * 2 * MAZE_CHUNK_WORLD + MAZE_CHUNK_WORLD;
+      navCols = Math.ceil(span / NAV_CELL);
+      navRows = Math.ceil(span / NAV_CELL);
+      navGrid = new Uint8Array(navCols * navRows);
+      for (let r = 0; r < navRows; r++) {
+        for (let c = 0; c < navCols; c++) {
+          const wx = navMinX + (c + 0.5) * NAV_CELL;
+          const wz = navMinZ + (r + 0.5) * NAV_CELL;
+          navGrid[r * navCols + c] = enemyCollidesWall(wx, wz, NAV_RADIUS) ? 1 : 0;
+        }
+      }
+      const total = navCols * navRows;
+      flowDirX = new Float32Array(total);
+      flowDirZ = new Float32Array(total);
+      flowPlayerC = -1;
+      flowPlayerR = -1;
+    }
+
     function clearMap() {
+      clearAllMazeChunks();
       while (wallMeshes.length) {
         const mesh = wallMeshes.pop();
         scene.remove(mesh);
@@ -1165,9 +1943,24 @@
       addWindowWallX( 28,-28, 14, H, 1.0, 4, 1.2, 3.0);
     }
 
+    function buildMapMaze() {
+      mazeWorldSeed =
+        (Math.imul(1103515245, (performance.now() ^ (Math.random() * 0x7fffffff)) | 0) + 12345) >>> 0;
+      mazeChunkPollAcc = 0;
+      mazeNavAnchorCx = null;
+      mazeNavAnchorCz = null;
+      const R = 2;
+      for (let dz = -R; dz <= R; dz++) {
+        for (let dx = -R; dx <= R; dx++) {
+          buildMazeChunk(dx, dz);
+        }
+      }
+    }
+
     const MAP_BUILDERS = {
       arena: buildMapArena,
-      crossfire: buildMapCrossfire
+      crossfire: buildMapCrossfire,
+      maze: buildMapMaze
     };
 
     const ZOMBIE_COUNT = 8;
@@ -1205,6 +1998,37 @@
     }
 
     function findSpawnPosition(minDist) {
+      if (CURRENT_MAP === "maze") {
+        const players = getAllPlayerPositions();
+        let dist = minDist;
+        const px = player.position.x;
+        const pz = player.position.z;
+        for (let attempt = 0; attempt < 90; attempt++) {
+          if (attempt > 0 && attempt % 22 === 0) {
+            dist = Math.max(SPAWN_MIN_DIST_FLOOR, dist * 0.62);
+          }
+          const ang = Math.random() * Math.PI * 2;
+          const rad = dist + Math.random() * (MAZE_CHUNK_WORLD * 2.2);
+          const x = px + Math.cos(ang) * rad;
+          const z = pz + Math.sin(ang) * rad;
+          if (enemyCollidesWall(x, z, 0.5)) continue;
+          let tooClose = false;
+          for (const p of players) {
+            const dx = x - p.x;
+            const dz = z - p.z;
+            if (dx * dx + dz * dz < dist * dist) {
+              tooClose = true;
+              break;
+            }
+          }
+          if (tooClose) continue;
+          return { x, z, usedDist: dist };
+        }
+        const x = px + 14;
+        const z = pz;
+        return { x, z, usedDist: 0 };
+      }
+
       const S = CURRENT_MAP === "crossfire" ? 43 : 40;
       const players = getAllPlayerPositions();
       let dist = minDist;
@@ -1264,7 +2088,8 @@
       smoothHeadBob: 0,
       weaponBobX: 0,
       weaponBobY: 0,
-      weaponBobRotZ: 0
+      weaponBobRotZ: 0,
+      camShake: 0,
     };
 
     const weapons = [
@@ -1508,9 +2333,9 @@
       const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.05), eyeGlowMat);
       eyeL.position.set(-0.10, 0.06, 0.215); headGroup.add(eyeL);
       const eyeR = eyeL.clone(); eyeR.position.x = 0.10; headGroup.add(eyeR);
-      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 4.2, 7.5, 2);
+      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 1.15, 6.5, 2);
       glowL.position.set(-0.10, 0.06, 0.24); headGroup.add(glowL);
-      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 4.2, 7.5, 2);
+      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 1.15, 6.5, 2);
       glowR.position.set(0.10, 0.06, 0.24); headGroup.add(glowR);
 
       const brow = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, 0.08), matSkinD);
@@ -1691,6 +2516,45 @@ return {
 
     
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioMaster = audioCtx.createGain();
+    const audioSfx = audioCtx.createGain();
+    const audioMusic = audioCtx.createGain();
+    audioSfx.connect(audioMaster);
+    audioMusic.connect(audioMaster);
+    audioMaster.connect(audioCtx.destination);
+
+    function applyAudioVolumes() {
+      audioMaster.gain.value = gameSettings.masterVolume;
+      audioSfx.gain.value = gameSettings.soundVolume;
+      audioMusic.gain.value = gameSettings.musicVolume;
+    }
+    applyAudioVolumes();
+
+    let ambientWindNode = null;
+    function ensureAmbientWindLoop() {
+      if (ambientWindNode || audioCtx.state === "closed") return;
+      const len = audioCtx.sampleRate * 4;
+      const buf = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = buf.getChannelData(ch);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * 0.4;
+      }
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = "lowpass";
+      bp.frequency.value = 420;
+      const g = audioCtx.createGain();
+      g.gain.value = 0.016;
+      src.connect(bp);
+      bp.connect(g);
+      g.connect(audioMusic);
+      try {
+        src.start();
+      } catch (_) {}
+      ambientWindNode = { src, g };
+    }
 
     function playGunSound(w) {
       if (audioCtx.state === "suspended") audioCtx.resume();
@@ -1713,10 +2577,15 @@ return {
 
       osc.connect(filter);
       filter.connect(gain);
-      gain.connect(audioCtx.destination);
+      gain.connect(audioSfx);
 
       osc.start(now);
       osc.stop(now + 0.12);
+    }
+
+    function triggerCamShake(add = 0.09) {
+      if (getQualityId() !== "extreme") return;
+      state.camShake = Math.min(0.38, state.camShake + add);
     }
 
     function createBulletMark(point, normal) {
@@ -2045,6 +2914,11 @@ return {
     }
 
     document.addEventListener("keydown", (e) => {
+      if (settingsModalOpen && e.key === "Escape") {
+        closeSettingsModal();
+        e.preventDefault();
+        return;
+      }
       if (chatOpen) {
         if (e.key === "Enter") { sendChat(); e.preventDefault(); }
         if (e.key === "Escape") { closeChat(); renderer.domElement.requestPointerLock(); e.preventDefault(); }
@@ -2127,7 +3001,7 @@ return {
         keys.shift = false;
         state.mouseDown = false;
         state.ads = false;
-        if (started && player.health > 0 && menuEl.style.display === "none" && !chatOpen) {
+        if (started && player.health > 0 && menuEl.style.display === "none" && !chatOpen && !settingsModalOpen) {
           showPause();
         }
       } else {
@@ -2160,14 +3034,23 @@ return {
     /* ==== PART 2 STARTS HERE ==== */
     function rebuildMapAndEnemies() {
       clearMap();
-      MAP_BUILDERS[CURRENT_MAP]();
-      buildNavGrid();
-      rebuildEnemyRoster();
       if (CURRENT_MAP === "crossfire") {
         player.position.set(0, 1.65, 34);
+      } else if (CURRENT_MAP === "maze") {
+        player.position.set(MAZE_CHUNK_WORLD * 0.5, 1.65, MAZE_CHUNK_WORLD * 0.5);
       } else {
         player.position.set(-30, 1.65, -30);
       }
+      if (CURRENT_MAP === "maze") {
+        floor.visible = false;
+        ceiling.visible = false;
+      } else {
+        floor.visible = true;
+        ceiling.visible = true;
+      }
+      MAP_BUILDERS[CURRENT_MAP]();
+      buildNavGrid();
+      rebuildEnemyRoster();
       player.velocityY = 0;
       player.onGround = true;
       camera.position.copy(player.position);
@@ -2678,6 +3561,7 @@ return {
       player.health = Math.max(0, player.health - amount);
       player.regenTimer = 0;
       state.flashTimer = 0.14;
+      triggerCamShake(0.095);
       if (attacker && attacker.group) {
         addHitIndicator(attacker.group.position.x, attacker.group.position.z);
       }
@@ -2702,6 +3586,55 @@ return {
       crosshairEl.classList.remove("hidden");
     }
 
+    function setActiveSettingsTab(sectionId) {
+      for (const t of document.querySelectorAll(".settings-tab")) {
+        t.classList.toggle("active", t.getAttribute("data-scroll-target") === sectionId);
+      }
+    }
+
+    function updateSettingsTabFromScroll() {
+      if (!settingsScroll || settingsModal.style.display !== "flex") return;
+      const rootRect = settingsScroll.getBoundingClientRect();
+      const probeY = rootRect.top + Math.min(140, rootRect.height * 0.26);
+      let chosen = SETTINGS_SECTION_IDS[0];
+      for (const id of SETTINGS_SECTION_IDS) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (probeY >= r.top && probeY <= r.bottom) {
+          chosen = id;
+          break;
+        }
+        if (probeY > r.bottom) chosen = id;
+      }
+      setActiveSettingsTab(chosen);
+    }
+
+    function syncSettingsUI() {
+      rngMasterVol.value = String(Math.round(gameSettings.masterVolume * 100));
+      rngMusicVol.value = String(Math.round(gameSettings.musicVolume * 100));
+      rngSfxVol.value = String(Math.round(gameSettings.soundVolume * 100));
+      lblMasterVol.textContent = `${rngMasterVol.value}%`;
+      lblMusicVol.textContent = `${rngMusicVol.value}%`;
+      lblSfxVol.textContent = `${rngSfxVol.value}%`;
+      qualityLabel.textContent = QUALITY_LABELS[gameSettings.qualityIndex] || "REGULAR";
+      textureLabel.textContent = gameSettings.texturesOn ? "ON" : "OFF";
+    }
+
+    function openSettingsModal() {
+      settingsModalOpen = true;
+      syncSettingsUI();
+      settingsModal.style.display = "flex";
+      if (settingsScroll) settingsScroll.scrollTop = 0;
+      setActiveSettingsTab("settingsSectionAudio");
+      document.exitPointerLock();
+    }
+
+    function closeSettingsModal() {
+      settingsModalOpen = false;
+      settingsModal.style.display = "none";
+    }
+
     // ── Nav grid + BFS flow field (shared by all zombies) ──
     const NAV_CELL = 2.0;
     const NAV_RADIUS = 0.5;
@@ -2711,6 +3644,15 @@ return {
     let flowPlayerC = -1, flowPlayerR = -1;
 
     function buildNavGrid() {
+      if (CURRENT_MAP === "maze") {
+        mazeNavAnchorCx = null;
+        mazeNavAnchorCz = null;
+        rebuildMazeNavGrid(
+          Math.floor(player.position.x / MAZE_CHUNK_WORLD),
+          Math.floor(player.position.z / MAZE_CHUNK_WORLD)
+        );
+        return;
+      }
       const S = CURRENT_MAP === "crossfire" ? 45 : 42;
       navMinX = -S;
       navMinZ = -S;
@@ -3268,15 +4210,32 @@ return {
       updatePlayer(dt);
       updateWeapon(dt);
 
-      if (CURRENT_MAP === "arena") {
+      if (player.health > 0 && started && getQualityId() === "extreme") {
+        const sh = state.camShake;
+        if (sh > 1e-5) {
+          camera.position.x += (Math.random() - 0.5) * sh * 0.72;
+          camera.position.y += (Math.random() - 0.5) * sh * 0.32;
+          state.camShake *= Math.pow(0.18, dt * 52);
+        } else {
+          state.camShake = 0;
+        }
+        const moving =
+          (keys.w || keys.a || keys.s || keys.d) && player.onGround && player.health > 0;
+        if (moving) {
+          camera.position.x += Math.sin(state.walkPhase * 2.08) * 0.027;
+          camera.position.z += Math.cos(state.walkPhase * 1.65) * 0.014;
+        }
+      }
+
+      if (CURRENT_MAP === "arena" || CURRENT_MAP === "maze") {
         const runZombieAi =
           player.health > 0 ||
-          (MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY);
+          (MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY && CURRENT_MAP === "arena");
         if (runZombieAi) {
           updateEnemies(dt);
         }
         updateDeathAnim(dt);
-        if (MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY) {
+        if (MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY && CURRENT_MAP === "arena") {
           _zombieSyncAcc += dt;
           if (_zombieSyncAcc >= 1 / 14) {
             _zombieSyncAcc = 0;
@@ -3294,6 +4253,10 @@ return {
             });
           }
         }
+      }
+
+      if (CURRENT_MAP === "maze" && started) {
+        updateInfiniteMaze(dt);
       }
 
       if (CURRENT_MAP === "crossfire" && MULTIPLAYER && player.health <= 0) {
@@ -3337,6 +4300,10 @@ return {
         if (!multiplayer) ARENA_COOP = false;
       }
       if (arenaCoop !== undefined) ARENA_COOP = !!arenaCoop;
+      if (CURRENT_MAP === "maze") {
+        MULTIPLAYER = false;
+        ARENA_COOP = false;
+      }
       if (MULTIPLAYER && ARENA_COOP) {
         ZOMBIE_HOST_KNOWN = false;
         ZOMBIE_AUTHORITY = false;
@@ -3344,9 +4311,28 @@ return {
         ZOMBIE_HOST_KNOWN = true;
       }
       _zombieSyncAcc = 0;
+      state.camShake = 0;
+      ensureAmbientWindLoop();
       menuEl.style.display = "none";
 
       clearMap();
+
+      if (CURRENT_MAP === "crossfire") {
+        player.position.set(0, 1.65, 34);
+      } else if (CURRENT_MAP === "maze") {
+        player.position.set(MAZE_CHUNK_WORLD * 0.5, 1.65, MAZE_CHUNK_WORLD * 0.5);
+      } else {
+        player.position.set(-30, 1.65, -30);
+      }
+
+      if (CURRENT_MAP === "maze") {
+        floor.visible = false;
+        ceiling.visible = false;
+      } else {
+        floor.visible = true;
+        ceiling.visible = true;
+      }
+
       MAP_BUILDERS[CURRENT_MAP]();
       buildNavGrid();
 
@@ -3358,14 +4344,8 @@ return {
       if (MULTIPLAYER && activeRoomId) {
         socket.emit("joinRoom", activeRoomId);
       }
-      if (CURRENT_MAP === "arena") {
+      if (CURRENT_MAP === "arena" || CURRENT_MAP === "maze") {
         rebuildEnemyRoster();
-      }
-
-      if (CURRENT_MAP === "crossfire") {
-        player.position.set(0, 1.65, 34);
-      } else {
-        player.position.set(-30, 1.65, -30);
       }
 
       player.velocityY = 0;
@@ -3410,6 +4390,7 @@ return {
     function goToMenu() {
       hideDeathScreen();
       hidePause();
+      closeSettingsModal();
       MULTIPLAYER = false;
       ROOM_CODE = "";
       activeRoomId = "";
@@ -3432,6 +4413,8 @@ return {
       }
       remotePlayers.clear();
       setLocalPlayerLights(false);
+      floor.visible = true;
+      ceiling.visible = true;
     }
 
     function showMenuPanel(id) {
@@ -3463,6 +4446,8 @@ return {
     btnArenaSingle.addEventListener("click", () => startGame("arena", false));
     btnArenaCoop.addEventListener("click", () => showLobby("arena-coop", "ARENA CO-OP"));
     btnArenaBack.addEventListener("click", () => showMenuPanel("menuMain"));
+
+    btnMaze.addEventListener("click", () => startGame("maze", false));
 
     btnCrossfire.addEventListener("click", () => showLobby("crossfire", "CROSSFIRE (PVP)"));
 
@@ -3521,16 +4506,84 @@ return {
     });
 
     btnDeathRestart.addEventListener("click", () => startGame(CURRENT_MAP));
+    btnDeathSettings.addEventListener("click", () => openSettingsModal());
     btnDeathQuit.addEventListener("click", goToMenu);
     btnResume.addEventListener("click", () => {
       hidePause();
       renderer.domElement.requestPointerLock();
     });
+    btnPauseSettings.addEventListener("click", () => openSettingsModal());
     btnPauseRestart.addEventListener("click", () => startGame(CURRENT_MAP));
     btnPauseQuit.addEventListener("click", goToMenu);
+    btnMenuSettings.addEventListener("click", () => openSettingsModal());
+
+    btnCloseSettings.addEventListener("click", () => closeSettingsModal());
+    settingsModal.addEventListener("click", (e) => {
+      if (e.target === settingsModal) closeSettingsModal();
+    });
+
+    for (const tab of document.querySelectorAll(".settings-tab")) {
+      tab.addEventListener("click", () => {
+        const id = tab.getAttribute("data-scroll-target");
+        if (id) setActiveSettingsTab(id);
+        const el = id ? document.getElementById(id) : null;
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+
+    if (settingsScroll) {
+      settingsScroll.addEventListener(
+        "scroll",
+        () => {
+          requestAnimationFrame(updateSettingsTabFromScroll);
+        },
+        { passive: true }
+      );
+    }
+
+    function bindVolSlider(rangeEl, labelEl, key, applyFn) {
+      rangeEl.addEventListener("input", () => {
+        const v = (+rangeEl.value || 0) / 100;
+        gameSettings[key] = v;
+        labelEl.textContent = `${rangeEl.value}%`;
+        saveGameSettings();
+        applyFn();
+      });
+    }
+    bindVolSlider(rngMasterVol, lblMasterVol, "masterVolume", applyAudioVolumes);
+    bindVolSlider(rngMusicVol, lblMusicVol, "musicVolume", applyAudioVolumes);
+    bindVolSlider(rngSfxVol, lblSfxVol, "soundVolume", applyAudioVolumes);
+
+    function cycleQuality(delta) {
+      gameSettings.qualityIndex = (gameSettings.qualityIndex + delta + QUALITY_LEVELS.length) % QUALITY_LEVELS.length;
+      syncSettingsUI();
+      saveGameSettings();
+      applyGraphicsQuality();
+    }
+    btnQualityPrev.addEventListener("click", () => cycleQuality(-1));
+    btnQualityNext.addEventListener("click", () => cycleQuality(1));
+
+    btnTexturePrev.addEventListener("click", () => {
+      gameSettings.texturesOn = false;
+      syncSettingsUI();
+      saveGameSettings();
+      applyWallTexture();
+      compileSceneShaders();
+    });
+    btnTextureNext.addEventListener("click", () => {
+      gameSettings.texturesOn = true;
+      syncSettingsUI();
+      saveGameSettings();
+      applyWallTexture();
+      compileSceneShaders();
+    });
+
+    syncSettingsUI();
+
     window.addEventListener("resize", () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
+      renderer.setPixelRatio(getPixelRatioForQuality());
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
   </script>
