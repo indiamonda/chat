@@ -8,12 +8,25 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Base URL must be the folder containing this HTML file so ./walls.png and ./game-ui/ resolve when the game lives in a subpath (e.g. /html/game.html). -->
+  <script>
+    (function () {
+      try {
+        var page = String(location.href).split(/[#?]/)[0];
+        var slash = page.lastIndexOf("/");
+        var dir = slash >= 0 ? page.slice(0, slash + 1) : page + "/";
+        var b = document.createElement("base");
+        b.href = dir;
+        var cs = document.head.querySelector("meta[charset]");
+        if (cs && cs.nextSibling) document.head.insertBefore(b, cs.nextSibling);
+        else document.head.appendChild(b);
+      } catch (e) {}
+    })();
+  </script>
   <title>3D Zombie FPS Prototype</title>
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Socket.IO browser client from CDN (same approach as working fps deploy); connects via game-multiplayer-origin + /game -->
   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
-  <!-- Resolve CSS + relative assets next to this file; multiplayer API origin stays in meta + JS. -->
-  <base href="./" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
   <style>
@@ -1463,26 +1476,42 @@
     let wallTextureLoaded = false;
 
     const texLoader = new THREE.TextureLoader();
-    /** Same folder as this page so textures work on any host (Pages, local, chat deploy). */
-    const wallsTextureUrl = new URL("walls.png", window.location.href).href;
-    texLoader.load(
-      wallsTextureUrl,
-      (tex) => {
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
-        tex.magFilter = THREE.LinearFilter;
-        tex.minFilter = THREE.LinearMipmapLinearFilter;
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.generateMipmaps = true;
-        tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-        wallTexture = tex;
-        wallTextureLoaded = true;
-        applyWallTexture();
-        compileSceneShaders();
-      },
-      undefined,
-      () => { wallTextureLoaded = false; }
-    );
+    function pageDirFromLocation() {
+      const page = String(window.location.href).split(/[#?]/)[0];
+      const slash = page.lastIndexOf("/");
+      return slash >= 0 ? page.slice(0, slash + 1) : page + "/";
+    }
+    function tryLoadWallsTexture(urls, index) {
+      if (index >= urls.length) {
+        wallTextureLoaded = false;
+        return;
+      }
+      texLoader.load(
+        urls[index],
+        (tex) => {
+          tex.wrapS = THREE.RepeatWrapping;
+          tex.wrapT = THREE.RepeatWrapping;
+          tex.magFilter = THREE.LinearFilter;
+          tex.minFilter = THREE.LinearMipmapLinearFilter;
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.generateMipmaps = true;
+          tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+          wallTexture = tex;
+          wallTextureLoaded = true;
+          applyWallTexture();
+          compileSceneShaders();
+        },
+        undefined,
+        () => tryLoadWallsTexture(urls, index + 1)
+      );
+    }
+    {
+      const dir = pageDirFromLocation();
+      tryLoadWallsTexture(
+        [new URL("walls.png", dir).href, new URL("../walls.png", dir).href],
+        0
+      );
+    }
 
     const _texturedMeshes = [];
 
@@ -1592,6 +1621,9 @@
     let mazeChunks = new Map();
     let mazeWorldSeed = 2166136261;
     let mazeChunkPollAcc = 0;
+    /** WebGL forward shading has a hard limit on fragment light uniforms — register maze lamps and cull visibility each frame. */
+    const mazeCullableLights = [];
+    const MAX_MAZE_LIGHTS_ACTIVE = 24;
 
     function mazeHashSeed(cx, cz, salt = 0) {
       let h = mazeWorldSeed ^ salt ^ (cx * 73856093) ^ (cz * 19349663) ^ (cx * cz * 83492791);
@@ -1679,10 +1711,10 @@
       const lights = [];
       const carveCells = [];
 
-      const sampleStride = 2;
+      const sampleStride = 3;
       for (let gy = 1; gy < h - 1; gy += sampleStride) {
         for (let gx = 1; gx < w - 1; gx += sampleStride) {
-          if (rng() > 0.38) continue;
+          if (rng() > 0.52) continue;
           const u = rng();
           const pRoof = 1 / (1 + 0.7);
           let kind = u < pRoof ? "roof" : "wall";
@@ -1810,6 +1842,7 @@
           L.castShadow = false;
           scene.add(L);
           chunkLights.push(L);
+          registerMazeCullLight(L, key);
 
           const bulb = new THREE.Mesh(
             new THREE.CylinderGeometry(0.14, 0.18, 0.12, 8),
@@ -1874,11 +1907,13 @@
           scene.add(spot);
           scene.add(spot.target);
           chunkLights.push(spot);
+          registerMazeCullLight(spot, key);
         } else if (kind === "area") {
           const fill = new THREE.PointLight(0xfff5ee, 155 * MAZE_LIGHT_INTENSITY_SCALE, 0, 2);
           fill.position.set(px, 2.6, pz);
           scene.add(fill);
           chunkLights.push(fill);
+          registerMazeCullLight(fill, key);
 
           const ring = new THREE.Mesh(
             new THREE.RingGeometry(cw * 1.1, cw * 1.55, 24),
@@ -1899,10 +1934,41 @@
       mazeChunks.set(key, { meshes: chunkMeshes, lights: chunkLights });
     }
 
+    function registerMazeCullLight(light, chunkKey) {
+      light.userData.mazeCullKey = chunkKey;
+      mazeCullableLights.push(light);
+    }
+
+    function pruneMazeCullLightsForChunk(chunkKey) {
+      for (let i = mazeCullableLights.length - 1; i >= 0; i--) {
+        if (mazeCullableLights[i].userData.mazeCullKey === chunkKey) mazeCullableLights.splice(i, 1);
+      }
+    }
+
+    function cullMazeLightsNearCamera() {
+      if (!mazeCullableLights.length) return;
+      const cx = camera.position.x;
+      const cy = camera.position.y;
+      const cz = camera.position.z;
+      const scored = mazeCullableLights.map((L) => {
+        const p = L.position;
+        const dx = p.x - cx;
+        const dy = p.y - cy;
+        const dz = p.z - cz;
+        return { L, d2: dx * dx + dy * dy + dz * dz };
+      });
+      scored.sort((a, b) => a.d2 - b.d2);
+      const maxV = MAX_MAZE_LIGHTS_ACTIVE;
+      for (let i = 0; i < scored.length; i++) {
+        scored[i].L.visible = i < maxV;
+      }
+    }
+
     function unloadMazeChunk(cx, cz) {
       const key = `${cx},${cz}`;
       const ch = mazeChunks.get(key);
       if (!ch) return;
+      pruneMazeCullLightsForChunk(key);
       for (const mesh of ch.meshes) {
         scene.remove(mesh);
         const wi = wallMeshes.indexOf(mesh);
@@ -1928,6 +1994,7 @@
     }
 
     function clearAllMazeChunks() {
+      mazeCullableLights.length = 0;
       for (const k of [...mazeChunks.keys()]) {
         const [sx, sz] = k.split(",").map(Number);
         unloadMazeChunk(sx, sz);
@@ -2443,10 +2510,6 @@
       const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.05), eyeGlowMat);
       eyeL.position.set(-0.10, 0.06, 0.215); headGroup.add(eyeL);
       const eyeR = eyeL.clone(); eyeR.position.x = 0.10; headGroup.add(eyeR);
-      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 0.42, 4.2, 2.2);
-      glowL.position.set(-0.10, 0.06, 0.24); headGroup.add(glowL);
-      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 0.42, 4.2, 2.2);
-      glowR.position.set(0.10, 0.06, 0.24); headGroup.add(glowR);
 
       const brow = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, 0.08), matSkinD);
       brow.position.set(0, 0.15, 0.19); headGroup.add(brow);
@@ -4448,6 +4511,7 @@
 
       if (CURRENT_MAP === "arena" && started) {
         updateInfiniteMaze(dt);
+        cullMazeLightsNearCamera();
       }
 
       if (CURRENT_MAP === "crossfire" && MULTIPLAYER && player.health <= 0) {
