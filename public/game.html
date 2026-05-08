@@ -861,17 +861,17 @@
 
     const PLAYER_LIGHT_COLOR = 0xfff6ec;
     // Soft body halo (local camera only) — stronger so it still reads in the arena next to many maze lights.
-    const PLAYER_BODY_INTENSITY = 4.4;
-    const PLAYER_BODY_DISTANCE = 120;
+    const PLAYER_BODY_INTENSITY = 8.8;
+    const PLAYER_BODY_DISTANCE = 240;
 
     // Dual-cone flashlight: wide flood + tight hotspot (bumped for parity with pre–maze / crossfire contrast).
-    const FLASH_OUTER_INTENSITY = 0.9;
-    const FLASH_OUTER_DISTANCE = 450;
+    const FLASH_OUTER_INTENSITY = 1.8;
+    const FLASH_OUTER_DISTANCE = 900;
     const FLASH_OUTER_ANGLE = Math.PI / 1.95;
     const FLASH_OUTER_PEN = 0.84;
 
-    const FLASH_INNER_INTENSITY = 7.2;
-    const FLASH_INNER_DISTANCE = 92;
+    const FLASH_INNER_INTENSITY = 14.4;
+    const FLASH_INNER_DISTANCE = 184;
     const FLASH_INNER_ANGLE = Math.PI / 10.5;
     const FLASH_INNER_PEN = 0.12;
 
@@ -2732,7 +2732,7 @@
         spreadBloomMax: 0.014,
         recover: 0.030,
         recoil: 0.042,
-        damageHead: 50,
+        damageHead: 20,
         damageBody: 8,
         damageLegs: 5,
         color: 0xffe08a,
@@ -2754,7 +2754,7 @@
         recover: 0.040,
         recoil: 0.035,
         damageHead: 50,
-        damageBody: 33.4,
+        damageBody: 30.0,
         damageLegs: 20,
         color: 0x8fdcff,
         magSize: 30,
@@ -2796,7 +2796,7 @@
         recover: 0.060,
         recoil: 0.025,
         damageHead: 34,
-        damageBody: 19,
+        damageBody: 20,
         damageLegs: 13,
         color: 0xb8ff9a,
         magSize: 36,
@@ -3859,19 +3859,19 @@
       let recoilMultiplier = 1;
          
       if (state.weaponIndex === 0) {
-        spreadMultiplier = shootingAds ? 0.4 : 1.0;
+        spreadMultiplier = shootingAds ? 0.4 : 3.1;
         recoilMultiplier = shootingAds ? 0.75 : 1.0;
 
       } else if (state.weaponIndex === 1) {
-        spreadMultiplier = shootingAds ? 0.5 : 1.2;
+        spreadMultiplier = shootingAds ? 0.5 : 2.95;
         recoilMultiplier = shootingAds ? 0.70 : 1.0;
         
       } else if (state.weaponIndex === 2) {
-        spreadMultiplier = shootingAds ? 0.7 : 1.0;
+        spreadMultiplier = shootingAds ? 1.5 : 2.7;
         recoilMultiplier = shootingAds ? 0.90 : 1.0;
           
       } else if (state.weaponIndex === 3) {
-        spreadMultiplier = shootingAds ? 0.5 : 1.0;
+        spreadMultiplier = shootingAds ? 0.5 : 1.2;
         recoilMultiplier = 0.90;
       }
       state.recoil += w.recoil * recoilMultiplier;
