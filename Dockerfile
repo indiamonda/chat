@@ -4,6 +4,7 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json ./
+COPY scripts ./scripts
 RUN npm install --omit=dev
 
 FROM base AS runner
