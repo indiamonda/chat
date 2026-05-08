@@ -1517,8 +1517,8 @@
     moon.shadow.camera.bottom = -100;
     scene.add(moon);
 
-    const fallbackColor = "#43454d";
-    const fallbackWallColor = "#6b7384";
+    const fallbackColor = "#13151d";
+    const fallbackWallColor = "#3b4334";
     let wallTexture = null;
     let wallTextureLoaded = false;
 
@@ -1775,9 +1775,18 @@
         t.wrapT = THREE.RepeatWrapping;
         t.repeat.set(repeatX, repeatY);
         t.anisotropy = getMaxTextureAnisotropy();
-        return new THREE.MeshLambertMaterial({ map: t, color: tint });
+        return new THREE.MeshStandardMaterial({
+          map: t,
+          color: tint,
+          roughness: 0.92,
+          metalness: 0.02,
+        });
       }
-      return new THREE.MeshLambertMaterial({ color: tint });
+      return new THREE.MeshStandardMaterial({
+        color: tint,
+        roughness: 0.98,
+        metalness: 0,
+      });
     }
 
     function applyWallTexture() {
@@ -3030,13 +3039,13 @@
         hp = 180; speed = 1.05; attackDamage = 14; attackCooldown = 0.70;
       }
 
-      const matSkin = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.85 });
-      const matSkinD = new THREE.MeshStandardMaterial({ color: skinDark, roughness: 0.85 });
-      const matShirt = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.9 });
-      const matPants = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.9 });
-      const matWound = new THREE.MeshStandardMaterial({ color: woundColor, roughness: 0.6 });
-      const matBone = new THREE.MeshStandardMaterial({ color: 0xd4c8a8, roughness: 0.7 });
-      const matBlood = new THREE.MeshStandardMaterial({ color: 0x551111, roughness: 0.5 });
+      const matSkin = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.95, metalness: 0 });
+      const matSkinD = new THREE.MeshStandardMaterial({ color: skinDark, roughness: 0.95, metalness: 0 });
+      const matShirt = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.96, metalness: 0 });
+      const matPants = new THREE.MeshStandardMaterial({ color: pantsColor, roughness: 0.96, metalness: 0 });
+      const matWound = new THREE.MeshStandardMaterial({ color: woundColor, roughness: 0.94, metalness: 0 });
+      const matBone = new THREE.MeshStandardMaterial({ color: 0xd4c8a8, roughness: 0.94, metalness: 0 });
+      const matBlood = new THREE.MeshStandardMaterial({ color: 0x551111, roughness: 0.93, metalness: 0 });
 
       const chest = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.56, 0.34), matShirt);
       chest.position.y = 1.22; torsoRoot.add(chest);
@@ -3057,7 +3066,7 @@
       collarTear.position.set(0.18, 1.52, 0.12); torsoRoot.add(collarTear);
 
       if (type === "tank") {
-        const armorMat = new THREE.MeshStandardMaterial({ color: 0x505e6e, roughness: 0.5, metalness: 0.4 });
+        const armorMat = new THREE.MeshStandardMaterial({ color: 0x505e6e, roughness: 0.9, metalness: 0.08 });
         const armorF = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.42, 0.08), armorMat);
         armorF.position.set(0, 1.22, 0.20); torsoRoot.add(armorF);
         const armorB = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.42, 0.06), armorMat);
@@ -3071,11 +3080,11 @@
       }
 
       if (type === "gunner") {
-        const bandolier = new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.8 });
+        const bandolier = new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.95, metalness: 0 });
         const strap = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.50, 0.06), bandolier);
         strap.position.set(-0.18, 1.10, 0.14); strap.rotation.z = 0.3; torsoRoot.add(strap);
         for (let i = 0; i < 3; i++) {
-          const shell = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.03), new THREE.MeshStandardMaterial({ color: 0xc0a040 }));
+          const shell = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.06, 0.03), new THREE.MeshStandardMaterial({ color: 0xc0a040, roughness: 0.82, metalness: 0.12 }));
           shell.position.set(-0.18 + i * 0.05, 1.18 - i * 0.08, 0.18); torsoRoot.add(shell);
         }
       }
@@ -3087,7 +3096,7 @@
       jawBone.position.set(0, -0.24, 0.02); headGroup.add(jawBone);
 
       const eyeGlowMat = new THREE.MeshBasicMaterial({ color: eyeColor });
-      const eyeSocketMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
+      const eyeSocketMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 1, metalness: 0 });
       const sockL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.10, 0.04), eyeSocketMat);
       sockL.position.set(-0.10, 0.06, 0.20); headGroup.add(sockL);
       const sockR = sockL.clone(); sockR.position.x = 0.10; headGroup.add(sockR);
@@ -3107,7 +3116,7 @@
       const noseBridge = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.06), matSkinD);
       noseBridge.position.set(0, -0.02, 0.22); headGroup.add(noseBridge);
 
-      const hairMat = new THREE.MeshStandardMaterial({ color: 0x25201d, roughness: 0.9 });
+      const hairMat = new THREE.MeshStandardMaterial({ color: 0x25201d, roughness: 0.96, metalness: 0 });
       if (type !== "fast") {
         const h1 = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.08, 0.28), hairMat);
         h1.position.set(0, 0.26, -0.06); headGroup.add(h1);
