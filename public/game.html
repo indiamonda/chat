@@ -861,19 +861,19 @@
 
     const PLAYER_LIGHT_COLOR = 0xfff6ec;
     // Soft body halo (local camera only) — stronger so it still reads in the arena next to many maze lights.
-    const PLAYER_BODY_INTENSITY = 20;
+    const PLAYER_BODY_INTENSITY = 10;
     const PLAYER_BODY_DISTANCE = 300;
 
-    // Dual-cone flashlight: wide flood + tight hotspot (bumped for parity with pre–maze / crossfire contrast).
-    const FLASH_OUTER_INTENSITY = 50;
+    // Dual-cone flashlight: narrower cones + lower penumbra so the beam stays tight instead of flooding.
+    const FLASH_OUTER_INTENSITY = 30;
     const FLASH_OUTER_DISTANCE = 350;
-    const FLASH_OUTER_ANGLE = Math.PI / 1.95;
-    const FLASH_OUTER_PEN = 0.84;
+    const FLASH_OUTER_ANGLE = Math.PI / 6;
+    const FLASH_OUTER_PEN = 0.32;
 
-    const FLASH_INNER_INTENSITY = 250;
+    const FLASH_INNER_INTENSITY = 150;
     const FLASH_INNER_DISTANCE = 100;
-    const FLASH_INNER_ANGLE = Math.PI / 10.5;
-    const FLASH_INNER_PEN = 0.12;
+    const FLASH_INNER_ANGLE = Math.PI / 16;
+    const FLASH_INNER_PEN = 0.08;
 
     /**
      * Punctual lights only (Point / Spot). Hemisphere & directional lights have no decay in Three.js.
