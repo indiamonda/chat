@@ -25,11 +25,19 @@
   </script>
   <title>3D Zombie FPS Prototype</title>
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
+  <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
+  <meta name="game-asset-base" content="" />
   <!-- Socket.IO browser client from CDN (same approach as working fps deploy); connects via game-multiplayer-origin + /game -->
   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --game-ui-menu-bg: url("game-ui/game-ui-menu-background.png");
+      --game-ui-btn-texture: url("game-ui/game-ui-button-texture.png");
+      --game-ui-settings-bg: url("game-ui/game-ui-settings-panel-bg.png");
+    }
+
     html, body {
       margin: 0;
       width: 100%;
@@ -182,7 +190,7 @@
       background-image:
         radial-gradient(ellipse 120% 90% at 50% 45%, rgba(15,18,28,0.25) 0%, rgba(4,5,10,0.92) 75%, rgba(2,3,6,1) 100%),
         linear-gradient(180deg, rgba(3,4,8,0.88) 0%, rgba(8,10,16,0.45) 42%, rgba(2,3,7,0.95) 100%),
-        url("game-ui/game-ui-menu-background.png");
+        var(--game-ui-menu-bg);
       background-size: cover;
       background-position: center;
     }
@@ -242,7 +250,7 @@
 
     .menu-textured-btn {
       background-color: transparent;
-      background-image: url("game-ui/game-ui-button-texture.png");
+      background-image: var(--game-ui-btn-texture);
       background-size: 100% 100%;
       background-repeat: no-repeat;
       color: #e8eef8;
@@ -253,7 +261,7 @@
 
     .menu button:not(.menu-footer-settings) {
       background-color: transparent;
-      background-image: url("game-ui/game-ui-button-texture.png");
+      background-image: var(--game-ui-btn-texture);
       background-size: 100% 100%;
       background-repeat: no-repeat;
       color: #e8eef8;
@@ -292,7 +300,7 @@
       overflow: hidden;
       border: 1px solid rgba(255,255,255,0.14);
       box-shadow: 0 18px 60px rgba(0,0,0,0.65);
-      background-image: url("game-ui/game-ui-settings-panel-bg.png");
+      background-image: var(--game-ui-settings-bg);
       background-size: cover;
       background-position: center;
     }
@@ -839,12 +847,28 @@
       : createOfflineSocketStub();
 
     let activeRoomId = "";
+    let _joinRoomGeneration = 0;
+
+    /** Sets zombie sim authority from server ack (works even if `zombieHost` broadcast is delayed or dropped). */
+    function emitJoinRoomWithAck() {
+      if (!activeRoomId || !MULTIPLAYER) return;
+      if (typeof socket.emit !== "function") return;
+      const gen = ++_joinRoomGeneration;
+      socket.emit("joinRoom", activeRoomId, (ack) => {
+        if (gen !== _joinRoomGeneration) return;
+        if (!ack || !ack.ok) return;
+        if (MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena" && ack.hostId != null) {
+          ZOMBIE_HOST_KNOWN = true;
+          ZOMBIE_AUTHORITY = ack.hostId === socket.id;
+        }
+      });
+    }
 
     const remotePlayers = new Map();
 
     socket.on("connect", () => {
       console.log("Connected to server:", socket.id);
-      if (activeRoomId && MULTIPLAYER) socket.emit("joinRoom", activeRoomId);
+      if (activeRoomId && MULTIPLAYER) emitJoinRoomWithAck();
     });
     socket.on("connect_error", (err) => {
       console.warn("Socket connect_error:", err?.message || err);
@@ -1469,11 +1493,84 @@
     let wallTextureLoaded = false;
 
     const texLoader = new THREE.TextureLoader();
+    texLoader.setCrossOrigin("anonymous");
+
     function pageDirFromLocation() {
       const page = String(window.location.href).split(/[#?]/)[0];
       const slash = page.lastIndexOf("/");
       return slash >= 0 ? page.slice(0, slash + 1) : page + "/";
     }
+
+    function normalizeGameAssetBase(b) {
+      if (!b) return "";
+      const s = String(b).trim();
+      return s.endsWith("/") ? s : s + "/";
+    }
+
+    function getGameAssetBaseCandidates() {
+      const out = [];
+      const meta = document.querySelector('meta[name="game-asset-base"]');
+      const raw = meta && meta.content != null ? String(meta.content).trim() : "";
+      if (raw) out.push(normalizeGameAssetBase(raw));
+      const dir = pageDirFromLocation();
+      out.push(dir);
+      try {
+        out.push(new URL("../", dir).href);
+      } catch (_) {}
+      out.push("https://tintly555.github.io/games/fps/");
+      return [...new Set(out)];
+    }
+
+    function getWallTextureUrlList() {
+      const urls = [];
+      for (const base of getGameAssetBaseCandidates()) {
+        try {
+          urls.push(new URL("walls.png", base).href);
+        } catch (_) {}
+      }
+      return [...new Set(urls)];
+    }
+
+    function applyResolvedGameAssetBase(base) {
+      const b = normalizeGameAssetBase(base);
+      try {
+        const root = document.documentElement;
+        root.style.setProperty(
+          "--game-ui-menu-bg",
+          `url("${new URL("game-ui/game-ui-menu-background.png", b).href}")`
+        );
+        root.style.setProperty(
+          "--game-ui-btn-texture",
+          `url("${new URL("game-ui/game-ui-button-texture.png", b).href}")`
+        );
+        root.style.setProperty(
+          "--game-ui-settings-bg",
+          `url("${new URL("game-ui/game-ui-settings-panel-bg.png", b).href}")`
+        );
+      } catch (_) {}
+    }
+
+    function resolveGameUiLayersFromProbe() {
+      const candidates = getGameAssetBaseCandidates();
+      let i = 0;
+      function tryNext() {
+        if (i >= candidates.length) return;
+        const base = normalizeGameAssetBase(candidates[i++]);
+        let testUrl;
+        try {
+          testUrl = new URL("game-ui/game-ui-menu-background.png", base).href;
+        } catch (_) {
+          tryNext();
+          return;
+        }
+        const img = new Image();
+        img.onload = () => applyResolvedGameAssetBase(base);
+        img.onerror = () => tryNext();
+        img.src = testUrl;
+      }
+      tryNext();
+    }
+
     function tryLoadWallsTexture(urls, index) {
       if (index >= urls.length) {
         wallTextureLoaded = false;
@@ -1498,13 +1595,8 @@
         () => tryLoadWallsTexture(urls, index + 1)
       );
     }
-    {
-      const dir = pageDirFromLocation();
-      tryLoadWallsTexture(
-        [new URL("walls.png", dir).href, new URL("../walls.png", dir).href],
-        0
-      );
-    }
+    tryLoadWallsTexture(getWallTextureUrlList(), 0);
+    resolveGameUiLayersFromProbe();
 
     const _texturedMeshes = [];
 
@@ -4691,7 +4783,7 @@
       clearMap();
 
       if (MULTIPLAYER && activeRoomId) {
-        socket.emit("joinRoom", activeRoomId);
+        emitJoinRoomWithAck();
       }
 
       if (CURRENT_MAP === "crossfire") {

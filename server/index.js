@@ -1761,8 +1761,11 @@ function leaveCurrentRoom(socket, currentRoom) {
 gameNsp.on('connection', (socket) => {
   let currentRoom = null;
 
-  socket.on('joinRoom', (roomId) => {
-    if (typeof roomId !== 'string' || roomId.length > 128) return;
+  socket.on('joinRoom', (roomId, ack) => {
+    if (typeof roomId !== 'string' || roomId.length > 128) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'bad room' });
+      return;
+    }
     leaveCurrentRoom(socket, currentRoom);
     // Full keys from quickplay / create / join-by-code; legacy bare codes use game: prefix
     if (roomId.startsWith('qp:') || roomId.startsWith('cr:')) {
@@ -1774,6 +1777,11 @@ gameNsp.on('connection', (socket) => {
     if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
     gameRooms.get(currentRoom).add(socket.id);
     broadcastZombieHost(currentRoom);
+    if (typeof ack === 'function') {
+      const members = gameRooms.get(currentRoom);
+      const hostId = members && members.size ? [...members][0] : null;
+      ack({ ok: true, hostId, roomKey: currentRoom });
+    }
   });
 
   socket.on('quickplay', (mode, cb) => {
