@@ -326,12 +326,24 @@
     let deathCamPitch = 0;
     let deathBaseFov = 75;
 
-    const PLAYER_FLASH_COLOR = 0xfff6ec;
-    const PLAYER_FLASH_INTENSITY = 3.05;
-    const PLAYER_FLASH_DISTANCE = 186;
-    const PLAYER_FLASH_ANGLE = Math.PI / 4.05;
-    const PLAYER_FLASH_PEN = 0.44;
-    const PLAYER_FLASH_DECAY = 1.28;
+    const PLAYER_LIGHT_COLOR = 0xfff6ec;
+    // Soft body halo — only attached to the local camera (not replicated on remote avatars).
+    const PLAYER_BODY_INTENSITY = (3.05 * 2) / 3;
+    const PLAYER_BODY_DISTANCE = 72;
+    const PLAYER_BODY_DECAY = 2.05;
+
+    // Dual-cone flashlight (wide outer fill + tight inner hotspot), visible on every client.
+    const FLASH_OUTER_INTENSITY = 0.92;
+    const FLASH_OUTER_DISTANCE = 268;
+    const FLASH_OUTER_ANGLE = Math.PI / 2.28;
+    const FLASH_OUTER_PEN = 0.58;
+    const FLASH_OUTER_DECAY = 1.36;
+
+    const FLASH_INNER_INTENSITY = 2.42;
+    const FLASH_INNER_DISTANCE = 158;
+    const FLASH_INNER_ANGLE = Math.PI / 7.6;
+    const FLASH_INNER_PEN = 0.34;
+    const FLASH_INNER_DECAY = 1.24;
 
     function createOfflineSocketStub() {
       return {
@@ -549,8 +561,15 @@
       ctx.fillText(name.slice(0, 16), 128, 24);
       const tex = new THREE.CanvasTexture(canvas);
       const sprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })
+        new THREE.SpriteMaterial({
+          map: tex,
+          transparent: true,
+          depthTest: false,
+          depthWrite: false,
+          fog: false,
+        })
       );
+      sprite.renderOrder = 999;
       sprite.scale.set(2.2, 0.42, 1);
       sprite.raycast = () => {};
       return { sprite, canvas, ctx, tex };
@@ -737,27 +756,38 @@
 
       const flashTarget = new THREE.Object3D();
       flashTarget.position.set(0, 0, -1);
-      const flashSpot = new THREE.SpotLight(
-        PLAYER_FLASH_COLOR,
-        PLAYER_FLASH_INTENSITY,
-        PLAYER_FLASH_DISTANCE,
-        PLAYER_FLASH_ANGLE,
-        PLAYER_FLASH_PEN,
-        PLAYER_FLASH_DECAY
+      const flashOuter = new THREE.SpotLight(
+        PLAYER_LIGHT_COLOR,
+        FLASH_OUTER_INTENSITY,
+        FLASH_OUTER_DISTANCE,
+        FLASH_OUTER_ANGLE,
+        FLASH_OUTER_PEN,
+        FLASH_OUTER_DECAY
       );
-      flashSpot.position.set(0, 0.16, 0.14);
+      const flashInner = new THREE.SpotLight(
+        PLAYER_LIGHT_COLOR,
+        FLASH_INNER_INTENSITY,
+        FLASH_INNER_DISTANCE,
+        FLASH_INNER_ANGLE,
+        FLASH_INNER_PEN,
+        FLASH_INNER_DECAY
+      );
+      flashOuter.position.set(0, 0.16, 0.14);
+      flashInner.position.set(0, 0.16, 0.14);
       const flashMount = new THREE.Group();
       flashMount.position.set(0, 1.62, 0);
-      flashMount.add(flashSpot);
+      flashMount.add(flashOuter);
+      flashMount.add(flashInner);
       flashMount.add(flashTarget);
-      flashSpot.target = flashTarget;
+      flashOuter.target = flashTarget;
+      flashInner.target = flashTarget;
       group.add(flashMount);
 
       group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       group.visible = false;
       return { group, x: 0, y: 1.65, z: 0, yaw: 0, name: name || "Player",
                nameSprite: ns.sprite, nameCanvas: ns.canvas, nameCtx: ns.ctx, nameTex: ns.tex,
-               rightArm, leftArm, gunModel, currentWeapon: 1, flashSpot };
+               rightArm, leftArm, gunModel, currentWeapon: 1 };
     }
 
     const scene = new THREE.Scene();
@@ -1606,18 +1636,46 @@ return {
 
     const playerLightTarget = new THREE.Object3D();
     playerLightTarget.position.set(0, 0, -1);
-    const playerSpot = new THREE.SpotLight(
-      PLAYER_FLASH_COLOR,
-      PLAYER_FLASH_INTENSITY,
-      PLAYER_FLASH_DISTANCE,
-      PLAYER_FLASH_ANGLE,
-      PLAYER_FLASH_PEN,
-      PLAYER_FLASH_DECAY
+
+    const playerBodyLight = new THREE.PointLight(
+      PLAYER_LIGHT_COLOR,
+      PLAYER_BODY_INTENSITY,
+      PLAYER_BODY_DISTANCE,
+      PLAYER_BODY_DECAY
     );
-    playerSpot.position.set(0, 0.18, 0.12);
-    camera.add(playerSpot);
+    playerBodyLight.position.set(0, -0.22, 0.08);
+    camera.add(playerBodyLight);
+
+    const flashOuterLocal = new THREE.SpotLight(
+      PLAYER_LIGHT_COLOR,
+      FLASH_OUTER_INTENSITY,
+      FLASH_OUTER_DISTANCE,
+      FLASH_OUTER_ANGLE,
+      FLASH_OUTER_PEN,
+      FLASH_OUTER_DECAY
+    );
+    const flashInnerLocal = new THREE.SpotLight(
+      PLAYER_LIGHT_COLOR,
+      FLASH_INNER_INTENSITY,
+      FLASH_INNER_DISTANCE,
+      FLASH_INNER_ANGLE,
+      FLASH_INNER_PEN,
+      FLASH_INNER_DECAY
+    );
+    flashOuterLocal.position.set(0, 0.18, 0.12);
+    flashInnerLocal.position.set(0, 0.18, 0.12);
+    camera.add(flashOuterLocal);
+    camera.add(flashInnerLocal);
     camera.add(playerLightTarget);
-    playerSpot.target = playerLightTarget;
+    flashOuterLocal.target = playerLightTarget;
+    flashInnerLocal.target = playerLightTarget;
+
+    function setLocalPlayerLights(on) {
+      playerBodyLight.visible = on;
+      flashOuterLocal.visible = on;
+      flashInnerLocal.visible = on;
+    }
+    setLocalPlayerLights(false);
 
     const weaponRoot = new THREE.Group();
     camera.add(weaponRoot);
@@ -2242,6 +2300,7 @@ return {
       state.mouseDown = false;
       state.ads = false;
       weaponRoot.visible = false;
+      setLocalPlayerLights(false);
 
       if (document.pointerLockElement) {
         document.exitPointerLock();
@@ -2310,6 +2369,7 @@ return {
       deathOverlay.style.pointerEvents = "none";
       killerEnemy = null;
       weaponRoot.visible = true;
+      setLocalPlayerLights(true);
       camera.fov = 75;
       camera.updateProjectionMatrix();
     }
@@ -2930,6 +2990,7 @@ return {
         scene.remove(rp.group);
       }
       remotePlayers.clear();
+      setLocalPlayerLights(false);
     }
 
     function showMenuPanel(id) {
