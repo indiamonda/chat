@@ -261,7 +261,7 @@
     </div>
   </div>
   <!-- Sync load so `io` exists before the module runs (defer can race; absolute URL can 404). -->
-  <script src="https://chat.jimmyqrg.com/socket.io.min.js"></script>
+  <script src="/socket.io.min.js"></script>
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js";
 
@@ -327,7 +327,7 @@
 
     const PLAYER_FLASH_COLOR = 0xfff6ec;
     const PLAYER_FLASH_INTENSITY = 3.05;
-    const PLAYER_FLASH_DISTANCE = 62;
+    const PLAYER_FLASH_DISTANCE = 186;
     const PLAYER_FLASH_ANGLE = Math.PI / 4.05;
     const PLAYER_FLASH_PEN = 0.44;
     const PLAYER_FLASH_DECAY = 1.28;
@@ -2942,9 +2942,14 @@ return {
       showMenuPanel("menuLobby");
     }
 
-    function beginMultiplayerGame(mapName, code) {
-      activeRoomId = code || "";
-      ROOM_CODE = code || "";
+    function beginMultiplayerGame(mapName, roomOpts) {
+      if (typeof roomOpts === "string") {
+        activeRoomId = roomOpts;
+        ROOM_CODE = roomOpts.includes(":") ? roomOpts.split(":").pop() : roomOpts;
+      } else {
+        activeRoomId = (roomOpts && roomOpts.roomKey) || "";
+        ROOM_CODE = (roomOpts && roomOpts.roomCode) || "";
+      }
       nameModal.style.display = "flex";
       nameInput.value = "";
       nameInput.focus();
@@ -2962,7 +2967,7 @@ return {
       socket.emit("quickplay", pendingLobbyMode, (res) => {
         if (res.error) { codeError.textContent = res.error; return; }
         const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
-        beginMultiplayerGame(map, res.room);
+        beginMultiplayerGame(map, { roomKey: res.roomKey, roomCode: res.room });
       });
     });
 
@@ -2970,7 +2975,7 @@ return {
       socket.emit("createRoom", pendingLobbyMode, (res) => {
         if (res.error) { codeError.textContent = res.error; return; }
         const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
-        beginMultiplayerGame(map, res.code);
+        beginMultiplayerGame(map, { roomKey: res.roomKey, roomCode: res.code });
       });
     });
 
@@ -2986,7 +2991,7 @@ return {
       socket.emit("joinByCode", { code, mode: pendingLobbyMode }, (res) => {
         if (res.error) { codeError.textContent = res.error; return; }
         const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
-        beginMultiplayerGame(map, code);
+        beginMultiplayerGame(map, { roomKey: res.roomKey, roomCode: code });
       });
     });
 
