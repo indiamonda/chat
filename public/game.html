@@ -32,6 +32,11 @@
       cursor: none;
     }
 
+    /* Restore OS cursor when pointer lock is released (death screen, menu). */
+    body.show-cursor #app {
+      cursor: default;
+    }
+
     .hud {
       position: fixed;
       top: 10px;
@@ -155,10 +160,10 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: center;
       gap: 12px;
       box-sizing: border-box;
       padding: 28px 16px 22px;
-      justify-content: space-between;
       background-color: #08090e;
       background-image:
         radial-gradient(ellipse 120% 90% at 50% 45%, rgba(15,18,28,0.25) 0%, rgba(4,5,10,0.92) 75%, rgba(2,3,6,1) 100%),
@@ -202,14 +207,23 @@
       backdrop-filter: blur(4px);
       transition: background 0.15s, border-color 0.15s;
     }
-    .menu h1 {
-      flex: 1;
+    .overlay-btn:hover {
+      background: rgba(255,255,255,0.18);
+      border-color: rgba(255,255,255,0.6);
+    }
+
+    .menu-panels-wrap {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 12px;
       width: 100%;
+      max-width: 420px;
+    }
+
+    .menu-main-settings {
+      margin-top: 12px;
     }
 
     .menu-textured-btn {
@@ -416,6 +430,68 @@
         rgba(58,48,32,0.07);
       mix-blend-mode: multiply;
     }
+
+    /* Dark red vignette + angular highlights (inspired by shade.svg mask stack) */
+    #shadeOverlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 13;
+      opacity: 0.15;
+      transition: opacity 0.35s ease;
+      mix-blend-mode: multiply;
+      background:
+        conic-gradient(
+          from -15deg at 50% 50%,
+          transparent 0deg,
+          rgba(220, 40, 45, 0.14) 2deg,
+          transparent 7deg,
+          rgba(200, 35, 40, 0.08) 11deg,
+          transparent 18deg,
+          rgba(240, 50, 55, 0.18) 23deg,
+          transparent 31deg,
+          rgba(210, 38, 42, 0.11) 78deg,
+          transparent 85deg,
+          rgba(230, 48, 52, 0.15) 92deg,
+          transparent 101deg,
+          rgba(200, 36, 38, 0.09) 156deg,
+          transparent 164deg,
+          rgba(245, 55, 58, 0.2) 171deg,
+          transparent 182deg,
+          rgba(215, 42, 44, 0.12) 241deg,
+          transparent 248deg,
+          rgba(235, 50, 52, 0.16) 257deg,
+          transparent 268deg,
+          rgba(220, 44, 46, 0.1) 312deg,
+          transparent 322deg,
+          transparent 360deg
+        ),
+        conic-gradient(
+          from 165deg at 50% 50%,
+          transparent 0deg,
+          rgba(225, 46, 48, 0.12) 38deg,
+          transparent 46deg,
+          rgba(210, 40, 42, 0.07) 112deg,
+          transparent 120deg,
+          rgba(238, 52, 54, 0.17) 198deg,
+          transparent 206deg,
+          rgba(205, 38, 40, 0.1) 278deg,
+          transparent 286deg,
+          transparent 360deg
+        ),
+        radial-gradient(
+          ellipse 105% 105% at 50% 50%,
+          rgba(255, 45, 50, 0) 52%,
+          rgba(180, 30, 35, 0.18) 78%,
+          rgba(120, 15, 18, 0.32) 100%
+        ),
+        radial-gradient(
+          ellipse 90% 88% at 50% 50%,
+          rgba(0, 0, 0, 0) 18%,
+          rgba(8, 4, 6, 0.42) 58%,
+          rgba(18, 6, 8, 0.72) 100%
+        );
+    }
   </style>
 </head>
 <body>
@@ -425,8 +501,8 @@
       <h1>3D Zombie FPS</h1>
       <p>by Tintly555 and JimmyQrg</p>
       <button type="button" id="btnArena">Zombie Arena</button>
-      <button type="button" id="btnMaze">Infinite Maze</button>
       <button type="button" id="btnCrossfire">Crossfire (PVP)</button>
+      <button type="button" class="menu-textured-btn menu-main-settings" id="btnMenuSettings">SETTINGS</button>
     </div>
     <div id="menuArenaMode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
       <h2 style="font-family:'Audiowide',sans-serif;font-size:28px;margin:0 0 14px 0;letter-spacing:3px;">ZOMBIE ARENA</h2>
@@ -449,10 +525,10 @@
       <button type="button" id="btnCodeBack" style="font-size:14px;">← BACK</button>
     </div>
     </div>
-    <button type="button" class="menu-textured-btn menu-footer-settings" id="btnMenuSettings">SETTINGS</button>
   </div>
 
   <div id="app"></div>
+  <div id="shadeOverlay" aria-hidden="true"></div>
   <div id="warFilmOverlay" aria-hidden="true"></div>
   <div class="hud" id="hud"></div>
   <div id="fpsOverlay" style="position:fixed;top:10px;right:14px;z-index:45;pointer-events:none;text-align:right;font-family:'Audiowide',sans-serif;font-size:13px;color:rgba(245,248,255,0.92);text-shadow:0 1px 5px rgba(0,0,0,0.85);line-height:1.4;">
@@ -566,7 +642,6 @@
     const codeInput = document.getElementById("codeInput");
     const codeError = document.getElementById("codeError");
     const btnArena = document.getElementById("btnArena");
-    const btnMaze = document.getElementById("btnMaze");
     const btnCrossfire = document.getElementById("btnCrossfire");
     const btnArenaSingle = document.getElementById("btnArenaSingle");
     const btnArenaCoop = document.getElementById("btnArenaCoop");
@@ -611,6 +686,7 @@
     const btnTextureNext = document.getElementById("btnTextureNext");
     const textureLabel = document.getElementById("textureLabel");
     const warFilmOverlay = document.getElementById("warFilmOverlay");
+    const shadeOverlay = document.getElementById("shadeOverlay");
     const chatBox = document.getElementById("chatBox");
     const chatMessages = document.getElementById("chatMessages");
     const chatInputWrap = document.getElementById("chatInputWrap");
@@ -699,18 +775,18 @@
     const PLAYER_BODY_DISTANCE = 72;
     const PLAYER_BODY_DECAY = 2.05;
 
-    // Dual-cone flashlight (wide outer fill + tight inner hotspot), visible on every client.
-    const FLASH_OUTER_INTENSITY = 0.92;
-    const FLASH_OUTER_DISTANCE = 268;
-    const FLASH_OUTER_ANGLE = Math.PI / 2.28;
-    const FLASH_OUTER_PEN = 0.58;
-    const FLASH_OUTER_DECAY = 1.36;
+    // Dual-cone flashlight: (1) very wide soft flood, (2) narrow hard hotspot with short reach — like a wide outer cone + tight inner beam.
+    const FLASH_OUTER_INTENSITY = 0.52;
+    const FLASH_OUTER_DISTANCE = 360;
+    const FLASH_OUTER_ANGLE = Math.PI / 1.95;
+    const FLASH_OUTER_PEN = 0.84;
+    const FLASH_OUTER_DECAY = 1.08;
 
-    const FLASH_INNER_INTENSITY = 2.42;
-    const FLASH_INNER_DISTANCE = 158;
-    const FLASH_INNER_ANGLE = Math.PI / 7.6;
-    const FLASH_INNER_PEN = 0.34;
-    const FLASH_INNER_DECAY = 1.24;
+    const FLASH_INNER_INTENSITY = 4.25;
+    const FLASH_INNER_DISTANCE = 64;
+    const FLASH_INNER_ANGLE = Math.PI / 10.5;
+    const FLASH_INNER_PEN = 0.12;
+    const FLASH_INNER_DECAY = 2.15;
 
     function createOfflineSocketStub() {
       return {
@@ -1358,6 +1434,12 @@
         warFilmOverlay.style.opacity = q === "extreme" ? "0.22" : "0";
       }
 
+      if (shadeOverlay) {
+        const shadeOp =
+          q === "extreme" ? "0.26" : q === "high" ? "0.2" : q === "regular" ? "0.15" : "0.09";
+        shadeOverlay.style.opacity = shadeOp;
+      }
+
       renderer.setSize(window.innerWidth, window.innerHeight);
       compileSceneShaders();
     }
@@ -1822,7 +1904,7 @@
     }
 
     function updateInfiniteMaze(dt) {
-      if (CURRENT_MAP !== "maze") return;
+      if (CURRENT_MAP !== "arena") return;
       mazeChunkPollAcc += dt;
       if (mazeChunkPollAcc < 0.18) return;
       mazeChunkPollAcc = 0;
@@ -1851,7 +1933,7 @@
     let mazeNavAnchorCz = null;
 
     function rebuildMazeNavGrid(pcx, pcz) {
-      if (CURRENT_MAP !== "maze") return;
+      if (CURRENT_MAP !== "arena") return;
       if (mazeNavAnchorCx === pcx && mazeNavAnchorCz === pcz && navGrid) return;
       mazeNavAnchorCx = pcx;
       mazeNavAnchorCz = pcz;
@@ -1915,35 +1997,17 @@
     }
 
     function buildMapArena() {
-      const S = 42;
-      const H = 4.5;
-
-      addWallBox(S * 2, H, 1.0, 0, H / 2, -S);
-      addWallBox(S * 2, H, 1.0, 0, H / 2,  S);
-      addWallBox(1.0, H, S * 2, -S, H / 2, 0);
-      addWallBox(1.0, H, S * 2,  S, H / 2, 0);
-
-      addWindowWallX(0, -18, 28, H, 1.0, 6, 1.4, 3.1);
-      addWindowWallX(0,  18, 28, H, 1.0, 6, 1.4, 3.1);
-
-      addWindowWallZ(-18, 0, 22, H, 1.0, 5, 1.4, 3.0);
-      addWindowWallZ( 18, 0, 22, H, 1.0, 5, 1.4, 3.0);
-
-      addWallBox(10, 2.2, 1.0, -26, 1.1, -8, 0x70798a);
-      addWallBox(10, 2.2, 1.0,  26, 1.1,  8, 0x70798a);
-
-      addWallBox(1.0, 2.2, 10, -10, 1.1,  26, 0x70798a);
-      addWallBox(1.0, 2.2, 10,  10, 1.1, -26, 0x70798a);
-
-      addWallBox(6, 2.5, 2, -28, 1.25, 20, 0x5e6778);
-      addWallBox(6, 2.5, 2,  28, 1.25,-20, 0x5e6778);
-      addWallBox(2, 2.5, 6, -20, 1.25,-28, 0x5e6778);
-      addWallBox(2, 2.5, 6,  20, 1.25, 28, 0x5e6778);
-
-      addWallBox(8, 3.2, 1.0, -12, 1.6, 0, 0x697183);
-      addWallBox(8, 3.2, 1.0,  12, 1.6, 0, 0x697183);
-      addWallBox(1.0, 3.2, 8, 0, 1.6, -12, 0x697183);
-      addWallBox(1.0, 3.2, 8, 0, 1.6,  12, 0x697183);
+      mazeWorldSeed =
+        (Math.imul(1103515245, (performance.now() ^ (Math.random() * 0x7fffffff)) | 0) + 12345) >>> 0;
+      mazeChunkPollAcc = 0;
+      mazeNavAnchorCx = null;
+      mazeNavAnchorCz = null;
+      const R = 2;
+      for (let dz = -R; dz <= R; dz++) {
+        for (let dx = -R; dx <= R; dx++) {
+          buildMazeChunk(dx, dz);
+        }
+      }
     }
 
     function buildMapCrossfire() {
@@ -1967,24 +2031,9 @@
       addWindowWallX( 28,-28, 14, H, 1.0, 4, 1.2, 3.0);
     }
 
-    function buildMapMaze() {
-      mazeWorldSeed =
-        (Math.imul(1103515245, (performance.now() ^ (Math.random() * 0x7fffffff)) | 0) + 12345) >>> 0;
-      mazeChunkPollAcc = 0;
-      mazeNavAnchorCx = null;
-      mazeNavAnchorCz = null;
-      const R = 2;
-      for (let dz = -R; dz <= R; dz++) {
-        for (let dx = -R; dx <= R; dx++) {
-          buildMazeChunk(dx, dz);
-        }
-      }
-    }
-
     const MAP_BUILDERS = {
       arena: buildMapArena,
-      crossfire: buildMapCrossfire,
-      maze: buildMapMaze
+      crossfire: buildMapCrossfire
     };
 
     const ZOMBIE_COUNT = 8;
@@ -2022,7 +2071,7 @@
     }
 
     function findSpawnPosition(minDist) {
-      if (CURRENT_MAP === "maze") {
+      if (CURRENT_MAP === "arena") {
         const players = getAllPlayerPositions();
         let dist = minDist;
         const px = player.position.x;
@@ -2209,7 +2258,12 @@
     function updateHud() {
       const w = weapon();
       const roomLine = (MULTIPLAYER && ROOM_CODE) ? `<b style="color:#4fd1ff;">Room: ${ROOM_CODE}</b><br>` : "";
-      const mapLabel = CURRENT_MAP === "crossfire" ? "crossfire (PVP)" : CURRENT_MAP;
+      const mapLabel =
+        CURRENT_MAP === "crossfire"
+          ? "crossfire (PVP)"
+          : CURRENT_MAP === "arena"
+            ? "zombie arena"
+            : CURRENT_MAP;
       hud.innerHTML = `
         ${roomLine}
         3D Zombie FPS<br>
@@ -2481,7 +2535,7 @@
       root.add(hpSprite);
       hpSprite.raycast = () => {};
 
-return {
+      return {
         type,
         group: root,
         torsoRoot,
@@ -2521,7 +2575,8 @@ return {
         torsoPitchV: 0,
         targetId: null,
         retargetTimer: 0,
-        moveYaw: 0
+        moveYaw: 0,
+        rangedLosAcquireTimer: 0
       };
     }
 
@@ -3060,19 +3115,16 @@ return {
       clearMap();
       if (CURRENT_MAP === "crossfire") {
         player.position.set(0, 1.65, 34);
-      } else if (CURRENT_MAP === "maze") {
-        player.position.set(MAZE_CHUNK_WORLD * 0.5, 1.65, MAZE_CHUNK_WORLD * 0.5);
-      } else {
-        player.position.set(-30, 1.65, -30);
-      }
-      if (CURRENT_MAP === "maze") {
-        floor.visible = false;
-        ceiling.visible = false;
-      } else {
         floor.visible = true;
         ceiling.visible = true;
+      } else {
+        floor.visible = false;
+        ceiling.visible = false;
       }
       MAP_BUILDERS[CURRENT_MAP]();
+      if (CURRENT_MAP === "arena") {
+        applyArenaMazePlayerSpawn();
+      }
       buildNavGrid();
       rebuildEnemyRoster();
       player.velocityY = 0;
@@ -3089,7 +3141,38 @@ return {
       return false;
     }
 
+    /** Prefer cell centers near chunk middle until collision-free (arenas use infinite maze). */
+    function pickOpenMazeSpawnInChunk(cx, cz) {
+      const ox = cx * MAZE_CHUNK_WORLD;
+      const oz = cz * MAZE_CHUNK_WORLD;
+      const cw = MAZE_CELL_SIZE;
+      const n = MAZE_CELLS;
+      const mx = ox + MAZE_CHUNK_WORLD * 0.5;
+      const mz = oz + MAZE_CHUNK_WORLD * 0.5;
+      const list = [];
+      for (let gy = 0; gy < n; gy++) {
+        for (let gx = 0; gx < n; gx++) {
+          const px = ox + (gx + 0.5) * cw;
+          const pz = oz + (gy + 0.5) * cw;
+          list.push({ px, pz, d2: (px - mx) ** 2 + (pz - mz) ** 2 });
+        }
+      }
+      list.sort((a, b) => a.d2 - b.d2);
+      const r = player.radius;
+      for (const c of list) {
+        if (!enemyCollidesWall(c.px, c.pz, r)) return { x: c.px, z: c.pz };
+      }
+      return { x: mx, z: mz };
+    }
+
+    function applyArenaMazePlayerSpawn() {
+      const s = pickOpenMazeSpawnInChunk(0, 0);
+      player.position.set(s.x, 1.65, s.z);
+    }
+
     const ZOMBIE_TYPES = ["normal", "fast", "gunner", "normal", "normal", "fast", "gunner", "tank"];
+    /** Gunner (ranged): seconds of clear line-of-sight to target before firing is allowed. Resets when LOS breaks. */
+    const RANGED_LOS_ACQUIRE_DELAY = 0.62;
 
     function rebuildEnemyRoster() {
       for (const enemy of state.enemies) {
@@ -3507,6 +3590,7 @@ return {
       if (document.pointerLockElement) {
         document.exitPointerLock();
       }
+      document.body.classList.add("show-cursor");
 
       if (CURRENT_MAP !== "crossfire" && killerEnemy) {
         const ex = killerEnemy.group.position.x;
@@ -3568,6 +3652,7 @@ return {
     }
 
     function hideDeathScreen() {
+      document.body.classList.remove("show-cursor");
       deathOverlay.style.display = "none";
       deathUI.style.display = "none";
       deathFade.style.background = "rgba(0,0,0,0)";
@@ -3668,7 +3753,7 @@ return {
     let flowPlayerC = -1, flowPlayerR = -1;
 
     function buildNavGrid() {
-      if (CURRENT_MAP === "maze") {
+      if (CURRENT_MAP === "arena") {
         mazeNavAnchorCx = null;
         mazeNavAnchorCz = null;
         rebuildMazeNavGrid(
@@ -3957,6 +4042,7 @@ return {
             enemy.hiddenTimer = 0;
             enemy.targetId = null;
             enemy.retargetTimer = 0;
+            enemy.rangedLosAcquireTimer = 0;
             enemy.facingYaw = Math.random() * Math.PI * 2;
             enemy.visYaw = enemy.facingYaw;
             enemy.armLV = -0.2;
@@ -4060,12 +4146,37 @@ return {
           }
 
           const isTargetLocal = enemy.targetId === null;
+
+          let gunnerLosClear = false;
+          if (enemy.ranged && dist < enemy.rangeDistance && isTargetLocal) {
+            _visOrigin.set(enemy.group.position.x, 1.6, enemy.group.position.z);
+            _enemyShotDir.set(dx, (target.y ?? 1.65) - 1.6, dz);
+            if (_enemyShotDir.lengthSq() > 1e-10) {
+              _enemyShotDir.normalize();
+              _visRay.set(_visOrigin, _enemyShotDir);
+              _visRay.near = 0;
+              _visRay.far = Math.min(dist, enemy.rangeDistance) + 0.08;
+              gunnerLosClear = _visRay.intersectObjects(wallMeshes, false).length === 0;
+            }
+          }
+          if (enemy.ranged && dist < enemy.rangeDistance && isTargetLocal && gunnerLosClear) {
+            enemy.rangedLosAcquireTimer += dt;
+          } else {
+            enemy.rangedLosAcquireTimer = 0;
+          }
+
           if (!enemy.ranged) {
             if (dist < 2.05 && enemy.attackCooldownTimer <= 0 && isTargetLocal) {
               enemy.attackCooldownTimer = enemy.attackCooldown;
               damagePlayer(enemy.attackDamage, enemy);
             }
-          } else if (enemy.ranged && dist < enemy.rangeDistance && enemy.attackCooldownTimer <= 0 && isTargetLocal) {
+          } else if (
+            enemy.ranged &&
+            dist < enemy.rangeDistance &&
+            enemy.attackCooldownTimer <= 0 &&
+            isTargetLocal &&
+            enemy.rangedLosAcquireTimer >= RANGED_LOS_ACQUIRE_DELAY
+          ) {
             _visOrigin.set(enemy.group.position.x, 1.6, enemy.group.position.z);
             _enemyShotDir.set(dx, player.position.y - 0.3 - 1.6, dz);
             const spr = 0.16 + Math.random() * 0.14;
@@ -4090,6 +4201,7 @@ return {
         } else {
           enemy.moving = false;
           enemy.facingYaw += dt * 0.3;
+          enemy.rangedLosAcquireTimer = 0;
         }
 
         enemy.visYaw = dampAngle(enemy.visYaw, enemy.facingYaw, dt, 14);
@@ -4251,7 +4363,7 @@ return {
         }
       }
 
-      if (CURRENT_MAP === "arena" || CURRENT_MAP === "maze") {
+      if (CURRENT_MAP === "arena") {
         const runZombieAi =
           player.health > 0 ||
           (MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY && CURRENT_MAP === "arena");
@@ -4279,7 +4391,7 @@ return {
         }
       }
 
-      if (CURRENT_MAP === "maze" && started) {
+      if (CURRENT_MAP === "arena" && started) {
         updateInfiniteMaze(dt);
       }
 
@@ -4324,10 +4436,6 @@ return {
         if (!multiplayer) ARENA_COOP = false;
       }
       if (arenaCoop !== undefined) ARENA_COOP = !!arenaCoop;
-      if (CURRENT_MAP === "maze") {
-        MULTIPLAYER = false;
-        ARENA_COOP = false;
-      }
       if (MULTIPLAYER && ARENA_COOP) {
         ZOMBIE_HOST_KNOWN = false;
         ZOMBIE_AUTHORITY = false;
@@ -4343,21 +4451,19 @@ return {
 
       if (CURRENT_MAP === "crossfire") {
         player.position.set(0, 1.65, 34);
-      } else if (CURRENT_MAP === "maze") {
-        player.position.set(MAZE_CHUNK_WORLD * 0.5, 1.65, MAZE_CHUNK_WORLD * 0.5);
-      } else {
-        player.position.set(-30, 1.65, -30);
-      }
-
-      if (CURRENT_MAP === "maze") {
-        floor.visible = false;
-        ceiling.visible = false;
-      } else {
         floor.visible = true;
         ceiling.visible = true;
+      } else {
+        floor.visible = false;
+        ceiling.visible = false;
       }
 
       MAP_BUILDERS[CURRENT_MAP]();
+
+      if (CURRENT_MAP === "arena") {
+        applyArenaMazePlayerSpawn();
+      }
+
       buildNavGrid();
 
       for (const enemy of state.enemies) {
@@ -4368,7 +4474,7 @@ return {
       if (MULTIPLAYER && activeRoomId) {
         socket.emit("joinRoom", activeRoomId);
       }
-      if (CURRENT_MAP === "arena" || CURRENT_MAP === "maze") {
+      if (CURRENT_MAP === "arena") {
         rebuildEnemyRoster();
       }
 
@@ -4470,8 +4576,6 @@ return {
     btnArenaSingle.addEventListener("click", () => startGame("arena", false));
     btnArenaCoop.addEventListener("click", () => showLobby("arena-coop", "ARENA CO-OP"));
     btnArenaBack.addEventListener("click", () => showMenuPanel("menuMain"));
-
-    btnMaze.addEventListener("click", () => startGame("maze", false));
 
     btnCrossfire.addEventListener("click", () => showLobby("crossfire", "CROSSFIRE (PVP)"));
 
