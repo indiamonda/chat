@@ -771,11 +771,17 @@
     );
     camera.rotation.order = "YXZ";
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      powerPreference: "high-performance",
+      stencil: false,
+      depth: true,
+    });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.BasicShadowMap;
+    renderer.sortObjects = false;
     app.appendChild(renderer.domElement);
 
     const hemi = new THREE.HemisphereLight(0x2c3848, 0x0f1114, 0.14);
@@ -784,7 +790,7 @@
     const moon = new THREE.DirectionalLight(0x5a6880, 0.11);
     moon.position.set(28, 34, 22);
     moon.castShadow = true;
-    moon.shadow.mapSize.set(1024, 1024);
+    moon.shadow.mapSize.set(512, 512);
     moon.shadow.camera.left = -100;
     moon.shadow.camera.right = 100;
     moon.shadow.camera.top = 100;
@@ -869,6 +875,19 @@
     const tracerGroup = new THREE.Group();
     const bloodGroup = new THREE.Group();
     scene.add(decalGroup, sparkGroup, tracerGroup, bloodGroup);
+
+    const MAX_BLOOD_MESHES = 56;
+    const MAX_SPARK_MESHES = 48;
+    const SPARK_GEO_SHARED = new THREE.SphereGeometry(0.022, 4, 4);
+    const BLOOD_GEO_SHARED = new THREE.SphereGeometry(0.028, 4, 4);
+
+    function trimEffectGroup(group, max, disposeMaterial, incoming = 0) {
+      while (group.children.length + incoming > max && group.children.length > 0) {
+        const o = group.children[0];
+        group.remove(o);
+        disposeMaterial(o);
+      }
+    }
 
     function addWallBox(w, h, d, x, y, z, color = 0x6b7384) {
       const rx = Math.max(w, d) / 2;
@@ -1506,10 +1525,10 @@ return {
     }
 
     function createSparks(point, color = 0xffdd88) {
-      for (let i = 0; i < 5; i++) {
-        const geo = new THREE.SphereGeometry(0.025, 6, 6);
+      trimEffectGroup(sparkGroup, MAX_SPARK_MESHES, (o) => { o.material.dispose(); }, 4);
+      for (let i = 0; i < 4; i++) {
         const mat = new THREE.MeshBasicMaterial({ color });
-        const spark = new THREE.Mesh(geo, mat);
+        const spark = new THREE.Mesh(SPARK_GEO_SHARED, mat);
         spark.position.copy(point);
         spark.userData.vel = new THREE.Vector3(
           (Math.random() - 0.5) * 2.4,
@@ -1522,10 +1541,10 @@ return {
     }
 
     function createBlood(point) {
-      for (let i = 0; i < 7; i++) {
-        const geo = new THREE.SphereGeometry(0.03, 6, 6);
+      trimEffectGroup(bloodGroup, MAX_BLOOD_MESHES, (o) => { o.material.dispose(); }, 5);
+      for (let i = 0; i < 5; i++) {
         const mat = new THREE.MeshBasicMaterial({ color: 0x9d1111 });
-        const drop = new THREE.Mesh(geo, mat);
+        const drop = new THREE.Mesh(BLOOD_GEO_SHARED, mat);
         drop.position.copy(point);
         drop.userData.vel = new THREE.Vector3(
           (Math.random() - 0.5) * 1.6,
@@ -1550,7 +1569,6 @@ return {
 
       for (const drop of dead) {
         bloodGroup.remove(drop);
-        drop.geometry.dispose();
         drop.material.dispose();
       }
     }
@@ -1566,7 +1584,6 @@ return {
 
       for (const spark of dead) {
         sparkGroup.remove(spark);
-        spark.geometry.dispose();
         spark.material.dispose();
       }
     }
@@ -2571,7 +2588,7 @@ return {
       }
 
       visFrameCounter++;
-      if ((visFrameCounter & 1) === 0) rebuildFlowField();
+      if ((visFrameCounter % 3) === 0) rebuildFlowField();
 
       for (let ei = 0; ei < state.enemies.length; ei++) {
         const enemy = state.enemies[ei];
@@ -2598,8 +2615,8 @@ return {
         const dz = target.z - enemy.group.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
 
-        if ((visFrameCounter + ei) % 6 === 0) {
-          updateAwareness(enemy, dt * 6);
+        if ((visFrameCounter + ei) % 8 === 0) {
+          updateAwareness(enemy, dt * 8);
         }
 
         enemy.retargetTimer += dt;
@@ -2776,7 +2793,9 @@ return {
     }
 
     function animate() {
+      requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.033);
+      if (document.visibilityState === "hidden") return;
 
       if (MULTIPLAYER) {
         for (const rp of remotePlayers.values()) {
@@ -2790,7 +2809,6 @@ return {
           updatePlayer(dt);
         }
         renderer.render(scene, camera);
-        requestAnimationFrame(animate);
         return;
       }
 
@@ -2821,7 +2839,6 @@ return {
       }
 
       renderer.render(scene, camera);
-      requestAnimationFrame(animate);
     }
 
     const clock = new THREE.Clock();
