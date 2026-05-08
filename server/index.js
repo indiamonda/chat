@@ -856,6 +856,17 @@ app.use('/assets', express.static(join(publicDir, 'assets'), {
 }));
 app.use('/uploads', express.static(uploadsDir));
 
+// game.html sync-loads /socket.io.min.js before <base>; serve from node_modules so production
+// never 404s if public/socket.io.min.js was not copied (e.g. minimal deploy or clean clone).
+const socketIoClientMinPath = join(__dirname, '../node_modules/socket.io/client-dist/socket.io.min.js');
+app.get('/socket.io.min.js', (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  if (!existsSync(socketIoClientMinPath)) return next();
+  res.set('Cache-Control', 'public, max-age=86400');
+  res.type('application/javascript');
+  res.sendFile(socketIoClientMinPath, (err) => { if (err) next(err); });
+});
+
 const session = sessionMiddleware();
 app.use((req, res, next) => {
   session(req, res, (err) => {
