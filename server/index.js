@@ -1598,9 +1598,14 @@ gameNsp.on('connection', (socket) => {
   let currentRoom = null;
 
   socket.on('joinRoom', (roomId) => {
-    if (typeof roomId !== 'string' || roomId.length > 64) return;
+    if (typeof roomId !== 'string' || roomId.length > 128) return;
     leaveCurrentRoom(socket, currentRoom);
-    currentRoom = `game:${roomId}`;
+    // Full keys from quickplay / create / join-by-code; legacy bare codes use game: prefix
+    if (roomId.startsWith('qp:') || roomId.startsWith('cr:')) {
+      currentRoom = roomId;
+    } else {
+      currentRoom = `game:${roomId}`;
+    }
     socket.join(currentRoom);
     if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
     gameRooms.get(currentRoom).add(socket.id);
@@ -1620,7 +1625,11 @@ gameNsp.on('connection', (socket) => {
     socket.join(currentRoom);
     if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
     gameRooms.get(currentRoom).add(socket.id);
-    cb({ room: currentRoom.replace(prefix, ''), count: gameRooms.get(currentRoom).size });
+    cb({
+      room: currentRoom.replace(prefix, ''),
+      roomKey: currentRoom,
+      count: gameRooms.get(currentRoom).size,
+    });
   });
 
   socket.on('createRoom', (mode, cb) => {
@@ -1635,7 +1644,7 @@ gameNsp.on('connection', (socket) => {
     currentRoom = `cr:${mode}:${code}`;
     socket.join(currentRoom);
     gameRooms.set(currentRoom, new Set([socket.id]));
-    cb({ code });
+    cb({ code, roomKey: currentRoom });
   });
 
   socket.on('joinByCode', (data, cb) => {
@@ -1651,7 +1660,7 @@ gameNsp.on('connection', (socket) => {
     currentRoom = key;
     socket.join(currentRoom);
     gameRooms.get(currentRoom).add(socket.id);
-    cb({ ok: true, code });
+    cb({ ok: true, code, roomKey: currentRoom });
   });
 
   socket.on('move', (data) => {
