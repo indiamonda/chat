@@ -1386,10 +1386,6 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.BasicShadowMap;
     renderer.sortObjects = false;
-    THREE.ColorManagement.enabled = true;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1;
     app.appendChild(renderer.domElement);
 
     /** Precompile programs after scene/map changes so gameplay avoids shader hitch spikes. */
@@ -1397,15 +1393,12 @@
       renderer.compile(scene, camera);
     }
 
-    // r155+ lights use physical units; π matched legacy sun/hemi feel — maze lamps need extra candela + ambient so corridors read.
+    // Same luminance as pre–r155 legacy lights: physically correct shading drops ~π× vs old scaling.
     const _LEGACY_L = Math.PI;
-    const hemi = new THREE.HemisphereLight(0x334455, 0x0f1114, 0.22 * _LEGACY_L);
+    const hemi = new THREE.HemisphereLight(0x2c3848, 0x0f1114, 0.14 * _LEGACY_L);
     scene.add(hemi);
 
-    const ambientFill = new THREE.AmbientLight(0x4a5568, 0.055 * _LEGACY_L);
-    scene.add(ambientFill);
-
-    const moon = new THREE.DirectionalLight(0x5a6880, 0.15 * _LEGACY_L);
+    const moon = new THREE.DirectionalLight(0x5a6880, 0.11 * _LEGACY_L);
     moon.position.set(28, 34, 22);
     moon.castShadow = true;
     moon.shadow.mapSize.set(256, 256);
@@ -1615,9 +1608,10 @@
     const MAZE_CELL_SIZE = MAZE_CHUNK_WORLD / MAZE_CELLS;
     const MAZE_WALL_H = 4.5;
     const MAZE_WALL_THICK = 0.42;
-    const MAZE_LIGHT_HEIGHT_ROOF = 4.26;
-    /** Punctual lights: inverse-square falloff + finite distance makes old intensities read as black — scale up strongly (see Three.js r155+ lighting). */
-    const MAZE_LIGHT_INTENSITY_SCALE = Math.PI * 28;
+    /** Ceiling tiles + point lights: shared Y so lamps aren’t offset below fixtures or floating mid-room. */
+    const MAZE_CEILING_LIGHT_Y = MAZE_WALL_H - 0.08;
+    /** Match moon/hemi π convention; punctual lights scaled separately from global brightness. */
+    const MAZE_LIGHT_INTENSITY_SCALE = Math.PI;
     let mazeChunks = new Map();
     let mazeWorldSeed = 2166136261;
     let mazeChunkPollAcc = 0;
@@ -1655,49 +1649,142 @@
       }
     }
 
+    function mazeCellDegreeOpen(gx, gy, vert, horiz, w, h) {
+      let d = 0;
+      if (!horiz[gx][gy]) d++;
+      if (!horiz[gx][gy + 1]) d++;
+      if (!vert[gx][gy]) d++;
+      if (!vert[gx + 1][gy]) d++;
+      return d;
+    }
+
+    function mazeReachableCount(vert, horiz, w, h) {
+      const seen = Array(h)
+        .fill(0)
+        .map(() => Array(w).fill(false));
+      const sx = Math.floor(w / 2);
+      const sy = Math.floor(h / 2);
+      const q = [[sx, sy]];
+      seen[sy][sx] = true;
+      let qi = 0;
+      let cnt = 0;
+      while (qi < q.length) {
+        const [gx, gy] = q[qi++];
+        cnt++;
+        if (gy > 0 && !horiz[gx][gy] && !seen[gy - 1][gx]) {
+          seen[gy - 1][gx] = true;
+          q.push([gx, gy - 1]);
+        }
+        if (gy < h - 1 && !horiz[gx][gy + 1] && !seen[gy + 1][gx]) {
+          seen[gy + 1][gx] = true;
+          q.push([gx, gy + 1]);
+        }
+        if (gx > 0 && !vert[gx][gy] && !seen[gy][gx - 1]) {
+          seen[gy][gx - 1] = true;
+          q.push([gx - 1, gy]);
+        }
+        if (gx < w - 1 && !vert[gx + 1][gy] && !seen[gy][gx + 1]) {
+          seen[gy][gx + 1] = true;
+          q.push([gx + 1, gy]);
+        }
+      }
+      return cnt;
+    }
+
+    function mazeKnockDownWallsUntilConnected(vert, horiz, w, h, rng) {
+      for (let attempt = 0; attempt < 180; attempt++) {
+        if (mazeReachableCount(vert, horiz, w, h) >= w * h) return;
+        if (rng() < 0.5) {
+          const ix = 1 + ((rng() * (w - 1)) | 0);
+          const iy = (rng() * h) | 0;
+          vert[ix][iy] = false;
+        } else {
+          const ix = (rng() * w) | 0;
+          const iy = 1 + ((rng() * (h - 1)) | 0);
+          horiz[ix][iy] = false;
+        }
+      }
+    }
+
+    function mazeReduceDeadEnds(vert, horiz, w, h, rng) {
+      for (let pass = 0; pass < 72; pass++) {
+        const leaves = [];
+        for (let gy = 0; gy < h; gy++) {
+          for (let gx = 0; gx < w; gx++) {
+            if (mazeCellDegreeOpen(gx, gy, vert, horiz, w, h) === 1) leaves.push({ gx, gy });
+          }
+        }
+        if (!leaves.length) break;
+        const c = leaves[(rng() * leaves.length) | 0];
+        const opts = [];
+        if (horiz[c.gx][c.gy]) opts.push(["h", c.gx, c.gy]);
+        if (horiz[c.gx][c.gy + 1]) opts.push(["h", c.gx, c.gy + 1]);
+        if (vert[c.gx][c.gy]) opts.push(["v", c.gx, c.gy]);
+        if (vert[c.gx + 1][c.gy]) opts.push(["v", c.gx + 1, c.gy]);
+        if (!opts.length) continue;
+        const p = opts[(rng() * opts.length) | 0];
+        if (p[0] === "h") horiz[p[1]][p[2]] = false;
+        else vert[p[1]][p[2]] = false;
+      }
+    }
+
+    /**
+     * Sparse “backrooms” layout: fewer walls, wide/narrow halls, gaps for shooting, forks & long runs.
+     * Not a perfect maze — connectivity + dead-end passes keep FPS flow sane.
+     */
     function generateMazeChunkGrid(cx, cz) {
       const rng = mazeHashSeed(cx, cz, 0x10203040);
       const w = MAZE_CELLS;
       const h = MAZE_CELLS;
       const vert = Array(w + 1)
         .fill(0)
-        .map(() => Array(h).fill(true));
+        .map(() => Array(h).fill(false));
       const horiz = Array(w)
         .fill(0)
-        .map(() => Array(h + 1).fill(true));
-      const vis = Array(w)
-        .fill(0)
-        .map(() => Array(h).fill(false));
+        .map(() => Array(h + 1).fill(false));
 
-      function shuffle(arr) {
-        for (let i = arr.length - 1; i > 0; i--) {
-          const j = (rng() * (i + 1)) | 0;
-          [arr[i], arr[j]] = [arr[j], arr[i]];
-        }
-        return arr;
-      }
+      const motif = (mazeHashSeed(cx, cz, 0x55aa0f11)() * 4) | 0;
 
-      function carve(x, y) {
-        vis[y][x] = true;
-        const dirs = shuffle([
-          [0, -1],
-          [1, 0],
-          [0, 1],
-          [-1, 0],
-        ]);
-        for (const [dx, dy] of dirs) {
-          const nx = x + dx;
-          const ny = y + dy;
-          if (nx < 0 || nx >= w || ny < 0 || ny >= h || vis[ny][nx]) continue;
-          if (dx === 1) vert[x + 1][y] = false;
-          if (dx === -1) vert[x][y] = false;
-          if (dy === 1) horiz[x][y + 1] = false;
-          if (dy === -1) horiz[x][y] = false;
-          carve(nx, ny);
+      for (let ix = 1; ix < w; ix++) {
+        if (rng() < 0.38 + (motif & 1) * 0.12) continue;
+        for (let iy = 0; iy < h; iy++) {
+          if (rng() < 0.22) continue;
+          if ((motif === 1 || motif === 3) && (iy & 3) !== 0 && rng() < 0.62) continue;
+          vert[ix][iy] = true;
         }
       }
 
-      carve((rng() * w) | 0, (rng() * h) | 0);
+      for (let iy = 1; iy < h; iy++) {
+        if (rng() < 0.38 + ((motif >> 1) & 1) * 0.12) continue;
+        for (let ix = 0; ix < w; ix++) {
+          if (rng() < 0.22) continue;
+          if ((motif === 2 || motif === 3) && (ix & 3) !== 0 && rng() < 0.62) continue;
+          horiz[ix][iy] = true;
+        }
+      }
+
+      const stubs = 4 + ((rng() * 8) | 0);
+      for (let s = 0; s < stubs; s++) {
+        if (rng() < 0.35) continue;
+        const horizSeg = rng() < 0.5;
+        if (horizSeg) {
+          const iy = 1 + ((rng() * (h - 2)) | 0);
+          const i0 = ((rng() * (w - 3)) | 0);
+          const run = 2 + ((rng() * 5) | 0);
+          for (let k = 0; k < run && i0 + k < w; k++) {
+            if (rng() < 0.15) continue;
+            horiz[i0 + k][iy] = true;
+          }
+        } else {
+          const ix = 1 + ((rng() * (w - 2)) | 0);
+          const j0 = ((rng() * (h - 3)) | 0);
+          const run = 2 + ((rng() * 5) | 0);
+          for (let k = 0; k < run && j0 + k < h; k++) {
+            if (rng() < 0.15) continue;
+            vert[ix][j0 + k] = true;
+          }
+        }
+      }
 
       const ew = mazeEastPortalRow(cx - 1, cz);
       const ee = mazeEastPortalRow(cx, cz);
@@ -1708,17 +1795,19 @@
       openHorizPortalStrip(horiz, ns, 0);
       openHorizPortalStrip(horiz, nn, h);
 
-      const lights = [];
-      const carveCells = [];
+      mazeKnockDownWallsUntilConnected(vert, horiz, w, h, rng);
+      mazeReduceDeadEnds(vert, horiz, w, h, rng);
 
-      const sampleStride = 3;
-      for (let gy = 1; gy < h - 1; gy += sampleStride) {
-        for (let gx = 1; gx < w - 1; gx += sampleStride) {
-          if (rng() > 0.52) continue;
+      const carveCells = [];
+      for (let gy = 2; gy < h - 2; gy += 4) {
+        for (let gx = 2; gx < w - 2; gx += 4) {
+          if (rng() > 0.48) continue;
+          const deg = mazeCellDegreeOpen(gx, gy, vert, horiz, w, h);
           const u = rng();
-          const pRoof = 1 / (1 + 0.7);
+          const pRoof = 0.55;
           let kind = u < pRoof ? "roof" : "wall";
-          if (kind === "wall" && rng() < 0.1) kind = "area";
+          if (deg >= 3 && rng() < 0.38) kind = "area";
+          if (kind === "wall" && rng() < 0.12) kind = "area";
 
           if (kind === "area") {
             for (let dy = -1; dy <= 1; dy++) {
@@ -1738,6 +1827,9 @@
           }
         }
       }
+
+      mazeKnockDownWallsUntilConnected(vert, horiz, w, h, rng);
+      mazeReduceDeadEnds(vert, horiz, w, h, rng);
 
       return { vert, horiz, lightsPlan: carveCells };
     }
@@ -1838,7 +1930,7 @@
 
         if (kind === "roof") {
           const L = new THREE.PointLight(0xfff2dd, 95 * MAZE_LIGHT_INTENSITY_SCALE, 0, 2);
-          L.position.set(px, MAZE_LIGHT_HEIGHT_ROOF, pz);
+          L.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
           L.castShadow = false;
           scene.add(L);
           chunkLights.push(L);
@@ -1854,7 +1946,7 @@
               metalness: 0.2,
             })
           );
-          bulb.position.set(px, MAZE_WALL_H - 0.08, pz);
+          bulb.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
           bulb.castShadow = false;
           scene.add(bulb);
           chunkMeshes.push(bulb);
@@ -1910,10 +2002,25 @@
           registerMazeCullLight(spot, key);
         } else if (kind === "area") {
           const fill = new THREE.PointLight(0xfff5ee, 155 * MAZE_LIGHT_INTENSITY_SCALE, 0, 2);
-          fill.position.set(px, 2.6, pz);
+          fill.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
           scene.add(fill);
           chunkLights.push(fill);
           registerMazeCullLight(fill, key);
+
+          const bulbArea = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.2, 0.22, 0.14, 8),
+            new THREE.MeshStandardMaterial({
+              color: 0xfff2ea,
+              emissive: 0xffeed8,
+              emissiveIntensity: 0.75,
+              roughness: 0.4,
+              metalness: 0.15,
+            })
+          );
+          bulbArea.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
+          bulbArea.castShadow = false;
+          scene.add(bulbArea);
+          chunkMeshes.push(bulbArea);
 
           const ring = new THREE.Mesh(
             new THREE.RingGeometry(cw * 1.1, cw * 1.55, 24),
@@ -2012,12 +2119,6 @@
       const pcz = Math.floor(player.position.z / MAZE_CHUNK_WORLD);
       const R = 2;
 
-      for (let dz = -R; dz <= R; dz++) {
-        for (let dx = -R; dx <= R; dx++) {
-          buildMazeChunk(pcx + dx, pcz + dz);
-        }
-      }
-
       for (const key of [...mazeChunks.keys()]) {
         const [cx, cz] = key.split(",").map(Number);
         if (Math.abs(cx - pcx) > R + 1 || Math.abs(cz - pcz) > R + 1) {
@@ -2101,12 +2202,32 @@
       mazeChunkPollAcc = 0;
       mazeNavAnchorCx = null;
       mazeNavAnchorCz = null;
+      buildMazeChunk(0, 0);
+    }
+
+    function processOneMazeChunkBuild() {
+      if (CURRENT_MAP !== "arena" || !started) return;
+      const pcx = Math.floor(player.position.x / MAZE_CHUNK_WORLD);
+      const pcz = Math.floor(player.position.z / MAZE_CHUNK_WORLD);
       const R = 2;
+      let pickCx = null;
+      let pickCz = null;
+      let bestPri = Infinity;
       for (let dz = -R; dz <= R; dz++) {
         for (let dx = -R; dx <= R; dx++) {
-          buildMazeChunk(dx, dz);
+          const cx = pcx + dx;
+          const cz = pcz + dz;
+          const key = `${cx},${cz}`;
+          if (mazeChunks.has(key)) continue;
+          const pri = dx * dx + dz * dz;
+          if (pri < bestPri) {
+            bestPri = pri;
+            pickCx = cx;
+            pickCz = cz;
+          }
         }
       }
+      if (pickCx !== null) buildMazeChunk(pickCx, pickCz);
     }
 
     function buildMapCrossfire() {
@@ -4511,6 +4632,7 @@
 
       if (CURRENT_MAP === "arena" && started) {
         updateInfiniteMaze(dt);
+        processOneMazeChunkBuild();
         cullMazeLightsNearCamera();
       }
 
