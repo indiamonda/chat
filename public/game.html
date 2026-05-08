@@ -876,18 +876,20 @@
     const FLASH_INNER_PEN = 0.12;
 
     /**
-     * One punctual-light model for Point / Spot: inverse-square falloff (decay = 2).
+     * Punctual lights only (Point / Spot). Hemisphere & directional lights have no decay in Three.js.
      * https://threejs.org/docs/#api/en/lights/PointLight
      * https://threejs.org/docs/#api/en/lights/SpotLight
      */
-    const PHYSICAL_LIGHT_DECAY = 1;
+    const ENVIRONMENT_LIGHT_DECAY = 2;
+    const PLAYER_BODY_LIGHT_DECAY = 1.5;
+    const FLASHLIGHT_LIGHT_DECAY = 0.2;
 
-    function createPhysicalPointLight(color, intensity, distance) {
-      return new THREE.PointLight(color, intensity, distance, PHYSICAL_LIGHT_DECAY);
+    function createPhysicalPointLight(color, intensity, distance, decay = ENVIRONMENT_LIGHT_DECAY) {
+      return new THREE.PointLight(color, intensity, distance, decay);
     }
 
-    function createPhysicalSpotLight(color, intensity, distance, angle, penumbra) {
-      return new THREE.SpotLight(color, intensity, distance, angle, penumbra, PHYSICAL_LIGHT_DECAY);
+    function createPhysicalSpotLight(color, intensity, distance, angle, penumbra, decay = ENVIRONMENT_LIGHT_DECAY) {
+      return new THREE.SpotLight(color, intensity, distance, angle, penumbra, decay);
     }
 
     function createOfflineSocketStub() {
@@ -1436,14 +1438,16 @@
         FLASH_OUTER_INTENSITY,
         FLASH_OUTER_DISTANCE,
         FLASH_OUTER_ANGLE,
-        FLASH_OUTER_PEN
+        FLASH_OUTER_PEN,
+        FLASHLIGHT_LIGHT_DECAY
       );
       const flashInner = createPhysicalSpotLight(
         PLAYER_LIGHT_COLOR,
         FLASH_INNER_INTENSITY,
         FLASH_INNER_DISTANCE,
         FLASH_INNER_ANGLE,
-        FLASH_INNER_PEN
+        FLASH_INNER_PEN,
+        FLASHLIGHT_LIGHT_DECAY
       );
       flashOuter.position.set(0, 0.16, 0.14);
       flashInner.position.set(0, 0.16, 0.14);
@@ -3368,7 +3372,8 @@
     const playerBodyLight = createPhysicalPointLight(
       PLAYER_LIGHT_COLOR,
       PLAYER_BODY_INTENSITY,
-      PLAYER_BODY_DISTANCE
+      PLAYER_BODY_DISTANCE,
+      PLAYER_BODY_LIGHT_DECAY
     );
     playerBodyLight.position.set(0, -0.22, 0.08);
     camera.add(playerBodyLight);
@@ -3378,14 +3383,16 @@
       FLASH_OUTER_INTENSITY,
       FLASH_OUTER_DISTANCE,
       FLASH_OUTER_ANGLE,
-      FLASH_OUTER_PEN
+      FLASH_OUTER_PEN,
+      FLASHLIGHT_LIGHT_DECAY
     );
     const flashInnerLocal = createPhysicalSpotLight(
       PLAYER_LIGHT_COLOR,
       FLASH_INNER_INTENSITY,
       FLASH_INNER_DISTANCE,
       FLASH_INNER_ANGLE,
-      FLASH_INNER_PEN
+      FLASH_INNER_PEN,
+      FLASHLIGHT_LIGHT_DECAY
     );
     flashOuterLocal.position.set(0, 0.18, 0.12);
     flashInnerLocal.position.set(0, 0.18, 0.12);
