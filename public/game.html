@@ -154,10 +154,18 @@
       z-index: 60;
       display: flex;
       flex-direction: column;
-      justify-content: center;
       align-items: center;
       gap: 12px;
-      background: radial-gradient(circle at center, #182136 0%, #0b0f18 75%);
+      box-sizing: border-box;
+      padding: 28px 16px 22px;
+      justify-content: space-between;
+      background-color: #08090e;
+      background-image:
+        radial-gradient(ellipse 120% 90% at 50% 45%, rgba(15,18,28,0.25) 0%, rgba(4,5,10,0.92) 75%, rgba(2,3,6,1) 100%),
+        linear-gradient(180deg, rgba(3,4,8,0.88) 0%, rgba(8,10,16,0.45) 42%, rgba(2,3,7,0.95) 100%),
+        url("game-ui/game-ui-menu-background.png");
+      background-size: cover;
+      background-position: center;
     }
 
     .menu h1 {
@@ -174,11 +182,8 @@
       width: 220px;
       padding: 14px 18px;
       font-size: 18px;
-      border: none;
       border-radius: 10px;
       cursor: pointer;
-      background: white;
-      color: #111827;
       font-weight: 600;
       font-family: 'Audiowide', sans-serif;
     }
@@ -197,21 +202,7 @@
       backdrop-filter: blur(4px);
       transition: background 0.15s, border-color 0.15s;
     }
-    .overlay-btn:hover {
-      background: rgba(255,255,255,0.18);
-      border-color: rgba(255,255,255,0.6);
-    }
-
-    .menu {
-      background-image: url("game-ui/game-ui-menu-background.png");
-      background-size: cover;
-      background-position: center;
-      justify-content: space-between;
-      padding: 28px 16px 22px;
-      box-sizing: border-box;
-    }
-
-    .menu-panels-wrap {
+    .menu h1 {
       flex: 1;
       display: flex;
       flex-direction: column;
@@ -222,6 +213,7 @@
     }
 
     .menu-textured-btn {
+      background-color: transparent;
       background-image: url("game-ui/game-ui-button-texture.png");
       background-size: 100% 100%;
       background-repeat: no-repeat;
@@ -232,6 +224,7 @@
     }
 
     .menu button:not(.menu-footer-settings) {
+      background-color: transparent;
       background-image: url("game-ui/game-ui-button-texture.png");
       background-size: 100% 100%;
       background-repeat: no-repeat;
@@ -820,9 +813,40 @@
     });
 
     socket.on("chat", (data) => {
+      if (data.id === "system") {
+        addChatMessage("Server", data.text);
+        return;
+      }
       const rp = remotePlayers.get(data.id);
       const who = data.id === socket.id ? playerName : (rp ? rp.name : "???");
       addChatMessage(who, data.text);
+    });
+
+    socket.on("teleport", (data) => {
+      if (!data) return;
+      const x = +data.x || 0;
+      const y = +data.y || 1.65;
+      const z = +data.z || 0;
+      player.position.set(x, y, z);
+      player.velocityY = 0;
+      player.onGround = y <= 1.66;
+      camera.position.copy(player.position);
+      camera.position.y += state.smoothHeadBob || 0;
+    });
+
+    socket.on("teleportZombies", (data) => {
+      if (!data || !MULTIPLAYER || !ARENA_COOP || CURRENT_MAP !== "arena") return;
+      if (!ZOMBIE_AUTHORITY) return;
+      const tx = +data.x || 0;
+      const tz = +data.z || 0;
+      let i = 0;
+      for (const enemy of state.enemies) {
+        if (!enemy.alive) continue;
+        const ang = (i / Math.max(1, state.enemies.length)) * Math.PI * 2;
+        const rad = 1.2 + (i % 4) * 0.65;
+        enemy.group.position.set(tx + Math.cos(ang) * rad, 0, tz + Math.sin(ang) * rad);
+        i++;
+      }
     });
 
     socket.on("damaged", (data) => {
@@ -1348,8 +1372,8 @@
     let wallTextureLoaded = false;
 
     const texLoader = new THREE.TextureLoader();
-    /** Resolve next to this HTML file — `<base href>` would otherwise load from the base URL origin/path. */
-    const wallsTextureUrl = new URL("walls.png", window.location.href).href;
+    /** Match `<base href>` so walls.png resolves to the same origin/path as other assets (e.g. chat.jimmyqrg.com/walls.png). */
+    const wallsTextureUrl = new URL("walls.png", document.baseURI).href;
     texLoader.load(
       wallsTextureUrl,
       (tex) => {
@@ -2333,9 +2357,9 @@
       const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.05), eyeGlowMat);
       eyeL.position.set(-0.10, 0.06, 0.215); headGroup.add(eyeL);
       const eyeR = eyeL.clone(); eyeR.position.x = 0.10; headGroup.add(eyeR);
-      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 1.15, 6.5, 2);
+      const glowL = new THREE.PointLight(new THREE.Color(eyeColor), 0.42, 4.2, 2.2);
       glowL.position.set(-0.10, 0.06, 0.24); headGroup.add(glowL);
-      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 1.15, 6.5, 2);
+      const glowR = new THREE.PointLight(new THREE.Color(eyeColor), 0.42, 4.2, 2.2);
       glowR.position.set(0.10, 0.06, 0.24); headGroup.add(glowR);
 
       const brow = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, 0.08), matSkinD);
