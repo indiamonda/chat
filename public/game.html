@@ -27,8 +27,29 @@
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
   <meta name="game-asset-base" content="" />
-  <!-- Socket.IO browser client from CDN (same approach as working fps deploy); connects via game-multiplayer-origin + /game -->
-  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
+  <!-- Socket.IO: loader tries same-directory URL (respects page path); falls back to CDN if missing. -->
+  <script>
+    (function () {
+      try {
+        var page = String(location.href).split(/[#?]/)[0];
+        var slash = page.lastIndexOf("/");
+        var dir = slash >= 0 ? page.slice(0, slash + 1) : page + "/";
+        var s = document.createElement("script");
+        s.defer = true;
+        s.src = new URL("socket.io.min.js", dir).href;
+        s.onerror = function () {
+          s.onerror = null;
+          s.src = "https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js";
+        };
+        document.head.appendChild(s);
+      } catch (_) {
+        var f = document.createElement("script");
+        f.defer = true;
+        f.src = "https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js";
+        document.head.appendChild(f);
+      }
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
   <style>
@@ -793,19 +814,19 @@
 
     const PLAYER_LIGHT_COLOR = 0xfff6ec;
     // Soft body halo — only attached to the local camera (not replicated on remote avatars).
-    const PLAYER_BODY_INTENSITY = (3.05 * 2) / 3;
-    const PLAYER_BODY_DISTANCE = 72;
+    const PLAYER_BODY_INTENSITY = 3.05;
+    const PLAYER_BODY_DISTANCE = 84;
     const PLAYER_BODY_DECAY = 2.05;
 
     // Dual-cone flashlight: (1) very wide soft flood, (2) narrow hard hotspot with short reach — like a wide outer cone + tight inner beam.
-    const FLASH_OUTER_INTENSITY = 0.52;
-    const FLASH_OUTER_DISTANCE = 360;
+    const FLASH_OUTER_INTENSITY = 0.62;
+    const FLASH_OUTER_DISTANCE = 380;
     const FLASH_OUTER_ANGLE = Math.PI / 1.95;
     const FLASH_OUTER_PEN = 0.84;
     const FLASH_OUTER_DECAY = 1.08;
 
-    const FLASH_INNER_INTENSITY = 4.25;
-    const FLASH_INNER_DISTANCE = 64;
+    const FLASH_INNER_INTENSITY = 5.1;
+    const FLASH_INNER_DISTANCE = 72;
     const FLASH_INNER_ANGLE = Math.PI / 10.5;
     const FLASH_INNER_PEN = 0.12;
     const FLASH_INNER_DECAY = 2.15;
@@ -1407,6 +1428,9 @@
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.NoToneMapping;
+    renderer.toneMappingExposure = 1;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.BasicShadowMap;
     renderer.sortObjects = false;
@@ -1432,65 +1456,121 @@
     moon.shadow.camera.bottom = -100;
     scene.add(moon);
 
+    const fallbackColor = 0x43454d;
+    const fallbackWallColor = 0x6b7384;
+    let wallTexture = null;
+    let wallTextureLoaded = false;
+
     function getPixelRatioForQuality() {
       const dpr = window.devicePixelRatio || 1;
       const q = QUALITY_LEVELS[gameSettings.qualityIndex] || "regular";
-      if (q === "potato") return Math.min(0.6, dpr);
-      if (q === "regular") return Math.min(1, dpr);
-      if (q === "high") return Math.min(1.25, dpr);
-      return Math.min(1.6, dpr);
+      // Capped DPR: higher tiers add realism via shading and textures first, not brute-force resolution.
+      if (q === "potato") return Math.min(0.58, dpr);
+      if (q === "regular") return Math.min(0.78, dpr);
+      if (q === "high") return Math.min(0.95, dpr);
+      return Math.min(1.08, dpr);
+    }
+
+    /** 0 = potato (effects off); scales camera shake / head bob so mid tiers still feel alive without extreme cost. */
+    function getQualityPresentationScale() {
+      const q = getQualityId();
+      if (q === "potato") return 0;
+      if (q === "regular") return 0.38;
+      if (q === "high") return 0.72;
+      return 1;
+    }
+
+    function getMaxTextureAnisotropy() {
+      const q = getQualityId();
+      const cap = renderer.capabilities.getMaxAnisotropy();
+      if (q === "potato") return Math.min(2, cap);
+      if (q === "regular") return Math.min(4, cap);
+      if (q === "high") return Math.min(8, cap);
+      return Math.min(16, cap);
     }
 
     function getQualityId() {
       return QUALITY_LEVELS[gameSettings.qualityIndex] || "regular";
     }
 
-    /** Local rendering only: resolution, shadows, film overlay. Light intensities stay fixed so brightness stays fair. */
+    /** Local rendering: tone mapping, capped resolution, shadows, fog distance, textures — each step should look more realistic, not just heavier. */
     function applyGraphicsQuality() {
       const q = getQualityId();
       let shadowSz = 256;
       let shadowType = THREE.BasicShadowMap;
+      let toneMapping = THREE.NoToneMapping;
+      let toneExposure = 1;
 
       if (q === "potato") {
         shadowSz = 128;
         shadowType = THREE.BasicShadowMap;
+        toneMapping = THREE.NoToneMapping;
+        toneExposure = 1;
       } else if (q === "regular") {
-        shadowSz = 256;
-        shadowType = THREE.BasicShadowMap;
+        shadowSz = 384;
+        shadowType = THREE.PCFSoftShadowMap;
+        toneMapping = THREE.ACESFilmicToneMapping;
+        toneExposure = 1;
       } else if (q === "high") {
-        shadowSz = 512;
+        shadowSz = 640;
         shadowType = THREE.PCFSoftShadowMap;
+        toneMapping = THREE.ACESFilmicToneMapping;
+        toneExposure = 1.05;
       } else if (q === "extreme") {
-        shadowSz = 1024;
+        shadowSz = 896;
         shadowType = THREE.PCFSoftShadowMap;
+        toneMapping = THREE.ACESFilmicToneMapping;
+        toneExposure = 1.1;
       }
 
+      renderer.toneMapping = toneMapping;
+      renderer.toneMappingExposure = toneExposure;
       renderer.setPixelRatio(getPixelRatioForQuality());
       renderer.shadowMap.type = shadowType;
       moon.shadow.mapSize.set(shadowSz, shadowSz);
+      moon.shadow.bias = q === "potato" ? -0.0012 : q === "regular" ? -0.0009 : -0.00065;
+      moon.shadow.normalBias = q === "potato" ? 0.035 : q === "extreme" ? 0.008 : 0.018;
+
+      if (scene.fog && scene.fog.isFog) {
+        if (q === "potato") {
+          scene.fog.near = 14;
+          scene.fog.far = 58;
+        } else if (q === "regular") {
+          scene.fog.near = 16;
+          scene.fog.far = 72;
+        } else if (q === "high") {
+          scene.fog.near = 17;
+          scene.fog.far = 84;
+        } else {
+          scene.fog.near = 19;
+          scene.fog.far = 96;
+        }
+      }
 
       if (warFilmOverlay) {
-        warFilmOverlay.style.opacity = q === "extreme" ? "0.22" : "0";
+        warFilmOverlay.style.opacity = q === "extreme" ? "0.07" : q === "high" ? "0.035" : "0";
       }
 
       if (shadeOverlay) {
         const shadeOp =
-          q === "extreme" ? "0.26" : q === "high" ? "0.2" : q === "regular" ? "0.15" : "0.09";
+          q === "potato"
+            ? "0.11"
+            : q === "regular"
+              ? "0.065"
+              : q === "high"
+                ? "0.038"
+                : "0.018";
         shadeOverlay.style.opacity = shadeOp;
       }
 
       renderer.setSize(window.innerWidth, window.innerHeight);
+      applyWallTexture();
       compileSceneShaders();
     }
 
     applyGraphicsQuality();
 
     const worldSize = 260;
-
-    const fallbackColor = 0x43454d;
-    const fallbackWallColor = 0x6b7384;
-    let wallTexture = null;
-    let wallTextureLoaded = false;
 
     const texLoader = new THREE.TextureLoader();
     texLoader.setCrossOrigin("anonymous");
@@ -1512,11 +1592,32 @@
       const meta = document.querySelector('meta[name="game-asset-base"]');
       const raw = meta && meta.content != null ? String(meta.content).trim() : "";
       if (raw) out.push(normalizeGameAssetBase(raw));
+
       const dir = pageDirFromLocation();
-      out.push(dir);
+      let parent = null;
+      let grandparent = null;
       try {
-        out.push(new URL("../", dir).href);
+        parent = new URL("../", dir).href;
+        grandparent = new URL("../../", dir).href;
       } catch (_) {}
+
+      let lastSeg = "";
+      try {
+        const segs = new URL(dir).pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+        lastSeg = (segs[segs.length - 1] || "").toLowerCase();
+      } catch (_) {}
+
+      // Common bad deploy: only game.html under .../html/ while walls.png + game-ui/ live one level up.
+      if (lastSeg === "html") {
+        if (parent) out.push(parent);
+        if (grandparent) out.push(grandparent);
+        out.push(dir);
+      } else {
+        out.push(dir);
+        if (parent) out.push(parent);
+        if (grandparent) out.push(grandparent);
+      }
+
       out.push("https://tintly555.github.io/games/fps/");
       return [...new Set(out)];
     }
@@ -1585,7 +1686,7 @@
           tex.minFilter = THREE.LinearMipmapLinearFilter;
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.generateMipmaps = true;
-          tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+          tex.anisotropy = getMaxTextureAnisotropy();
           wallTexture = tex;
           wallTextureLoaded = true;
           applyWallTexture();
@@ -1608,7 +1709,7 @@
         t.wrapS = THREE.RepeatWrapping;
         t.wrapT = THREE.RepeatWrapping;
         t.repeat.set(repeatX, repeatY);
-        t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+        t.anisotropy = getMaxTextureAnisotropy();
         return new THREE.MeshLambertMaterial({ map: t, color: tint });
       }
       return new THREE.MeshLambertMaterial({ color: tint });
@@ -1624,7 +1725,7 @@
           t.wrapS = THREE.RepeatWrapping;
           t.wrapT = THREE.RepeatWrapping;
           t.repeat.set(rx, ry);
-          t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+          t.anisotropy = getMaxTextureAnisotropy();
           mesh.material.map = t;
           mesh.material.color.set(tint || 0xaaaaaa);
         } else {
@@ -1709,7 +1810,7 @@
     let mazeChunkPollAcc = 0;
     /** WebGL forward shading has a hard limit on fragment light uniforms — register maze lamps and cull visibility each frame. */
     const mazeCullableLights = [];
-    const MAX_MAZE_LIGHTS_ACTIVE = 24;
+    const MAX_MAZE_LIGHTS_ACTIVE = 40;
 
     function mazeHashSeed(cx, cz, salt = 0) {
       let h = mazeWorldSeed ^ salt ^ (cx * 73856093) ^ (cz * 19349663) ^ (cx * cz * 83492791);
@@ -1896,10 +1997,11 @@
           if (rng() > 0.48) continue;
           const deg = mazeCellDegreeOpen(gx, gy, vert, horiz, w, h);
           const u = rng();
-          const pRoof = 0.55;
+          const pRoof = 0.275;
           let kind = u < pRoof ? "roof" : "wall";
-          if (deg >= 3 && rng() < 0.38) kind = "area";
-          if (kind === "wall" && rng() < 0.12) kind = "area";
+          if (kind === "wall" && rng() < 0.6) continue;
+          if (deg >= 3 && rng() < 0.304) kind = "area";
+          if (kind === "wall" && rng() < 0.096) kind = "area";
 
           if (kind === "area") {
             for (let dy = -1; dy <= 1; dy++) {
@@ -1924,6 +2026,65 @@
       mazeReduceDeadEnds(vert, horiz, w, h, rng);
 
       return { vert, horiz, lightsPlan: carveCells };
+    }
+
+    /** XZ circle vs axis-aligned rectangle overlap (for procedural maze spawn without mesh). */
+    function circleXZIntersectsRect(cx, cz, r, minX, maxX, minZ, maxZ) {
+      const px = THREE.MathUtils.clamp(cx, minX, maxX);
+      const pz = THREE.MathUtils.clamp(cz, minZ, maxZ);
+      const dx = cx - px;
+      const dz = cz - pz;
+      return dx * dx + dz * dz <= r * r + 1e-8;
+    }
+
+    /** True if a circle in XZ hits any wall segment from generateMazeChunkGrid (matches pushWall AABBs). */
+    function arenaCircleHitsMazeGrid(worldX, worldZ, radius, chunkCx, chunkCz) {
+      const { vert, horiz } = generateMazeChunkGrid(chunkCx, chunkCz);
+      const ox = chunkCx * MAZE_CHUNK_WORLD;
+      const oz = chunkCz * MAZE_CHUNK_WORLD;
+      const cw = MAZE_CELL_SIZE;
+      const w = MAZE_CELLS;
+      const h = MAZE_CELLS;
+      const t = MAZE_WALL_THICK;
+      const hz = cw + 0.02;
+      const hx = cw + 0.02;
+      for (let ix = 0; ix <= w; ix++) {
+        for (let iy = 0; iy < h; iy++) {
+          if (!vert[ix][iy]) continue;
+          const wx = ox + ix * cw;
+          const wz = oz + (iy + 0.5) * cw;
+          const minX = wx - t * 0.5;
+          const maxX = wx + t * 0.5;
+          const minZ = wz - hz * 0.5;
+          const maxZ = wz + hz * 0.5;
+          if (circleXZIntersectsRect(worldX, worldZ, radius, minX, maxX, minZ, maxZ)) return true;
+        }
+      }
+      for (let ix = 0; ix < w; ix++) {
+        for (let iy = 0; iy <= h; iy++) {
+          if (!horiz[ix][iy]) continue;
+          const wx = ox + (ix + 0.5) * cw;
+          const wz = oz + iy * cw;
+          const minX = wx - hx * 0.5;
+          const maxX = wx + hx * 0.5;
+          const minZ = wz - t * 0.5;
+          const maxZ = wz + t * 0.5;
+          if (circleXZIntersectsRect(worldX, worldZ, radius, minX, maxX, minZ, maxZ)) return true;
+        }
+      }
+      return false;
+    }
+
+    /** Spawn / respawn: valid even when maze chunks are not built yet (no wall meshes). */
+    function arenaXZClearForSpawn(x, z, radius = 0.5) {
+      const pcx = Math.floor(x / MAZE_CHUNK_WORLD);
+      const pcz = Math.floor(z / MAZE_CHUNK_WORLD);
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (arenaCircleHitsMazeGrid(x, z, radius, pcx + dx, pcz + dz)) return false;
+        }
+      }
+      return true;
     }
 
     function buildMazeChunk(cx, cz) {
@@ -2081,52 +2242,70 @@
           const spot = new THREE.SpotLight(
             0xffecd8,
             220 * MAZE_LIGHT_INTENSITY_SCALE,
-            0,
-            Math.PI / 5.5,
-            0.42,
+            56,
+            Math.PI / 4.2,
+            0.52,
             2
           );
           spot.position.set(lx, 2.25, lz);
           spot.target.position.set(px, 0.15, pz);
+          spot.castShadow = false;
+          spot.decay = 2;
           scene.add(spot);
           scene.add(spot.target);
           chunkLights.push(spot);
           registerMazeCullLight(spot, key);
+          const sconceFill = new THREE.PointLight(0xffe8d0, 28 * MAZE_LIGHT_INTENSITY_SCALE, 11, 2);
+          sconceFill.position.set(lx, 2.12, lz);
+          sconceFill.castShadow = false;
+          scene.add(sconceFill);
+          chunkLights.push(sconceFill);
+          registerMazeCullLight(sconceFill, key);
         } else if (kind === "area") {
-          const fill = new THREE.PointLight(0xfff5ee, 155 * MAZE_LIGHT_INTENSITY_SCALE, 0, 2);
-          fill.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
+          const ceilingY = MAZE_CEILING_LIGHT_Y;
+          const fill = new THREE.PointLight(
+            0xfff5ee,
+            200 * MAZE_LIGHT_INTENSITY_SCALE,
+            MAZE_CHUNK_WORLD * 0.88,
+            2
+          );
+          fill.position.set(px, ceilingY - 0.14, pz);
+          fill.castShadow = false;
           scene.add(fill);
           chunkLights.push(fill);
           registerMazeCullLight(fill, key);
 
+          const wideDown = new THREE.SpotLight(
+            0xfff1e6,
+            320 * MAZE_LIGHT_INTENSITY_SCALE,
+            MAZE_CHUNK_WORLD * 0.95,
+            Math.PI / 2.05,
+            0.5,
+            2
+          );
+          wideDown.position.set(px, ceilingY - 0.02, pz);
+          wideDown.target.position.set(px, 0.12, pz);
+          wideDown.castShadow = false;
+          wideDown.decay = 2;
+          scene.add(wideDown);
+          scene.add(wideDown.target);
+          chunkLights.push(wideDown);
+          registerMazeCullLight(wideDown, key);
+
           const bulbArea = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.2, 0.22, 0.14, 8),
+            new THREE.SphereGeometry(cw * 0.38, 14, 10),
             new THREE.MeshStandardMaterial({
               color: 0xfff2ea,
               emissive: 0xffeed8,
-              emissiveIntensity: 0.75,
-              roughness: 0.4,
-              metalness: 0.15,
+              emissiveIntensity: 0.85,
+              roughness: 0.38,
+              metalness: 0.12,
             })
           );
-          bulbArea.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
+          bulbArea.position.set(px, ceilingY - 0.12, pz);
           bulbArea.castShadow = false;
           scene.add(bulbArea);
           chunkMeshes.push(bulbArea);
-
-          const ring = new THREE.Mesh(
-            new THREE.RingGeometry(cw * 1.1, cw * 1.55, 24),
-            new THREE.MeshBasicMaterial({
-              color: 0xffeedd,
-              transparent: true,
-              opacity: 0.22,
-              side: THREE.DoubleSide,
-            })
-          );
-          ring.rotation.x = -Math.PI / 2;
-          ring.position.set(px, 0.03, pz);
-          scene.add(ring);
-          chunkMeshes.push(ring);
         }
       }
 
@@ -2154,7 +2333,10 @@
         const dx = p.x - cx;
         const dy = p.y - cy;
         const dz = p.z - cz;
-        return { L, d2: dx * dx + dy * dy + dz * dz };
+        let d2 = dx * dx + dz * dz + dy * dy * 0.45;
+        if (L.isSpotLight) d2 *= 0.5;
+        else if (L.isPointLight && p.y < MAZE_CEILING_LIGHT_Y - 0.5) d2 *= 0.65;
+        return { L, d2 };
       });
       scored.sort((a, b) => a.d2 - b.d2);
       const maxV = MAX_MAZE_LIGHTS_ACTIVE;
@@ -2348,7 +2530,7 @@
       crossfire: buildMapCrossfire
     };
 
-    const ZOMBIE_COUNT = 8;
+    const ZOMBIE_COUNT = 16;
     const SPAWN_MIN_DIST_BASE = 18;
     const SPAWN_MIN_DIST_FLOOR = 4;
 
@@ -2396,7 +2578,7 @@
           const rad = dist + Math.random() * (MAZE_CHUNK_WORLD * 2.2);
           const x = px + Math.cos(ang) * rad;
           const z = pz + Math.sin(ang) * rad;
-          if (enemyCollidesWall(x, z, 0.5)) continue;
+          if (!arenaXZClearForSpawn(x, z, 0.5)) continue;
           let tooClose = false;
           for (const p of players) {
             const dx = x - p.x;
@@ -2971,8 +3153,9 @@
     }
 
     function triggerCamShake(add = 0.09) {
-      if (getQualityId() !== "extreme") return;
-      state.camShake = Math.min(0.38, state.camShake + add);
+      const s = getQualityPresentationScale();
+      if (s <= 0) return;
+      state.camShake = Math.min(0.38, state.camShake + add * s);
     }
 
     function createBulletMark(point, normal) {
@@ -3162,6 +3345,9 @@
 
     const weaponRoot = new THREE.Group();
     camera.add(weaponRoot);
+
+    /** Camera-space Y offset so the view-model sits ~20px lower on a typical 1080p window (FOV 75). */
+    const WEAPON_VIEW_DROP_Y = -0.032;
 
     function makeWeaponModel(type) {
       const root = new THREE.Group();
@@ -3488,7 +3674,8 @@
       });
       const r = player.radius;
       for (const c of list) {
-        if (!enemyCollidesWall(c.px, c.pz, r)) return { x: c.px, z: c.pz };
+        if (!arenaXZClearForSpawn(c.px, c.pz, r)) continue;
+        return { x: c.px, z: c.pz };
       }
       return { x: mx, z: mz };
     }
@@ -3498,7 +3685,10 @@
       player.position.set(s.x, 1.65, s.z);
     }
 
-    const ZOMBIE_TYPES = ["normal", "fast", "gunner", "normal", "normal", "fast", "gunner", "tank"];
+    const ZOMBIE_TYPES = [
+      "normal", "fast", "gunner", "normal", "normal", "fast", "gunner", "tank",
+      "normal", "fast", "gunner", "tank", "normal", "fast", "gunner", "normal"
+    ];
     /** Gunner (ranged): seconds of clear line-of-sight to target before firing is allowed. Resets when LOS breaks. */
     const RANGED_LOS_ACQUIRE_DELAY = 0.62;
 
@@ -3810,7 +4000,11 @@
       const hideCrosshair = usingAds && state.weaponIndex !== 1;
       crosshairEl.classList.toggle("hidden", hideCrosshair);
 
-      weaponRoot.position.set(state.weaponBobX + reloadX, -state.recoil - state.weaponBobY + reloadY, 0);
+      weaponRoot.position.set(
+        state.weaponBobX + reloadX,
+        WEAPON_VIEW_DROP_Y - state.recoil - state.weaponBobY + reloadY,
+        0
+      );
       weaponRoot.rotation.set(
         state.recoil * (usingAds ? 0.7 : 1.0),
         reloadRotY,
@@ -4677,7 +4871,8 @@
       updatePlayer(dt);
       updateWeapon(dt);
 
-      if (player.health > 0 && started && getQualityId() === "extreme") {
+      const fx = getQualityPresentationScale();
+      if (player.health > 0 && started && fx > 0) {
         const sh = state.camShake;
         if (sh > 1e-5) {
           camera.position.x += (Math.random() - 0.5) * sh * 0.72;
@@ -4689,8 +4884,8 @@
         const moving =
           (keys.w || keys.a || keys.s || keys.d) && player.onGround && player.health > 0;
         if (moving) {
-          camera.position.x += Math.sin(state.walkPhase * 2.08) * 0.027;
-          camera.position.z += Math.cos(state.walkPhase * 1.65) * 0.014;
+          camera.position.x += Math.sin(state.walkPhase * 2.08) * 0.027 * fx;
+          camera.position.z += Math.cos(state.walkPhase * 1.65) * 0.014 * fx;
         }
       }
 
