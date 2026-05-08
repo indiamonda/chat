@@ -23,7 +23,7 @@
       } catch (e) {}
     })();
   </script>
-  <title>3D Zombie FPS Prototype</title>
+  <title>Abandoned Orphanage Prototype</title>
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
   <meta name="game-asset-base" content="" />
@@ -588,7 +588,7 @@
   <div id="menu" class="menu">
     <div class="menu-panels-wrap">
     <div id="menuMain" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
-      <h1>3D Zombie FPS</h1>
+      <h1>Abandoned Orphanage</h1>
       <p>by Tintly555 and JimmyQrg</p>
       <button type="button" id="btnArena">Zombie Arena</button>
       <button type="button" id="btnCrossfire">Crossfire (PVP)</button>
@@ -900,7 +900,11 @@
         emit(_ev, ...args) {
           const last = args[args.length - 1];
           if (typeof last === "function") {
-            queueMicrotask(() => last({ error: "Network unavailable" }));
+            if (_ev === "joinRoom") {
+              queueMicrotask(() => last({ ok: true, hostId: "offline", roomKey: String(args[0] || "") }));
+            } else {
+              queueMicrotask(() => last({ error: "Network unavailable" }));
+            }
           }
         },
         disconnect() {},
@@ -939,9 +943,11 @@
       socket.emit("joinRoom", activeRoomId, (ack) => {
         if (gen !== _joinRoomGeneration) return;
         if (!ack || !ack.ok) return;
-        if (MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena" && ack.hostId != null) {
+        if (MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena") {
           ZOMBIE_HOST_KNOWN = true;
-          ZOMBIE_AUTHORITY = ack.hostId === socket.id;
+          if (ack.hostId != null) {
+            ZOMBIE_AUTHORITY = String(ack.hostId) === String(socket.id);
+          }
         }
       });
     }
@@ -1061,7 +1067,7 @@
 
     socket.on("zombieHost", (data) => {
       ZOMBIE_HOST_KNOWN = true;
-      ZOMBIE_AUTHORITY = !!(data && data.hostId === socket.id);
+      ZOMBIE_AUTHORITY = !!(data && String(data.hostId) === String(socket.id));
     });
 
     socket.on("zombieSync", (data) => {
@@ -1775,12 +1781,7 @@
         t.wrapT = THREE.RepeatWrapping;
         t.repeat.set(repeatX, repeatY);
         t.anisotropy = getMaxTextureAnisotropy();
-        return new THREE.MeshStandardMaterial({
-          map: t,
-          color: tint,
-          roughness: 0.92,
-          metalness: 0.02,
-        });
+        return new THREE.MeshLambertMaterial({ map: t, color: tint });
       }
       return new THREE.MeshStandardMaterial({
         color: tint,
@@ -2958,7 +2959,7 @@
             : CURRENT_MAP;
       hud.innerHTML = `
         ${roomLine}
-        3D Zombie FPS<br>
+        Abandoned Orphanage<br>
         WASD move | Space jump | R reload<br>
         Mouse aim | RMB zoom | Weapons: 1 2 3 4<br>
         Map: ${mapLabel}${MULTIPLAYER ? " (MP)" : ""}<br>
@@ -4400,6 +4401,20 @@
       }
     }
 
+    /** Host sim: hurt local player or send zombie hit to a remote co-op player (server `hit` → `damaged`). */
+    function applyCoopZombieDamageToTarget(enemy) {
+      if (MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena" && enemy.targetId != null) {
+        socket.emit("hit", {
+          target: enemy.targetId,
+          damage: enemy.attackDamage,
+          x: enemy.group.position.x,
+          z: enemy.group.position.z,
+        });
+      } else {
+        damagePlayer(enemy.attackDamage, enemy);
+      }
+    }
+
     function showPause() {
       if (player.health <= 0) return;
       if (paused) return;
@@ -4871,10 +4886,8 @@
             enemy.moving = false;
           }
 
-          const isTargetLocal = enemy.targetId === null;
-
           let gunnerLosClear = false;
-          if (enemy.ranged && dist < enemy.rangeDistance && isTargetLocal) {
+          if (enemy.ranged && dist < enemy.rangeDistance) {
             _visOrigin.set(enemy.group.position.x, 1.6, enemy.group.position.z);
             _enemyShotDir.set(dx, (target.y ?? 1.65) - 1.6, dz);
             if (_enemyShotDir.lengthSq() > 1e-10) {
@@ -4885,26 +4898,26 @@
               gunnerLosClear = _visRay.intersectObjects(wallMeshes, false).length === 0;
             }
           }
-          if (enemy.ranged && dist < enemy.rangeDistance && isTargetLocal && gunnerLosClear) {
+          if (enemy.ranged && dist < enemy.rangeDistance && gunnerLosClear) {
             enemy.rangedLosAcquireTimer += dt;
           } else {
             enemy.rangedLosAcquireTimer = 0;
           }
 
           if (!enemy.ranged) {
-            if (dist < 2.05 && enemy.attackCooldownTimer <= 0 && isTargetLocal) {
+            if (dist < 2.05 && enemy.attackCooldownTimer <= 0) {
               enemy.attackCooldownTimer = enemy.attackCooldown;
-              damagePlayer(enemy.attackDamage, enemy);
+              applyCoopZombieDamageToTarget(enemy);
             }
           } else if (
             enemy.ranged &&
             dist < enemy.rangeDistance &&
             enemy.attackCooldownTimer <= 0 &&
-            isTargetLocal &&
             enemy.rangedLosAcquireTimer >= RANGED_LOS_ACQUIRE_DELAY
           ) {
             _visOrigin.set(enemy.group.position.x, 1.6, enemy.group.position.z);
-            _enemyShotDir.set(dx, player.position.y - 0.3 - 1.6, dz);
+            const ty = (target.y ?? 1.65) - 0.3;
+            _enemyShotDir.set(dx, ty - 1.6, dz);
             const spr = 0.16 + Math.random() * 0.14;
             _enemyShotDir.x += (Math.random() - 0.5) * spr * 2;
             _enemyShotDir.z += (Math.random() - 0.5) * spr * 2;
@@ -4915,11 +4928,11 @@
             _visRay.far = Math.min(dist, enemy.rangeDistance);
             if (_visRay.intersectObjects(wallMeshes, false).length === 0) {
               enemy.attackCooldownTimer = enemy.attackCooldown;
-              damagePlayer(enemy.attackDamage, enemy);
+              applyCoopZombieDamageToTarget(enemy);
               _tracerEnd.set(
-                player.position.x + (Math.random() - 0.5) * 0.45,
-                player.position.y + 1.25 + (Math.random() - 0.5) * 0.45,
-                player.position.z + (Math.random() - 0.5) * 0.45
+                target.x + (Math.random() - 0.5) * 0.45,
+                (target.y ?? 1.65) + 1.25 + (Math.random() - 0.5) * 0.45,
+                target.z + (Math.random() - 0.5) * 0.45
               );
               createBulletTrail(_visOrigin.clone(), _tracerEnd.clone(), 0xff6666);
             }
@@ -5177,6 +5190,7 @@
 
       if (MULTIPLAYER && activeRoomId) {
         emitJoinRoomWithAck();
+        queueMicrotask(() => emitJoinRoomWithAck());
       }
 
       if (CURRENT_MAP === "crossfire") {

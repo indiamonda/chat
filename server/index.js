@@ -1766,20 +1766,32 @@ gameNsp.on('connection', (socket) => {
       if (typeof ack === 'function') ack({ ok: false, error: 'bad room' });
       return;
     }
-    leaveCurrentRoom(socket, currentRoom);
-    // Full keys from quickplay / create / join-by-code; legacy bare codes use game: prefix
-    if (roomId.startsWith('qp:') || roomId.startsWith('cr:')) {
-      currentRoom = roomId;
-    } else {
-      currentRoom = `game:${roomId}`;
+    const normalized =
+      roomId.startsWith('qp:') || roomId.startsWith('cr:')
+        ? roomId
+        : `game:${roomId}`;
+
+    /** Re-joining the same room after quickplay/create/joinByCode must NOT leave/re-add — that reorders the Set and steals zombie host from the first player. */
+    const existing = gameRooms.get(normalized);
+    if (currentRoom === normalized && existing && existing.has(socket.id)) {
+      socket.join(normalized);
+      if (typeof ack === 'function') {
+        const m = gameRooms.get(normalized);
+        const hostId = m && m.size ? [...m][0] : null;
+        ack({ ok: true, hostId, roomKey: normalized });
+      }
+      return;
     }
+
+    leaveCurrentRoom(socket, currentRoom);
+    currentRoom = normalized;
     socket.join(currentRoom);
     if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
     gameRooms.get(currentRoom).add(socket.id);
     broadcastZombieHost(currentRoom);
     if (typeof ack === 'function') {
-      const members = gameRooms.get(currentRoom);
-      const hostId = members && members.size ? [...members][0] : null;
+      const m = gameRooms.get(currentRoom);
+      const hostId = m && m.size ? [...m][0] : null;
       ack({ ok: true, hostId, roomKey: currentRoom });
     }
   });
