@@ -1783,11 +1783,8 @@
         t.anisotropy = getMaxTextureAnisotropy();
         return new THREE.MeshLambertMaterial({ map: t, color: tint });
       }
-      return new THREE.MeshStandardMaterial({
-        color: tint,
-        roughness: 0.98,
-        metalness: 0,
-      });
+      // Diffuse-only like textured walls — StandardMaterial still picks up specular/Fresnel even at high roughness.
+      return new THREE.MeshLambertMaterial({ color: tint });
     }
 
     function applyWallTexture() {
@@ -3291,12 +3288,67 @@
     audioMusic.connect(audioMaster);
     audioMaster.connect(audioCtx.destination);
 
+    let menuBgmAudio = null;
+
     function applyAudioVolumes() {
       audioMaster.gain.value = gameSettings.masterVolume;
       audioSfx.gain.value = gameSettings.soundVolume;
       audioMusic.gain.value = gameSettings.musicVolume;
+      if (menuBgmAudio) {
+        menuBgmAudio.volume = THREE.MathUtils.clamp(
+          gameSettings.masterVolume * gameSettings.musicVolume,
+          0,
+          1
+        );
+      }
     }
     applyAudioVolumes();
+
+    function getMenuBgmUrl() {
+      try {
+        return new URL("menu.mp3", pageDirFromLocation()).href;
+      } catch (_) {
+        return "menu.mp3";
+      }
+    }
+    function ensureMenuBgmAudio() {
+      if (menuBgmAudio) return;
+      menuBgmAudio = new Audio(getMenuBgmUrl());
+      menuBgmAudio.loop = true;
+      menuBgmAudio.preload = "auto";
+      menuBgmAudio.volume = THREE.MathUtils.clamp(
+        gameSettings.masterVolume * gameSettings.musicVolume,
+        0,
+        1
+      );
+    }
+    function pauseMenuBgm() {
+      if (!menuBgmAudio) return;
+      try {
+        menuBgmAudio.pause();
+      } catch (_) {}
+    }
+    /** Browser autoplay policy: start only after a user gesture; safe to call repeatedly. */
+    function tryPlayMenuBgm() {
+      if (menuEl.style.display === "none") return;
+      ensureMenuBgmAudio();
+      menuBgmAudio.volume = THREE.MathUtils.clamp(
+        gameSettings.masterVolume * gameSettings.musicVolume,
+        0,
+        1
+      );
+      const p = menuBgmAudio.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    }
+    function onMenuBgmUserGesture() {
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume().catch(() => {});
+      }
+      tryPlayMenuBgm();
+    }
+    ["pointerdown", "keydown", "touchstart"].forEach((ev) => {
+      window.addEventListener(ev, onMenuBgmUserGesture, { capture: true });
+    });
 
     let ambientWindNode = null;
     function ensureAmbientWindLoop() {
@@ -5185,6 +5237,7 @@
       state.camShake = 0;
       ensureAmbientWindLoop();
       menuEl.style.display = "none";
+      pauseMenuBgm();
 
       clearMap();
 
@@ -5271,6 +5324,7 @@
       _zombieSyncAcc = 0;
       menuEl.style.display = "flex";
       showMenuPanel("menuMain");
+      tryPlayMenuBgm();
       player.health = 100;
       weaponRoot.visible = true;
       camera.fov = 75;
