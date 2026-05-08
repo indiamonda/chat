@@ -1594,6 +1594,14 @@ function generateRoomCode() {
   return code;
 }
 
+/** First socket in the room is zombie simulation host for arena co-op sync. */
+function broadcastZombieHost(roomId) {
+  const members = gameRooms.get(roomId);
+  if (!members || members.size === 0) return;
+  const hostId = [...members][0];
+  gameNsp.to(roomId).emit('zombieHost', { hostId });
+}
+
 function leaveCurrentRoom(socket, currentRoom) {
   if (!currentRoom) return;
   socket.leave(currentRoom);
@@ -1601,6 +1609,7 @@ function leaveCurrentRoom(socket, currentRoom) {
   if (members) {
     members.delete(socket.id);
     if (!members.size) gameRooms.delete(currentRoom);
+    else broadcastZombieHost(currentRoom);
   }
   socket.to(currentRoom).emit('enemyLeft', { id: socket.id });
 }
@@ -1620,6 +1629,7 @@ gameNsp.on('connection', (socket) => {
     socket.join(currentRoom);
     if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
     gameRooms.get(currentRoom).add(socket.id);
+    broadcastZombieHost(currentRoom);
   });
 
   socket.on('quickplay', (mode, cb) => {
@@ -1641,6 +1651,7 @@ gameNsp.on('connection', (socket) => {
       roomKey: currentRoom,
       count: gameRooms.get(currentRoom).size,
     });
+    broadcastZombieHost(currentRoom);
   });
 
   socket.on('createRoom', (mode, cb) => {
@@ -1656,6 +1667,7 @@ gameNsp.on('connection', (socket) => {
     socket.join(currentRoom);
     gameRooms.set(currentRoom, new Set([socket.id]));
     cb({ code, roomKey: currentRoom });
+    broadcastZombieHost(currentRoom);
   });
 
   socket.on('joinByCode', (data, cb) => {
@@ -1672,6 +1684,7 @@ gameNsp.on('connection', (socket) => {
     socket.join(currentRoom);
     gameRooms.get(currentRoom).add(socket.id);
     cb({ ok: true, code, roomKey: currentRoom });
+    broadcastZombieHost(currentRoom);
   });
 
   socket.on('move', (data) => {
@@ -1689,12 +1702,38 @@ gameNsp.on('connection', (socket) => {
 
   socket.on('shoot', (data) => {
     if (!currentRoom || typeof data !== 'object' || data === null) return;
+    const typ = data.type === 'blood' ? 'blood' : data.type === 'miss' ? 'miss' : 'spark';
     socket.to(currentRoom).emit('enemyShoot', {
       id: socket.id,
+      sx: data.sx != null ? +data.sx : undefined,
+      sy: data.sy != null ? +data.sy : undefined,
+      sz: data.sz != null ? +data.sz : undefined,
       x: +data.x || 0, y: +data.y || 0, z: +data.z || 0,
       nx: +data.nx || 0, ny: +data.ny || 0, nz: +data.nz || 0,
       color: +data.color || 0xffffff,
-      type: data.type === 'blood' ? 'blood' : 'spark',
+      type: typ,
+    });
+  });
+
+  socket.on('zombieSync', (data) => {
+    if (!currentRoom || typeof data !== 'object' || data === null) return;
+    const members = gameRooms.get(currentRoom);
+    if (!members || members.size === 0) return;
+    const hostId = [...members][0];
+    if (socket.id !== hostId) return;
+    socket.to(currentRoom).emit('zombieSync', data);
+  });
+
+  socket.on('zombieDamage', (data) => {
+    if (!currentRoom || typeof data !== 'object' || data === null) return;
+    const ei = Math.floor(+data.ei);
+    if (ei < 0 || ei > 31) return;
+    const zone = data.zone === 'head' || data.zone === 'leg' ? data.zone : 'body';
+    gameNsp.to(currentRoom).emit('zombieDamaged', {
+      by: socket.id,
+      ei,
+      zone,
+      weaponIndex: (+data.weaponIndex | 0) % 16,
     });
   });
 
