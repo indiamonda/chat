@@ -882,7 +882,7 @@
      */
     const ENVIRONMENT_LIGHT_DECAY = 3;
     const PLAYER_BODY_LIGHT_DECAY = 3;
-    const FLASHLIGHT_LIGHT_DECAY = 0.2;
+    const FLASHLIGHT_LIGHT_DECAY = 0.1;
 
     function createPhysicalPointLight(color, intensity, distance, decay = ENVIRONMENT_LIGHT_DECAY) {
       return new THREE.PointLight(color, intensity, distance, decay);
@@ -1761,6 +1761,10 @@
     resolveGameUiLayersFromProbe();
 
     const _texturedMeshes = [];
+    /** World meters per full texture repeat on wall boxes (higher = larger pattern, thin faces use ≥1 repeat). */
+    const WALL_TEXTURE_METERS_PER_REPEAT = 5;
+    /** Floor / ceiling planes (crossfire + maze chunks): same world-space texture scale. */
+    const FLOOR_CEILING_METERS_PER_REPEAT = 5;
 
     function makeWallMaterial(repeatX, repeatY, color) {
       const tint = color || fallbackWallColor;
@@ -1779,25 +1783,51 @@
     function applyWallTexture() {
       if (!wallTexture) return;
       for (const entry of _texturedMeshes) {
-        const { mesh, rx, ry, tint } = entry;
-        if (gameSettings.texturesOn) {
-          const t = wallTexture.clone();
-          t.needsUpdate = true;
-          t.wrapS = THREE.RepeatWrapping;
-          t.wrapT = THREE.RepeatWrapping;
-          t.repeat.set(rx, ry);
-          t.anisotropy = getMaxTextureAnisotropy();
-          mesh.material.map = t;
-          mesh.material.color.set(tint || 0xaaaaaa);
+        const { mesh, rx, ry, tint, faceRepeats } = entry;
+        const baseTint = tint || 0xaaaaaa;
+        if (faceRepeats && Array.isArray(mesh.material)) {
+          const mats = mesh.material;
+          for (let i = 0; i < mats.length && i < faceRepeats.length; i++) {
+            const fr = faceRepeats[i];
+            if (gameSettings.texturesOn) {
+              const t = wallTexture.clone();
+              t.needsUpdate = true;
+              t.wrapS = THREE.RepeatWrapping;
+              t.wrapT = THREE.RepeatWrapping;
+              t.repeat.set(fr.rx, fr.ry);
+              t.anisotropy = getMaxTextureAnisotropy();
+              mats[i].map = t;
+              mats[i].color.set(baseTint);
+            } else {
+              mats[i].map = null;
+              mats[i].color.set(tint || fallbackWallColor);
+            }
+            mats[i].needsUpdate = true;
+          }
         } else {
-          mesh.material.map = null;
-          mesh.material.color.set(tint || fallbackWallColor);
+          if (gameSettings.texturesOn) {
+            const t = wallTexture.clone();
+            t.needsUpdate = true;
+            t.wrapS = THREE.RepeatWrapping;
+            t.wrapT = THREE.RepeatWrapping;
+            t.repeat.set(rx, ry);
+            t.anisotropy = getMaxTextureAnisotropy();
+            mesh.material.map = t;
+            mesh.material.color.set(baseTint);
+          } else {
+            mesh.material.map = null;
+            mesh.material.color.set(tint || fallbackWallColor);
+          }
+          mesh.material.needsUpdate = true;
         }
-        mesh.material.needsUpdate = true;
       }
     }
 
-    const floorMat = makeWallMaterial(32, 32, 0x666670);
+    const floorMat = makeWallMaterial(
+      worldSize / FLOOR_CEILING_METERS_PER_REPEAT,
+      worldSize / FLOOR_CEILING_METERS_PER_REPEAT,
+      0x666670
+    );
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(worldSize, worldSize, 1, 1),
       floorMat
@@ -1805,9 +1835,18 @@
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
-    _texturedMeshes.push({ mesh: floor, rx: 32, ry: 32, tint: 0x666670 });
+    _texturedMeshes.push({
+      mesh: floor,
+      rx: worldSize / FLOOR_CEILING_METERS_PER_REPEAT,
+      ry: worldSize / FLOOR_CEILING_METERS_PER_REPEAT,
+      tint: 0x666670,
+    });
 
-    const ceilingMat = makeWallMaterial(32, 32, 0x5c6272);
+    const ceilingMat = makeWallMaterial(
+      worldSize / FLOOR_CEILING_METERS_PER_REPEAT,
+      worldSize / FLOOR_CEILING_METERS_PER_REPEAT,
+      0x5c6272
+    );
     const ceiling = new THREE.Mesh(
       new THREE.PlaneGeometry(worldSize, worldSize, 1, 1),
       ceilingMat
@@ -1815,7 +1854,12 @@
     ceiling.position.y = 4.5;
     ceiling.rotation.x = Math.PI / 2;
     scene.add(ceiling);
-    _texturedMeshes.push({ mesh: ceiling, rx: 32, ry: 32, tint: 0x5c6272 });
+    _texturedMeshes.push({
+      mesh: ceiling,
+      rx: worldSize / FLOOR_CEILING_METERS_PER_REPEAT,
+      ry: worldSize / FLOOR_CEILING_METERS_PER_REPEAT,
+      tint: 0x5c6272,
+    });
 
     const wallMeshes = [];
     const wallBoxes = [];
@@ -1839,20 +1883,28 @@
     }
 
     function addWallBox(w, h, d, x, y, z, color = 0x6b7384) {
-      const rx = Math.max(w, d) / 2;
-      const ry = h / 2;
-      const mat = makeWallMaterial(rx, ry, color);
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(w, h, d),
-        mat
-      );
+      const S = WALL_TEXTURE_METERS_PER_REPEAT;
+      const rep = (u, v) => ({
+        rx: Math.max(1, u / S),
+        ry: Math.max(1, v / S),
+      });
+      const faceRepeats = [
+        rep(d, h),
+        rep(d, h),
+        rep(w, d),
+        rep(w, d),
+        rep(w, h),
+        rep(w, h),
+      ];
+      const materials = faceRepeats.map((fr) => makeWallMaterial(fr.rx, fr.ry, color));
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), materials);
       mesh.position.set(x, y, z);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       scene.add(mesh);
       wallMeshes.push(mesh);
       wallBoxes.push(new THREE.Box3().setFromObject(mesh));
-      _texturedMeshes.push({ mesh, rx, ry, tint: color });
+      _texturedMeshes.push({ mesh, faceRepeats, tint: color });
       return mesh;
     }
 
@@ -2148,6 +2200,70 @@
       return true;
     }
 
+    /**
+     * Large chamber luminaire mesh: recessed ceiling troffer — flush trim ring, metal bezel, frosted diffuser,
+     * inner accent ring (commercial LED panel / high-bay aesthetic). Composite primitives only (Three.js guides).
+     * @see https://threejs.org/docs/#api/en/geometries/CylinderGeometry
+     * @see https://threejs.org/docs/#api/en/geometries/TorusGeometry
+     */
+    function createMazeAreaLightFixture(px, ceilingY, pz, cw) {
+      const g = new THREE.Group();
+      const outerR = cw * 0.44;
+      const diffR = cw * 0.37;
+
+      const housingMat = new THREE.MeshStandardMaterial({
+        color: 0x343b48,
+        metalness: 0.78,
+        roughness: 0.38,
+      });
+      const bezel = new THREE.Mesh(
+        new THREE.CylinderGeometry(outerR, outerR * 0.93, 0.065, 26, 1),
+        housingMat
+      );
+      bezel.position.y = -0.036;
+
+      const diffuserMat = new THREE.MeshStandardMaterial({
+        color: 0xfff8f2,
+        emissive: 0xfff0e6,
+        emissiveIntensity: 1.15,
+        roughness: 0.82,
+        metalness: 0.03,
+      });
+      const diffuser = new THREE.Mesh(
+        new THREE.CylinderGeometry(diffR, diffR * 0.985, 0.042, 30, 1),
+        diffuserMat
+      );
+      diffuser.position.y = -0.118;
+
+      const trim = new THREE.Mesh(
+        new THREE.TorusGeometry(outerR * 0.99, 0.028, 8, 30),
+        new THREE.MeshStandardMaterial({
+          color: 0x4a5568,
+          metalness: 0.55,
+          roughness: 0.48,
+        })
+      );
+      trim.rotation.x = Math.PI / 2;
+      trim.position.y = -0.008;
+
+      const chipRing = new THREE.Mesh(
+        new THREE.TorusGeometry(diffR * 0.38, 0.016, 8, 24),
+        new THREE.MeshStandardMaterial({
+          color: 0xffe8d8,
+          emissive: 0xffb088,
+          emissiveIntensity: 0.75,
+          roughness: 0.4,
+          metalness: 0.22,
+        })
+      );
+      chipRing.rotation.x = Math.PI / 2;
+      chipRing.position.y = -0.104;
+
+      g.add(trim, bezel, diffuser, chipRing);
+      g.position.set(px, ceilingY - 0.015, pz);
+      return g;
+    }
+
     function buildMazeChunk(cx, cz) {
       const key = `${cx},${cz}`;
       if (mazeChunks.has(key)) return;
@@ -2164,7 +2280,11 @@
 
       const floorPl = new THREE.Mesh(
         new THREE.PlaneGeometry(MAZE_CHUNK_WORLD - 0.02, MAZE_CHUNK_WORLD - 0.02),
-        makeWallMaterial(MAZE_CHUNK_WORLD / 4, MAZE_CHUNK_WORLD / 4, 0x666670)
+        makeWallMaterial(
+          MAZE_CHUNK_WORLD / FLOOR_CEILING_METERS_PER_REPEAT,
+          MAZE_CHUNK_WORLD / FLOOR_CEILING_METERS_PER_REPEAT,
+          0x666670
+        )
       );
       floorPl.rotation.x = -Math.PI / 2;
       floorPl.position.set(ox + MAZE_CHUNK_WORLD / 2, 0, oz + MAZE_CHUNK_WORLD / 2);
@@ -2173,14 +2293,18 @@
       chunkMeshes.push(floorPl);
       _texturedMeshes.push({
         mesh: floorPl,
-        rx: MAZE_CHUNK_WORLD / 4,
-        ry: MAZE_CHUNK_WORLD / 4,
+        rx: MAZE_CHUNK_WORLD / FLOOR_CEILING_METERS_PER_REPEAT,
+        ry: MAZE_CHUNK_WORLD / FLOOR_CEILING_METERS_PER_REPEAT,
         tint: 0x666670,
       });
 
       const ceilPl = new THREE.Mesh(
         new THREE.PlaneGeometry(MAZE_CHUNK_WORLD - 0.02, MAZE_CHUNK_WORLD - 0.02),
-        makeWallMaterial(MAZE_CHUNK_WORLD / 4, MAZE_CHUNK_WORLD / 4, 0x5c6272)
+        makeWallMaterial(
+          MAZE_CHUNK_WORLD / FLOOR_CEILING_METERS_PER_REPEAT,
+          MAZE_CHUNK_WORLD / FLOOR_CEILING_METERS_PER_REPEAT,
+          0x5c6272
+        )
       );
       ceilPl.rotation.x = Math.PI / 2;
       ceilPl.position.set(ox + MAZE_CHUNK_WORLD / 2, MAZE_WALL_H, oz + MAZE_CHUNK_WORLD / 2);
@@ -2189,8 +2313,8 @@
       chunkMeshes.push(ceilPl);
       _texturedMeshes.push({
         mesh: ceilPl,
-        rx: MAZE_CHUNK_WORLD / 4,
-        ry: MAZE_CHUNK_WORLD / 4,
+        rx: MAZE_CHUNK_WORLD / FLOOR_CEILING_METERS_PER_REPEAT,
+        ry: MAZE_CHUNK_WORLD / FLOOR_CEILING_METERS_PER_REPEAT,
         tint: 0x5c6272,
       });
 
@@ -2356,20 +2480,10 @@
           chunkLights.push(wideDown);
           registerMazeCullLight(wideDown, key);
 
-          const bulbArea = new THREE.Mesh(
-            new THREE.SphereGeometry(cw * 0.38, 14, 10),
-            new THREE.MeshStandardMaterial({
-              color: 0xfff2ea,
-              emissive: 0xffeed8,
-              emissiveIntensity: 0.85,
-              roughness: 0.38,
-              metalness: 0.12,
-            })
-          );
-          bulbArea.position.set(px, ceilingY - 0.12, pz);
-          bulbArea.castShadow = false;
-          scene.add(bulbArea);
-          chunkMeshes.push(bulbArea);
+          const fixture = createMazeAreaLightFixture(px, ceilingY, pz, cw);
+          fixture.traverse((o) => { if (o.isMesh) o.castShadow = false; });
+          scene.add(fixture);
+          chunkMeshes.push(fixture);
         }
       }
 
@@ -2420,11 +2534,17 @@
         if (wi >= 0) wallMeshes.splice(wi, 1);
         const ti = _texturedMeshes.findIndex((e) => e.mesh === mesh);
         if (ti >= 0) _texturedMeshes.splice(ti, 1);
-        if (mesh.geometry) mesh.geometry.dispose();
-        if (mesh.material) {
-          if (mesh.material.map) mesh.material.map.dispose();
-          mesh.material.dispose();
-        }
+        mesh.traverse((o) => {
+          if (o.geometry) o.geometry.dispose();
+          const mat = o.material;
+          if (mat) {
+            const mats = Array.isArray(mat) ? mat : [mat];
+            for (const m of mats) {
+              if (m.map) m.map.dispose();
+              m.dispose();
+            }
+          }
+        });
       }
       for (const L of ch.lights) {
         scene.remove(L);
@@ -2502,8 +2622,11 @@
         const mesh = wallMeshes.pop();
         scene.remove(mesh);
         mesh.geometry.dispose();
-        if (mesh.material.map) mesh.material.map.dispose();
-        mesh.material.dispose();
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats) {
+          if (m.map) m.map.dispose();
+          m.dispose();
+        }
         const idx = _texturedMeshes.findIndex(e => e.mesh === mesh);
         if (idx !== -1) _texturedMeshes.splice(idx, 1);
       }
