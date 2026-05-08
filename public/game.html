@@ -2,6 +2,7 @@
 <!--
   Source-of-truth deployment: https://tintly555.github.io/games/fps/
   This copy in the chat repo is for editing; multiplayer hits chat.jimmyqrg.com via meta below when hosted on static Pages.
+  Crossfire mode is PVP (player vs player); Arena is PVE / co-op vs zombies.
 -->
 <html lang="en">
 <head>
@@ -208,7 +209,7 @@
       <h1>3D Zombie FPS</h1>
       <p>by Tintly555 and JimmyQrg</p>
       <button id="btnArena">Zombie Arena</button>
-      <button id="btnCrossfire">Crossfire</button>
+      <button id="btnCrossfire">Crossfire (PVP)</button>
     </div>
     <div id="menuArenaMode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
       <h2 style="font-family:'Audiowide',sans-serif;font-size:28px;margin:0 0 14px 0;letter-spacing:3px;">ZOMBIE ARENA</h2>
@@ -322,6 +323,8 @@
     const hitDirContainer = document.getElementById("hitDirContainer");
     let CURRENT_MAP = "arena";
     let MULTIPLAYER = false;
+    /** True only for Zombie Arena played via ARENA CO-OP lobby (no damage vs other players). */
+    let ARENA_COOP = false;
     let ROOM_CODE = "";
     let pendingLobbyMode = "";
     let started = false;
@@ -906,7 +909,10 @@
     let wallTextureLoaded = false;
 
     const texLoader = new THREE.TextureLoader();
-    texLoader.load("walls.png",
+    /** Resolve next to this HTML file — `<base href>` would otherwise load from the base URL origin/path. */
+    const wallsTextureUrl = new URL("walls.png", window.location.href).href;
+    texLoader.load(
+      wallsTextureUrl,
       (tex) => {
         tex.wrapS = THREE.RepeatWrapping;
         tex.wrapT = THREE.RepeatWrapping;
@@ -1278,12 +1284,13 @@
     function updateHud() {
       const w = weapon();
       const roomLine = (MULTIPLAYER && ROOM_CODE) ? `<b style="color:#4fd1ff;">Room: ${ROOM_CODE}</b><br>` : "";
+      const mapLabel = CURRENT_MAP === "crossfire" ? "crossfire (PVP)" : CURRENT_MAP;
       hud.innerHTML = `
         ${roomLine}
         3D Zombie FPS<br>
         WASD move | Space jump | R reload<br>
         Mouse aim | RMB zoom | Weapons: 1 2 3 4<br>
-        Map: ${CURRENT_MAP}${MULTIPLAYER ? " (MP)" : ""}<br>
+        Map: ${mapLabel}${MULTIPLAYER ? " (MP)" : ""}<br>
         Weapon: ${w.name}<br>
         Bullets: ${w.ammo} / ${w.magSize}${state.reloading ? "（Refilling...）" : ""}<br>
         Health: ${Math.max(0, Math.floor(player.health))} / ${player.maxHealth}<br>
@@ -2212,7 +2219,7 @@ return {
 
         let bestRpId = null;
         let bestRpHit = null;
-        if (MULTIPLAYER) {
+        if (MULTIPLAYER && !ARENA_COOP) {
           for (const [rpId, rp] of remotePlayers) {
             if (!rp.group.visible) continue;
             const hits = ray.intersectObject(rp.group, true);
@@ -3127,7 +3134,7 @@ return {
 
     const clock = new THREE.Clock();
 
-    function startGame(mapName, multiplayer) {
+    function startGame(mapName, multiplayer, arenaCoop) {
       hideDeathScreen();
       hidePause();
       closeChat();
@@ -3136,7 +3143,11 @@ return {
       hitDirContainer.innerHTML = "";
       hitIndicators.length = 0;
       CURRENT_MAP = mapName;
-      if (multiplayer !== undefined) MULTIPLAYER = multiplayer;
+      if (multiplayer !== undefined) {
+        MULTIPLAYER = multiplayer;
+        if (!multiplayer) ARENA_COOP = false;
+      }
+      if (arenaCoop !== undefined) ARENA_COOP = !!arenaCoop;
       menuEl.style.display = "none";
 
       clearMap();
@@ -3206,6 +3217,7 @@ return {
       MULTIPLAYER = false;
       ROOM_CODE = "";
       activeRoomId = "";
+      ARENA_COOP = false;
       menuEl.style.display = "flex";
       showMenuPanel("menuMain");
       player.health = 100;
@@ -3253,7 +3265,7 @@ return {
     btnArenaCoop.addEventListener("click", () => showLobby("arena-coop", "ARENA CO-OP"));
     btnArenaBack.addEventListener("click", () => showMenuPanel("menuMain"));
 
-    btnCrossfire.addEventListener("click", () => showLobby("crossfire", "CROSSFIRE"));
+    btnCrossfire.addEventListener("click", () => showLobby("crossfire", "CROSSFIRE (PVP)"));
 
     btnQuickplay.addEventListener("click", () => {
       socket.emit("quickplay", pendingLobbyMode, (res) => {
@@ -3301,7 +3313,8 @@ return {
       playerName = nameInput.value.trim().slice(0, 16) || "Player";
       nameModal.style.display = "none";
       const map = nameModal._pendingMap || "crossfire";
-      startGame(map, true);
+      const coopArena = map === "arena" && pendingLobbyMode === "arena-coop";
+      startGame(map, true, coopArena);
     });
 
     nameInput.addEventListener("keydown", (e) => {
