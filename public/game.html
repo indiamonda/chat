@@ -27,29 +27,8 @@
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
   <meta name="game-asset-base" content="" />
-  <!-- Socket.IO: loader tries same-directory URL (respects page path); falls back to CDN if missing. -->
-  <script>
-    (function () {
-      try {
-        var page = String(location.href).split(/[#?]/)[0];
-        var slash = page.lastIndexOf("/");
-        var dir = slash >= 0 ? page.slice(0, slash + 1) : page + "/";
-        var s = document.createElement("script");
-        s.defer = true;
-        s.src = new URL("socket.io.min.js", dir).href;
-        s.onerror = function () {
-          s.onerror = null;
-          s.src = "https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js";
-        };
-        document.head.appendChild(s);
-      } catch (_) {
-        var f = document.createElement("script");
-        f.defer = true;
-        f.src = "https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js";
-        document.head.appendChild(f);
-      }
-    })();
-  </script>
+  <!-- Socket.IO from CDN so menu/game always initialize even when socket.io.min.js isn’t deployed beside this file. -->
+  <script defer src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js" crossorigin="anonymous"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
   <style>
@@ -57,6 +36,12 @@
       --game-ui-menu-bg: url("game-ui/game-ui-menu-background.png");
       --game-ui-btn-texture: url("game-ui/game-ui-button-texture.png");
       --game-ui-settings-bg: url("game-ui/game-ui-settings-panel-bg.png");
+    }
+
+    #app {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
     }
 
     html, body {
@@ -70,6 +55,9 @@
     }
 
     #app {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
       width: 100vw;
       height: 100vh;
       cursor: none;
@@ -199,8 +187,9 @@
     .menu {
       position: fixed;
       inset: 0;
-      z-index: 60;
+      z-index: 100;
       display: flex;
+      pointer-events: auto;
       flex-direction: column;
       align-items: center;
       justify-content: center;
@@ -305,7 +294,7 @@
     #settingsModal {
       position: fixed;
       inset: 0;
-      z-index: 72;
+      z-index: 110;
       display: none;
       justify-content: center;
       align-items: center;
@@ -536,6 +525,64 @@
         );
     }
   </style>
+  <script>
+    (function () {
+      function normBase(b) {
+        if (!b) return "";
+        var s = String(b).trim();
+        return s.endsWith("/") ? s : s + "/";
+      }
+      try {
+        var page = String(location.href).split(/[#?]/)[0];
+        var slash = page.lastIndexOf("/");
+        var dir = slash >= 0 ? page.slice(0, slash + 1) : page + "/";
+        var bases = [];
+        var meta = document.querySelector('meta[name="game-asset-base"]');
+        var mb = meta && meta.content != null ? String(meta.content).trim() : "";
+        if (mb) bases.push(normBase(mb));
+        bases.push(dir);
+        try {
+          bases.push(new URL("../", dir).href);
+        } catch (e1) {}
+        try {
+          bases.push(new URL("../../", dir).href);
+        } catch (e2) {}
+        bases.push("https://tintly555.github.io/games/fps/");
+        var root = document.documentElement;
+        var bi = 0;
+        function apply(base) {
+          var b = normBase(base);
+          root.style.setProperty(
+            "--game-ui-menu-bg",
+            'url("' + new URL("game-ui/game-ui-menu-background.png", b).href + '")'
+          );
+          root.style.setProperty(
+            "--game-ui-btn-texture",
+            'url("' + new URL("game-ui/game-ui-button-texture.png", b).href + '")'
+          );
+          root.style.setProperty(
+            "--game-ui-settings-bg",
+            'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", b).href + '")'
+          );
+        }
+        function tryNext() {
+          if (bi >= bases.length) return;
+          var base = bases[bi++];
+          var img = new Image();
+          img.onload = function () {
+            apply(base);
+          };
+          img.onerror = tryNext;
+          try {
+            img.src = new URL("game-ui/game-ui-menu-background.png", normBase(base)).href;
+          } catch (e3) {
+            tryNext();
+          }
+        }
+        tryNext();
+      } catch (e4) {}
+    })();
+  </script>
 </head>
 <body>
   <div id="menu" class="menu">
@@ -606,7 +653,7 @@
     </div>
   </div>
   <div id="hitDirContainer" style="position:fixed;inset:0;z-index:35;pointer-events:none;display:flex;justify-content:center;align-items:center;"></div>
-  <div id="nameModal" style="position:fixed;inset:0;z-index:65;display:none;justify-content:center;align-items:center;background:rgba(0,0,0,0.7);">
+  <div id="nameModal" style="position:fixed;inset:0;z-index:110;display:none;justify-content:center;align-items:center;background:rgba(0,0,0,0.7);">
     <div style="background:#1a2236;border-radius:14px;padding:32px 38px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
       <h2 style="font-family:'Audiowide',sans-serif;margin:0 0 16px 0;font-size:22px;">ENTER YOUR NAME</h2>
       <input id="nameInput" type="text" maxlength="16" placeholder="Player" style="font-family:'Audiowide',sans-serif;width:200px;padding:10px 14px;font-size:16px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;">
@@ -813,23 +860,35 @@
     }
 
     const PLAYER_LIGHT_COLOR = 0xfff6ec;
-    // Soft body halo — only attached to the local camera (not replicated on remote avatars).
-    const PLAYER_BODY_INTENSITY = 3.05;
-    const PLAYER_BODY_DISTANCE = 84;
-    const PLAYER_BODY_DECAY = 2.05;
+    // Soft body halo (local camera only) — stronger so it still reads in the arena next to many maze lights.
+    const PLAYER_BODY_INTENSITY = 4.4;
+    const PLAYER_BODY_DISTANCE = 120;
 
-    // Dual-cone flashlight: (1) very wide soft flood, (2) narrow hard hotspot with short reach — like a wide outer cone + tight inner beam.
-    const FLASH_OUTER_INTENSITY = 0.62;
-    const FLASH_OUTER_DISTANCE = 380;
+    // Dual-cone flashlight: wide flood + tight hotspot (bumped for parity with pre–maze / crossfire contrast).
+    const FLASH_OUTER_INTENSITY = 0.9;
+    const FLASH_OUTER_DISTANCE = 450;
     const FLASH_OUTER_ANGLE = Math.PI / 1.95;
     const FLASH_OUTER_PEN = 0.84;
-    const FLASH_OUTER_DECAY = 1.08;
 
-    const FLASH_INNER_INTENSITY = 5.1;
-    const FLASH_INNER_DISTANCE = 72;
+    const FLASH_INNER_INTENSITY = 7.2;
+    const FLASH_INNER_DISTANCE = 92;
     const FLASH_INNER_ANGLE = Math.PI / 10.5;
     const FLASH_INNER_PEN = 0.12;
-    const FLASH_INNER_DECAY = 2.15;
+
+    /**
+     * One punctual-light model for Point / Spot: inverse-square falloff (decay = 2).
+     * https://threejs.org/docs/#api/en/lights/PointLight
+     * https://threejs.org/docs/#api/en/lights/SpotLight
+     */
+    const PHYSICAL_LIGHT_DECAY = 2;
+
+    function createPhysicalPointLight(color, intensity, distance) {
+      return new THREE.PointLight(color, intensity, distance, PHYSICAL_LIGHT_DECAY);
+    }
+
+    function createPhysicalSpotLight(color, intensity, distance, angle, penumbra) {
+      return new THREE.SpotLight(color, intensity, distance, angle, penumbra, PHYSICAL_LIGHT_DECAY);
+    }
 
     function createOfflineSocketStub() {
       return {
@@ -1372,21 +1431,19 @@
       const flashTarget = new THREE.Object3D();
       // Avatar mesh faces +Z; group uses yaw+π so forward is +Z here — unlike camera flash (-Z).
       flashTarget.position.set(0, 0, 1);
-      const flashOuter = new THREE.SpotLight(
+      const flashOuter = createPhysicalSpotLight(
         PLAYER_LIGHT_COLOR,
         FLASH_OUTER_INTENSITY,
         FLASH_OUTER_DISTANCE,
         FLASH_OUTER_ANGLE,
-        FLASH_OUTER_PEN,
-        FLASH_OUTER_DECAY
+        FLASH_OUTER_PEN
       );
-      const flashInner = new THREE.SpotLight(
+      const flashInner = createPhysicalSpotLight(
         PLAYER_LIGHT_COLOR,
         FLASH_INNER_INTENSITY,
         FLASH_INNER_DISTANCE,
         FLASH_INNER_ANGLE,
-        FLASH_INNER_PEN,
-        FLASH_INNER_DECAY
+        FLASH_INNER_PEN
       );
       flashOuter.position.set(0, 0.16, 0.14);
       flashInner.position.set(0, 0.16, 0.14);
@@ -2182,7 +2239,11 @@
         const pz = wzMid(gx, gy);
 
         if (kind === "roof") {
-          const L = new THREE.PointLight(0xfff2dd, 95 * MAZE_LIGHT_INTENSITY_SCALE, 0, 2);
+          const L = createPhysicalPointLight(
+            0xfff2dd,
+            108 * MAZE_LIGHT_INTENSITY_SCALE,
+            MAZE_CHUNK_WORLD * 0.62
+          );
           L.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
           L.castShadow = false;
           scene.add(L);
@@ -2239,23 +2300,25 @@
           scene.add(sconce);
           chunkMeshes.push(sconce);
 
-          const spot = new THREE.SpotLight(
+          const spot = createPhysicalSpotLight(
             0xffecd8,
             220 * MAZE_LIGHT_INTENSITY_SCALE,
             56,
             Math.PI / 4.2,
-            0.52,
-            2
+            0.52
           );
           spot.position.set(lx, 2.25, lz);
           spot.target.position.set(px, 0.15, pz);
           spot.castShadow = false;
-          spot.decay = 2;
           scene.add(spot);
           scene.add(spot.target);
           chunkLights.push(spot);
           registerMazeCullLight(spot, key);
-          const sconceFill = new THREE.PointLight(0xffe8d0, 28 * MAZE_LIGHT_INTENSITY_SCALE, 11, 2);
+          const sconceFill = createPhysicalPointLight(
+            0xffe8d0,
+            28 * MAZE_LIGHT_INTENSITY_SCALE,
+            11
+          );
           sconceFill.position.set(lx, 2.12, lz);
           sconceFill.castShadow = false;
           scene.add(sconceFill);
@@ -2263,11 +2326,10 @@
           registerMazeCullLight(sconceFill, key);
         } else if (kind === "area") {
           const ceilingY = MAZE_CEILING_LIGHT_Y;
-          const fill = new THREE.PointLight(
+          const fill = createPhysicalPointLight(
             0xfff5ee,
             200 * MAZE_LIGHT_INTENSITY_SCALE,
-            MAZE_CHUNK_WORLD * 0.88,
-            2
+            MAZE_CHUNK_WORLD * 0.88
           );
           fill.position.set(px, ceilingY - 0.14, pz);
           fill.castShadow = false;
@@ -2275,18 +2337,16 @@
           chunkLights.push(fill);
           registerMazeCullLight(fill, key);
 
-          const wideDown = new THREE.SpotLight(
+          const wideDown = createPhysicalSpotLight(
             0xfff1e6,
             320 * MAZE_LIGHT_INTENSITY_SCALE,
             MAZE_CHUNK_WORLD * 0.95,
             Math.PI / 2.05,
-            0.5,
-            2
+            0.5
           );
           wideDown.position.set(px, ceilingY - 0.02, pz);
           wideDown.target.position.set(px, 0.12, pz);
           wideDown.castShadow = false;
-          wideDown.decay = 2;
           scene.add(wideDown);
           scene.add(wideDown.target);
           chunkLights.push(wideDown);
@@ -2530,9 +2590,11 @@
       crossfire: buildMapCrossfire
     };
 
-    const ZOMBIE_COUNT = 16;
-    const SPAWN_MIN_DIST_BASE = 18;
-    const SPAWN_MIN_DIST_FLOOR = 4;
+    const ZOMBIE_COUNT = 32;
+    /** Multiplier for how far from players a zombie must spawn (0.4 = tighter / closer spawns). */
+    const ZOMBIE_SPAWN_PLAYER_CLEAR_SCALE = 0.4;
+    const SPAWN_MIN_DIST_BASE = 18 * ZOMBIE_SPAWN_PLAYER_CLEAR_SCALE;
+    const SPAWN_MIN_DIST_FLOOR = 4 * ZOMBIE_SPAWN_PLAYER_CLEAR_SCALE;
 
     function hashRoomSeed(str) {
       let h = 2166136261 >>> 0;
@@ -3303,30 +3365,27 @@
     const playerLightTarget = new THREE.Object3D();
     playerLightTarget.position.set(0, 0, -1);
 
-    const playerBodyLight = new THREE.PointLight(
+    const playerBodyLight = createPhysicalPointLight(
       PLAYER_LIGHT_COLOR,
       PLAYER_BODY_INTENSITY,
-      PLAYER_BODY_DISTANCE,
-      PLAYER_BODY_DECAY
+      PLAYER_BODY_DISTANCE
     );
     playerBodyLight.position.set(0, -0.22, 0.08);
     camera.add(playerBodyLight);
 
-    const flashOuterLocal = new THREE.SpotLight(
+    const flashOuterLocal = createPhysicalSpotLight(
       PLAYER_LIGHT_COLOR,
       FLASH_OUTER_INTENSITY,
       FLASH_OUTER_DISTANCE,
       FLASH_OUTER_ANGLE,
-      FLASH_OUTER_PEN,
-      FLASH_OUTER_DECAY
+      FLASH_OUTER_PEN
     );
-    const flashInnerLocal = new THREE.SpotLight(
+    const flashInnerLocal = createPhysicalSpotLight(
       PLAYER_LIGHT_COLOR,
       FLASH_INNER_INTENSITY,
       FLASH_INNER_DISTANCE,
       FLASH_INNER_ANGLE,
-      FLASH_INNER_PEN,
-      FLASH_INNER_DECAY
+      FLASH_INNER_PEN
     );
     flashOuterLocal.position.set(0, 0.18, 0.12);
     flashInnerLocal.position.set(0, 0.18, 0.12);
