@@ -325,6 +325,12 @@
     let MULTIPLAYER = false;
     /** True only for Zombie Arena played via ARENA CO-OP lobby (no damage vs other players). */
     let ARENA_COOP = false;
+    /** First player in the Socket.IO room runs zombie AI + broadcasts sync (arena co-op). */
+    let ZOMBIE_AUTHORITY = false;
+    /** False until first `zombieHost` in arena co-op (nobody runs zombie AI until then). */
+    let ZOMBIE_HOST_KNOWN = true;
+    let _spawnRng = null;
+    let _zombieSyncAcc = 0;
     let ROOM_CODE = "";
     let pendingLobbyMode = "";
     let started = false;
@@ -456,10 +462,20 @@
     });
 
     socket.on("enemyShoot", (data) => {
+      if (data.sx != null && data.sy != null && data.sz != null
+          && data.x != null && data.y != null && data.z != null) {
+        createBulletTrail(
+          new THREE.Vector3(data.sx, data.sy, data.sz),
+          new THREE.Vector3(data.x, data.y, data.z),
+          data.color ?? 0xffffff
+        );
+      }
+      if (data.type === "miss") return;
+
       const pt = new THREE.Vector3(data.x, data.y, data.z);
       if (data.type === "blood") {
         createBlood(pt);
-      } else {
+      } else if (data.type === "spark") {
         createSparks(pt, data.color || 0xffdd88);
         const n = new THREE.Vector3(data.nx, data.ny, data.nz);
         if (n.lengthSq() > 0) createBulletMark(pt, n);
@@ -482,6 +498,37 @@
       if (player.health <= 0) {
         showDeathScreen(null);
       }
+    });
+
+    socket.on("zombieHost", (data) => {
+      ZOMBIE_HOST_KNOWN = true;
+      ZOMBIE_AUTHORITY = !!(data && data.hostId === socket.id);
+    });
+
+    socket.on("zombieSync", (data) => {
+      if (!MULTIPLAYER || !ARENA_COOP || CURRENT_MAP !== "arena") return;
+      if (ZOMBIE_AUTHORITY) return;
+      applyZombieSyncPayload(data);
+    });
+
+    socket.on("zombieDamaged", (data) => {
+      if (!MULTIPLAYER || !ARENA_COOP || CURRENT_MAP !== "arena") return;
+      if (!ZOMBIE_AUTHORITY || !data) return;
+      if (data.by === socket.id) return;
+      const ei = data.ei | 0;
+      if (ei < 0 || ei >= state.enemies.length) return;
+      const enemy = state.enemies[ei];
+      const wi = ((data.weaponIndex | 0) % weapons.length + weapons.length) % weapons.length;
+      const w = weapons[wi];
+      applyDamage(enemy, data.zone, w);
+      drawEnemyHp(enemy);
+      if (enemy.hp <= 0 && enemy.alive) {
+        enemy.alive = false;
+        enemy.respawnTimer = 3.0;
+        enemy.group.visible = false;
+        state.score += 1;
+      }
+      updateHud();
     });
 
     const CHAT_MAX_VISIBLE = 6;
@@ -821,7 +868,8 @@
       group.add(ns.sprite);
 
       const flashTarget = new THREE.Object3D();
-      flashTarget.position.set(0, 0, -1);
+      // Avatar mesh faces +Z; group uses yaw+π so forward is +Z here — unlike camera flash (-Z).
+      flashTarget.position.set(0, 0, 1);
       const flashOuter = new THREE.SpotLight(
         PLAYER_LIGHT_COLOR,
         FLASH_OUTER_INTENSITY,
@@ -1120,6 +1168,26 @@
     const SPAWN_MIN_DIST_BASE = 18;
     const SPAWN_MIN_DIST_FLOOR = 4;
 
+    function hashRoomSeed(str) {
+      let h = 2166136261 >>> 0;
+      const s = String(str || "");
+      for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return h >>> 0;
+    }
+
+    function mulberry32(seed) {
+      let a = seed >>> 0;
+      return function () {
+        let t = (a += 0x6d2b79f5);
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
     function getAllPlayerPositions() {
       const positions = [{ x: player.position.x, z: player.position.z }];
       if (MULTIPLAYER) {
@@ -1138,8 +1206,9 @@
         if (attempt > 0 && attempt % 15 === 0) {
           dist = Math.max(SPAWN_MIN_DIST_FLOOR, dist * 0.6);
         }
-        const x = (Math.random() * 2 - 1) * S;
-        const z = (Math.random() * 2 - 1) * S;
+        const rnd = _spawnRng || Math.random;
+        const x = (rnd() * 2 - 1) * S;
+        const z = (rnd() * 2 - 1) * S;
         if (enemyCollidesWall(x, z, 0.5)) continue;
         let tooClose = false;
         for (const p of players) {
@@ -1149,8 +1218,9 @@
         if (tooClose) continue;
         return { x, z, usedDist: dist };
       }
-      const x = (Math.random() * 2 - 1) * S;
-      const z = (Math.random() * 2 - 1) * S;
+      const rnd = _spawnRng || Math.random;
+      const x = (rnd() * 2 - 1) * S;
+      const z = (rnd() * 2 - 1) * S;
       return { x, z, usedDist: 0 };
     }
 
@@ -1729,16 +1799,57 @@ return {
       }
     }
 
-    function createTracer(start, end, color) {
-      const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
-      const material = new THREE.LineBasicMaterial({
-        color,
+    function createBulletTrail(start, end, color) {
+      const hex = typeof color === "number" ? color : new THREE.Color(color).getHex();
+      const a = start.clone();
+      const b = end.clone();
+      const geomCore = new THREE.BufferGeometry().setFromPoints([a, b]);
+      const matCore = new THREE.LineBasicMaterial({
+        color: hex,
         transparent: true,
-        opacity: 1
+        opacity: 1,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
       });
-      const line = new THREE.Line(geometry, material);
-      tracerGroup.add(line);
-      state.tracers.push({ line, material, life: 0.08, maxLife: 0.08 });
+      const lineCore = new THREE.Line(geomCore, matCore);
+      const geomGlow = geomCore.clone();
+      const matGlow = new THREE.LineBasicMaterial({
+        color: hex,
+        transparent: true,
+        opacity: 0.42,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const lineGlow = new THREE.Line(geomGlow, matGlow);
+      const trailGroup = new THREE.Group();
+      trailGroup.add(lineCore);
+      trailGroup.add(lineGlow);
+      tracerGroup.add(trailGroup);
+      const maxLife = 0.28;
+      state.tracers.push({
+        group: trailGroup,
+        parts: [
+          { geometry: geomCore, material: matCore, baseOpacity: 1 },
+          { geometry: geomGlow, material: matGlow, baseOpacity: 0.42 },
+        ],
+        life: maxLife,
+        maxLife,
+      });
+    }
+
+    function emitShootNetwork(muzzle, end, color, hitType, extras = {}) {
+      if (!MULTIPLAYER) return;
+      socket.emit("shoot", {
+        sx: muzzle.x,
+        sy: muzzle.y,
+        sz: muzzle.z,
+        x: end.x,
+        y: end.y,
+        z: end.z,
+        color,
+        type: hitType,
+        ...extras,
+      });
     }
 
     camera.position.copy(player.position);
@@ -2073,13 +2184,19 @@ return {
       }
       state.enemies.length = 0;
 
+      _spawnRng = MULTIPLAYER && ARENA_COOP && activeRoomId
+        ? mulberry32(hashRoomSeed(activeRoomId))
+        : null;
+
       for (let i = 0; i < ZOMBIE_COUNT; i++) {
         const { x, z } = findSpawnPosition(SPAWN_MIN_DIST_BASE);
         const type = ZOMBIE_TYPES[i % ZOMBIE_TYPES.length];
         const zombie = makeZombie(x, z, type);
+        zombie.netIndex = i;
         drawEnemyHp(zombie);
         state.enemies.push(zombie);
       }
+      _spawnRng = null;
     }
 
     function getWeaponDirection(totalSpread) {
@@ -2241,41 +2358,54 @@ return {
         const closestDist = Math.min(enemyDist, rpDist, wallDist);
 
         if (closestDist === enemyDist && bestEnemy && bestEnemyHitT < Infinity) {
-          applyDamage(bestEnemy, bestEnemyZone, w);
           const bp = _ehHitWorld.copy(ray.ray.origin).addScaledVector(ray.ray.direction, bestEnemyHitT);
           createBlood(bp);
-          createTracer(muzzleStart, bp.clone(), w.color);
+          createBulletTrail(muzzleStart.clone(), bp.clone(), w.color);
+          emitShootNetwork(muzzleStart, bp, w.color, "blood");
           state.hitmarkerTimer = 0.08;
           hitmarkerEl.classList.add("show");
-          if (MULTIPLAYER) {
-            socket.emit("shoot", { x: bp.x, y: bp.y, z: bp.z, nx: 0, ny: 0, nz: 0, color: w.color, type: "blood" });
-          }
 
-          if (bestEnemy.hp <= 0 && bestEnemy.alive) {
-            bestEnemy.alive = false;
-            bestEnemy.respawnTimer = 3.0;
-            bestEnemy.group.visible = false;
-            state.score += 1;
+          const coopArena = MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena";
+          if (coopArena && !ZOMBIE_AUTHORITY) {
+            const ei = bestEnemy.netIndex ?? state.enemies.indexOf(bestEnemy);
+            socket.emit("zombieDamage", {
+              ei,
+              zone: bestEnemyZone,
+              weaponIndex: state.weaponIndex,
+            });
+          } else {
+            applyDamage(bestEnemy, bestEnemyZone, w);
+            if (bestEnemy.hp <= 0 && bestEnemy.alive) {
+              bestEnemy.alive = false;
+              bestEnemy.respawnTimer = 3.0;
+              bestEnemy.group.visible = false;
+              state.score += 1;
+            }
           }
         } else if (closestDist === rpDist && bestRpId && bestRpHit) {
           const bp = bestRpHit.point.clone();
           createBlood(bp);
-          createTracer(muzzleStart, bp.clone(), w.color);
+          createBulletTrail(muzzleStart.clone(), bp.clone(), w.color);
+          emitShootNetwork(muzzleStart, bp, w.color, "blood");
           state.hitmarkerTimer = 0.08;
           hitmarkerEl.classList.add("show");
           const dmg = w.damageBody;
           socket.emit("hit", { target: bestRpId, damage: dmg, x: player.position.x, z: player.position.z });
-          socket.emit("shoot", { x: bp.x, y: bp.y, z: bp.z, nx: 0, ny: 0, nz: 0, color: w.color, type: "blood" });
         } else if (wallHit) {
-          createTracer(muzzleStart, wallHit.point.clone(), w.color);
-          createSparks(wallHit.point.clone(), w.color);
+          const wp = wallHit.point.clone();
           const normal = wallHit.face.normal.clone().transformDirection(wallHit.object.matrixWorld);
-          createBulletMark(wallHit.point.clone(), normal);
-          if (MULTIPLAYER) {
-            socket.emit("shoot", { x: wallHit.point.x, y: wallHit.point.y, z: wallHit.point.z, nx: normal.x, ny: normal.y, nz: normal.z, color: w.color, type: "spark" });
-          }
+          createBulletTrail(muzzleStart.clone(), wp.clone(), w.color);
+          createSparks(wp.clone(), w.color);
+          createBulletMark(wp.clone(), normal);
+          emitShootNetwork(muzzleStart, wp, w.color, "spark", {
+            nx: normal.x,
+            ny: normal.y,
+            nz: normal.z,
+          });
         } else {
-          createTracer(muzzleStart, muzzleStart.clone().add(dir.multiplyScalar(12)), w.color);
+          const missEnd = muzzleStart.clone().add(dir.clone().multiplyScalar(160));
+          createBulletTrail(muzzleStart.clone(), missEnd, w.color);
+          emitShootNetwork(muzzleStart, missEnd, w.color, "miss");
         }
       }
 
@@ -2801,6 +2931,29 @@ return {
       }
     }
 
+    function applyZombieSyncPayload(data) {
+      if (!data || !Array.isArray(data.zombies)) return;
+      if (typeof data.score === "number") state.score = data.score;
+      for (const z of data.zombies) {
+        const ei = z.i | 0;
+        if (ei < 0 || ei >= state.enemies.length) continue;
+        const e = state.enemies[ei];
+        if (typeof z.x === "number") e.group.position.x = z.x;
+        if (typeof z.z === "number") e.group.position.z = z.z;
+        if (typeof z.y === "number") {
+          e.visYaw = z.y;
+          e.facingYaw = z.y;
+          e.group.rotation.y = z.y;
+        }
+        if (typeof z.hp === "number") e.hp = z.hp;
+        if (typeof z.a === "number") e.alive = z.a !== 0;
+        if (typeof z.rt === "number") e.respawnTimer = z.rt;
+        e.group.visible = e.alive;
+        drawEnemyHp(e);
+      }
+      updateHud();
+    }
+
     function updateEnemies(dt) {
       if (player.health > 0 && player.health < player.maxHealth) {
         player.regenTimer += dt;
@@ -2809,6 +2962,10 @@ return {
           player.health = Math.min(player.maxHealth, player.health + 1);
           updateHud();
         }
+      }
+
+      if (MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena") {
+        if (!ZOMBIE_HOST_KNOWN || !ZOMBIE_AUTHORITY) return;
       }
 
       visFrameCounter++;
@@ -2955,7 +3112,7 @@ return {
                 player.position.y + 1.25 + (Math.random() - 0.5) * 0.45,
                 player.position.z + (Math.random() - 0.5) * 0.45
               );
-              createTracer(_visOrigin.clone(), _tracerEnd.clone(), 0xff6666);
+              createBulletTrail(_visOrigin.clone(), _tracerEnd.clone(), 0xff6666);
             }
           }
         } else {
@@ -3015,11 +3172,16 @@ return {
       for (let i = state.tracers.length - 1; i >= 0; i--) {
         const t = state.tracers[i];
         t.life -= dt;
-        t.material.opacity = Math.max(0, t.life / t.maxLife);
+        const k = Math.max(0, t.life / t.maxLife);
+        for (const p of t.parts) {
+          p.material.opacity = p.baseOpacity * k;
+        }
         if (t.life <= 0) {
-          tracerGroup.remove(t.line);
-          t.line.geometry.dispose();
-          t.material.dispose();
+          tracerGroup.remove(t.group);
+          for (const p of t.parts) {
+            p.geometry.dispose();
+            p.material.dispose();
+          }
           state.tracers.splice(i, 1);
         }
       }
@@ -3101,10 +3263,31 @@ return {
       updateWeapon(dt);
 
       if (CURRENT_MAP === "arena") {
-        if (player.health > 0) {
+        const runZombieAi =
+          player.health > 0 ||
+          (MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY);
+        if (runZombieAi) {
           updateEnemies(dt);
         }
         updateDeathAnim(dt);
+        if (MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY) {
+          _zombieSyncAcc += dt;
+          if (_zombieSyncAcc >= 1 / 14) {
+            _zombieSyncAcc = 0;
+            socket.emit("zombieSync", {
+              score: state.score,
+              zombies: state.enemies.map((e, idx) => ({
+                i: e.netIndex ?? idx,
+                x: e.group.position.x,
+                z: e.group.position.z,
+                y: e.visYaw,
+                hp: e.hp,
+                a: e.alive ? 1 : 0,
+                rt: e.respawnTimer,
+              })),
+            });
+          }
+        }
       }
 
       if (CURRENT_MAP === "crossfire" && MULTIPLAYER && player.health <= 0) {
@@ -3148,6 +3331,13 @@ return {
         if (!multiplayer) ARENA_COOP = false;
       }
       if (arenaCoop !== undefined) ARENA_COOP = !!arenaCoop;
+      if (MULTIPLAYER && ARENA_COOP) {
+        ZOMBIE_HOST_KNOWN = false;
+        ZOMBIE_AUTHORITY = false;
+      } else {
+        ZOMBIE_HOST_KNOWN = true;
+      }
+      _zombieSyncAcc = 0;
       menuEl.style.display = "none";
 
       clearMap();
@@ -3218,6 +3408,9 @@ return {
       ROOM_CODE = "";
       activeRoomId = "";
       ARENA_COOP = false;
+      ZOMBIE_AUTHORITY = false;
+      ZOMBIE_HOST_KNOWN = true;
+      _zombieSyncAcc = 0;
       menuEl.style.display = "flex";
       showMenuPanel("menuMain");
       player.health = 100;
