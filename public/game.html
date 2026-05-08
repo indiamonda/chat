@@ -12,7 +12,8 @@
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Socket.IO browser client from CDN (same approach as working fps deploy); connects via game-multiplayer-origin + /game -->
   <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"></script>
-  <base href="https://chat.jimmyqrg.com/" />
+  <!-- Resolve CSS + relative assets next to this file; multiplayer API origin stays in meta + JS. -->
+  <base href="./" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
   <style>
@@ -830,6 +831,7 @@
 
     socket.on("connect", () => {
       console.log("Connected to server:", socket.id);
+      if (activeRoomId && MULTIPLAYER) socket.emit("joinRoom", activeRoomId);
     });
     socket.on("connect_error", (err) => {
       console.warn("Socket connect_error:", err?.message || err);
@@ -1454,8 +1456,8 @@
     let wallTextureLoaded = false;
 
     const texLoader = new THREE.TextureLoader();
-    /** Match `<base href>` so walls.png resolves to the same origin/path as other assets (e.g. chat.jimmyqrg.com/walls.png). */
-    const wallsTextureUrl = new URL("walls.png", document.baseURI).href;
+    /** Same folder as this page so textures work on any host (Pages, local, chat deploy). */
+    const wallsTextureUrl = new URL("walls.png", window.location.href).href;
     texLoader.load(
       wallsTextureUrl,
       (tex) => {
@@ -1578,6 +1580,8 @@
     const MAZE_WALL_H = 4.5;
     const MAZE_WALL_THICK = 0.42;
     const MAZE_LIGHT_HEIGHT_ROOF = 4.26;
+    /** r155+ punctual lights use physical units; maze fixtures were authored for legacy scaling (same π convention as moon/hemi comment above). */
+    const MAZE_LIGHT_INTENSITY_SCALE = Math.PI;
     let mazeChunks = new Map();
     let mazeWorldSeed = 2166136261;
     let mazeChunkPollAcc = 0;
@@ -1596,6 +1600,20 @@
     function mazeNorthPortalCol(cx, cz) {
       const r = mazeHashSeed(cx, cz, 0x89237412)();
       return (r >>> 0) % MAZE_CELLS;
+    }
+
+    /** Open three adjacent wall segments so chunk seams stay walkable (single-cell gaps often felt “sealed”). */
+    function openVertPortalStrip(vert, ix, baseRow) {
+      for (let d = -1; d <= 1; d++) {
+        const iy = (baseRow + d + MAZE_CELLS) % MAZE_CELLS;
+        vert[ix][iy] = false;
+      }
+    }
+    function openHorizPortalStrip(horiz, baseCol, iy) {
+      for (let d = -1; d <= 1; d++) {
+        const ix = (baseCol + d + MAZE_CELLS) % MAZE_CELLS;
+        horiz[ix][iy] = false;
+      }
     }
 
     function generateMazeChunkGrid(cx, cz) {
@@ -1644,12 +1662,12 @@
 
       const ew = mazeEastPortalRow(cx - 1, cz);
       const ee = mazeEastPortalRow(cx, cz);
-      vert[0][ew] = false;
-      vert[w][ee] = false;
+      openVertPortalStrip(vert, 0, ew);
+      openVertPortalStrip(vert, w, ee);
       const ns = mazeNorthPortalCol(cx, cz - 1);
       const nn = mazeNorthPortalCol(cx, cz);
-      horiz[ns][0] = false;
-      horiz[nn][h] = false;
+      openHorizPortalStrip(horiz, ns, 0);
+      openHorizPortalStrip(horiz, nn, h);
 
       const lights = [];
       const carveCells = [];
@@ -1780,7 +1798,7 @@
         const pz = wzMid(gx, gy);
 
         if (kind === "roof") {
-          const L = new THREE.PointLight(0xfff2dd, 95, 46, 2.1);
+          const L = new THREE.PointLight(0xfff2dd, 95 * MAZE_LIGHT_INTENSITY_SCALE, 46, 2.1);
           L.position.set(px, MAZE_LIGHT_HEIGHT_ROOF, pz);
           L.castShadow = false;
           scene.add(L);
@@ -1836,14 +1854,21 @@
           scene.add(sconce);
           chunkMeshes.push(sconce);
 
-          const spot = new THREE.SpotLight(0xffecd8, 220, 26, Math.PI / 5.5, 0.42, 1.85);
+          const spot = new THREE.SpotLight(
+            0xffecd8,
+            220 * MAZE_LIGHT_INTENSITY_SCALE,
+            26,
+            Math.PI / 5.5,
+            0.42,
+            1.85
+          );
           spot.position.set(lx, 2.25, lz);
           spot.target.position.set(px, 0.15, pz);
           scene.add(spot);
           scene.add(spot.target);
           chunkLights.push(spot);
         } else if (kind === "area") {
-          const fill = new THREE.PointLight(0xfff5ee, 155, 34, 2.0);
+          const fill = new THREE.PointLight(0xfff5ee, 155 * MAZE_LIGHT_INTENSITY_SCALE, 34, 2.0);
           fill.position.set(px, 2.6, pz);
           scene.add(fill);
           chunkLights.push(fill);
@@ -3010,6 +3035,7 @@
         openChat();
         return;
       }
+      if (paused) return;
       if (k === "w") keys.w = true;
       if (k === "a") keys.a = true;
       if (k === "s") keys.s = true;
@@ -3039,7 +3065,7 @@
         renderer.domElement.requestPointerLock();
         return;
       }
-      if (player.health <= 0) return;
+      if (player.health <= 0 || paused) return;
       if (e.button === 0) {
         state.mouseDown = true;
         tryShoot();
@@ -3101,7 +3127,7 @@
     });
 
     document.addEventListener("mousemove", (e) => {
-      if (!state.locked || player.health <= 0) return;
+      if (!state.locked || paused || player.health <= 0) return;
 
       player.yaw -= e.movementX * 0.004;
       player.pitch -= e.movementY * 0.0032;
@@ -3141,23 +3167,42 @@
       return false;
     }
 
-    /** Prefer cell centers near chunk middle until collision-free (arenas use infinite maze). */
+    /** Prefer high-degree maze cells (actual grid), then near chunk center, until collision-free. */
     function pickOpenMazeSpawnInChunk(cx, cz) {
+      const { vert, horiz } = generateMazeChunkGrid(cx, cz);
       const ox = cx * MAZE_CHUNK_WORLD;
       const oz = cz * MAZE_CHUNK_WORLD;
       const cw = MAZE_CELL_SIZE;
       const n = MAZE_CELLS;
       const mx = ox + MAZE_CHUNK_WORLD * 0.5;
       const mz = oz + MAZE_CHUNK_WORLD * 0.5;
+
+      function cellDegree(gx, gy) {
+        let d = 0;
+        if (!horiz[gx][gy]) d++;
+        if (!horiz[gx][gy + 1]) d++;
+        if (!vert[gx][gy]) d++;
+        if (!vert[gx + 1][gy]) d++;
+        return d;
+      }
+
       const list = [];
       for (let gy = 0; gy < n; gy++) {
         for (let gx = 0; gx < n; gx++) {
           const px = ox + (gx + 0.5) * cw;
           const pz = oz + (gy + 0.5) * cw;
-          list.push({ px, pz, d2: (px - mx) ** 2 + (pz - mz) ** 2 });
+          list.push({
+            px,
+            pz,
+            d2: (px - mx) ** 2 + (pz - mz) ** 2,
+            deg: cellDegree(gx, gy),
+          });
         }
       }
-      list.sort((a, b) => a.d2 - b.d2);
+      list.sort((a, b) => {
+        if (b.deg !== a.deg) return b.deg - a.deg;
+        return a.d2 - b.d2;
+      });
       const r = player.radius;
       for (const c of list) {
         if (!enemyCollidesWall(c.px, c.pz, r)) return { x: c.px, z: c.pz };
@@ -3263,7 +3308,7 @@
     }
 
     function tryShoot() {
-      if (player.health <= 0) return;
+      if (paused || player.health <= 0) return;
       const now = performance.now();
       const w = weapon();
       const shootingAds = (state.ads || keys.shift) && !state.reloading && player.health > 0;
@@ -3684,6 +3729,12 @@
       if (player.health <= 0) return;
       if (paused) return;
       paused = true;
+      keys.w = false;
+      keys.a = false;
+      keys.s = false;
+      keys.d = false;
+      keys.space = false;
+      keys.shift = false;
       pauseOverlay.style.display = "flex";
       btnPauseRestart.style.display = (CURRENT_MAP !== "crossfire") ? "" : "none";
       crosshairEl.classList.add("hidden");
@@ -4021,8 +4072,8 @@
         }
       }
 
-      if (MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena") {
-        if (!ZOMBIE_HOST_KNOWN || !ZOMBIE_AUTHORITY) return;
+      if (MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena" && !ZOMBIE_AUTHORITY) {
+        return;
       }
 
       visFrameCounter++;
@@ -4335,9 +4386,6 @@
       }
 
       if (paused) {
-        if (MULTIPLAYER) {
-          updatePlayer(dt);
-        }
         tickFpsMeter(dt);
         renderer.render(scene, camera);
         return;
@@ -4413,7 +4461,7 @@
         updateHud();
       }
 
-      if (player.health > 0 && state.mouseDown && weapon().auto) {
+      if (player.health > 0 && !paused && state.mouseDown && weapon().auto) {
         tryShoot();
       }
 
@@ -4449,6 +4497,10 @@
 
       clearMap();
 
+      if (MULTIPLAYER && activeRoomId) {
+        socket.emit("joinRoom", activeRoomId);
+      }
+
       if (CURRENT_MAP === "crossfire") {
         player.position.set(0, 1.65, 34);
         floor.visible = true;
@@ -4471,9 +4523,6 @@
       }
       state.enemies.length = 0;
 
-      if (MULTIPLAYER && activeRoomId) {
-        socket.emit("joinRoom", activeRoomId);
-      }
       if (CURRENT_MAP === "arena") {
         rebuildEnemyRoster();
       }
