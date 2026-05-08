@@ -1373,6 +1373,10 @@
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.BasicShadowMap;
     renderer.sortObjects = false;
+    THREE.ColorManagement.enabled = true;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1;
     app.appendChild(renderer.domElement);
 
     /** Precompile programs after scene/map changes so gameplay avoids shader hitch spikes. */
@@ -1380,12 +1384,15 @@
       renderer.compile(scene, camera);
     }
 
-    // Same luminance as pre–r155 legacy lights: physically correct shading drops ~π× vs old scaling.
+    // r155+ lights use physical units; π matched legacy sun/hemi feel — maze lamps need extra candela + ambient so corridors read.
     const _LEGACY_L = Math.PI;
-    const hemi = new THREE.HemisphereLight(0x2c3848, 0x0f1114, 0.14 * _LEGACY_L);
+    const hemi = new THREE.HemisphereLight(0x334455, 0x0f1114, 0.22 * _LEGACY_L);
     scene.add(hemi);
 
-    const moon = new THREE.DirectionalLight(0x5a6880, 0.11 * _LEGACY_L);
+    const ambientFill = new THREE.AmbientLight(0x4a5568, 0.055 * _LEGACY_L);
+    scene.add(ambientFill);
+
+    const moon = new THREE.DirectionalLight(0x5a6880, 0.15 * _LEGACY_L);
     moon.position.set(28, 34, 22);
     moon.castShadow = true;
     moon.shadow.mapSize.set(256, 256);
@@ -1580,8 +1587,8 @@
     const MAZE_WALL_H = 4.5;
     const MAZE_WALL_THICK = 0.42;
     const MAZE_LIGHT_HEIGHT_ROOF = 4.26;
-    /** r155+ punctual lights use physical units; maze fixtures were authored for legacy scaling (same π convention as moon/hemi comment above). */
-    const MAZE_LIGHT_INTENSITY_SCALE = Math.PI;
+    /** Punctual lights: inverse-square falloff + finite distance makes old intensities read as black — scale up strongly (see Three.js r155+ lighting). */
+    const MAZE_LIGHT_INTENSITY_SCALE = Math.PI * 28;
     let mazeChunks = new Map();
     let mazeWorldSeed = 2166136261;
     let mazeChunkPollAcc = 0;
@@ -1798,7 +1805,7 @@
         const pz = wzMid(gx, gy);
 
         if (kind === "roof") {
-          const L = new THREE.PointLight(0xfff2dd, 95 * MAZE_LIGHT_INTENSITY_SCALE, 46, 2.1);
+          const L = new THREE.PointLight(0xfff2dd, 95 * MAZE_LIGHT_INTENSITY_SCALE, 0, 2);
           L.position.set(px, MAZE_LIGHT_HEIGHT_ROOF, pz);
           L.castShadow = false;
           scene.add(L);
@@ -1857,10 +1864,10 @@
           const spot = new THREE.SpotLight(
             0xffecd8,
             220 * MAZE_LIGHT_INTENSITY_SCALE,
-            26,
+            0,
             Math.PI / 5.5,
             0.42,
-            1.85
+            2
           );
           spot.position.set(lx, 2.25, lz);
           spot.target.position.set(px, 0.15, pz);
@@ -1868,7 +1875,7 @@
           scene.add(spot.target);
           chunkLights.push(spot);
         } else if (kind === "area") {
-          const fill = new THREE.PointLight(0xfff5ee, 155 * MAZE_LIGHT_INTENSITY_SCALE, 34, 2.0);
+          const fill = new THREE.PointLight(0xfff5ee, 155 * MAZE_LIGHT_INTENSITY_SCALE, 0, 2);
           fill.position.set(px, 2.6, pz);
           scene.add(fill);
           chunkLights.push(fill);
