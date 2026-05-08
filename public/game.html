@@ -861,17 +861,17 @@
 
     const PLAYER_LIGHT_COLOR = 0xfff6ec;
     // Soft body halo (local camera only) — stronger so it still reads in the arena next to many maze lights.
-    const PLAYER_BODY_INTENSITY = 8.8;
-    const PLAYER_BODY_DISTANCE = 240;
+    const PLAYER_BODY_INTENSITY = 20;
+    const PLAYER_BODY_DISTANCE = 500;
 
     // Dual-cone flashlight: wide flood + tight hotspot (bumped for parity with pre–maze / crossfire contrast).
-    const FLASH_OUTER_INTENSITY = 1.8;
-    const FLASH_OUTER_DISTANCE = 900;
+    const FLASH_OUTER_INTENSITY = 10;
+    const FLASH_OUTER_DISTANCE = 1024;
     const FLASH_OUTER_ANGLE = Math.PI / 1.95;
     const FLASH_OUTER_PEN = 0.84;
 
-    const FLASH_INNER_INTENSITY = 14.4;
-    const FLASH_INNER_DISTANCE = 184;
+    const FLASH_INNER_INTENSITY = 32;
+    const FLASH_INNER_DISTANCE = 160;
     const FLASH_INNER_ANGLE = Math.PI / 10.5;
     const FLASH_INNER_PEN = 0.12;
 
