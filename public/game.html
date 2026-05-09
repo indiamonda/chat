@@ -184,6 +184,39 @@
       transform: translate(-50%, -50%) rotate(-45deg);
     }
 
+    /* Full-screen boot: map gen + asset preload before gameplay */
+    #gameBootOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 105;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      background: radial-gradient(ellipse 90% 70% at 50% 40%, rgba(18, 22, 34, 0.92) 0%, rgba(4, 6, 12, 0.97) 65%, #020308 100%);
+      pointer-events: auto;
+      font-family: 'Audiowide', sans-serif;
+    }
+    #gameBootOverlay .game-boot-spinner {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      border: 3px solid rgba(79, 209, 255, 0.22);
+      border-top-color: rgba(79, 209, 255, 0.95);
+      animation: game-boot-spin 0.85s linear infinite;
+    }
+    @keyframes game-boot-spin {
+      to { transform: rotate(360deg); }
+    }
+    #gameBootOverlay .game-boot-text {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0.12em;
+      color: rgba(232, 238, 252, 0.88);
+      text-shadow: 0 2px 16px rgba(0, 0, 0, 0.65);
+    }
+
     .menu {
       position: fixed;
       inset: 0;
@@ -641,6 +674,10 @@
   </div>
 
   <div id="app"></div>
+  <div id="gameBootOverlay" aria-live="polite" aria-busy="true" style="display:none;">
+    <div class="game-boot-spinner" role="status" aria-label="Loading"></div>
+    <p id="gameBootLabel" class="game-boot-text">Loading world…</p>
+  </div>
   <div id="shadeOverlay" aria-hidden="true"></div>
   <div id="warFilmOverlay" aria-hidden="true"></div>
   <div class="hud" id="hud"></div>
@@ -752,6 +789,8 @@
     const menuLobby = document.getElementById("menuLobby");
     const lobbyTitle = document.getElementById("lobbyTitle");
     const menuJoinCode = document.getElementById("menuJoinCode");
+    const gameBootOverlay = document.getElementById("gameBootOverlay");
+    const gameBootLabel = document.getElementById("gameBootLabel");
     const codeInput = document.getElementById("codeInput");
     const codeError = document.getElementById("codeError");
     const btnArena = document.getElementById("btnArena");
@@ -853,6 +892,8 @@
     let ROOM_CODE = "";
     let pendingLobbyMode = "";
     let started = false;
+    /** False during boot overlay: no movement, shooting, zombie AI, or damage until map + assets are ready. */
+    let gameWorldReady = false;
     let paused = false;
     let chatOpen = false;
     let playerName = "Player";
@@ -1076,6 +1117,7 @@
     });
 
     socket.on("damaged", (data) => {
+      if (!gameWorldReady) return;
       if (player.health <= 0) return;
       player.health = Math.max(0, player.health - (data.damage || 0));
       player.regenTimer = 0;
@@ -3835,7 +3877,7 @@
     });
 
     document.addEventListener("mousedown", (e) => {
-      if (!state.locked || player.health <= 0) return;
+      if (!gameWorldReady || !state.locked || player.health <= 0) return;
       if (e.button === 2) {
         if (!state.reloading) state.ads = true;
       }
@@ -3848,6 +3890,7 @@
     });
 
     renderer.domElement.addEventListener("click", () => {
+      if (!gameWorldReady) return;
       if (!state.locked && !paused && player.health > 0) renderer.domElement.requestPointerLock();
     });
 
@@ -3862,13 +3905,13 @@
         keys.shift = false;
         state.mouseDown = false;
         state.ads = false;
-        if (started && player.health > 0 && menuEl.style.display === "none" && !chatOpen && !settingsModalOpen) {
+        if (started && player.health > 0 && menuEl.style.display === "none" && !chatOpen && !settingsModalOpen && gameWorldReady) {
           showPause();
         }
       } else {
         hidePause();
       }
-      hint.style.display = (state.locked || paused || player.health <= 0) ? "none" : "block";
+      hint.style.display = (state.locked || paused || player.health <= 0 || !gameWorldReady) ? "none" : "block";
     });
 
     window.addEventListener("blur", () => {
@@ -4068,7 +4111,7 @@
     }
 
     function tryShoot() {
-      if (paused || player.health <= 0) return;
+      if (!gameWorldReady || paused || player.health <= 0) return;
       const now = performance.now();
       const w = weapon();
       const shootingAds = (state.ads || keys.shift) && !state.reloading && player.health > 0;
@@ -4818,6 +4861,7 @@
     }
 
     function applyZombieSyncPayload(data) {
+      if (!gameWorldReady) return;
       if (!data || !Array.isArray(data.zombies)) return;
       if (typeof data.score === "number") state.score = data.score;
       for (const z of data.zombies) {
@@ -4841,6 +4885,7 @@
     }
 
     function updateEnemies(dt) {
+      if (!gameWorldReady) return;
       if (player.health > 0 && player.health < player.maxHealth) {
         player.regenTimer += dt;
         if (player.regenTimer >= 5.0) {
@@ -5167,6 +5212,12 @@
         return;
       }
 
+      if (started && menuEl.style.display === "none" && !gameWorldReady) {
+        tickFpsMeter(dt);
+        renderer.render(scene, camera);
+        return;
+      }
+
       updatePlayer(dt);
       updateWeapon(dt);
 
@@ -5190,13 +5241,14 @@
 
       if (CURRENT_MAP === "arena") {
         const runZombieAi =
-          player.health > 0 ||
-          (MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY && CURRENT_MAP === "arena");
+          gameWorldReady &&
+          (player.health > 0 ||
+            (MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY && CURRENT_MAP === "arena"));
         if (runZombieAi) {
           updateEnemies(dt);
         }
-        updateDeathAnim(dt);
-        if (MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY && CURRENT_MAP === "arena") {
+        if (gameWorldReady) updateDeathAnim(dt);
+        if (gameWorldReady && MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY && CURRENT_MAP === "arena") {
           _zombieSyncAcc += dt;
           if (_zombieSyncAcc >= 1 / 14) {
             _zombieSyncAcc = 0;
@@ -5216,7 +5268,7 @@
         }
       }
 
-      if (CURRENT_MAP === "arena" && started) {
+      if (CURRENT_MAP === "arena" && started && gameWorldReady) {
         updateInfiniteMaze(dt);
         processOneMazeChunkBuild();
         cullMazeLightsNearCamera();
@@ -5249,7 +5301,72 @@
 
     const clock = new THREE.Clock();
 
-    function startGame(mapName, multiplayer, arenaCoop) {
+    /** Build a 5×5 ring of maze chunks around the player chunk so LOS / nav / spawns are consistent before gameplay. */
+    function ensureArenaBootstrapChunks() {
+      const pcx = Math.floor(player.position.x / MAZE_CHUNK_WORLD);
+      const pcz = Math.floor(player.position.z / MAZE_CHUNK_WORLD);
+      const R = 2;
+      for (let dz = -R; dz <= R; dz++) {
+        for (let dx = -R; dx <= R; dx++) {
+          buildMazeChunk(pcx + dx, pcz + dz);
+        }
+      }
+    }
+
+    function loadBootImage(url) {
+      return new Promise((resolve, reject) => {
+        const im = new Image();
+        im.crossOrigin = "anonymous";
+        im.onload = () => resolve();
+        im.onerror = () => reject(new Error("img"));
+        im.src = url;
+      });
+    }
+
+    async function preloadBootImageRel(rel) {
+      const bases = getGameAssetBaseCandidates();
+      let lastErr = null;
+      for (const b of bases) {
+        try {
+          const u = new URL(rel, normalizeGameAssetBase(b)).href;
+          await loadBootImage(u);
+          return;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      if (lastErr) console.warn("[boot] missing image", rel);
+    }
+
+    async function preloadWallTextureForBoot() {
+      const urls = getWallTextureUrlList();
+      for (const u of urls) {
+        try {
+          await new Promise((resolve, reject) => {
+            texLoader.load(u, () => resolve(), undefined, () => reject());
+          });
+          return;
+        } catch (_) {}
+      }
+    }
+
+    async function preloadCriticalGameAssets() {
+      await Promise.all([
+        preloadBootImageRel("game-ui/game-ui-menu-background.png"),
+        preloadBootImageRel("game-ui/game-ui-button-texture.png"),
+        preloadBootImageRel("game-ui/game-ui-settings-panel-bg.png"),
+      ]);
+      await preloadWallTextureForBoot();
+    }
+
+    async function bootGame(mapName, multiplayer, arenaCoop) {
+      gameWorldReady = false;
+      gameBootOverlay.style.display = "flex";
+      gameBootOverlay.setAttribute("aria-busy", "true");
+      gameBootLabel.textContent = "Building world…";
+      weaponRoot.visible = false;
+      setLocalPlayerLights(false);
+
       hideDeathScreen();
       hidePause();
       closeChat();
@@ -5295,6 +5412,7 @@
 
       if (CURRENT_MAP === "arena") {
         applyArenaMazePlayerSpawn();
+        ensureArenaBootstrapChunks();
       }
 
       buildNavGrid();
@@ -5306,6 +5424,9 @@
 
       if (CURRENT_MAP === "arena") {
         rebuildEnemyRoster();
+        for (const e of state.enemies) {
+          e.group.visible = false;
+        }
       }
 
       player.velocityY = 0;
@@ -5330,21 +5451,43 @@
       state.weaponBobRotZ = 0;
       killerEnemy = null;
       deathAnimTime = 0;
-      weaponRoot.visible = true;
 
       for (const w of weapons) {
         w.ammo = w.magSize;
       }
-    
+
       setWeapon(1);
       updateHud();
-
-      compileSceneShaders();
 
       if (!started) {
         started = true;
         animate();
       }
+
+      try {
+        gameBootLabel.textContent = "Loading assets…";
+        await preloadCriticalGameAssets();
+      } catch (err) {
+        console.warn("[boot] asset preload", err);
+      }
+
+      if (CURRENT_MAP === "arena") {
+        for (const e of state.enemies) {
+          if (e.alive) e.group.visible = true;
+        }
+      }
+
+      compileSceneShaders();
+
+      weaponRoot.visible = true;
+      setLocalPlayerLights(true);
+      gameWorldReady = true;
+      gameBootOverlay.style.display = "none";
+      gameBootOverlay.setAttribute("aria-busy", "false");
+    }
+
+    function startGame(mapName, multiplayer, arenaCoop) {
+      void bootGame(mapName, multiplayer, arenaCoop);
     }
 
     function goToMenu() {
@@ -5358,6 +5501,9 @@
       ZOMBIE_AUTHORITY = false;
       ZOMBIE_HOST_KNOWN = true;
       _zombieSyncAcc = 0;
+      gameWorldReady = false;
+      gameBootOverlay.style.display = "none";
+      gameBootOverlay.setAttribute("aria-busy", "false");
       menuEl.style.display = "flex";
       showMenuPanel("menuMain");
       tryPlayMenuBgm();
