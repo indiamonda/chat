@@ -370,7 +370,7 @@
       background-color: #070504;
       background-image:
         radial-gradient(ellipse 92% 72% at 50% 38%, rgba(14, 18, 28, 0.62) 0%, rgba(6, 8, 14, 0.78) 58%, rgba(2, 3, 10, 0.88) 100%),
-        var(--game-ui-menu-bg);
+        var(--game-ui-menu-bg, none);
       background-size: cover, cover;
       background-position: center, center;
       background-repeat: no-repeat;
@@ -1759,25 +1759,35 @@
 
     function getSafeViewportSize() {
       try {
-        const w = Math.max(
-          1,
-          window.innerWidth ||
-            (typeof document !== "undefined" &&
-              document.documentElement &&
-              document.documentElement.clientWidth) ||
-            1
-        );
-        const h = Math.max(
-          1,
-          window.innerHeight ||
-            (typeof document !== "undefined" &&
-              document.documentElement &&
-              document.documentElement.clientHeight) ||
-            1
-        );
-        return { w, h };
+        const vv = window.visualViewport;
+        const innerW = Number(window.innerWidth) || 0;
+        const innerH = Number(window.innerHeight) || 0;
+        const vvW = vv ? Number(vv.width) || 0 : 0;
+        const vvH = vv ? Number(vv.height) || 0 : 0;
+        const de = document.documentElement;
+        const body = document.body;
+        const clientW = de ? de.clientWidth || 0 : 0;
+        const clientH = de ? de.clientHeight || 0 : 0;
+        const bodyW = body ? body.clientWidth || 0 : 0;
+        const bodyH = body ? body.clientHeight || 0 : 0;
+
+        let w = Math.max(innerW, vvW, clientW, bodyW);
+        let h = Math.max(innerH, vvH, clientH, bodyH);
+
+        // Mobile Safari / embedded views can report 0×0 until layout or rotation; resize fixes it.
+        if (w < 8 || h < 8) {
+          const sw = typeof screen !== "undefined" ? Number(screen.width) || 0 : 0;
+          const sh = typeof screen !== "undefined" ? Number(screen.height) || 0 : 0;
+          w = Math.max(w, sw);
+          h = Math.max(h, sh);
+        }
+
+        return {
+          w: Math.max(2, w || 960),
+          h: Math.max(2, h || 540),
+        };
       } catch (_) {
-        return { w: 1, h: 1 };
+        return { w: 960, h: 540 };
       }
     }
 
@@ -1966,10 +1976,31 @@
     }
 
     applyGraphicsQuality();
-    requestAnimationFrame(() => {
+
+    let _bootVpUntil = 0;
+    let _bootVpFrames = 0;
+    function bootViewportSyncFrames() {
       syncGameRendererSize();
-      requestAnimationFrame(() => syncGameRendererSize());
-    });
+      const vp = getSafeViewportSize();
+      const t = performance.now();
+      if (!_bootVpUntil) _bootVpUntil = t + 2800;
+      const undersized = vp.w < 48 || vp.h < 48;
+      _bootVpFrames++;
+      if (_bootVpFrames < 300 && (t < _bootVpUntil || undersized)) {
+        requestAnimationFrame(bootViewportSyncFrames);
+      }
+    }
+    requestAnimationFrame(bootViewportSyncFrames);
+
+    try {
+      if (typeof ResizeObserver !== "undefined" && app) {
+        const ro = new ResizeObserver(() => {
+          syncGameRendererSize();
+        });
+        ro.observe(app);
+        if (document.documentElement) ro.observe(document.documentElement);
+      }
+    } catch (_) {}
 
     const worldSize = 260;
 
@@ -4251,6 +4282,10 @@
       menuBgmAudio = new Audio();
       menuBgmAudio.loop = true;
       menuBgmAudio.preload = "auto";
+      try {
+        menuBgmAudio.playsInline = true;
+        menuBgmAudio.setAttribute("playsinline", "");
+      } catch (_) {}
       menuBgmCandidateIdx = 0;
       menuBgmAudio.addEventListener(
         "error",
@@ -4260,6 +4295,11 @@
           applyMenuBgmSrcAtCurrentIndex();
         }
       );
+      menuBgmAudio.addEventListener("canplaythrough", () => {
+        if (menuEl.style.display !== "none" && menuBgmAudio && menuBgmAudio.paused) {
+          tryPlayMenuBgm();
+        }
+      });
       wireMenuBgmThroughAnalyser();
       applyMenuBgmSrcAtCurrentIndex();
       if (!menuBgmMenuGain) {
@@ -4296,6 +4336,7 @@
       if (p && typeof p.catch === "function") p.catch(() => {});
     }
     function onMenuBgmUserGesture() {
+      syncGameRendererSize();
       void (async () => {
         try {
           if (audioCtx.state === "suspended") {
@@ -6894,11 +6935,27 @@
     window.addEventListener("load", () => {
       syncGameRendererSize();
     });
+    window.addEventListener("orientationchange", () => {
+      requestAnimationFrame(() => syncGameRendererSize());
+    });
+    window.addEventListener(
+      "pageshow",
+      (e) => {
+        requestAnimationFrame(() => syncGameRendererSize());
+        if (e.persisted) requestAnimationFrame(() => syncGameRendererSize());
+      }
+    );
     try {
       if (window.visualViewport) {
         window.visualViewport.addEventListener("resize", () => syncGameRendererSize());
+        window.visualViewport.addEventListener("scroll", () => syncGameRendererSize());
       }
     } catch (_) {}
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        requestAnimationFrame(() => syncGameRendererSize());
+      }
+    });
   </script>
 </body>
 </html>
