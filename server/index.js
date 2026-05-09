@@ -1,5 +1,5 @@
 import { createServer } from 'http';
-import { readFileSync, existsSync, readdirSync, rmSync as fsRm } from 'fs';
+import { readFileSync, existsSync, statSync, readdirSync, rmSync as fsRm } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
@@ -885,6 +885,29 @@ app.use((req, res, next) => {
   });
 });
 app.use(tokenAuthMiddleware);
+
+/** Game shell assets must always resolve from public/ (walls.png, menu.mp3, game-ui/*) even if another middleware or CDN rule interferes with generic static. */
+app.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const pathOnly = req.path.split('?')[0];
+  if (!/^\/(?:walls\.png|menu\.mp3|flashlight\.mp3|game-ui\/)/i.test(pathOnly)) return next();
+  const rel = pathOnly.replace(/^\/+/, '');
+  if (!rel || rel.includes('..')) return next();
+  const abs = join(publicDir, rel);
+  if (!existsSync(abs)) return next();
+  try {
+    if (!statSync(abs).isFile()) return next();
+  } catch {
+    return next();
+  }
+  if (/\.mp3$/i.test(abs)) res.type('audio/mpeg');
+  else if (/\.png$/i.test(abs)) res.type('image/png');
+  res.set('Cache-Control', 'public, max-age=3600');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.sendFile(abs, (err) => {
+    if (err) next(err);
+  });
+});
 
 // Serve the multiplayer game page
 app.get('/game', (req, res) => {
