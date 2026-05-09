@@ -20,7 +20,8 @@
           var u = new URL(String(href).split(/[#?]/)[0]);
           var path = u.pathname || "/";
           if (/\.html?$/i.test(path)) {
-            return new URL("..", u.href).href;
+            /* `./` = directory containing this file. `..` alone wrongly resolves …/repo/game.html → site root. */
+            return new URL("./", u.href).href;
           }
           return new URL(".", u.href).href;
         } catch (e1) {
@@ -682,7 +683,7 @@
                   var u = new URL(String(location.href).split(/[#?]/)[0]);
                   var path = u.pathname || "/";
                   if (/\.html?$/i.test(path)) {
-                    return new URL("..", u.href).href;
+                    return new URL("./", u.href).href;
                   }
                   return new URL(".", u.href).href;
                 } catch (e0) {
@@ -2026,7 +2027,7 @@
         const u = new URL(String(window.location.href).split(/[#?]/)[0]);
         const path = u.pathname || "/";
         if (/\.html?$/i.test(path)) {
-          return new URL("..", u.href).href;
+          return new URL("./", u.href).href;
         }
         return new URL(".", u.href).href;
       } catch (_) {
