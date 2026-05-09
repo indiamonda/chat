@@ -20,6 +20,16 @@
         try {
           var u = new URL(page);
           var p = u.pathname || "/";
+          var dirPath = p;
+          if (!dirPath.endsWith("/")) {
+            var li0 = dirPath.lastIndexOf("/");
+            dirPath = li0 >= 0 ? dirPath.slice(0, li0 + 1) : "/";
+          }
+          var trimmed = dirPath.replace(/\/+$/, "");
+          var segs = trimmed.length ? trimmed.split("/").filter(Boolean) : [];
+          if (segs.length && segs[segs.length - 1].toLowerCase() === "html") {
+            return new URL("../", u.origin + dirPath).href;
+          }
           if (!p || p === "/") {
             return u.origin + "/";
           }
@@ -54,10 +64,11 @@
   <!-- Only the script-injected <base> above should set the document base (folder of this HTML).
        A second fixed base (e.g. chat origin) breaks relative game-ui/ + walls.png when the page is not at site root or when assets live beside this file. -->
   <!-- Socket.IO / multiplayer API host only — do not use as primary CDN for game-ui / menu.mp3 (same-origin loads avoid 404 + Web Audio CORS). -->
+  <!-- Socket.IO / multiplayer API host only — never used for images/audio (cross-origin CORS). -->
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
   <meta name="game-asset-base" content="" />
-  <!-- Where static files from public/ are mounted: empty = site root (e.g. Fly: /walls.png). GitHub Pages subpath: content="/games/fps" -->
+  <!-- Where static files from public/ are mounted: empty = auto (folder above …/html/ when game.html sits under html/). Example Pages subpath: content="/games/fps" -->
   <meta name="game-static-prefix" content="" />
   <script>
     (function () {
@@ -684,6 +695,16 @@
                 try {
                   var u = new URL(page);
                   var p = u.pathname || "/";
+                  var dirPath = p;
+                  if (!dirPath.endsWith("/")) {
+                    var li0 = dirPath.lastIndexOf("/");
+                    dirPath = li0 >= 0 ? dirPath.slice(0, li0 + 1) : "/";
+                  }
+                  var trimmed = dirPath.replace(/\/+$/, "");
+                  var segs = trimmed.length ? trimmed.split("/").filter(Boolean) : [];
+                  if (segs.length && segs[segs.length - 1].toLowerCase() === "html") {
+                    return new URL("../", u.origin + dirPath).href;
+                  }
                   if (!p || p === "/") return u.origin + "/";
                   if (p.endsWith("/")) return u.origin + p;
                   var li = p.lastIndexOf("/");
@@ -703,13 +724,6 @@
             ? window.__GAME_STATIC_ROOT__
             : "";
         if (sr) bases.push(normBase(sr));
-        var mpMeta = document.querySelector('meta[name="game-multiplayer-origin"]');
-        var mp = mpMeta && mpMeta.content != null ? String(mpMeta.content).trim() : "";
-        if (mp) {
-          try {
-            bases.push(new URL("/", mp).href);
-          } catch (eMp) {}
-        }
         var lastSeg = "";
         try {
           var segs = new URL(dir).pathname.replace(/\/+$/, "").split("/").filter(Boolean);
@@ -733,7 +747,6 @@
             bases.push(new URL("../../", dir).href);
           } catch (e2) {}
         }
-        bases.push("https://tintly555.github.io/games/fps/");
         var root = document.documentElement;
         var bi = 0;
         function apply(base) {
@@ -1964,6 +1977,16 @@
       try {
         const u = new URL(page);
         const p = u.pathname || "/";
+        let dirPath = p;
+        if (!dirPath.endsWith("/")) {
+          const li0 = dirPath.lastIndexOf("/");
+          dirPath = li0 >= 0 ? dirPath.slice(0, li0 + 1) : "/";
+        }
+        const trimmed = dirPath.replace(/\/+$/, "");
+        const segs = trimmed.length ? trimmed.split("/").filter(Boolean) : [];
+        if (segs.length && segs[segs.length - 1].toLowerCase() === "html") {
+          return new URL("../", u.origin + dirPath).href;
+        }
         if (!p || p === "/") {
           return u.origin + "/";
         }
@@ -2063,24 +2086,12 @@
         }
       }
 
-      /** Multiplayer origin last: static files should load from the same host as this HTML when possible (avoids 404 + MediaElementSource CORS). */
-      const remoteFallbacks = [];
-      const mpMeta = document.querySelector('meta[name="game-multiplayer-origin"]');
-      const mpRaw = mpMeta && mpMeta.content != null ? String(mpMeta.content).trim() : "";
-      if (mpRaw) {
-        try {
-          remoteFallbacks.push(new URL("/", mpRaw).href);
-        } catch (_) {}
-      }
-      remoteFallbacks.push("https://tintly555.github.io/games/fps/");
-
       const merged = [
         ...explicit,
         dir,
         getDeployedPublicRootHref(),
         ...nearOrigin,
         ...farOrigin,
-        ...remoteFallbacks,
       ];
       return [...new Set(merged)];
     }
@@ -2418,6 +2429,9 @@
     const bloodGroup = new THREE.Group();
     scene.add(decalGroup, sparkGroup, tracerGroup, bloodGroup);
 
+    /** Bullet tracer lines (local + networked): removed after this many seconds. */
+    const BULLET_TRAIL_LIFETIME_SEC = 30;
+
     const MAX_BLOOD_MESHES = 36;
     const MAX_SPARK_MESHES = 36;
     const SPARK_GEO_SHARED = new THREE.SphereGeometry(0.022, 4, 4);
@@ -2459,6 +2473,13 @@
 
     /** ── Infinite procedural maze (chunk-streamed; walls texture on floor/roof per chunk) ── */
     const MAZE_CHUNK_WORLD = 52;
+    /** Unload chunks farther than this (Chebyshev chunk steps from player) only after stale time. */
+    const MAZE_CHUNK_VERY_FAR_CHEB = 4;
+    /** Seconds since last proximity before a far chunk may be removed. */
+    const MAZE_CHUNK_STALE_UNLOAD_MS = 60_000;
+    /** Player within this distance (XZ) of chunk center counts as "a little close". */
+    const MAZE_CHUNK_PROXIMITY_DIST = MAZE_CHUNK_WORLD * 2.75;
+    const MAZE_CHUNK_PROXIMITY_DIST_SQ = MAZE_CHUNK_PROXIMITY_DIST * MAZE_CHUNK_PROXIMITY_DIST;
     const MAZE_CELLS = 15;
     const MAZE_CELL_SIZE = MAZE_CHUNK_WORLD / MAZE_CELLS;
     const MAZE_WALL_H = 4.5;
@@ -2468,6 +2489,8 @@
     /** Match moon/hemi π convention; punctual lights scaled separately from global brightness. */
     const MAZE_LIGHT_INTENSITY_SCALE = Math.PI;
     let mazeChunks = new Map();
+    /** Last time the player was within MAZE_CHUNK_PROXIMITY_DIST of chunk center (for stale unload). */
+    let mazeChunkLastProximityTime = new Map();
     let mazeWorldSeed = 2166136261;
     let mazeChunkPollAcc = 0;
     /** WebGL forward shading has a hard limit on fragment light uniforms — register maze lamps and cull visibility each frame. */
@@ -3037,6 +3060,7 @@
       }
 
       mazeChunks.set(key, { meshes: chunkMeshes, lights: chunkLights });
+      mazeChunkLastProximityTime.set(key, performance.now());
     }
 
     function registerMazeCullLight(light, chunkKey) {
@@ -3080,7 +3104,10 @@
       for (const mesh of ch.meshes) {
         scene.remove(mesh);
         const wi = wallMeshes.indexOf(mesh);
-        if (wi >= 0) wallMeshes.splice(wi, 1);
+        if (wi >= 0) {
+          wallMeshes.splice(wi, 1);
+          wallBoxes.splice(wi, 1);
+        }
         const ti = _texturedMeshes.findIndex((e) => e.mesh === mesh);
         if (ti >= 0) _texturedMeshes.splice(ti, 1);
         mesh.traverse((o) => {
@@ -3100,11 +3127,8 @@
         if (L.target) scene.remove(L.target);
         if (L.dispose) L.dispose();
       }
-      wallBoxes.length = 0;
-      for (const m of wallMeshes) {
-        wallBoxes.push(new THREE.Box3().setFromObject(m));
-      }
       mazeChunks.delete(key);
+      mazeChunkLastProximityTime.delete(key);
     }
 
     function clearAllMazeChunks() {
@@ -3114,6 +3138,7 @@
         unloadMazeChunk(sx, sz);
       }
       mazeChunks.clear();
+      mazeChunkLastProximityTime.clear();
     }
 
     function updateInfiniteMaze(dt) {
@@ -3124,11 +3149,27 @@
 
       const pcx = Math.floor(player.position.x / MAZE_CHUNK_WORLD);
       const pcz = Math.floor(player.position.z / MAZE_CHUNK_WORLD);
-      const R = 2;
+      const px = player.position.x;
+      const pz = player.position.z;
+      const now = performance.now();
+
+      for (const key of mazeChunks.keys()) {
+        const [cx, cz] = key.split(",").map(Number);
+        const mx = (cx + 0.5) * MAZE_CHUNK_WORLD;
+        const mz = (cz + 0.5) * MAZE_CHUNK_WORLD;
+        const dx = px - mx;
+        const dz = pz - mz;
+        if (dx * dx + dz * dz <= MAZE_CHUNK_PROXIMITY_DIST_SQ) {
+          mazeChunkLastProximityTime.set(key, now);
+        }
+      }
 
       for (const key of [...mazeChunks.keys()]) {
         const [cx, cz] = key.split(",").map(Number);
-        if (Math.abs(cx - pcx) > R + 1 || Math.abs(cz - pcz) > R + 1) {
+        const cheb = Math.max(Math.abs(cx - pcx), Math.abs(cz - pcz));
+        if (cheb <= MAZE_CHUNK_VERY_FAR_CHEB) continue;
+        const lastNear = mazeChunkLastProximityTime.get(key) ?? 0;
+        if (now - lastNear >= MAZE_CHUNK_STALE_UNLOAD_MS) {
           unloadMazeChunk(cx, cz);
         }
       }
@@ -3138,34 +3179,98 @@
 
     let mazeNavAnchorCx = null;
     let mazeNavAnchorCz = null;
+    /** Incremental nav-grid fill during gameplay (avoids 50k+ wall checks in one frame). */
+    let navRebuildJob = null;
+    const NAV_GRID_ROWS_PER_FRAME = 34;
+    /** Initial ring-of-chunks around spawn built across animation frames during boot. */
+    let arenaChunkBootstrapQueue = null;
+    const ARENA_BOOTSTRAP_CHUNKS_PER_RAF = 5;
 
-    function rebuildMazeNavGrid(pcx, pcz) {
-      if (CURRENT_MAP !== "arena") return;
-      if (mazeNavAnchorCx === pcx && mazeNavAnchorCz === pcz && navGrid) return;
-      mazeNavAnchorCx = pcx;
-      mazeNavAnchorCz = pcz;
-      const padChunks = 4;
-      navMinX = (pcx - padChunks) * MAZE_CHUNK_WORLD;
-      navMinZ = (pcz - padChunks) * MAZE_CHUNK_WORLD;
-      const span = padChunks * 2 * MAZE_CHUNK_WORLD + MAZE_CHUNK_WORLD;
-      navCols = Math.ceil(span / NAV_CELL);
-      navRows = Math.ceil(span / NAV_CELL);
-      navGrid = new Uint8Array(navCols * navRows);
-      for (let r = 0; r < navRows; r++) {
-        for (let c = 0; c < navCols; c++) {
-          const wx = navMinX + (c + 0.5) * NAV_CELL;
-          const wz = navMinZ + (r + 0.5) * NAV_CELL;
-          navGrid[r * navCols + c] = enemyCollidesWall(wx, wz, NAV_RADIUS) ? 1 : 0;
-        }
-      }
-      const total = navCols * navRows;
+    function finishNavGridFromBuffer(grid, total) {
+      navGrid = grid;
+      navRebuildJob = null;
       flowDirX = new Float32Array(total);
       flowDirZ = new Float32Array(total);
       flowPlayerC = -1;
       flowPlayerR = -1;
     }
 
+    function rebuildMazeNavGrid(pcx, pcz) {
+      if (CURRENT_MAP !== "arena") return;
+      if (
+        mazeNavAnchorCx === pcx &&
+        mazeNavAnchorCz === pcz &&
+        (navGrid || navRebuildJob)
+      ) {
+        return;
+      }
+      mazeNavAnchorCx = pcx;
+      mazeNavAnchorCz = pcz;
+      navRebuildJob = null;
+
+      const padChunks = 4;
+      navMinX = (pcx - padChunks) * MAZE_CHUNK_WORLD;
+      navMinZ = (pcz - padChunks) * MAZE_CHUNK_WORLD;
+      const span = padChunks * 2 * MAZE_CHUNK_WORLD + MAZE_CHUNK_WORLD;
+      navCols = Math.ceil(span / NAV_CELL);
+      navRows = Math.ceil(span / NAV_CELL);
+      const total = navCols * navRows;
+
+      const useIncremental =
+        typeof started !== "undefined" &&
+        started &&
+        gameWorldReady &&
+        CURRENT_MAP === "arena";
+
+      if (!useIncremental) {
+        const grid = new Uint8Array(total);
+        for (let r = 0; r < navRows; r++) {
+          for (let c = 0; c < navCols; c++) {
+            const wx = navMinX + (c + 0.5) * NAV_CELL;
+            const wz = navMinZ + (r + 0.5) * NAV_CELL;
+            grid[r * navCols + c] = enemyCollidesWall(wx, wz, NAV_RADIUS) ? 1 : 0;
+          }
+        }
+        finishNavGridFromBuffer(grid, total);
+        return;
+      }
+
+      navRebuildJob = {
+        grid: new Uint8Array(total),
+        row: 0,
+        total,
+        navCols,
+        navRows,
+      };
+    }
+
+    function stepArenaNavGridBuild() {
+      if (CURRENT_MAP !== "arena" || !navRebuildJob) return;
+      const j = navRebuildJob;
+      const end = Math.min(j.row + NAV_GRID_ROWS_PER_FRAME, j.navRows);
+      for (let r = j.row; r < end; r++) {
+        for (let c = 0; c < j.navCols; c++) {
+          const wx = navMinX + (c + 0.5) * NAV_CELL;
+          const wz = navMinZ + (r + 0.5) * NAV_CELL;
+          j.grid[r * j.navCols + c] = enemyCollidesWall(wx, wz, NAV_RADIUS) ? 1 : 0;
+        }
+      }
+      j.row = end;
+      if (end >= j.navRows) {
+        finishNavGridFromBuffer(j.grid, j.total);
+      }
+    }
+
     function clearMap() {
+      navRebuildJob = null;
+      arenaChunkBootstrapQueue = null;
+      navGrid = null;
+      flowDirX = null;
+      flowDirZ = null;
+      flowPlayerC = -1;
+      flowPlayerR = -1;
+      mazeNavAnchorCx = null;
+      mazeNavAnchorCz = null;
       clearAllMazeChunks();
       while (wallMeshes.length) {
         const mesh = wallMeshes.pop();
@@ -3206,9 +3311,27 @@
       if (upperH > 0) addWallBox(thick, upperH, windowD, centerX, windowTop + upperH / 2, centerZ);
     }
 
+    /** Same numeric mazeWorldSeed for every player in the same co-op room (room id from socket). */
+    function applyArenaMazeWorldSeed() {
+      if (MULTIPLAYER && ARENA_COOP) {
+        const key = activeRoomId && String(activeRoomId).trim();
+        if (key) {
+          mazeWorldSeed = hashRoomSeed(key) ^ 0xa53c9e7b;
+        } else {
+          console.warn(
+            "[arena co-op] No activeRoomId — maze is random and will not match other players."
+          );
+          mazeWorldSeed =
+            (Math.imul(1103515245, (performance.now() ^ (Math.random() * 0x7fffffff)) | 0) + 12345) >>> 0;
+        }
+      } else {
+        mazeWorldSeed =
+          (Math.imul(1103515245, (performance.now() ^ (Math.random() * 0x7fffffff)) | 0) + 12345) >>> 0;
+      }
+    }
+
     function buildMapArena() {
-      mazeWorldSeed =
-        (Math.imul(1103515245, (performance.now() ^ (Math.random() * 0x7fffffff)) | 0) + 12345) >>> 0;
+      applyArenaMazeWorldSeed();
       mazeChunkPollAcc = 0;
       mazeNavAnchorCx = null;
       mazeNavAnchorCz = null;
@@ -3271,6 +3394,28 @@
     const ZOMBIE_SPAWN_PLAYER_CLEAR_SCALE = 0.4;
     const SPAWN_MIN_DIST_BASE = 18 * ZOMBIE_SPAWN_PLAYER_CLEAR_SCALE;
     const SPAWN_MIN_DIST_FLOOR = 4 * ZOMBIE_SPAWN_PLAYER_CLEAR_SCALE;
+    const ARENA_COOP_ZOMBIE_MULTIPLIER = 2;
+    /** Co-op arena: scale down min player–spawn distance so zombies can appear closer. */
+    const ARENA_COOP_SPAWN_CLEAR_MULT = 0.48;
+
+    function getZombieCountForMode() {
+      if (MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena") {
+        return ZOMBIE_COUNT * ARENA_COOP_ZOMBIE_MULTIPLIER;
+      }
+      return ZOMBIE_COUNT;
+    }
+
+    function arenaCoopSpawnClearMult() {
+      return MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena" ? ARENA_COOP_SPAWN_CLEAR_MULT : 1;
+    }
+
+    function getSpawnMinDistBase() {
+      return SPAWN_MIN_DIST_BASE * arenaCoopSpawnClearMult();
+    }
+
+    function getSpawnMinDistFloor() {
+      return SPAWN_MIN_DIST_FLOOR * arenaCoopSpawnClearMult();
+    }
 
     function hashRoomSeed(str) {
       let h = 2166136261 >>> 0;
@@ -3310,7 +3455,7 @@
         const pz = player.position.z;
         for (let attempt = 0; attempt < 90; attempt++) {
           if (attempt > 0 && attempt % 22 === 0) {
-            dist = Math.max(SPAWN_MIN_DIST_FLOOR, dist * 0.62);
+            dist = Math.max(getSpawnMinDistFloor(), dist * 0.62);
           }
           const ang = Math.random() * Math.PI * 2;
           const rad = dist + Math.random() * (MAZE_CHUNK_WORLD * 2.2);
@@ -3339,7 +3484,7 @@
       let dist = minDist;
       for (let attempt = 0; attempt < 60; attempt++) {
         if (attempt > 0 && attempt % 15 === 0) {
-          dist = Math.max(SPAWN_MIN_DIST_FLOOR, dist * 0.6);
+          dist = Math.max(getSpawnMinDistFloor(), dist * 0.6);
         }
         const rnd = _spawnRng || Math.random;
         const x = (rnd() * 2 - 1) * S;
@@ -4195,7 +4340,7 @@
       trailGroup.add(lineCore);
       trailGroup.add(lineGlow);
       tracerGroup.add(trailGroup);
-      const maxLife = 0.28;
+      const maxLife = BULLET_TRAIL_LIFETIME_SEC;
       state.tracers.push({
         group: trailGroup,
         parts: [
@@ -4699,12 +4844,13 @@
       }
       state.enemies.length = 0;
 
-      _spawnRng = MULTIPLAYER && ARENA_COOP && activeRoomId
-        ? mulberry32(hashRoomSeed(activeRoomId))
-        : null;
+      _spawnRng =
+        MULTIPLAYER && ARENA_COOP && activeRoomId && String(activeRoomId).trim()
+          ? mulberry32(hashRoomSeed(String(activeRoomId).trim()))
+          : null;
 
-      for (let i = 0; i < ZOMBIE_COUNT; i++) {
-        const { x, z } = findSpawnPosition(SPAWN_MIN_DIST_BASE);
+      for (let i = 0; i < getZombieCountForMode(); i++) {
+        const { x, z } = findSpawnPosition(getSpawnMinDistBase());
         const type = ZOMBIE_TYPES[i % ZOMBIE_TYPES.length];
         const zombie = makeZombie(x, z, type);
         zombie.netIndex = i;
@@ -5670,7 +5816,7 @@
             enemy.alive = true;
             enemy.hp = enemy.maxHp;
             enemy.group.visible = true;
-            const sp = findSpawnPosition(SPAWN_MIN_DIST_BASE);
+            const sp = findSpawnPosition(getSpawnMinDistBase());
             enemy.group.position.set(sp.x, 0, sp.z);
             enemy.aware = false;
             enemy.hiddenTimer = 0;
@@ -5888,9 +6034,8 @@
       for (let i = state.tracers.length - 1; i >= 0; i--) {
         const t = state.tracers[i];
         t.life -= dt;
-        const k = Math.max(0, t.life / t.maxLife);
         for (const p of t.parts) {
-          p.material.opacity = p.baseOpacity * k;
+          p.material.opacity = p.baseOpacity;
         }
         if (t.life <= 0) {
           tracerGroup.remove(t.group);
@@ -6033,6 +6178,7 @@
 
       if (CURRENT_MAP === "arena" && started && gameWorldReady) {
         updateInfiniteMaze(dt);
+        stepArenaNavGridBuild();
         processOneMazeChunkBuild();
         cullMazeLightsNearCamera();
       }
@@ -6069,11 +6215,33 @@
       const pcx = Math.floor(player.position.x / MAZE_CHUNK_WORLD);
       const pcz = Math.floor(player.position.z / MAZE_CHUNK_WORLD);
       const R = 2;
+      const pending = [];
       for (let dz = -R; dz <= R; dz++) {
         for (let dx = -R; dx <= R; dx++) {
-          buildMazeChunk(pcx + dx, pcz + dz);
+          const cx = pcx + dx;
+          const cz = pcz + dz;
+          const key = `${cx},${cz}`;
+          if (mazeChunks.has(key)) continue;
+          pending.push({ cx, cz, pri: dx * dx + dz * dz });
         }
       }
+      pending.sort((a, b) => a.pri - b.pri);
+      arenaChunkBootstrapQueue = pending.length ? pending : null;
+    }
+
+    /** Returns true when the bootstrap ring is fully built (or nothing was queued). */
+    function processArenaChunkBootstrap(maxPerFrame = ARENA_BOOTSTRAP_CHUNKS_PER_RAF) {
+      if (!arenaChunkBootstrapQueue || arenaChunkBootstrapQueue.length === 0) {
+        arenaChunkBootstrapQueue = null;
+        return true;
+      }
+      let n = maxPerFrame;
+      while (n-- > 0 && arenaChunkBootstrapQueue.length) {
+        const { cx, cz } = arenaChunkBootstrapQueue.shift();
+        buildMazeChunk(cx, cz);
+      }
+      if (arenaChunkBootstrapQueue.length === 0) arenaChunkBootstrapQueue = null;
+      return !arenaChunkBootstrapQueue;
     }
 
     function loadBootImage(url) {
@@ -6177,6 +6345,9 @@
       if (CURRENT_MAP === "arena") {
         applyArenaMazePlayerSpawn();
         ensureArenaBootstrapChunks();
+        while (!processArenaChunkBootstrap(ARENA_BOOTSTRAP_CHUNKS_PER_RAF)) {
+          await new Promise((r) => requestAnimationFrame(r));
+        }
       }
 
       buildNavGrid();
