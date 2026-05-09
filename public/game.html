@@ -67,13 +67,19 @@
           var pre = m && m.content != null ? String(m.content).trim() : "";
           if (pre && pre.charAt(0) !== "/") pre = "/" + pre;
           pre = pre.replace(/\/+$/, "");
-          return location.origin + pre + "/";
-        } catch (e) {
-          try {
-            return location.origin + "/";
-          } catch (e2) {
-            return "/";
+          if (pre) {
+            return location.origin + pre + "/";
           }
+        } catch (e) {}
+        try {
+          if (typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__) {
+            return window.__GAME_ASSET_BASE_DIR__;
+          }
+        } catch (e2) {}
+        try {
+          return location.origin + "/";
+        } catch (e3) {
+          return "/";
         }
       }
       try {
@@ -1721,13 +1727,38 @@
                gunModel, currentWeapon: 1 };
     }
 
+    function getSafeViewportSize() {
+      try {
+        const w = Math.max(
+          1,
+          window.innerWidth ||
+            (typeof document !== "undefined" &&
+              document.documentElement &&
+              document.documentElement.clientWidth) ||
+            1
+        );
+        const h = Math.max(
+          1,
+          window.innerHeight ||
+            (typeof document !== "undefined" &&
+              document.documentElement &&
+              document.documentElement.clientHeight) ||
+            1
+        );
+        return { w, h };
+      } catch (_) {
+        return { w: 1, h: 1 };
+      }
+    }
+
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x070504);
     scene.fog = new THREE.Fog(0x070504, 16, 72);
 
+    const _vpInit = getSafeViewportSize();
     const camera = new THREE.PerspectiveCamera(
       75,
-      window.innerWidth / window.innerHeight,
+      _vpInit.w / _vpInit.h,
       0.1,
       240
     );
@@ -1740,7 +1771,7 @@
       stencil: false,
       depth: true,
     });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(_vpInit.w, _vpInit.h);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.NoToneMapping;
@@ -1891,12 +1922,24 @@
         shadeOverlay.style.opacity = shadeOp;
       }
 
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      syncGameRendererSize();
       applyWallTexture();
       compileSceneShaders();
     }
 
+    function syncGameRendererSize() {
+      const vp = getSafeViewportSize();
+      camera.aspect = vp.w / vp.h;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(getPixelRatioForQuality());
+      renderer.setSize(vp.w, vp.h);
+    }
+
     applyGraphicsQuality();
+    requestAnimationFrame(() => {
+      syncGameRendererSize();
+      requestAnimationFrame(() => syncGameRendererSize());
+    });
 
     const worldSize = 260;
 
@@ -1948,13 +1991,19 @@
         let pre = meta && meta.content != null ? String(meta.content).trim() : "";
         if (pre && !pre.startsWith("/")) pre = "/" + pre;
         pre = pre.replace(/\/+$/, "");
-        return window.location.origin + pre + "/";
-      } catch (_) {
-        try {
-          return window.location.origin + "/";
-        } catch (_) {
-          return "/";
+        if (pre) {
+          return window.location.origin + pre + "/";
         }
+      } catch (_) {}
+      try {
+        if (typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__) {
+          return window.__GAME_ASSET_BASE_DIR__;
+        }
+      } catch (_) {}
+      try {
+        return window.location.origin + "/";
+      } catch (_) {
+        return "/";
       }
     }
 
@@ -2017,7 +2066,14 @@
       }
       remoteFallbacks.push("https://tintly555.github.io/games/fps/");
 
-      const merged = [...explicit, getDeployedPublicRootHref(), ...nearOrigin, ...farOrigin, ...remoteFallbacks];
+      const merged = [
+        ...explicit,
+        dir,
+        getDeployedPublicRootHref(),
+        ...nearOrigin,
+        ...farOrigin,
+        ...remoteFallbacks,
+      ];
       return [...new Set(merged)];
     }
 
@@ -2072,11 +2128,10 @@
 
     function resizeMenuWallBackdrop() {
       if (!menuBackdropRenderer || !menuBackdropCamera || !menuWallBackdropCanvas) return;
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      menuBackdropCamera.aspect = w / Math.max(1, h);
+      const vp = getSafeViewportSize();
+      menuBackdropCamera.aspect = vp.w / vp.h;
       menuBackdropCamera.updateProjectionMatrix();
-      menuBackdropRenderer.setSize(w, h, false);
+      menuBackdropRenderer.setSize(vp.w, vp.h, false);
     }
 
     function menuBackdropFrame() {
@@ -2108,9 +2163,10 @@
       menuBackdropScene = new THREE.Scene();
       menuBackdropScene.background = new THREE.Color(0x070504);
 
+      const mbVp = getSafeViewportSize();
       menuBackdropCamera = new THREE.PerspectiveCamera(
         48,
-        window.innerWidth / Math.max(1, window.innerHeight),
+        mbVp.w / mbVp.h,
         0.1,
         80
       );
@@ -4918,6 +4974,16 @@
       }
     }
 
+    function isMedKitHoldHealing() {
+      return (
+        state.weaponIndex === 4 &&
+        player.health > 0 &&
+        player.health < player.maxHealth &&
+        !state.medKitNeedsRelease &&
+        state.mouseDown
+      );
+    }
+
     function updateWeaponVisuals(dt, isMoving) {
       const t = performance.now() * 0.001;
 
@@ -5032,7 +5098,8 @@
       state.recoil *= Math.pow(0.13, dt);
       if (state.recoil < 0.0002) state.recoil = 0;
 
-      const movingNow = keys.w || keys.a || keys.s || keys.d;
+      const healLock = isMedKitHoldHealing();
+      const movingNow = !healLock && (keys.w || keys.a || keys.s || keys.d);
       updateWeaponVisuals(dt, movingNow);
       updateMedKit(dt);
     }
@@ -5045,16 +5112,20 @@
         return;
       }
       
+      const healLock = isMedKitHoldHealing();
+
       const forward = new THREE.Vector3(0, 0, -1)
         .applyAxisAngle(new THREE.Vector3(0, 1, 0), player.yaw);
       const right = new THREE.Vector3(1, 0, 0)
         .applyAxisAngle(new THREE.Vector3(0, 1, 0), player.yaw);
 
       const move = new THREE.Vector3();
-      if (keys.w) move.add(forward);
-      if (keys.s) move.sub(forward);
-      if (keys.d) move.add(right);
-      if (keys.a) move.sub(right);
+      if (!healLock) {
+        if (keys.w) move.add(forward);
+        if (keys.s) move.sub(forward);
+        if (keys.d) move.add(right);
+        if (keys.a) move.sub(right);
+      }
 
       if (move.lengthSq() > 0) {
         move.normalize().multiplyScalar(player.speed * dt);
@@ -5064,7 +5135,7 @@
         player.position.z = resolved.z;  
       }
 
-      if (keys.space && player.onGround) {
+      if (!healLock && keys.space && player.onGround) {
         player.velocityY = 5.8;
         player.onGround = false;
       }
@@ -5078,7 +5149,7 @@
         player.onGround = true;
       }
 
-      const movingNow = keys.w || keys.a || keys.s || keys.d;
+      const movingNow = !healLock && (keys.w || keys.a || keys.s || keys.d);
       if (movingNow && player.onGround) {
         state.walkPhase += dt * 10.5;
       }
@@ -5912,7 +5983,10 @@
           state.camShake = 0;
         }
         const moving =
-          (keys.w || keys.a || keys.s || keys.d) && player.onGround && player.health > 0;
+          !isMedKitHoldHealing() &&
+          (keys.w || keys.a || keys.s || keys.d) &&
+          player.onGround &&
+          player.health > 0;
         if (moving) {
           camera.position.x += Math.sin(state.walkPhase * 2.08) * 0.027 * fx;
           camera.position.z += Math.cos(state.walkPhase * 1.65) * 0.014 * fx;
@@ -6381,11 +6455,16 @@
     syncSettingsUI();
 
     window.addEventListener("resize", () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setPixelRatio(getPixelRatioForQuality());
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      syncGameRendererSize();
     });
+    window.addEventListener("load", () => {
+      syncGameRendererSize();
+    });
+    try {
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", () => syncGameRendererSize());
+      }
+    } catch (_) {}
   </script>
 </body>
 </html>
