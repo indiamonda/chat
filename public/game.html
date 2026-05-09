@@ -25,6 +25,18 @@
             var segs = String(path || "").replace(/\/+$/, "").split("/").filter(Boolean);
             return segs.length === 1 && segs[0].toLowerCase() === "game";
           }
+          /**
+           * Some hosts/proxies put game.html under .../html/ while assets remain one level up; treat that path as if it
+           * pointed to the parent directory so relative URLs do NOT produce …/html/walls.png 404s.
+           */
+          function stripHtmlSegment(path) {
+            var segs = String(path || "").replace(/\/+$/, "").split("/").filter(Boolean);
+            if (segs.length && segs[segs.length - 1].toLowerCase() === "html") {
+              segs.pop();
+              return "/" + segs.join("/") + (segs.length ? "/" : "");
+            }
+            return path;
+          }
           if (!p || p === "/") {
             return u.origin + "/";
           }
@@ -32,10 +44,13 @@
             return u.origin + "/";
           }
           if (p.endsWith("/")) {
-            return u.origin + p;
+            var stripped = stripHtmlSegment(p);
+            return u.origin + (stripped || "/");
           }
           var li = p.lastIndexOf("/");
-          return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
+          var dirPath = li >= 0 ? p.slice(0, li + 1) : "/";
+          dirPath = stripHtmlSegment(dirPath) || "/";
+          return u.origin + dirPath;
         } catch (e1) {
           var schemeRest = page.indexOf("/", page.indexOf("//") + 2);
           var slash = page.lastIndexOf("/");
@@ -368,7 +383,12 @@
       gap: 12px;
       box-sizing: border-box;
       padding: 28px 16px 22px;
-      background: transparent;
+      /** Painted PNG menu art lives here; --game-ui-menu-bg is set by JS once the file is found. */
+      background-color: #070504;
+      background-image: var(--game-ui-menu-bg);
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
     }
 
     .menu h1 {
@@ -3901,18 +3921,18 @@
       audioMaster.gain.value = gameSettings.masterVolume;
       audioSfx.gain.value = gameSettings.soundVolume;
       audioMusic.gain.value = gameSettings.musicVolume;
-      if (menuBgmMenuGain) {
-        menuBgmMenuGain.gain.value = THREE.MathUtils.clamp(
-          gameSettings.masterVolume * gameSettings.musicVolume,
-          0,
-          1
-        );
-      } else if (menuBgmAudio) {
-        menuBgmAudio.volume = THREE.MathUtils.clamp(
-          gameSettings.masterVolume * gameSettings.musicVolume,
-          0,
-          1
-        );
+      if (menuBgmAudio) {
+        if (_menuBgmGapTimer != null) {
+          menuBgmAudio.volume = 0;
+        } else if (typeof _menuBgmHandleTimeUpdate === "function") {
+          _menuBgmHandleTimeUpdate();
+        } else {
+          menuBgmAudio.volume = THREE.MathUtils.clamp(
+            gameSettings.masterVolume * gameSettings.musicVolume,
+            0,
+            1
+          );
+        }
       }
     }
     applyAudioVolumes();
@@ -3967,13 +3987,63 @@
       try { menuBgmAudio.load(); } catch (_) {}
     }
 
+    /**
+     * Custom loop with a fade tail: fade volume to 0 over the final FADE_SECS, then hold silent for GAP_SECS,
+     * then restart from 0 at the user-configured volume. Native `audio.loop` is disabled so we can shape the tail.
+     */
+    const MENU_BGM_FADE_SECS = 8;
+    const MENU_BGM_GAP_SECS = 2;
+    let _menuBgmGapTimer = null;
+    function _menuBgmTargetVolume() {
+      return THREE.MathUtils.clamp(gameSettings.masterVolume * gameSettings.musicVolume, 0, 1);
+    }
+    function _menuBgmClearGapTimer() {
+      if (_menuBgmGapTimer != null) {
+        clearTimeout(_menuBgmGapTimer);
+        _menuBgmGapTimer = null;
+      }
+    }
+    function _menuBgmHandleTimeUpdate() {
+      if (!menuBgmAudio) return;
+      const dur = Number(menuBgmAudio.duration);
+      if (!Number.isFinite(dur) || dur <= MENU_BGM_FADE_SECS) {
+        menuBgmAudio.volume = _menuBgmTargetVolume();
+        return;
+      }
+      const remaining = dur - menuBgmAudio.currentTime;
+      const target = _menuBgmTargetVolume();
+      if (remaining <= MENU_BGM_FADE_SECS) {
+        const k = Math.max(0, Math.min(1, remaining / MENU_BGM_FADE_SECS));
+        menuBgmAudio.volume = target * k;
+      } else {
+        menuBgmAudio.volume = target;
+      }
+    }
+    function _menuBgmHandleEnded() {
+      if (!menuBgmAudio) return;
+      _menuBgmClearGapTimer();
+      menuBgmAudio.volume = 0;
+      _menuBgmGapTimer = setTimeout(() => {
+        _menuBgmGapTimer = null;
+        if (!menuBgmAudio) return;
+        if (!menuBgmUnlocked) return;
+        if (menuEl.style.display === "none") return;
+        try {
+          menuBgmAudio.currentTime = 0;
+        } catch (_) {}
+        menuBgmAudio.volume = _menuBgmTargetVolume();
+        const p = menuBgmAudio.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      }, MENU_BGM_GAP_SECS * 1000);
+    }
     function ensureMenuBgmAudio() {
       if (menuBgmAudio) return;
       _menuBgmCandidates = getMenuBgmUrlList();
       _menuBgmFallbackIdx = 0;
       menuBgmAudio = new Audio();
-      menuBgmAudio.loop = true;
+      menuBgmAudio.loop = false;
       menuBgmAudio.preload = "auto";
+      menuBgmAudio.volume = _menuBgmTargetVolume();
       menuBgmAudio.addEventListener("error", () => {
         _menuBgmFallbackIdx++;
         if (_menuBgmFallbackIdx < _menuBgmCandidates.length) {
@@ -3983,23 +4053,22 @@
             if (p && typeof p.catch === "function") p.catch(() => {});
           }
         } else {
-          console.warn("[menu bgm] all sources failed");
+          console.warn("[menu bgm] all sources failed", _menuBgmCandidates);
         }
       });
+      menuBgmAudio.addEventListener("canplay", () => {
+        if (menuBgmUnlocked && menuEl.style.display !== "none") {
+          const p = menuBgmAudio.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        }
+      });
+      menuBgmAudio.addEventListener("timeupdate", _menuBgmHandleTimeUpdate);
+      menuBgmAudio.addEventListener("ended", _menuBgmHandleEnded);
       _menuBgmTrySrc(0);
-      wireMenuBgmThroughAnalyser();
-      if (!menuBgmMenuGain) {
-        menuBgmAudio.volume = THREE.MathUtils.clamp(
-          gameSettings.masterVolume * gameSettings.musicVolume,
-          0,
-          1
-        );
-      } else {
-        applyAudioVolumes();
-      }
     }
     function pauseMenuBgm() {
       if (!menuBgmAudio) return;
+      _menuBgmClearGapTimer();
       try {
         menuBgmAudio.pause();
       } catch (_) {}
@@ -4012,18 +4081,14 @@
       if (menuEl.style.display === "none") return;
       if (!menuBgmUnlocked) return;
       ensureMenuBgmAudio();
-      wireMenuBgmThroughAnalyser();
-      if (!menuBgmMenuGain) {
-        menuBgmAudio.volume = THREE.MathUtils.clamp(
-          gameSettings.masterVolume * gameSettings.musicVolume,
-          0,
-          1
-        );
-      } else {
-        applyAudioVolumes();
-      }
+      if (_menuBgmGapTimer != null) return;
+      _menuBgmHandleTimeUpdate();
       const p = menuBgmAudio.play();
-      if (p && typeof p.catch === "function") p.catch(() => {});
+      if (p && typeof p.catch === "function") {
+        p.catch((err) => {
+          console.warn("[menu bgm] play() rejected", err && err.message);
+        });
+      }
     }
     function onMenuBgmUserGesture() {
       menuBgmUnlocked = true;

@@ -1,5 +1,5 @@
 import { createServer } from 'http';
-import { readFileSync, existsSync, statSync, readdirSync, rmSync as fsRm } from 'fs';
+import { readFileSync, existsSync, readdirSync, rmSync as fsRm } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
@@ -828,17 +828,12 @@ const CORS_ALLOW_LIST = new Set([
   'https://jchat.fly.dev',
 ]);
 
-/** Same rules as Express CORS middleware — must stay in sync with Socket.IO `cors.origin`. */
-function isAllowedBrowserOrigin(origin) {
-  return CORS_ALLOW_LIST.has(origin)
-    || /^https?:\/\/localhost(?::\d+)?$/i.test(origin)
-    || /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin);
-}
-
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
-    const allowed = isAllowedBrowserOrigin(origin);
+    const allowed = CORS_ALLOW_LIST.has(origin)
+      || /^https?:\/\/localhost(?::\d+)?$/i.test(origin)
+      || /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin);
     if (allowed) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
@@ -891,29 +886,6 @@ app.use((req, res, next) => {
 });
 app.use(tokenAuthMiddleware);
 
-/** Game shell assets must always resolve from public/ (walls.png, menu.mp3, game-ui/*) even if another middleware or CDN rule interferes with generic static. */
-app.use((req, res, next) => {
-  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
-  const pathOnly = req.path.split('?')[0];
-  if (!/^\/(?:walls\.png|menu\.mp3|flashlight\.mp3|game-ui\/)/i.test(pathOnly)) return next();
-  const rel = pathOnly.replace(/^\/+/, '');
-  if (!rel || rel.includes('..')) return next();
-  const abs = join(publicDir, rel);
-  if (!existsSync(abs)) return next();
-  try {
-    if (!statSync(abs).isFile()) return next();
-  } catch {
-    return next();
-  }
-  if (/\.mp3$/i.test(abs)) res.type('audio/mpeg');
-  else if (/\.png$/i.test(abs)) res.type('image/png');
-  res.set('Cache-Control', 'public, max-age=3600');
-  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  res.sendFile(abs, (err) => {
-    if (err) next(err);
-  });
-});
-
 // Serve the multiplayer game page
 app.get('/game', (req, res) => {
   const p = join(publicDir, 'game.html');
@@ -923,7 +895,7 @@ app.get('/game', (req, res) => {
 });
 
 // Serve SPA HTML with cache-busting for all document routes (before static so "/" gets it too)
-const SPA_SKIP_EXT = /\.(?:js|mjs|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|map|json|txt|xml|webmanifest|mp3|ogg|wav|webm|mp4)$/i;
+const SPA_SKIP_EXT = /\.(?:js|mjs|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|map|json|txt|xml|webmanifest)$/i;
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   if (SPA_SKIP_EXT.test(req.path)) return next();
@@ -945,15 +917,7 @@ app.use((req, res, next) => {
   }
 });
 
-app.use(express.static(publicDir, {
-  setHeaders(res, filePath) {
-    // Let menu.mp3 / game-ui images load from pages on another origin (e.g. GitHub Pages)
-    // when used with crossOrigin + MediaElementSource / Web Audio / TextureLoader.
-    if (/\.(?:mp3|ogg|wav|webp|png|jpe?g|gif|svg)$/i.test(filePath)) {
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    }
-  },
-}));
+app.use(express.static(publicDir));
 
 /** Public config for client (e.g. reCAPTCHA site key). */
 app.get('/api/config', (req, res) => {
@@ -1611,14 +1575,7 @@ app.use((err, req, res, next) => {
 });
 
 const io = new Server(httpServer, {
-  // Previously only CORS_ALLOW_LIST — localhost / 127.0.0.1 worked for HTTP but failed Socket.IO
-  // handshake (polling + WS) during local dev because Express allowed those origins separately.
-  cors: {
-    origin: (origin, callback) => {
-      callback(null, !origin || isAllowedBrowserOrigin(origin));
-    },
-    credentials: true,
-  },
+  cors: { origin: [...CORS_ALLOW_LIST], credentials: true },
   pingInterval: 20000,
   pingTimeout: 10000,
   connectTimeout: 45000,
@@ -1809,32 +1766,20 @@ gameNsp.on('connection', (socket) => {
       if (typeof ack === 'function') ack({ ok: false, error: 'bad room' });
       return;
     }
-    const normalized =
-      roomId.startsWith('qp:') || roomId.startsWith('cr:')
-        ? roomId
-        : `game:${roomId}`;
-
-    /** Re-joining the same room after quickplay/create/joinByCode must NOT leave/re-add — that reorders the Set and steals zombie host from the first player. */
-    const existing = gameRooms.get(normalized);
-    if (currentRoom === normalized && existing && existing.has(socket.id)) {
-      socket.join(normalized);
-      if (typeof ack === 'function') {
-        const m = gameRooms.get(normalized);
-        const hostId = m && m.size ? [...m][0] : null;
-        ack({ ok: true, hostId, roomKey: normalized });
-      }
-      return;
-    }
-
     leaveCurrentRoom(socket, currentRoom);
-    currentRoom = normalized;
+    // Full keys from quickplay / create / join-by-code; legacy bare codes use game: prefix
+    if (roomId.startsWith('qp:') || roomId.startsWith('cr:')) {
+      currentRoom = roomId;
+    } else {
+      currentRoom = `game:${roomId}`;
+    }
     socket.join(currentRoom);
     if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
     gameRooms.get(currentRoom).add(socket.id);
     broadcastZombieHost(currentRoom);
     if (typeof ack === 'function') {
-      const m = gameRooms.get(currentRoom);
-      const hostId = m && m.size ? [...m][0] : null;
+      const members = gameRooms.get(currentRoom);
+      const hostId = members && members.size ? [...members][0] : null;
       ack({ ok: true, hostId, roomKey: currentRoom });
     }
   });
@@ -1904,8 +1849,6 @@ gameNsp.on('connection', (socket) => {
       y: +data.y || 1.65,
       z: +data.z || 0,
     });
-    const lightsOn =
-      typeof data.lightsOn === 'boolean' ? data.lightsOn : true;
     socket.to(currentRoom).emit('enemyMove', {
       id: socket.id,
       x: +data.x || 0,
@@ -1914,7 +1857,6 @@ gameNsp.on('connection', (socket) => {
       yaw: +data.yaw || 0,
       name: typeof data.name === 'string' ? data.name.slice(0, 16) : undefined,
       weapon: Number.isFinite(+data.weapon) ? (+data.weapon | 0) : undefined,
-      lightsOn,
     });
   });
 
