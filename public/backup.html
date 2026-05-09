@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
-  Same as game.html but does not point game-multiplayer-origin at chat.jimmyqrg.com.
-  Socket.IO and asset fallbacks use this page’s origin only (unless you set meta below).
+  Source-of-truth deployment: https://tintly555.github.io/games/fps/
+  This copy in the chat repo is for editing; multiplayer hits chat.jimmyqrg.com via meta below when hosted on static Pages.
   Crossfire mode is PVP (player vs player); Arena is PVE / co-op vs zombies.
 -->
 <html lang="en">
@@ -23,9 +23,7 @@
           /** `/game` and `/game/` are routes for game.html; static files stay at site root (/walls.png), not under /game/. */
           function isBareGameRoute(path) {
             var segs = String(path || "").replace(/\/+$/, "").split("/").filter(Boolean);
-            if (segs.length !== 1) return false;
-            var s = segs[0].toLowerCase();
-            return s === "game" || s === "game-self-hosted" || s === "game-self-hosted.html";
+            return segs.length === 1 && segs[0].toLowerCase() === "game";
           }
           /**
            * Some hosts/proxies put game.html under .../html/ while assets remain one level up; treat that path as if it
@@ -78,11 +76,11 @@
       } catch (eExp) {}
     })();
   </script>
-  <title>Zone No Light</title>
+  <title>Abandoned Orphanage</title>
   <!-- Only the script-injected <base> above should set the document base (folder of this HTML).
        A second fixed base (e.g. chat origin) breaks relative game-ui/ + walls.png when the page is not at site root or when assets live beside this file. -->
   <!-- Socket.IO / multiplayer API host only — do not use as primary CDN for game-ui / menu.mp3 (same-origin loads avoid 404 + Web Audio CORS). -->
-  <meta name="game-multiplayer-origin" content="" />
+  <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
   <meta name="game-asset-base" content="" />
   <!-- Where static files from public/ are mounted: empty = site root (e.g. Fly: /walls.png). GitHub Pages subpath: content="/games/fps" -->
@@ -137,15 +135,15 @@
         var el = document.documentElement;
         el.style.setProperty(
           "--game-ui-menu-bg",
-          'url("' + new URL("background.png", R).href + '")'
+          'url("' + new URL("game-ui/game-ui-menu-background.png", R).href + '")'
         );
         el.style.setProperty(
           "--game-ui-btn-texture",
-          'url("' + new URL("game-ui-button-texture.png", R).href + '")'
+          'url("' + new URL("game-ui/game-ui-button-texture.png", R).href + '")'
         );
         el.style.setProperty(
           "--game-ui-settings-bg",
-          'url("' + new URL("game-ui-settings-panel-bg.png", R).href + '")'
+          'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", R).href + '")'
         );
       } catch (e1) {}
     })();
@@ -154,8 +152,7 @@
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js",
-        "game-i18n": "./game-i18n.js"
+        "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js"
       }
     }
   </script>
@@ -173,8 +170,8 @@
       --game-ui-btn-texture: none;
       --game-ui-settings-bg: none;
       /** Menu / UI overlays: arrow cursor PNG (64×42), hotspot at tip */
-      --game-ui-menu-pointer: url("mouse.png") 6 4, default;
-      --game-ui-menu-pointer-action: url("mouse.png") 6 4, pointer;
+      --game-ui-menu-pointer: url("game-ui/game-ui-menu-pointer.png") 6 4, default;
+      --game-ui-menu-pointer-action: url("game-ui/game-ui-menu-pointer.png") 6 4, pointer;
     }
 
     #app {
@@ -862,15 +859,15 @@
           var b = normBase(base);
           root.style.setProperty(
             "--game-ui-menu-bg",
-            'url("' + new URL("background.png", b).href + '")'
+            'url("' + new URL("game-ui/game-ui-menu-background.png", b).href + '")'
           );
           root.style.setProperty(
             "--game-ui-btn-texture",
-            'url("' + new URL("game-ui-button-texture.png", b).href + '")'
+            'url("' + new URL("game-ui/game-ui-button-texture.png", b).href + '")'
           );
           root.style.setProperty(
             "--game-ui-settings-bg",
-            'url("' + new URL("game-ui-settings-panel-bg.png", b).href + '")'
+            'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", b).href + '")'
           );
         }
         function tryNext() {
@@ -882,7 +879,7 @@
           };
           img.onerror = tryNext;
           try {
-            img.src = new URL("background.png", normBase(base)).href;
+            img.src = new URL("game-ui/game-ui-menu-background.png", normBase(base)).href;
           } catch (e3) {
             tryNext();
           }
@@ -897,49 +894,49 @@
   <div id="menu" class="menu">
     <div class="menu-panels-wrap">
     <div id="menuMain" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
-      <h1 data-i18n="gameTitle">Zone No Light</h1>
-      <p data-i18n="creditsBy">by Tintly555 and JimmyQrg</p>
-      <button type="button" id="btnArena" data-i18n="btnZombieArena">Zombie Arena</button>
-      <button type="button" id="btnCrossfire" data-i18n="btnCrossfire">Crossfire (PVP)</button>
-      <button type="button" id="btnMenuSettings" data-i18n="btnSettings">SETTINGS</button>
+      <h1>Abandoned Orphanage</h1>
+      <p>by Tintly555 and JimmyQrg</p>
+      <button type="button" id="btnArena">Zombie Arena</button>
+      <button type="button" id="btnCrossfire">Crossfire (PVP)</button>
+      <button type="button" id="btnMenuSettings">SETTINGS</button>
     </div>
     <div id="menuArenaMode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
-      <h2 style="font-family:'Audiowide',sans-serif;font-size:28px;margin:0 0 14px 0;letter-spacing:3px;" data-i18n="zombieArenaTitle">ZOMBIE ARENA</h2>
-      <button type="button" id="btnArenaSingle" data-i18n="btnSingleplayer">SINGLEPLAYER</button>
-      <button type="button" id="btnArenaCoop" data-i18n="btnCoopMode">CO-OP MODE</button>
-      <button type="button" id="btnArenaBack" data-i18n="btnBack">← BACK</button>
+      <h2 style="font-family:'Audiowide',sans-serif;font-size:28px;margin:0 0 14px 0;letter-spacing:3px;">ZOMBIE ARENA</h2>
+      <button type="button" id="btnArenaSingle">SINGLEPLAYER</button>
+      <button type="button" id="btnArenaCoop">CO-OP MODE</button>
+      <button type="button" id="btnArenaBack">← BACK</button>
     </div>
     <div id="menuLobby" style="display:none;flex-direction:column;align-items:center;gap:10px;">
       <h2 id="lobbyTitle" style="font-family:'Audiowide',sans-serif;font-size:24px;margin:0 0 10px 0;letter-spacing:2px;">MULTIPLAYER</h2>
-      <button type="button" id="btnQuickplay" data-i18n="btnQuickPlay">QUICK PLAY</button>
-      <button type="button" id="btnCreateRoom" data-i18n="btnCreateRoom">CREATE A ROOM</button>
-      <button type="button" id="btnJoinCode" data-i18n="btnJoinViaCode">JOIN VIA CODE</button>
-      <button type="button" id="btnLobbyBack" data-i18n="btnBack">← BACK</button>
+      <button type="button" id="btnQuickplay">QUICK PLAY</button>
+      <button type="button" id="btnCreateRoom">CREATE A ROOM</button>
+      <button type="button" id="btnJoinCode">JOIN VIA CODE</button>
+      <button type="button" id="btnLobbyBack">← BACK</button>
     </div>
     <div id="menuJoinCode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
-      <h2 style="font-family:'Audiowide',sans-serif;font-size:24px;margin:0 0 6px 0;letter-spacing:2px;" data-i18n="joinViaCodeTitle">JOIN VIA CODE</h2>
-      <input id="codeInput" type="text" maxlength="10" data-i18n-placeholder="roomCodePlaceholder" placeholder="ROOM CODE" style="font-family:'Audiowide',sans-serif;width:180px;padding:10px 14px;font-size:18px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;text-transform:uppercase;letter-spacing:4px;">
+      <h2 style="font-family:'Audiowide',sans-serif;font-size:24px;margin:0 0 6px 0;letter-spacing:2px;">JOIN VIA CODE</h2>
+      <input id="codeInput" type="text" maxlength="10" placeholder="ROOM CODE" style="font-family:'Audiowide',sans-serif;width:180px;padding:10px 14px;font-size:18px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;text-transform:uppercase;letter-spacing:4px;">
       <p id="codeError" style="font-family:'Audiowide',sans-serif;color:#e53e3e;font-size:13px;margin:4px 0 0 0;min-height:18px;"></p>
-      <button type="button" id="btnCodeJoin" data-i18n="btnJoin">JOIN</button>
-      <button type="button" id="btnCodeBack" data-i18n="btnBack">← BACK</button>
+      <button type="button" id="btnCodeJoin">JOIN</button>
+      <button type="button" id="btnCodeBack">← BACK</button>
     </div>
     </div>
   </div>
 
   <div id="app"></div>
   <div id="gameBootOverlay" aria-live="polite" aria-busy="true" style="display:none;">
-    <div class="game-boot-spinner" role="status" data-i18n-aria-label="ariaLoading" aria-label="Loading"></div>
-    <p id="gameBootLabel" class="game-boot-text" data-i18n="loadingWorld">Loading world…</p>
+    <div class="game-boot-spinner" role="status" aria-label="Loading"></div>
+    <p id="gameBootLabel" class="game-boot-text">Loading world…</p>
   </div>
   <div id="shadeOverlay" aria-hidden="true"></div>
   <div id="warFilmOverlay" aria-hidden="true"></div>
   <div class="hud" id="hud"></div>
   <div id="fpsOverlay" style="position:fixed;top:10px;right:14px;z-index:45;pointer-events:none;text-align:right;font-family:'Audiowide',sans-serif;font-size:13px;color:rgba(245,248,255,0.92);text-shadow:0 1px 5px rgba(0,0,0,0.85);line-height:1.4;">
     <div id="fpsValue">— FPS</div>
-    <div id="fpsChatHint" style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;" data-i18n="fpsChatHint">Press T to chat</div>
-    <div id="fpsLightHint" style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;" data-i18n="fpsLightHint">Press L to toggle light &amp; flashlight</div>
+    <div style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;">Press T to chat</div>
+    <div style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;">Press L to toggle light &amp; flashlight</div>
   </div>
-  <div class="hint" id="hint" data-i18n="hintClick">Click anywhere</div>
+  <div class="hint" id="hint">Click anywhere</div>
   <div class="flash" id="flash"></div>
   <div class="crosshair" id="crosshair"></div>
   <div id="medkitReticle" class="medkit-reticle hidden" aria-hidden="true">
@@ -962,109 +959,97 @@
         />
       </g>
     </svg>
-    <span class="medkit-hold-txt" data-i18n="medkitHold">HOLD</span>
+    <span class="medkit-hold-txt">HOLD</span>
   </div>
   <div class="hitmarker" id="hitmarker"></div>
   <div id="deathOverlay" style="position:fixed;inset:0;z-index:50;pointer-events:none;display:none;">
     <div id="deathFade" style="position:absolute;inset:0;background:rgba(0,0,0,0);transition:none;"></div>
     <div id="deathUI" style="position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;align-items:center;gap:14px;pointer-events:auto;">
-      <h1 id="deathTitle" style="font-family:'Audiowide',sans-serif;font-size:52px;margin:0 0 6px 0;color:#e53e3e;text-shadow:0 0 30px rgba(229,62,62,0.5);letter-spacing:4px;" data-i18n="deathDefeat">DEFEAT</h1>
+      <h1 id="deathTitle" style="font-family:'Audiowide',sans-serif;font-size:52px;margin:0 0 6px 0;color:#e53e3e;text-shadow:0 0 30px rgba(229,62,62,0.5);letter-spacing:4px;">DEFEAT</h1>
       <p id="deathScore" style="font-family:'Audiowide',sans-serif;font-size:16px;margin:0 0 18px 0;opacity:0.8;">Score: 0</p>
-      <button type="button" class="overlay-btn" id="btnDeathRestart" data-i18n="btnRestart">RESTART</button>
-      <button type="button" class="overlay-btn overlay-btn-accent" id="btnDeathSettings" data-i18n="btnSettings">SETTINGS</button>
-      <button type="button" class="overlay-btn" id="btnDeathQuit" data-i18n="btnQuit">QUIT</button>
+      <button type="button" class="overlay-btn" id="btnDeathRestart">RESTART</button>
+      <button type="button" class="overlay-btn overlay-btn-accent" id="btnDeathSettings">SETTINGS</button>
+      <button type="button" class="overlay-btn" id="btnDeathQuit">QUIT</button>
     </div>
   </div>
   <div id="pauseOverlay" style="position:fixed;inset:0;z-index:55;display:none;flex-direction:column;justify-content:center;align-items:center;gap:14px;background:rgba(0,0,0,0.5);">
-    <h1 id="pauseTitle" style="font-family:'Audiowide',sans-serif;font-size:48px;margin:0 0 10px 0;color:#fff;letter-spacing:4px;" data-i18n="paused">PAUSED</h1>
-    <button type="button" class="overlay-btn" id="btnResume" data-i18n="btnResume">RESUME</button>
-    <button type="button" class="overlay-btn overlay-btn-accent" id="btnPauseSettings" data-i18n="btnSettings">SETTINGS</button>
-    <button type="button" class="overlay-btn" id="btnPauseRestart" style="display:none;" data-i18n="pauseRestart">RESTART</button>
-    <button type="button" class="overlay-btn" id="btnPauseQuit" data-i18n="pauseQuit">QUIT</button>
+    <h1 style="font-family:'Audiowide',sans-serif;font-size:48px;margin:0 0 10px 0;color:#fff;letter-spacing:4px;">PAUSED</h1>
+    <button type="button" class="overlay-btn" id="btnResume">RESUME</button>
+    <button type="button" class="overlay-btn overlay-btn-accent" id="btnPauseSettings">SETTINGS</button>
+    <button type="button" class="overlay-btn" id="btnPauseRestart" style="display:none;">RESTART</button>
+    <button type="button" class="overlay-btn" id="btnPauseQuit">QUIT</button>
   </div>
   <div id="chatBox" style="position:fixed;bottom:10px;left:10px;z-index:40;pointer-events:none;font-family:'Audiowide',sans-serif;display:flex;flex-direction:column;justify-content:flex-end;">
     <div id="chatMessages" style="display:flex;flex-direction:column;gap:2px;margin-bottom:6px;overflow:hidden;"></div>
     <div id="chatInputWrap" style="display:none;pointer-events:auto;">
-      <input id="chatInput" type="text" maxlength="200" data-i18n-placeholder="chatPlaceholder" placeholder="Type a message..." style="font-family:'Audiowide',sans-serif;width:280px;padding:6px 10px;font-size:13px;border:1px solid rgba(79,209,255,0.5);border-radius:6px;background:rgba(13,17,27,0.8);color:#fff;outline:none;">
+      <input id="chatInput" type="text" maxlength="200" placeholder="Type a message..." style="font-family:'Audiowide',sans-serif;width:280px;padding:6px 10px;font-size:13px;border:1px solid rgba(79,209,255,0.5);border-radius:6px;background:rgba(13,17,27,0.8);color:#fff;outline:none;">
     </div>
   </div>
   <div id="hitDirContainer" style="position:fixed;inset:0;z-index:35;pointer-events:none;display:flex;justify-content:center;align-items:center;"></div>
   <div id="nameModal" style="position:fixed;inset:0;z-index:110;display:none;justify-content:center;align-items:center;background:rgba(0,0,0,0.7);">
     <div style="background:#1a2236;border-radius:14px;padding:32px 38px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
-      <h2 style="font-family:'Audiowide',sans-serif;margin:0 0 16px 0;font-size:22px;" data-i18n="nameModalTitle">ENTER YOUR NAME</h2>
-      <input id="nameInput" type="text" maxlength="16" data-i18n-placeholder="namePlaceholder" placeholder="Player" style="font-family:'Audiowide',sans-serif;width:200px;padding:10px 14px;font-size:16px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;">
+      <h2 style="font-family:'Audiowide',sans-serif;margin:0 0 16px 0;font-size:22px;">ENTER YOUR NAME</h2>
+      <input id="nameInput" type="text" maxlength="16" placeholder="Player" style="font-family:'Audiowide',sans-serif;width:200px;padding:10px 14px;font-size:16px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;">
       <br>
-      <button class="overlay-btn" type="button" id="btnNameOk" style="margin-top:16px;" data-i18n="btnNameJoin">JOIN</button>
+      <button class="overlay-btn" type="button" id="btnNameOk" style="margin-top:16px;">JOIN</button>
     </div>
   </div>
 
   <div id="settingsModal">
     <div class="settings-shell">
       <aside class="settings-tabs">
-        <button type="button" class="settings-tab active" data-scroll-target="settingsSectionAudio" data-i18n="settingsTabAudio">AUDIO</button>
-        <button type="button" class="settings-tab" data-scroll-target="settingsSectionGraphics" data-i18n="settingsTabGraphics">GRAPHICS</button>
-        <button type="button" class="settings-tab" data-scroll-target="settingsSectionLanguage" data-i18n="settingsTabLanguage">LANGUAGE</button>
+        <button type="button" class="settings-tab active" data-scroll-target="settingsSectionAudio">AUDIO</button>
+        <button type="button" class="settings-tab" data-scroll-target="settingsSectionGraphics">GRAPHICS</button>
       </aside>
       <div class="settings-modal-inner-wrap">
-        <button type="button" class="settings-close" id="btnCloseSettings" data-i18n-title="closeTitle" title="Close">×</button>
+        <button type="button" class="settings-close" id="btnCloseSettings" title="Close">×</button>
         <div class="settings-scroll" id="settingsScroll">
           <section class="settings-section" id="settingsSectionAudio">
-            <h2 data-i18n="settingsAudioH">AUDIO</h2>
+            <h2>AUDIO</h2>
             <div class="settings-row">
-              <label><span data-i18n="masterVol">Master volume</span> <span class="value-pill" id="lblMasterVol">100%</span></label>
+              <label>Master volume <span class="value-pill" id="lblMasterVol">100%</span></label>
               <input type="range" id="rngMasterVol" min="0" max="100" value="100" />
             </div>
             <div class="settings-row">
-              <label><span data-i18n="musicVol">Music volume</span> <span class="value-pill" id="lblMusicVol">70%</span></label>
+              <label>Music volume <span class="value-pill" id="lblMusicVol">70%</span></label>
               <input type="range" id="rngMusicVol" min="0" max="100" value="70" />
             </div>
             <div class="settings-row">
-              <label><span data-i18n="sfxVol">Sound volume</span> <span class="value-pill" id="lblSfxVol">100%</span></label>
+              <label>Sound volume <span class="value-pill" id="lblSfxVol">100%</span></label>
               <input type="range" id="rngSfxVol" min="0" max="100" value="100" />
             </div>
           </section>
           <section class="settings-section" id="settingsSectionGraphics">
-            <h2 data-i18n="settingsGraphicsH">GRAPHICS</h2>
+            <h2>GRAPHICS</h2>
             <div class="settings-row">
-              <label><span data-i18n="qualityHeader">Quality</span> <span class="value-pill" data-i18n="qualityPerfFidelity">performance / fidelity</span></label>
+              <label>Quality <span class="value-pill">performance / fidelity</span></label>
               <div class="settings-cycle">
-                <button type="button" class="cycle-arrow" id="btnQualityPrev" data-i18n-aria-label="ariaLowerQ" aria-label="Lower quality">◀</button>
+                <button type="button" class="cycle-arrow" id="btnQualityPrev" aria-label="Lower quality">◀</button>
                 <div class="cycle-value" id="qualityLabel">REGULAR</div>
-                <button type="button" class="cycle-arrow" id="btnQualityNext" data-i18n-aria-label="ariaHigherQ" aria-label="Higher quality">▶</button>
+                <button type="button" class="cycle-arrow" id="btnQualityNext" aria-label="Higher quality">▶</button>
               </div>
-              <p style="font-size:11px;opacity:0.65;margin-top:10px;max-width:480px;line-height:1.45;" data-i18n="qualityBlurb">
+              <p style="font-size:11px;opacity:0.65;margin-top:10px;max-width:480px;line-height:1.45;">
                 Does not change zombie sync or gameplay — rendering only. Brightness is matched across tiers so difficulty stays fair.
               </p>
             </div>
             <div class="settings-row">
-              <label data-i18n="textureDetail">Texture detail</label>
+              <label>Texture detail</label>
               <div class="settings-cycle">
-                <button type="button" class="cycle-arrow" id="btnTexturePrev" data-i18n-aria-label="ariaTexPrev" aria-label="Previous">◀</button>
+                <button type="button" class="cycle-arrow" id="btnTexturePrev" aria-label="Previous">◀</button>
                 <div class="cycle-value" id="textureLabel">ON</div>
-                <button type="button" class="cycle-arrow" id="btnTextureNext" data-i18n-aria-label="ariaTexNext" aria-label="Next">▶</button>
+                <button type="button" class="cycle-arrow" id="btnTextureNext" aria-label="Next">▶</button>
               </div>
             </div>
             <div class="settings-row">
-              <label data-i18n="renderDistHeader">Render distance</label>
+              <label>Render distance</label>
               <div class="settings-cycle">
-                <button type="button" class="cycle-arrow" id="btnRenderDistPrev" data-i18n-aria-label="ariaDistShorter" aria-label="Shorter render distance">◀</button>
+                <button type="button" class="cycle-arrow" id="btnRenderDistPrev" aria-label="Shorter render distance">◀</button>
                 <div class="cycle-value" id="renderDistanceLabel">NORMAL</div>
-                <button type="button" class="cycle-arrow" id="btnRenderDistNext" data-i18n-aria-label="ariaDistLonger" aria-label="Longer render distance">▶</button>
+                <button type="button" class="cycle-arrow" id="btnRenderDistNext" aria-label="Longer render distance">▶</button>
               </div>
-              <p style="font-size:11px;opacity:0.65;margin-top:10px;max-width:480px;line-height:1.45;" data-i18n="renderDistBlurb">
+              <p style="font-size:11px;opacity:0.65;margin-top:10px;max-width:480px;line-height:1.45;">
                 Beyond this distance the world fades into darkness (distance fog). Lights dim with the fog. Does not affect gameplay.
               </p>
-            </div>
-          </section>
-          <section class="settings-section" id="settingsSectionLanguage">
-            <h2 data-i18n="settingsLanguageH">LANGUAGE</h2>
-            <div class="settings-row">
-              <label data-i18n="languagePickLabel">Language</label>
-              <div class="settings-cycle">
-                <button type="button" class="cycle-arrow" id="btnLangPrev" data-i18n-aria-label="ariaLangPrev" aria-label="Previous language">◀</button>
-                <div class="cycle-value" id="languageUiLabel">English</div>
-                <button type="button" class="cycle-arrow" id="btnLangNext" data-i18n-aria-label="ariaLangNext" aria-label="Next language">▶</button>
-              </div>
             </div>
           </section>
         </div>
@@ -1075,8 +1060,6 @@
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js";
     import { Reflector } from "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/objects/Reflector.js";
-    /** `game-i18n` is mapped in the import map to ./game-i18n.js (document URL), not affected by base href like import "./game-i18n.js". */
-    import { LANGUAGE_OPTIONS, GAME_I18N } from "game-i18n";
 
     const app = document.getElementById("app");
     const hud = document.getElementById("hud");
@@ -1128,7 +1111,7 @@
     const btnMenuSettings = document.getElementById("btnMenuSettings");
     const settingsModal = document.getElementById("settingsModal");
     const settingsScroll = document.getElementById("settingsScroll");
-    const SETTINGS_SECTION_IDS = ["settingsSectionAudio", "settingsSectionGraphics", "settingsSectionLanguage"];
+    const SETTINGS_SECTION_IDS = ["settingsSectionAudio", "settingsSectionGraphics"];
     const btnCloseSettings = document.getElementById("btnCloseSettings");
     const rngMasterVol = document.getElementById("rngMasterVol");
     const rngMusicVol = document.getElementById("rngMusicVol");
@@ -1145,9 +1128,6 @@
     const btnRenderDistPrev = document.getElementById("btnRenderDistPrev");
     const btnRenderDistNext = document.getElementById("btnRenderDistNext");
     const renderDistanceLabel = document.getElementById("renderDistanceLabel");
-    const btnLangPrev = document.getElementById("btnLangPrev");
-    const btnLangNext = document.getElementById("btnLangNext");
-    const languageUiLabel = document.getElementById("languageUiLabel");
     const warFilmOverlay = document.getElementById("warFilmOverlay");
     const shadeOverlay = document.getElementById("shadeOverlay");
     const chatBox = document.getElementById("chatBox");
@@ -1158,6 +1138,7 @@
 
     const SETTINGS_STORAGE_KEY = "fpsGameSettingsV1";
     const QUALITY_LEVELS = ["potato", "regular", "high", "extreme"];
+    const QUALITY_LABELS = ["POTATO", "REGULAR", "HIGH", "EXTREME"];
     /** Scales fog far plane (and matching near) — lower = darkness closes in sooner. */
     const RENDER_DISTANCE_LEVELS = [
       { label: "SHORT", scale: 0.62 },
@@ -1174,7 +1155,6 @@
       qualityIndex: 1,
       texturesOn: true,
       renderDistanceIndex: 2,
-      language: "en",
     };
     let settingsModalOpen = false;
 
@@ -1195,8 +1175,6 @@
             RENDER_DISTANCE_LEVELS.length - 1
           );
         }
-        const allowedLang = new Set(LANGUAGE_OPTIONS.map((x) => x.code));
-        if (typeof o.language === "string" && allowedLang.has(o.language)) gameSettings.language = o.language;
       } catch (_) {}
     }
 
@@ -1207,50 +1185,6 @@
     }
 
     loadGameSettings();
-
-    function t(key) {
-      const lang = gameSettings.language || "en";
-      const pack = GAME_I18N[lang] || GAME_I18N.en;
-      const v = pack[key];
-      if (v != null && v !== "") return v;
-      return GAME_I18N.en[key] ?? key;
-    }
-
-    function languageIndexFromSettings() {
-      const code = gameSettings.language || "en";
-      const i = LANGUAGE_OPTIONS.findIndex((o) => o.code === code);
-      return i >= 0 ? i : 0;
-    }
-
-    function applyGameLanguage() {
-      const lang = gameSettings.language || "en";
-      document.documentElement.lang = lang;
-      document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-      try {
-        document.title = t("gameTitle");
-      } catch (_) {}
-
-      document.querySelectorAll("[data-i18n]").forEach((el) => {
-        const k = el.getAttribute("data-i18n");
-        if (k) el.textContent = t(k);
-      });
-      document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
-        const k = el.getAttribute("data-i18n-placeholder");
-        if (k && el instanceof HTMLInputElement) el.placeholder = t(k);
-      });
-      document.querySelectorAll("[data-i18n-title]").forEach((el) => {
-        const k = el.getAttribute("data-i18n-title");
-        if (k) el.title = t(k);
-      });
-      document.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
-        const k = el.getAttribute("data-i18n-aria-label");
-        if (k) el.setAttribute("aria-label", t(k));
-      });
-
-      syncSettingsUI();
-      updateHud();
-      refreshOverlayTexts();
-    }
 
     /** Resolve static assets (walls, game-ui, menu.mp3). Declared before WebGL so menu BGM still loads if the renderer throws. */
     function pageDirFromLocation() {
@@ -1264,11 +1198,7 @@
         const u = new URL(page);
         const p = u.pathname || "/";
         const segs0 = p.replace(/\/+$/, "").split("/").filter(Boolean);
-        const bareGame =
-          segs0.length === 1 &&
-          (segs0[0].toLowerCase() === "game" ||
-            segs0[0].toLowerCase() === "game-self-hosted" ||
-            segs0[0].toLowerCase() === "game-self-hosted.html");
+        const bareGame = segs0.length === 1 && segs0[0].toLowerCase() === "game";
         if (!p || p === "/") {
           return u.origin + "/";
         }
@@ -1666,8 +1596,8 @@
 
     const FLASH_INNER_INTENSITY = 150;
     const FLASH_INNER_DISTANCE = 100;
-    const FLASH_INNER_ANGLE = Math.PI / 28;
-    const FLASH_INNER_PEN = 0.055;
+    const FLASH_INNER_ANGLE = Math.PI / 16;
+    const FLASH_INNER_PEN = 0.08;
 
     /**
      * Punctual lights only (Point / Spot). Hemisphere & directional lights have no decay in Three.js.
@@ -2915,15 +2845,15 @@
         const root = document.documentElement;
         root.style.setProperty(
           "--game-ui-menu-bg",
-          `url("${new URL("background.png", b).href}")`
+          `url("${new URL("game-ui/game-ui-menu-background.png", b).href}")`
         );
         root.style.setProperty(
           "--game-ui-btn-texture",
-          `url("${new URL("game-ui-button-texture.png", b).href}")`
+          `url("${new URL("game-ui/game-ui-button-texture.png", b).href}")`
         );
         root.style.setProperty(
           "--game-ui-settings-bg",
-          `url("${new URL("game-ui-settings-panel-bg.png", b).href}")`
+          `url("${new URL("game-ui/game-ui-settings-panel-bg.png", b).href}")`
         );
       } catch (_) {}
     }
@@ -2936,7 +2866,7 @@
         const base = normalizeGameAssetBase(candidates[i++]);
         let testUrl;
         try {
-          testUrl = new URL("background.png", base).href;
+          testUrl = new URL("game-ui/game-ui-menu-background.png", base).href;
         } catch (_) {
           tryNext();
           return;
@@ -4475,29 +4405,23 @@
 
     function updateHud() {
       const w = weapon();
-      const wName = t(`weapon${state.weaponIndex}`);
-      const roomLine =
-        MULTIPLAYER && ROOM_CODE
-          ? `<b style="color:#4fd1ff;">${t("hudRoom")} ${ROOM_CODE}</b><br>`
-          : "";
+      const roomLine = (MULTIPLAYER && ROOM_CODE) ? `<b style="color:#4fd1ff;">Room: ${ROOM_CODE}</b><br>` : "";
       const mapLabel =
         CURRENT_MAP === "crossfire"
-          ? t("mapCrossfire")
+          ? "crossfire (PVP)"
           : CURRENT_MAP === "arena"
-            ? t("mapArena")
+            ? "zombie arena"
             : CURRENT_MAP;
-      const mpSuffix = MULTIPLAYER ? ` ${t("hudMpSuffix")}` : "";
-      const reloadParen = state.reloading ? ` (${t("hudRefilling")})` : "";
       hud.innerHTML = `
         ${roomLine}
-        ${t("gameTitle")}<br>
-        ${t("hudMoveLine")}<br>
-        ${t("hudAimLine")}<br>
-        ${t("hudMapPrefix")} ${mapLabel}${mpSuffix}<br>
-        ${t("hudWeaponPrefix")} ${wName}<br>
-        ${state.weaponIndex === 4 ? "" : `${t("hudBulletsPrefix")} ${w.ammo} / ${w.magSize}${reloadParen}<br>`}
-        ${t("hudHealthPrefix")} ${Math.max(0, Math.floor(player.health))} / ${player.maxHealth}<br>
-        ${t("hudScorePrefix")} ${state.score}
+        Abandoned Orphanage<br>
+        WASD move | Space jump | R reload<br>
+        Mouse aim | RMB zoom | Weapons: 1 2 3 4 | <b>5</b> Med Kit (hold M1 to heal 10s)<br>
+        Map: ${mapLabel}${MULTIPLAYER ? " (MP)" : ""}<br>
+        Weapon: ${w.name}<br>
+        ${state.weaponIndex === 4 ? "" : `Bullets: ${w.ammo} / ${w.magSize}${state.reloading ? "（Refilling...）" : ""}<br>`}
+        Health: ${Math.max(0, Math.floor(player.health))} / ${player.maxHealth}<br>
+        Score: ${state.score}
       `;
     }
     updateHud();
@@ -4866,9 +4790,6 @@
         retargetTimer: 0,
         moveYaw: 0,
         rangedLosAcquireTimer: 0,
-        wanderPath: null,
-        wanderPathIdx: 0,
-        wanderCooldown: wanderScheduleNextDelay(),
         eyeRefs: _zombieEyeRefs,
       };
     }
@@ -6156,15 +6077,14 @@
       deathFade.style.background = "rgba(0,0,0,0)";
       deathUI.style.display = "none";
 
-      btnDeathQuit.textContent = t("btnQuit");
-      btnDeathRestart.textContent = MULTIPLAYER ? t("btnRespawn") : t("btnRestart");
-      btnDeathSettings.textContent = t("btnSettings");
+      btnDeathQuit.textContent = "QUIT";
+      btnDeathRestart.textContent = MULTIPLAYER ? "RESPAWN" : "RESTART";
       btnDeathSettings.style.display = "";
 
       if (CURRENT_MAP === "crossfire") {
         deathUI.style.display = "flex";
         deathUI.style.opacity = "0.25";
-        deathTitle.textContent = t("deathDefeated");
+        deathTitle.textContent = "DEFEATED";
         deathTitle.style.color = "#e53e3e";
         deathScore.textContent = "";
         btnDeathRestart.style.display = "";
@@ -6172,8 +6092,8 @@
         deathUI.addEventListener("mouseenter", () => { deathUI.style.opacity = "1"; });
         deathUI.addEventListener("mouseleave", () => { deathUI.style.opacity = "0.25"; });
       } else {
-        deathScore.textContent = t("deathScoreFmt").replace("{score}", String(state.score));
-        deathTitle.textContent = t("deathDefeat");
+        deathScore.textContent = `Score: ${state.score}`;
+        deathTitle.textContent = "DEFEAT";
         deathTitle.style.color = "#e53e3e";
         btnDeathRestart.style.display = "";
         deathOverlay.style.pointerEvents = "none";
@@ -6183,15 +6103,15 @@
     function updateDeathAnim(dt) {
       if (player.health > 0 || CURRENT_MAP === "crossfire") return;
       deathAnimTime += dt;
-      const deathPhase = Math.min(deathAnimTime / DEATH_ANIM_DURATION, 1);
-      const fadeOpacity = deathPhase * 0.5;
+      const t = Math.min(deathAnimTime / DEATH_ANIM_DURATION, 1);
+      const fadeOpacity = t * 0.5;
       deathFade.style.background = `rgba(0,0,0,${fadeOpacity})`;
 
       if (killerEnemy) {
         player.yaw += (deathCamYaw - player.yaw) * Math.min(1, dt * 4);
         player.pitch += (deathCamPitch - player.pitch) * Math.min(1, dt * 4);
       }
-      const zoomFov = deathBaseFov - deathPhase * 20;
+      const zoomFov = deathBaseFov - t * 20;
       camera.fov = Math.max(30, zoomFov);
       camera.updateProjectionMatrix();
 
@@ -6199,7 +6119,7 @@
       camera.rotation.y = player.yaw;
       camera.rotation.x = player.pitch;
 
-      if (deathPhase >= 1 && deathUI.style.display === "none") {
+      if (t >= 1 && deathUI.style.display === "none") {
         deathUI.style.display = "flex";
         deathOverlay.style.pointerEvents = "auto";
       }
@@ -6211,7 +6131,7 @@
       deathUI.style.display = "none";
       deathFade.style.background = "rgba(0,0,0,0)";
       deathOverlay.style.pointerEvents = "none";
-      btnDeathRestart.textContent = t("btnRestart");
+      btnDeathRestart.textContent = "RESTART";
       killerEnemy = null;
       weaponRoot.visible = true;
       refreshLocalPlayerLightsForCurrentState();
@@ -6293,27 +6213,6 @@
       setActiveSettingsTab(chosen);
     }
 
-    function refreshOverlayTexts() {
-      const pauseTitleEl = document.getElementById("pauseTitle");
-      if (pauseTitleEl) pauseTitleEl.textContent = t("paused");
-      btnResume.textContent = t("btnResume");
-      btnPauseSettings.textContent = t("btnSettings");
-      btnPauseRestart.textContent = t("pauseRestart");
-      btnPauseQuit.textContent = t("pauseQuit");
-      btnDeathSettings.textContent = t("btnSettings");
-      btnDeathQuit.textContent = t("btnQuit");
-      btnDeathRestart.textContent = MULTIPLAYER ? t("btnRespawn") : t("btnRestart");
-      if (deathOverlay.style.display === "block" && deathUI.style.display === "flex") {
-        if (CURRENT_MAP === "crossfire") {
-          deathTitle.textContent = t("deathDefeated");
-          deathScore.textContent = "";
-        } else {
-          deathTitle.textContent = t("deathDefeat");
-          deathScore.textContent = t("deathScoreFmt").replace("{score}", String(state.score));
-        }
-      }
-    }
-
     function syncSettingsUI() {
       rngMasterVol.value = String(Math.round(gameSettings.masterVolume * 100));
       rngMusicVol.value = String(Math.round(gameSettings.musicVolume * 100));
@@ -6321,15 +6220,14 @@
       lblMasterVol.textContent = `${rngMasterVol.value}%`;
       lblMusicVol.textContent = `${rngMusicVol.value}%`;
       lblSfxVol.textContent = `${rngSfxVol.value}%`;
-      qualityLabel.textContent = t(`qualityTier${gameSettings.qualityIndex}`);
-      textureLabel.textContent = gameSettings.texturesOn ? t("on") : t("off");
+      qualityLabel.textContent = QUALITY_LABELS[gameSettings.qualityIndex] || "REGULAR";
+      textureLabel.textContent = gameSettings.texturesOn ? "ON" : "OFF";
       const rdi = THREE.MathUtils.clamp(
         gameSettings.renderDistanceIndex | 0,
         0,
         RENDER_DISTANCE_LEVELS.length - 1
       );
-      renderDistanceLabel.textContent = t(`renderDist${rdi}`);
-      if (languageUiLabel) languageUiLabel.textContent = LANGUAGE_OPTIONS[languageIndexFromSettings()].native;
+      renderDistanceLabel.textContent = RENDER_DISTANCE_LEVELS[rdi].label;
     }
 
     function openSettingsModal() {
@@ -6478,107 +6376,6 @@
       return { x: fx, z: fz };
     }
 
-    /** Idle roam: BFS path to a random cell at medium graph distance (nav grid cells). */
-    const WANDER_CELL_DIST_MIN = 6;
-    const WANDER_CELL_DIST_MAX = 20;
-    const WANDER_BFS_STEP_CAP = 90000;
-    const WANDER_WAYPOINT_REACH = 1.35;
-
-    function pushNavNeighbors8(idx, out) {
-      const cr = (idx / navCols) | 0;
-      const cc = idx % navCols;
-      for (let dr = -1; dr <= 1; dr++) {
-        const nr = cr + dr;
-        if (nr < 0 || nr >= navRows) continue;
-        for (let dc = -1; dc <= 1; dc++) {
-          if (dr === 0 && dc === 0) continue;
-          const nc = cc + dc;
-          if (nc < 0 || nc >= navCols) continue;
-          const nIdx = nr * navCols + nc;
-          if (navGrid[nIdx]) continue;
-          if (dr !== 0 && dc !== 0) {
-            if (navGrid[cr * navCols + nc] || navGrid[nr * navCols + cc]) continue;
-          }
-          out.push(nIdx);
-        }
-      }
-    }
-
-    /**
-     * @returns {Array<{x:number,z:number}>|null} world waypoints (cell centers), excluding start cell
-     */
-    function buildRandomWanderPath(ex, ez) {
-      if (!navGrid || navCols < 2 || navRows < 2) return null;
-      const c0 = Math.min(navCols - 1, Math.max(0, ((ex - navMinX) / NAV_CELL) | 0));
-      const r0 = Math.min(navRows - 1, Math.max(0, ((ez - navMinZ) / NAV_CELL) | 0));
-      const startIdx = r0 * navCols + c0;
-      if (navGrid[startIdx]) return null;
-
-      const total = navCols * navRows;
-      const dist = new Uint16Array(total).fill(65535);
-      const parent = new Int32Array(total).fill(-1);
-      dist[startIdx] = 0;
-      const queue = [startIdx];
-      let head = 0;
-      let bfsSteps = 0;
-      while (head < queue.length && bfsSteps < WANDER_BFS_STEP_CAP) {
-        bfsSteps++;
-        const idx = queue[head++];
-        const nd = dist[idx] + 1;
-        const neigh = [];
-        pushNavNeighbors8(idx, neigh);
-        for (let i = 0; i < neigh.length; i++) {
-          const nIdx = neigh[i];
-          if (nd < dist[nIdx]) {
-            dist[nIdx] = nd;
-            parent[nIdx] = idx;
-            queue.push(nIdx);
-          }
-        }
-      }
-
-      const candidates = [];
-      for (let i = 0; i < total; i++) {
-        if (navGrid[i]) continue;
-        const d = dist[i];
-        if (d >= WANDER_CELL_DIST_MIN && d <= WANDER_CELL_DIST_MAX) candidates.push(i);
-      }
-      if (!candidates.length) {
-        for (let i = 0; i < total; i++) {
-          if (navGrid[i]) continue;
-          const d = dist[i];
-          if (d >= 4 && d <= 40) candidates.push(i);
-        }
-      }
-      if (!candidates.length) return null;
-
-      const goalIdx = candidates[(Math.random() * candidates.length) | 0];
-      const chain = [];
-      let cur = goalIdx;
-      let guard = 0;
-      while (cur >= 0 && cur !== startIdx && guard++ < 512) {
-        chain.push(cur);
-        cur = parent[cur];
-      }
-      if (!chain.length) return null;
-      chain.reverse();
-      const path = [];
-      for (let i = 0; i < chain.length; i++) {
-        const gi = chain[i];
-        const gr = (gi / navCols) | 0;
-        const gc = gi % navCols;
-        path.push({
-          x: navMinX + (gc + 0.5) * NAV_CELL,
-          z: navMinZ + (gr + 0.5) * NAV_CELL,
-        });
-      }
-      return path;
-    }
-
-    function wanderScheduleNextDelay() {
-      return 1 + Math.random() * 14;
-    }
-
     // ── Zombie vision / awareness (throttled, 360° FOV) ──
     const LOSE_RATIO = 0.10;
     const LOSE_TIME = 15.0;
@@ -6676,8 +6473,6 @@
         if (ratio > 0) {
           enemy.aware = true;
           enemy.hiddenTimer = 0;
-          enemy.wanderPath = null;
-          enemy.wanderPathIdx = 0;
         }
       } else {
         if (ratio < LOSE_RATIO) {
@@ -6686,7 +6481,6 @@
             enemy.aware = false;
             enemy.hiddenTimer = 0;
             enemy.targetId = null;
-            enemy.wanderCooldown = wanderScheduleNextDelay();
           }
         } else {
           enemy.hiddenTimer = 0;
@@ -6867,9 +6661,6 @@
             enemy.targetId = null;
             enemy.retargetTimer = 0;
             enemy.rangedLosAcquireTimer = 0;
-            enemy.wanderPath = null;
-            enemy.wanderPathIdx = 0;
-            enemy.wanderCooldown = wanderScheduleNextDelay();
             enemy.facingYaw = Math.random() * Math.PI * 2;
             enemy.visYaw = enemy.facingYaw;
             enemy.armLV = -0.2;
@@ -6881,11 +6672,6 @@
           continue;
         }
 
-        if (enemy.aware) {
-          enemy.wanderPath = null;
-          enemy.wanderPathIdx = 0;
-        }
-
         const target = getEnemyTarget(enemy);
         const dx = target.x - enemy.group.position.x;
         const dz = target.z - enemy.group.position.z;
@@ -6893,15 +6679,6 @@
 
         if ((visFrameCounter + ei) % 8 === 0) {
           updateAwareness(enemy, dt * 8);
-        }
-        if (!enemy.aware && enemy.wanderPath && enemy.wanderPath.length) {
-          const tgtSpot = getEnemyTarget(enemy);
-          if (computeVisibility(enemy.group.position.x, enemy.group.position.z, tgtSpot.x, tgtSpot.z) > 0) {
-            enemy.aware = true;
-            enemy.hiddenTimer = 0;
-            enemy.wanderPath = null;
-            enemy.wanderPathIdx = 0;
-          }
         }
 
         enemy.retargetTimer += dt;
@@ -7048,65 +6825,9 @@
             }
           }
         } else {
+          enemy.moving = false;
+          enemy.facingYaw += dt * 0.3;
           enemy.rangedLosAcquireTimer = 0;
-          enemy.wanderCooldown -= dt;
-          if (enemy.wanderPath && enemy.wanderPathIdx < enemy.wanderPath.length) {
-            const wp = enemy.wanderPath[enemy.wanderPathIdx];
-            const wx = wp.x - enemy.group.position.x;
-            const wz = wp.z - enemy.group.position.z;
-            const wdist = Math.sqrt(wx * wx + wz * wz);
-            if (wdist < WANDER_WAYPOINT_REACH) {
-              enemy.wanderPathIdx++;
-              if (enemy.wanderPathIdx >= enemy.wanderPath.length) {
-                enemy.wanderPath = null;
-                enemy.wanderPathIdx = 0;
-                enemy.wanderCooldown = wanderScheduleNextDelay();
-              }
-            }
-            if (enemy.wanderPath && enemy.wanderPathIdx < enemy.wanderPath.length) {
-              const wp2 = enemy.wanderPath[enemy.wanderPathIdx];
-              const wx2 = wp2.x - enemy.group.position.x;
-              const wz2 = wp2.z - enemy.group.position.z;
-              const wdist2 = Math.sqrt(wx2 * wx2 + wz2 * wz2);
-              if (wdist2 > 0.05) {
-                enemy.facingYaw = Math.atan2(wx2, wz2);
-                const step = enemy.speed * dt * 0.88;
-                const inv = 1 / wdist2;
-                let sx = wx2 * inv * step;
-                let sz = wz2 * inv * step;
-                const nx = enemy.group.position.x + sx;
-                const nz = enemy.group.position.z + sz;
-                if (!enemyCollidesWall(nx, nz)) {
-                  enemy.group.position.x = nx;
-                  enemy.group.position.z = nz;
-                } else if (!enemyCollidesWall(nx, enemy.group.position.z)) {
-                  enemy.group.position.x = nx;
-                } else if (!enemyCollidesWall(enemy.group.position.x, nz)) {
-                  enemy.group.position.z = nz;
-                }
-                enemy.moveYaw = enemy.facingYaw;
-                enemy.walkTime += dt * (enemy.type === "fast" ? 12 : 8);
-                enemy.moving = true;
-              } else {
-                enemy.moving = false;
-              }
-            } else {
-              enemy.moving = false;
-            }
-          } else if (enemy.wanderCooldown <= 0) {
-            const path = buildRandomWanderPath(enemy.group.position.x, enemy.group.position.z);
-            if (path && path.length) {
-              enemy.wanderPath = path;
-              enemy.wanderPathIdx = 0;
-            } else {
-              enemy.wanderCooldown = 2 + Math.random() * 4;
-            }
-            enemy.moving = false;
-            enemy.facingYaw += dt * 0.28;
-          } else {
-            enemy.moving = false;
-            enemy.facingYaw += dt * 0.3;
-          }
         }
 
         enemy.visYaw = dampAngle(enemy.visYaw, enemy.facingYaw, dt, 14);
@@ -7390,9 +7111,9 @@
 
     async function preloadCriticalGameAssets() {
       await Promise.all([
-        preloadBootImageRel("background.png"),
-        preloadBootImageRel("game-ui-button-texture.png"),
-        preloadBootImageRel("game-ui-settings-panel-bg.png"),
+        preloadBootImageRel("game-ui/game-ui-menu-background.png"),
+        preloadBootImageRel("game-ui/game-ui-button-texture.png"),
+        preloadBootImageRel("game-ui/game-ui-settings-panel-bg.png"),
       ]);
       await preloadWallTextureForBoot();
     }
@@ -7401,7 +7122,7 @@
       gameWorldReady = false;
       gameBootOverlay.style.display = "flex";
       gameBootOverlay.setAttribute("aria-busy", "true");
-      gameBootLabel.textContent = t("bootBuild");
+      gameBootLabel.textContent = "Building world…";
       weaponRoot.visible = false;
       setLocalPlayerLights(false);
 
@@ -7506,7 +7227,7 @@
       }
 
       try {
-        gameBootLabel.textContent = t("bootLoad");
+        gameBootLabel.textContent = "Loading assets…";
         await preloadCriticalGameAssets();
       } catch (err) {
         console.warn("[boot] asset preload", err);
@@ -7521,7 +7242,7 @@
       compileSceneShaders();
 
       weaponRoot.visible = true;
-      gameBootLabel.textContent = t("bootPrep");
+      gameBootLabel.textContent = "Preparing display…";
       /** Force a fresh layout + size sync before flipping gameWorldReady so the first rendered frame already fills the screen. */
       await waitForRenderableViewport();
       syncGameRendererSize();
@@ -7582,15 +7303,9 @@
       document.getElementById(id).style.display = "flex";
     }
 
-    function showLobby(mode) {
+    function showLobby(mode, title) {
       pendingLobbyMode = mode;
-      const titleKey =
-        mode === "arena-coop"
-          ? "lobbyArenaCoop"
-          : mode === "crossfire"
-            ? "lobbyCrossfire"
-            : "lobbyMultiplayer";
-      lobbyTitle.textContent = t(titleKey);
+      lobbyTitle.textContent = title;
       showMenuPanel("menuLobby");
     }
 
@@ -7610,10 +7325,10 @@
 
     btnArena.addEventListener("click", () => showMenuPanel("menuArenaMode"));
     btnArenaSingle.addEventListener("click", () => startGame("arena", false));
-    btnArenaCoop.addEventListener("click", () => showLobby("arena-coop"));
+    btnArenaCoop.addEventListener("click", () => showLobby("arena-coop", "ARENA CO-OP"));
     btnArenaBack.addEventListener("click", () => showMenuPanel("menuMain"));
 
-    btnCrossfire.addEventListener("click", () => showLobby("crossfire"));
+    btnCrossfire.addEventListener("click", () => showLobby("crossfire", "CROSSFIRE (PVP)"));
 
     btnQuickplay.addEventListener("click", () => {
       socket.emit("quickplay", pendingLobbyMode, (res) => {
@@ -7639,7 +7354,7 @@
 
     btnCodeJoin.addEventListener("click", () => {
       const code = codeInput.value.trim().toUpperCase();
-      if (!code) { codeError.textContent = t("enterCodeError"); return; }
+      if (!code) { codeError.textContent = "Enter a code"; return; }
       socket.emit("joinByCode", { code, mode: pendingLobbyMode }, (res) => {
         if (res.error) { codeError.textContent = res.error; return; }
         const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
@@ -7658,7 +7373,7 @@
     });
 
     btnNameOk.addEventListener("click", () => {
-      playerName = nameInput.value.trim().slice(0, 16) || t("namePlaceholder");
+      playerName = nameInput.value.trim().slice(0, 16) || "Player";
       nameModal.style.display = "none";
       const map = nameModal._pendingMap || "crossfire";
       const coopArena = map === "arena" && pendingLobbyMode === "arena-coop";
@@ -7753,17 +7468,7 @@
     btnRenderDistPrev.addEventListener("click", () => cycleRenderDistance(-1));
     btnRenderDistNext.addEventListener("click", () => cycleRenderDistance(1));
 
-    function cycleLanguage(delta) {
-      const n = LANGUAGE_OPTIONS.length;
-      const idx = (languageIndexFromSettings() + delta + n) % n;
-      gameSettings.language = LANGUAGE_OPTIONS[idx].code;
-      saveGameSettings();
-      applyGameLanguage();
-    }
-    btnLangPrev.addEventListener("click", () => cycleLanguage(-1));
-    btnLangNext.addEventListener("click", () => cycleLanguage(1));
-
-    applyGameLanguage();
+    syncSettingsUI();
 
     window.addEventListener("resize", () => {
       syncGameRendererSize();
