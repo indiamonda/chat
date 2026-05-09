@@ -24,6 +24,7 @@
     })();
   </script>
   <title>Abandoned Orphanage Prototype</title>
+  <base href="https://chat.jimmyqrg,com" />
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
   <meta name="game-asset-base" content="" />
@@ -540,13 +541,29 @@
         var meta = document.querySelector('meta[name="game-asset-base"]');
         var mb = meta && meta.content != null ? String(meta.content).trim() : "";
         if (mb) bases.push(normBase(mb));
-        bases.push(dir);
+        var lastSeg = "";
         try {
-          bases.push(new URL("../", dir).href);
-        } catch (e1) {}
-        try {
-          bases.push(new URL("../../", dir).href);
-        } catch (e2) {}
+          var segs = new URL(dir).pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+          lastSeg = String(segs[segs.length - 1] || "").toLowerCase();
+        } catch (e0) {}
+        // Match getGameAssetBaseCandidates(): assets often live one level up when game.html is under .../html/
+        if (lastSeg === "html") {
+          try {
+            bases.push(new URL("../", dir).href);
+          } catch (e1) {}
+          try {
+            bases.push(new URL("../../", dir).href);
+          } catch (e2) {}
+          bases.push(dir);
+        } else {
+          bases.push(dir);
+          try {
+            bases.push(new URL("../", dir).href);
+          } catch (e1) {}
+          try {
+            bases.push(new URL("../../", dir).href);
+          } catch (e2) {}
+        }
         bases.push("https://tintly555.github.io/games/fps/");
         var root = document.documentElement;
         var bi = 0;
@@ -3305,6 +3322,11 @@
     applyAudioVolumes();
 
     function getMenuBgmUrl() {
+      for (const base of getGameAssetBaseCandidates()) {
+        try {
+          return new URL("menu.mp3", normalizeGameAssetBase(base)).href;
+        } catch (_) {}
+      }
       try {
         return new URL("menu.mp3", pageDirFromLocation()).href;
       } catch (_) {

@@ -895,7 +895,7 @@ app.get('/game', (req, res) => {
 });
 
 // Serve SPA HTML with cache-busting for all document routes (before static so "/" gets it too)
-const SPA_SKIP_EXT = /\.(?:js|mjs|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|map|json|txt|xml|webmanifest)$/i;
+const SPA_SKIP_EXT = /\.(?:js|mjs|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|map|json|txt|xml|webmanifest|mp3|ogg|wav|webm|mp4)$/i;
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   if (SPA_SKIP_EXT.test(req.path)) return next();
