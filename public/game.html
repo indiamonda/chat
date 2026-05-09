@@ -680,6 +680,7 @@
   <div id="fpsOverlay" style="position:fixed;top:10px;right:14px;z-index:45;pointer-events:none;text-align:right;font-family:'Audiowide',sans-serif;font-size:13px;color:rgba(245,248,255,0.92);text-shadow:0 1px 5px rgba(0,0,0,0.85);line-height:1.4;">
     <div id="fpsValue">— FPS</div>
     <div style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;">Press T to chat</div>
+    <div style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;">Press L to toggle light &amp; flashlight</div>
   </div>
   <div class="hint" id="hint">Click anywhere</div>
   <div class="flash" id="flash"></div>
@@ -780,6 +781,7 @@
     const crosshairEl = document.getElementById("crosshair");
     const hitmarkerEl = document.getElementById("hitmarker");
     const menuWallBackdropCanvas = document.getElementById("menuWallBackdrop");
+    const menuEl = document.getElementById("menu");
     const menuMain = document.getElementById("menuMain");
     const menuArenaMode = document.getElementById("menuArenaMode");
     const menuLobby = document.getElementById("menuLobby");
@@ -3661,6 +3663,57 @@
       osc.stop(now + 0.12);
     }
 
+    let flashlightAudioBuffer = null;
+    let flashlightSoundLoadPromise = null;
+
+    function getFlashlightSoundUrl() {
+      for (const base of getGameAssetBaseCandidates()) {
+        try {
+          return new URL("flashlight.mp3", normalizeGameAssetBase(base)).href;
+        } catch (_) {}
+      }
+      try {
+        return new URL("flashlight.mp3", pageDirFromLocation()).href;
+      } catch (_) {
+        return "flashlight.mp3";
+      }
+    }
+
+    function ensureFlashlightSoundBuffer() {
+      if (flashlightAudioBuffer) return Promise.resolve();
+      if (!flashlightSoundLoadPromise) {
+        flashlightSoundLoadPromise = fetch(getFlashlightSoundUrl())
+          .then((res) => {
+            if (!res.ok) throw new Error("flashlight fetch");
+            return res.arrayBuffer();
+          })
+          .then((arr) => audioCtx.decodeAudioData(arr.slice(0)))
+          .then((buf) => {
+            flashlightAudioBuffer = buf;
+          })
+          .catch(() => {
+            flashlightSoundLoadPromise = null;
+          });
+      }
+      return flashlightSoundLoadPromise;
+    }
+
+    function playFlashlightToggleSound() {
+      if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+      void ensureFlashlightSoundBuffer().then(() => {
+        if (!flashlightAudioBuffer) return;
+        const bs = audioCtx.createBufferSource();
+        bs.buffer = flashlightAudioBuffer;
+        const g = audioCtx.createGain();
+        g.gain.value = 1;
+        bs.connect(g);
+        g.connect(audioSfx);
+        try {
+          bs.start();
+        } catch (_) {}
+      });
+    }
+
     function triggerCamShake(add = 0.09) {
       const s = getQualityPresentationScale();
       if (s <= 0) return;
@@ -3850,6 +3903,22 @@
       flashOuterLocal.visible = on;
       flashInnerLocal.visible = on;
     }
+
+    /** User toggle (L key); actual visibility also depends on menu / death / loading. */
+    let playerLightsPreference = true;
+
+    function refreshLocalPlayerLightsForCurrentState() {
+      if (!gameWorldReady || menuEl.style.display !== "none") {
+        setLocalPlayerLights(false);
+        return;
+      }
+      if (player.health <= 0) {
+        setLocalPlayerLights(false);
+        return;
+      }
+      setLocalPlayerLights(playerLightsPreference);
+    }
+
     setLocalPlayerLights(false);
 
     const weaponRoot = new THREE.Group();
@@ -4007,6 +4076,20 @@
         return;
       }
       const k = e.key.toLowerCase();
+      if (
+        k === "l" &&
+        started &&
+        gameWorldReady &&
+        menuEl.style.display === "none" &&
+        !chatOpen &&
+        !settingsModalOpen
+      ) {
+        playerLightsPreference = !playerLightsPreference;
+        refreshLocalPlayerLightsForCurrentState();
+        playFlashlightToggleSound();
+        e.preventDefault();
+        return;
+      }
       if (k === "t" && started && !paused && player.health > 0) {
         e.preventDefault();
         document.exitPointerLock();
@@ -4693,7 +4776,7 @@
       btnDeathRestart.textContent = "RESTART";
       killerEnemy = null;
       weaponRoot.visible = true;
-      setLocalPlayerLights(true);
+      refreshLocalPlayerLightsForCurrentState();
       camera.fov = 75;
       camera.updateProjectionMatrix();
     }
@@ -5662,8 +5745,8 @@
       compileSceneShaders();
 
       weaponRoot.visible = true;
-      setLocalPlayerLights(true);
       gameWorldReady = true;
+      refreshLocalPlayerLightsForCurrentState();
       gameBootOverlay.style.display = "none";
       gameBootOverlay.setAttribute("aria-busy", "false");
     }
