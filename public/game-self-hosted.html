@@ -23,7 +23,9 @@
           /** `/game` and `/game/` are routes for game.html; static files stay at site root (/walls.png), not under /game/. */
           function isBareGameRoute(path) {
             var segs = String(path || "").replace(/\/+$/, "").split("/").filter(Boolean);
-            return segs.length === 1 && segs[0].toLowerCase() === "game";
+            if (segs.length !== 1) return false;
+            var s = segs[0].toLowerCase();
+            return s === "game" || s === "game-self-hosted" || s === "game-self-hosted.html";
           }
           /**
            * Some hosts/proxies put game.html under .../html/ while assets remain one level up; treat that path as if it
@@ -135,15 +137,15 @@
         var el = document.documentElement;
         el.style.setProperty(
           "--game-ui-menu-bg",
-          'url("' + new URL("game-ui/game-ui-menu-background.png", R).href + '")'
+          'url("' + new URL("background.png", R).href + '")'
         );
         el.style.setProperty(
           "--game-ui-btn-texture",
-          'url("' + new URL("game-ui/game-ui-button-texture.png", R).href + '")'
+          'url("' + new URL("game-ui-button-texture.png", R).href + '")'
         );
         el.style.setProperty(
           "--game-ui-settings-bg",
-          'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", R).href + '")'
+          'url("' + new URL("game-ui-settings-panel-bg.png", R).href + '")'
         );
       } catch (e1) {}
     })();
@@ -170,8 +172,8 @@
       --game-ui-btn-texture: none;
       --game-ui-settings-bg: none;
       /** Menu / UI overlays: arrow cursor PNG (64×42), hotspot at tip */
-      --game-ui-menu-pointer: url("game-ui/game-ui-menu-pointer.png") 6 4, default;
-      --game-ui-menu-pointer-action: url("game-ui/game-ui-menu-pointer.png") 6 4, pointer;
+      --game-ui-menu-pointer: url("mouse.png") 6 4, default;
+      --game-ui-menu-pointer-action: url("mouse.png") 6 4, pointer;
     }
 
     #app {
@@ -859,15 +861,15 @@
           var b = normBase(base);
           root.style.setProperty(
             "--game-ui-menu-bg",
-            'url("' + new URL("game-ui/game-ui-menu-background.png", b).href + '")'
+            'url("' + new URL("background.png", b).href + '")'
           );
           root.style.setProperty(
             "--game-ui-btn-texture",
-            'url("' + new URL("game-ui/game-ui-button-texture.png", b).href + '")'
+            'url("' + new URL("game-ui-button-texture.png", b).href + '")'
           );
           root.style.setProperty(
             "--game-ui-settings-bg",
-            'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", b).href + '")'
+            'url("' + new URL("game-ui-settings-panel-bg.png", b).href + '")'
           );
         }
         function tryNext() {
@@ -879,7 +881,7 @@
           };
           img.onerror = tryNext;
           try {
-            img.src = new URL("game-ui/game-ui-menu-background.png", normBase(base)).href;
+            img.src = new URL("background.png", normBase(base)).href;
           } catch (e3) {
             tryNext();
           }
@@ -1259,7 +1261,11 @@
         const u = new URL(page);
         const p = u.pathname || "/";
         const segs0 = p.replace(/\/+$/, "").split("/").filter(Boolean);
-        const bareGame = segs0.length === 1 && segs0[0].toLowerCase() === "game";
+        const bareGame =
+          segs0.length === 1 &&
+          (segs0[0].toLowerCase() === "game" ||
+            segs0[0].toLowerCase() === "game-self-hosted" ||
+            segs0[0].toLowerCase() === "game-self-hosted.html");
         if (!p || p === "/") {
           return u.origin + "/";
         }
@@ -2906,15 +2912,15 @@
         const root = document.documentElement;
         root.style.setProperty(
           "--game-ui-menu-bg",
-          `url("${new URL("game-ui/game-ui-menu-background.png", b).href}")`
+          `url("${new URL("background.png", b).href}")`
         );
         root.style.setProperty(
           "--game-ui-btn-texture",
-          `url("${new URL("game-ui/game-ui-button-texture.png", b).href}")`
+          `url("${new URL("game-ui-button-texture.png", b).href}")`
         );
         root.style.setProperty(
           "--game-ui-settings-bg",
-          `url("${new URL("game-ui/game-ui-settings-panel-bg.png", b).href}")`
+          `url("${new URL("game-ui-settings-panel-bg.png", b).href}")`
         );
       } catch (_) {}
     }
@@ -2927,7 +2933,7 @@
         const base = normalizeGameAssetBase(candidates[i++]);
         let testUrl;
         try {
-          testUrl = new URL("game-ui/game-ui-menu-background.png", base).href;
+          testUrl = new URL("background.png", base).href;
         } catch (_) {
           tryNext();
           return;
@@ -7381,9 +7387,9 @@
 
     async function preloadCriticalGameAssets() {
       await Promise.all([
-        preloadBootImageRel("game-ui/game-ui-menu-background.png"),
-        preloadBootImageRel("game-ui/game-ui-button-texture.png"),
-        preloadBootImageRel("game-ui/game-ui-settings-panel-bg.png"),
+        preloadBootImageRel("background.png"),
+        preloadBootImageRel("game-ui-button-texture.png"),
+        preloadBootImageRel("game-ui-settings-panel-bg.png"),
       ]);
       await preloadWallTextureForBoot();
     }
