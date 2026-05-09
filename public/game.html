@@ -12,39 +12,23 @@
   <script>
     (function () {
       /**
-       * Directory URL for resolving relative assets (same logic as pageDirFromLocation in the game module).
-       * Must not use raw lastIndexOf("/") on the full URL — for https://host.com that yields "https://" only.
+       * Directory containing this document (for menu.mp3, walls.png, game-ui/).
+       * Uses the URL API so `/game`, `/repo/game.html`, and `/a/b/c/` all resolve correctly.
        */
       function computeAssetBaseDir(href) {
-        var page = String(href).split(/[#?]/)[0];
         try {
-          var u = new URL(page);
-          var p = u.pathname || "/";
-          var dirPath = p;
-          if (!dirPath.endsWith("/")) {
-            var li0 = dirPath.lastIndexOf("/");
-            dirPath = li0 >= 0 ? dirPath.slice(0, li0 + 1) : "/";
+          var u = new URL(String(href).split(/[#?]/)[0]);
+          var path = u.pathname || "/";
+          if (/\.html?$/i.test(path)) {
+            return new URL("..", u.href).href;
           }
-          var trimmed = dirPath.replace(/\/+$/, "");
-          var segs = trimmed.length ? trimmed.split("/").filter(Boolean) : [];
-          if (segs.length && segs[segs.length - 1].toLowerCase() === "html") {
-            return new URL("../", u.origin + dirPath).href;
-          }
-          if (!p || p === "/") {
-            return u.origin + "/";
-          }
-          if (p.endsWith("/")) {
-            return u.origin + p;
-          }
-          var li = p.lastIndexOf("/");
-          return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
+          return new URL(".", u.href).href;
         } catch (e1) {
-          var schemeRest = page.indexOf("/", page.indexOf("//") + 2);
-          var slash = page.lastIndexOf("/");
-          if (schemeRest >= 0 && slash > schemeRest) {
-            return page.slice(0, slash + 1);
+          try {
+            return new URL(".", location.href).href;
+          } catch (e2) {
+            return location.origin + "/";
           }
-          return page.endsWith("/") ? page : page + "/";
         }
       }
       try {
@@ -52,6 +36,15 @@
         try {
           window.__GAME_ASSET_BASE_DIR__ = dir;
         } catch (eG) {}
+        var el = document.documentElement;
+        try {
+          var menuBg = new URL("game-ui/game-ui-menu-background.png", dir).href;
+          var btnTx = new URL("game-ui/game-ui-button-texture.png", dir).href;
+          var setBg = new URL("game-ui/game-ui-settings-panel-bg.png", dir).href;
+          el.style.setProperty("--game-ui-menu-bg", 'url("' + menuBg + '")');
+          el.style.setProperty("--game-ui-btn-texture", 'url("' + btnTx + '")');
+          el.style.setProperty("--game-ui-settings-bg", 'url("' + setBg + '")');
+        } catch (eCss) {}
         var b = document.createElement("base");
         b.href = dir;
         var cs = document.head.querySelector("meta[charset]");
@@ -98,19 +91,6 @@
         try {
           window.__GAME_STATIC_ROOT__ = R;
         } catch (e0) {}
-        var el = document.documentElement;
-        el.style.setProperty(
-          "--game-ui-menu-bg",
-          'url("' + new URL("game-ui/game-ui-menu-background.png", R).href + '")'
-        );
-        el.style.setProperty(
-          "--game-ui-btn-texture",
-          'url("' + new URL("game-ui/game-ui-button-texture.png", R).href + '")'
-        );
-        el.style.setProperty(
-          "--game-ui-settings-bg",
-          'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", R).href + '")'
-        );
       } catch (e1) {}
     })();
   </script>
@@ -698,28 +678,19 @@
           typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__
             ? window.__GAME_ASSET_BASE_DIR__
             : (function () {
-                var page = String(location.href).split(/[#?]/)[0];
                 try {
-                  var u = new URL(page);
-                  var p = u.pathname || "/";
-                  var dirPath = p;
-                  if (!dirPath.endsWith("/")) {
-                    var li0 = dirPath.lastIndexOf("/");
-                    dirPath = li0 >= 0 ? dirPath.slice(0, li0 + 1) : "/";
+                  var u = new URL(String(location.href).split(/[#?]/)[0]);
+                  var path = u.pathname || "/";
+                  if (/\.html?$/i.test(path)) {
+                    return new URL("..", u.href).href;
                   }
-                  var trimmed = dirPath.replace(/\/+$/, "");
-                  var segs = trimmed.length ? trimmed.split("/").filter(Boolean) : [];
-                  if (segs.length && segs[segs.length - 1].toLowerCase() === "html") {
-                    return new URL("../", u.origin + dirPath).href;
-                  }
-                  if (!p || p === "/") return u.origin + "/";
-                  if (p.endsWith("/")) return u.origin + p;
-                  var li = p.lastIndexOf("/");
-                  return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
+                  return new URL(".", u.href).href;
                 } catch (e0) {
-                  var sr = page.indexOf("/", page.indexOf("//") + 2);
-                  var slash = page.lastIndexOf("/");
-                  return sr >= 0 && slash > sr ? page.slice(0, slash + 1) : page.endsWith("/") ? page : page + "/";
+                  try {
+                    return new URL(".", location.href).href;
+                  } catch (e1) {
+                    return location.origin + "/";
+                  }
                 }
               })();
         var bases = [];
@@ -2051,35 +2022,19 @@
           return window.__GAME_ASSET_BASE_DIR__;
         }
       } catch (_) {}
-      const page = String(window.location.href).split(/[#?]/)[0];
       try {
-        const u = new URL(page);
-        const p = u.pathname || "/";
-        let dirPath = p;
-        if (!dirPath.endsWith("/")) {
-          const li0 = dirPath.lastIndexOf("/");
-          dirPath = li0 >= 0 ? dirPath.slice(0, li0 + 1) : "/";
+        const u = new URL(String(window.location.href).split(/[#?]/)[0]);
+        const path = u.pathname || "/";
+        if (/\.html?$/i.test(path)) {
+          return new URL("..", u.href).href;
         }
-        const trimmed = dirPath.replace(/\/+$/, "");
-        const segs = trimmed.length ? trimmed.split("/").filter(Boolean) : [];
-        if (segs.length && segs[segs.length - 1].toLowerCase() === "html") {
-          return new URL("../", u.origin + dirPath).href;
-        }
-        if (!p || p === "/") {
-          return u.origin + "/";
-        }
-        if (p.endsWith("/")) {
-          return u.origin + p;
-        }
-        const li = p.lastIndexOf("/");
-        return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
+        return new URL(".", u.href).href;
       } catch (_) {
-        const schemeRest = page.indexOf("/", page.indexOf("//") + 2);
-        const slash = page.lastIndexOf("/");
-        if (schemeRest >= 0 && slash > schemeRest) {
-          return page.slice(0, slash + 1);
+        try {
+          return new URL(".", window.location.href).href;
+        } catch (_) {
+          return window.location.origin + "/";
         }
-        return page.endsWith("/") ? page : page + "/";
       }
     }
 
@@ -2174,9 +2129,9 @@
       } catch (_) {}
 
       const merged = [
-        ...resolved,
         ...explicit,
         dir,
+        ...resolved,
         getDeployedPublicRootHref(),
         ...nearOrigin,
         ...farOrigin,
@@ -4360,8 +4315,8 @@
           tryPlayMenuBgm();
         }
       });
-      wireMenuBgmThroughAnalyser();
       applyMenuBgmSrcAtCurrentIndex();
+      wireMenuBgmThroughAnalyser();
       if (!menuBgmMenuGain) {
         menuBgmAudio.volume = THREE.MathUtils.clamp(
           gameSettings.masterVolume * gameSettings.musicVolume,
