@@ -24,6 +24,7 @@
     })();
   </script>
   <title>Abandoned Orphanage Prototype</title>
+  <!-- Socket.IO / multiplayer API host only — do not use as primary CDN for game-ui / menu.mp3 (same-origin loads avoid 404 + Web Audio CORS). -->
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
   <meta name="game-asset-base" content="" />
@@ -764,6 +765,17 @@
                 <button type="button" class="cycle-arrow" id="btnTextureNext" aria-label="Next">▶</button>
               </div>
             </div>
+            <div class="settings-row">
+              <label>Render distance</label>
+              <div class="settings-cycle">
+                <button type="button" class="cycle-arrow" id="btnRenderDistPrev" aria-label="Shorter render distance">◀</button>
+                <div class="cycle-value" id="renderDistanceLabel">NORMAL</div>
+                <button type="button" class="cycle-arrow" id="btnRenderDistNext" aria-label="Longer render distance">▶</button>
+              </div>
+              <p style="font-size:11px;opacity:0.65;margin-top:10px;max-width:480px;line-height:1.45;">
+                Beyond this distance the world fades into darkness (distance fog). Lights dim with the fog. Does not affect gameplay.
+              </p>
+            </div>
           </section>
         </div>
       </div>
@@ -835,6 +847,9 @@
     const btnTexturePrev = document.getElementById("btnTexturePrev");
     const btnTextureNext = document.getElementById("btnTextureNext");
     const textureLabel = document.getElementById("textureLabel");
+    const btnRenderDistPrev = document.getElementById("btnRenderDistPrev");
+    const btnRenderDistNext = document.getElementById("btnRenderDistNext");
+    const renderDistanceLabel = document.getElementById("renderDistanceLabel");
     const warFilmOverlay = document.getElementById("warFilmOverlay");
     const shadeOverlay = document.getElementById("shadeOverlay");
     const chatBox = document.getElementById("chatBox");
@@ -846,6 +861,14 @@
     const SETTINGS_STORAGE_KEY = "fpsGameSettingsV1";
     const QUALITY_LEVELS = ["potato", "regular", "high", "extreme"];
     const QUALITY_LABELS = ["POTATO", "REGULAR", "HIGH", "EXTREME"];
+    /** Scales fog far plane (and matching near) — lower = darkness closes in sooner. */
+    const RENDER_DISTANCE_LEVELS = [
+      { label: "SHORT", scale: 0.62 },
+      { label: "MEDIUM", scale: 0.8 },
+      { label: "NORMAL", scale: 1 },
+      { label: "LONG", scale: 1.22 },
+      { label: "VERY FAR", scale: 1.48 },
+    ];
 
     let gameSettings = {
       masterVolume: 1,
@@ -853,6 +876,7 @@
       soundVolume: 1,
       qualityIndex: 1,
       texturesOn: true,
+      renderDistanceIndex: 2,
     };
     let settingsModalOpen = false;
 
@@ -866,6 +890,13 @@
         if (typeof o.soundVolume === "number") gameSettings.soundVolume = THREE.MathUtils.clamp(o.soundVolume, 0, 1);
         if (typeof o.qualityIndex === "number") gameSettings.qualityIndex = THREE.MathUtils.clamp(o.qualityIndex | 0, 0, QUALITY_LEVELS.length - 1);
         if (typeof o.texturesOn === "boolean") gameSettings.texturesOn = o.texturesOn;
+        if (typeof o.renderDistanceIndex === "number") {
+          gameSettings.renderDistanceIndex = THREE.MathUtils.clamp(
+            o.renderDistanceIndex | 0,
+            0,
+            RENDER_DISTANCE_LEVELS.length - 1
+          );
+        }
       } catch (_) {}
     }
 
@@ -1623,6 +1654,34 @@
       return QUALITY_LEVELS[gameSettings.qualityIndex] || "regular";
     }
 
+    function getQualityFogBase() {
+      const q = getQualityId();
+      if (q === "potato") return { near: 14, far: 58 };
+      if (q === "regular") return { near: 16, far: 72 };
+      if (q === "high") return { near: 17, far: 84 };
+      return { near: 19, far: 96 };
+    }
+
+    /** Distance fog + camera far: darkness and light fade beyond render distance (scaled by preset). */
+    function applySceneFogAndCameraFar() {
+      if (!scene.fog || !scene.fog.isFog) return;
+      const base = getQualityFogBase();
+      const rdIdx = THREE.MathUtils.clamp(
+        gameSettings.renderDistanceIndex | 0,
+        0,
+        RENDER_DISTANCE_LEVELS.length - 1
+      );
+      const scale = RENDER_DISTANCE_LEVELS[rdIdx].scale;
+      const far = Math.max(22, base.far * scale);
+      const near = THREE.MathUtils.clamp(base.near * scale * 0.97, 4, Math.max(8, far - 12));
+      scene.fog.near = near;
+      scene.fog.far = far;
+      scene.fog.color.set(0x070504);
+
+      camera.far = THREE.MathUtils.clamp(far + 32, 52, 260);
+      camera.updateProjectionMatrix();
+    }
+
     /** Local rendering: tone mapping, capped resolution, shadows, fog distance, textures — each step should look more realistic, not just heavier. */
     function applyGraphicsQuality() {
       const q = getQualityId();
@@ -1661,21 +1720,7 @@
       moon.shadow.bias = q === "potato" ? -0.0012 : q === "regular" ? -0.0009 : -0.00065;
       moon.shadow.normalBias = q === "potato" ? 0.035 : q === "extreme" ? 0.008 : 0.018;
 
-      if (scene.fog && scene.fog.isFog) {
-        if (q === "potato") {
-          scene.fog.near = 14;
-          scene.fog.far = 58;
-        } else if (q === "regular") {
-          scene.fog.near = 16;
-          scene.fog.far = 72;
-        } else if (q === "high") {
-          scene.fog.near = 17;
-          scene.fog.far = 84;
-        } else {
-          scene.fog.near = 19;
-          scene.fog.far = 96;
-        }
-      }
+      applySceneFogAndCameraFar();
 
       if (warFilmOverlay) {
         warFilmOverlay.style.opacity = q === "extreme" ? "0.07" : q === "high" ? "0.035" : "0";
@@ -1718,18 +1763,10 @@
     }
 
     function getGameAssetBaseCandidates() {
-      const out = [];
+      const explicit = [];
       const meta = document.querySelector('meta[name="game-asset-base"]');
       const raw = meta && meta.content != null ? String(meta.content).trim() : "";
-      if (raw) out.push(normalizeGameAssetBase(raw));
-
-      const mpMeta = document.querySelector('meta[name="game-multiplayer-origin"]');
-      const mpRaw = mpMeta && mpMeta.content != null ? String(mpMeta.content).trim() : "";
-      if (mpRaw) {
-        try {
-          out.push(new URL("/", mpRaw).href);
-        } catch (_) {}
-      }
+      if (raw) explicit.push(normalizeGameAssetBase(raw));
 
       const dir = pageDirFromLocation();
       let parent = null;
@@ -1745,19 +1782,47 @@
         lastSeg = (segs[segs.length - 1] || "").toLowerCase();
       } catch (_) {}
 
+      const pageOrder = [];
       // Common bad deploy: only game.html under .../html/ while walls.png + game-ui/ live one level up.
       if (lastSeg === "html") {
-        if (parent) out.push(parent);
-        if (grandparent) out.push(grandparent);
-        out.push(dir);
+        if (parent) pageOrder.push(parent);
+        if (grandparent) pageOrder.push(grandparent);
+        pageOrder.push(dir);
       } else {
-        out.push(dir);
-        if (parent) out.push(parent);
-        if (grandparent) out.push(grandparent);
+        pageOrder.push(dir);
+        if (parent) pageOrder.push(parent);
+        if (grandparent) pageOrder.push(grandparent);
       }
 
-      out.push("https://tintly555.github.io/games/fps/");
-      return [...new Set(out)];
+      let here = "";
+      try {
+        here = window.location.origin;
+      } catch (_) {}
+
+      const nearOrigin = [];
+      const farOrigin = [];
+      for (const b of pageOrder) {
+        try {
+          if (here && new URL(b).origin === here) nearOrigin.push(b);
+          else farOrigin.push(b);
+        } catch (_) {
+          farOrigin.push(b);
+        }
+      }
+
+      /** Multiplayer origin last: static files should load from the same host as this HTML when possible (avoids 404 + MediaElementSource CORS). */
+      const remoteFallbacks = [];
+      const mpMeta = document.querySelector('meta[name="game-multiplayer-origin"]');
+      const mpRaw = mpMeta && mpMeta.content != null ? String(mpMeta.content).trim() : "";
+      if (mpRaw) {
+        try {
+          remoteFallbacks.push(new URL("/", mpRaw).href);
+        } catch (_) {}
+      }
+      remoteFallbacks.push("https://tintly555.github.io/games/fps/");
+
+      const merged = [...explicit, ...nearOrigin, ...farOrigin, ...remoteFallbacks];
+      return [...new Set(merged)];
     }
 
     function getWallTextureUrlList() {
@@ -3563,7 +3628,14 @@
     }
     function ensureMenuBgmAudio() {
       if (menuBgmAudio) return;
-      menuBgmAudio = new Audio(getMenuBgmUrl());
+      const bgmUrl = getMenuBgmUrl();
+      menuBgmAudio = new Audio();
+      try {
+        if (new URL(bgmUrl).origin !== window.location.origin) {
+          menuBgmAudio.crossOrigin = "anonymous";
+        }
+      } catch (_) {}
+      menuBgmAudio.src = bgmUrl;
       menuBgmAudio.loop = true;
       menuBgmAudio.preload = "auto";
       wireMenuBgmThroughAnalyser();
@@ -4864,6 +4936,12 @@
       lblSfxVol.textContent = `${rngSfxVol.value}%`;
       qualityLabel.textContent = QUALITY_LABELS[gameSettings.qualityIndex] || "REGULAR";
       textureLabel.textContent = gameSettings.texturesOn ? "ON" : "OFF";
+      const rdi = THREE.MathUtils.clamp(
+        gameSettings.renderDistanceIndex | 0,
+        0,
+        RENDER_DISTANCE_LEVELS.length - 1
+      );
+      renderDistanceLabel.textContent = RENDER_DISTANCE_LEVELS[rdi].label;
     }
 
     function openSettingsModal() {
@@ -5950,6 +6028,17 @@
       applyWallTexture();
       compileSceneShaders();
     });
+
+    function cycleRenderDistance(delta) {
+      const n = RENDER_DISTANCE_LEVELS.length;
+      gameSettings.renderDistanceIndex = (gameSettings.renderDistanceIndex + delta + n) % n;
+      syncSettingsUI();
+      saveGameSettings();
+      applySceneFogAndCameraFar();
+      compileSceneShaders();
+    }
+    btnRenderDistPrev.addEventListener("click", () => cycleRenderDistance(-1));
+    btnRenderDistNext.addEventListener("click", () => cycleRenderDistance(1));
 
     syncSettingsUI();
 
