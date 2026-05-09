@@ -12,24 +12,39 @@
   <script>
     (function () {
       /**
-       * Directory containing this document (for menu.mp3, walls.png, game-ui/).
-       * Uses the URL API so `/game`, `/repo/game.html`, and `/a/b/c/` all resolve correctly.
+       * Directory URL for resolving relative assets (same logic as pageDirFromLocation in the game module).
+       * Must not use raw lastIndexOf("/") on the full URL — for https://host.com that yields "https://" only.
        */
       function computeAssetBaseDir(href) {
+        var page = String(href).split(/[#?]/)[0];
         try {
-          var u = new URL(String(href).split(/[#?]/)[0]);
-          var path = u.pathname || "/";
-          if (/\.html?$/i.test(path)) {
-            /* `./` = directory containing this file. `..` alone wrongly resolves …/repo/game.html → site root. */
-            return new URL("./", u.href).href;
+          var u = new URL(page);
+          var p = u.pathname || "/";
+          var dirPath = p;
+          if (!dirPath.endsWith("/")) {
+            var li0 = dirPath.lastIndexOf("/");
+            dirPath = li0 >= 0 ? dirPath.slice(0, li0 + 1) : "/";
           }
-          return new URL(".", u.href).href;
+          var trimmed = dirPath.replace(/\/+$/, "");
+          var segs = trimmed.length ? trimmed.split("/").filter(Boolean) : [];
+          if (segs.length && segs[segs.length - 1].toLowerCase() === "html") {
+            return new URL("../", u.origin + dirPath).href;
+          }
+          if (!p || p === "/") {
+            return u.origin + "/";
+          }
+          if (p.endsWith("/")) {
+            return u.origin + p;
+          }
+          var li = p.lastIndexOf("/");
+          return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
         } catch (e1) {
-          try {
-            return new URL(".", location.href).href;
-          } catch (e2) {
-            return location.origin + "/";
+          var schemeRest = page.indexOf("/", page.indexOf("//") + 2);
+          var slash = page.lastIndexOf("/");
+          if (schemeRest >= 0 && slash > schemeRest) {
+            return page.slice(0, slash + 1);
           }
+          return page.endsWith("/") ? page : page + "/";
         }
       }
       try {
@@ -37,15 +52,6 @@
         try {
           window.__GAME_ASSET_BASE_DIR__ = dir;
         } catch (eG) {}
-        var el = document.documentElement;
-        try {
-          var menuBg = new URL("game-ui/game-ui-menu-background.png", dir).href;
-          var btnTx = new URL("game-ui/game-ui-button-texture.png", dir).href;
-          var setBg = new URL("game-ui/game-ui-settings-panel-bg.png", dir).href;
-          el.style.setProperty("--game-ui-menu-bg", 'url("' + menuBg + '")');
-          el.style.setProperty("--game-ui-btn-texture", 'url("' + btnTx + '")');
-          el.style.setProperty("--game-ui-settings-bg", 'url("' + setBg + '")');
-        } catch (eCss) {}
         var b = document.createElement("base");
         b.href = dir;
         var cs = document.head.querySelector("meta[charset]");
@@ -92,6 +98,19 @@
         try {
           window.__GAME_STATIC_ROOT__ = R;
         } catch (e0) {}
+        var el = document.documentElement;
+        el.style.setProperty(
+          "--game-ui-menu-bg",
+          'url("' + new URL("game-ui/game-ui-menu-background.png", R).href + '")'
+        );
+        el.style.setProperty(
+          "--game-ui-btn-texture",
+          'url("' + new URL("game-ui/game-ui-button-texture.png", R).href + '")'
+        );
+        el.style.setProperty(
+          "--game-ui-settings-bg",
+          'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", R).href + '")'
+        );
       } catch (e1) {}
     })();
   </script>
@@ -110,9 +129,6 @@
       position: fixed;
       inset: 0;
       z-index: 1;
-      width: 100vw;
-      height: 100vh;
-      cursor: none;
     }
 
     html, body {
@@ -125,10 +141,13 @@
       color: #fff;
     }
 
-    #app canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
+    #app {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      width: 100vw;
+      height: 100vh;
+      cursor: none;
     }
 
     /* Restore OS cursor when pointer lock is released (death screen, menu). */
@@ -347,14 +366,7 @@
       gap: 12px;
       box-sizing: border-box;
       padding: 28px 16px 22px;
-      /* --game-ui-menu-bg is set from JS (absolute URL); was unused before — image never appeared */
-      background-color: #070504;
-      background-image:
-        radial-gradient(ellipse 92% 72% at 50% 38%, rgba(14, 18, 28, 0.62) 0%, rgba(6, 8, 14, 0.78) 58%, rgba(2, 3, 10, 0.88) 100%),
-        var(--game-ui-menu-bg, none);
-      background-size: cover, cover;
-      background-position: center, center;
-      background-repeat: no-repeat;
+      background: transparent;
     }
 
     .menu h1 {
@@ -679,19 +691,28 @@
           typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__
             ? window.__GAME_ASSET_BASE_DIR__
             : (function () {
+                var page = String(location.href).split(/[#?]/)[0];
                 try {
-                  var u = new URL(String(location.href).split(/[#?]/)[0]);
-                  var path = u.pathname || "/";
-                  if (/\.html?$/i.test(path)) {
-                    return new URL("./", u.href).href;
+                  var u = new URL(page);
+                  var p = u.pathname || "/";
+                  var dirPath = p;
+                  if (!dirPath.endsWith("/")) {
+                    var li0 = dirPath.lastIndexOf("/");
+                    dirPath = li0 >= 0 ? dirPath.slice(0, li0 + 1) : "/";
                   }
-                  return new URL(".", u.href).href;
+                  var trimmed = dirPath.replace(/\/+$/, "");
+                  var segs = trimmed.length ? trimmed.split("/").filter(Boolean) : [];
+                  if (segs.length && segs[segs.length - 1].toLowerCase() === "html") {
+                    return new URL("../", u.origin + dirPath).href;
+                  }
+                  if (!p || p === "/") return u.origin + "/";
+                  if (p.endsWith("/")) return u.origin + p;
+                  var li = p.lastIndexOf("/");
+                  return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
                 } catch (e0) {
-                  try {
-                    return new URL(".", location.href).href;
-                  } catch (e1) {
-                    return location.origin + "/";
-                  }
+                  var sr = page.indexOf("/", page.indexOf("//") + 2);
+                  var slash = page.lastIndexOf("/");
+                  return sr >= 0 && slash > sr ? page.slice(0, slash + 1) : page.endsWith("/") ? page : page + "/";
                 }
               })();
         var bases = [];
@@ -1068,8 +1089,6 @@
     let ZOMBIE_HOST_KNOWN = true;
     let _spawnRng = null;
     let _zombieSyncAcc = 0;
-    /** While the tab is hidden, `requestAnimationFrame` is throttled; this keeps multiplayer + zombie host ticks alive. */
-    let mpTabHiddenKeepaliveId = null;
     let ROOM_CODE = "";
     let pendingLobbyMode = "";
     let started = false;
@@ -1731,35 +1750,25 @@
 
     function getSafeViewportSize() {
       try {
-        const vv = window.visualViewport;
-        const innerW = Number(window.innerWidth) || 0;
-        const innerH = Number(window.innerHeight) || 0;
-        const vvW = vv ? Number(vv.width) || 0 : 0;
-        const vvH = vv ? Number(vv.height) || 0 : 0;
-        const de = document.documentElement;
-        const body = document.body;
-        const clientW = de ? de.clientWidth || 0 : 0;
-        const clientH = de ? de.clientHeight || 0 : 0;
-        const bodyW = body ? body.clientWidth || 0 : 0;
-        const bodyH = body ? body.clientHeight || 0 : 0;
-
-        let w = Math.max(innerW, vvW, clientW, bodyW);
-        let h = Math.max(innerH, vvH, clientH, bodyH);
-
-        // Mobile Safari / embedded views can report 0×0 until layout or rotation; resize fixes it.
-        if (w < 8 || h < 8) {
-          const sw = typeof screen !== "undefined" ? Number(screen.width) || 0 : 0;
-          const sh = typeof screen !== "undefined" ? Number(screen.height) || 0 : 0;
-          w = Math.max(w, sw);
-          h = Math.max(h, sh);
-        }
-
-        return {
-          w: Math.max(2, w || 960),
-          h: Math.max(2, h || 540),
-        };
+        const w = Math.max(
+          1,
+          window.innerWidth ||
+            (typeof document !== "undefined" &&
+              document.documentElement &&
+              document.documentElement.clientWidth) ||
+            1
+        );
+        const h = Math.max(
+          1,
+          window.innerHeight ||
+            (typeof document !== "undefined" &&
+              document.documentElement &&
+              document.documentElement.clientHeight) ||
+            1
+        );
+        return { w, h };
       } catch (_) {
-        return { w: 960, h: 540 };
+        return { w: 1, h: 1 };
       }
     }
 
@@ -1792,9 +1801,6 @@
     renderer.shadowMap.type = THREE.BasicShadowMap;
     renderer.sortObjects = false;
     app.appendChild(renderer.domElement);
-    renderer.domElement.style.display = "block";
-    renderer.domElement.style.width = "100%";
-    renderer.domElement.style.height = "100%";
 
     /** Precompile programs after scene/map changes so gameplay avoids shader hitch spikes. */
     function compileSceneShaders() {
@@ -1942,80 +1948,24 @@
       compileSceneShaders();
     }
 
-    let _lastSyncW = -1;
-    let _lastSyncH = -1;
-    let _lastSyncPr = -1;
-
     function syncGameRendererSize() {
-      let w = 0;
-      let h = 0;
-      try {
-        if (app) {
-          const r = app.getBoundingClientRect();
-          w = Math.round(r.width);
-          h = Math.round(r.height);
-        }
-      } catch (_) {}
       const vp = getSafeViewportSize();
-      if (w < 32 || h < 32) {
-        w = vp.w;
-        h = vp.h;
-      }
-      w = Math.max(2, w);
-      h = Math.max(2, h);
-      const pr = getPixelRatioForQuality();
-      if (w === _lastSyncW && h === _lastSyncH && pr === _lastSyncPr) {
-        return;
-      }
-      _lastSyncW = w;
-      _lastSyncH = h;
-      _lastSyncPr = pr;
-      camera.aspect = w / h;
+      camera.aspect = vp.w / vp.h;
       camera.updateProjectionMatrix();
-      renderer.setPixelRatio(pr);
-      renderer.setSize(w, h, true);
+      renderer.setPixelRatio(getPixelRatioForQuality());
+      renderer.setSize(vp.w, vp.h);
     }
 
     applyGraphicsQuality();
-
-    requestAnimationFrame(() => syncGameRendererSize());
-
-    try {
-      if (typeof ResizeObserver !== "undefined" && app) {
-        const ro = new ResizeObserver(() => {
-          syncGameRendererSize();
-        });
-        ro.observe(app);
-        if (document.documentElement) ro.observe(document.documentElement);
-      }
-    } catch (_) {}
-
-    /** Menu / boot overlay only — low-rate sync (never every gameplay frame). */
-    let _preGameViewportIntervalId = 0;
-    function startPreGameViewportSyncLoop() {
-      try {
-        if (_preGameViewportIntervalId) {
-          clearInterval(_preGameViewportIntervalId);
-          _preGameViewportIntervalId = 0;
-        }
-      } catch (_) {}
+    requestAnimationFrame(() => {
       syncGameRendererSize();
-      _preGameViewportIntervalId = setInterval(() => {
-        if (gameWorldReady) {
-          try {
-            clearInterval(_preGameViewportIntervalId);
-          } catch (_) {}
-          _preGameViewportIntervalId = 0;
-          return;
-        }
-        syncGameRendererSize();
-      }, 500);
-    }
-    startPreGameViewportSyncLoop();
+      requestAnimationFrame(() => syncGameRendererSize());
+    });
 
     const worldSize = 260;
 
     const texLoader = new THREE.TextureLoader();
+    texLoader.setCrossOrigin("anonymous");
 
     function pageDirFromLocation() {
       try {
@@ -2023,19 +1973,35 @@
           return window.__GAME_ASSET_BASE_DIR__;
         }
       } catch (_) {}
+      const page = String(window.location.href).split(/[#?]/)[0];
       try {
-        const u = new URL(String(window.location.href).split(/[#?]/)[0]);
-        const path = u.pathname || "/";
-        if (/\.html?$/i.test(path)) {
-          return new URL("./", u.href).href;
+        const u = new URL(page);
+        const p = u.pathname || "/";
+        let dirPath = p;
+        if (!dirPath.endsWith("/")) {
+          const li0 = dirPath.lastIndexOf("/");
+          dirPath = li0 >= 0 ? dirPath.slice(0, li0 + 1) : "/";
         }
-        return new URL(".", u.href).href;
+        const trimmed = dirPath.replace(/\/+$/, "");
+        const segs = trimmed.length ? trimmed.split("/").filter(Boolean) : [];
+        if (segs.length && segs[segs.length - 1].toLowerCase() === "html") {
+          return new URL("../", u.origin + dirPath).href;
+        }
+        if (!p || p === "/") {
+          return u.origin + "/";
+        }
+        if (p.endsWith("/")) {
+          return u.origin + p;
+        }
+        const li = p.lastIndexOf("/");
+        return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
       } catch (_) {
-        try {
-          return new URL(".", window.location.href).href;
-        } catch (_) {
-          return window.location.origin + "/";
+        const schemeRest = page.indexOf("/", page.indexOf("//") + 2);
+        const slash = page.lastIndexOf("/");
+        if (schemeRest >= 0 && slash > schemeRest) {
+          return page.slice(0, slash + 1);
         }
+        return page.endsWith("/") ? page : page + "/";
       }
     }
 
@@ -2120,19 +2086,9 @@
         }
       }
 
-      const resolved = [];
-      try {
-        const rb =
-          typeof window.__GAME_RESOLVED_ASSET_BASE__ === "string"
-            ? window.__GAME_RESOLVED_ASSET_BASE__.trim()
-            : "";
-        if (rb) resolved.push(normalizeGameAssetBase(rb));
-      } catch (_) {}
-
       const merged = [
         ...explicit,
         dir,
-        ...resolved,
         getDeployedPublicRootHref(),
         ...nearOrigin,
         ...farOrigin,
@@ -2299,14 +2255,10 @@
     function applyResolvedGameAssetBase(base) {
       const b = normalizeGameAssetBase(base);
       try {
-        window.__GAME_RESOLVED_ASSET_BASE__ = b;
-      } catch (_) {}
-      try {
         const root = document.documentElement;
-        const menuBgHref = new URL("game-ui/game-ui-menu-background.png", b).href;
         root.style.setProperty(
           "--game-ui-menu-bg",
-          `url("${menuBgHref}")`
+          `url("${new URL("game-ui/game-ui-menu-background.png", b).href}")`
         );
         root.style.setProperty(
           "--game-ui-btn-texture",
@@ -2316,23 +2268,6 @@
           "--game-ui-settings-bg",
           `url("${new URL("game-ui/game-ui-settings-panel-bg.png", b).href}")`
         );
-        if (menuEl) {
-          menuEl.style.backgroundColor = "#070504";
-          menuEl.style.backgroundImage = [
-            "radial-gradient(ellipse 92% 72% at 50% 38%, rgba(14, 18, 28, 0.62) 0%, rgba(6, 8, 14, 0.78) 58%, rgba(2, 3, 10, 0.88) 100%)",
-            `url("${menuBgHref}")`,
-          ].join(", ");
-          menuEl.style.backgroundSize = "cover, cover";
-          menuEl.style.backgroundPosition = "center, center";
-          menuEl.style.backgroundRepeat = "no-repeat";
-        }
-      } catch (_) {}
-      try {
-        if (typeof menuBgmAudio !== "undefined" && menuBgmAudio) {
-          menuBgmCandidateIdx = 0;
-          applyMenuBgmSrcAtCurrentIndex();
-          tryPlayMenuBgm();
-        }
       } catch (_) {}
     }
 
@@ -2382,9 +2317,6 @@
       );
     }
     tryLoadWallsTexture(getWallTextureUrlList(), 0);
-    try {
-      applyResolvedGameAssetBase(pageDirFromLocation());
-    } catch (_) {}
     resolveGameUiLayersFromProbe();
 
     const _texturedMeshes = [];
@@ -2595,20 +2527,6 @@
       }
     }
 
-    /** Align chunk-edge portals with neighbors (same strips as procedural maze). */
-    function applyMazeChunkPortals(cx, cz, vert, horiz) {
-      const w = MAZE_CELLS;
-      const h = MAZE_CELLS;
-      const ew = mazeEastPortalRow(cx - 1, cz);
-      const ee = mazeEastPortalRow(cx, cz);
-      openVertPortalStrip(vert, 0, ew);
-      openVertPortalStrip(vert, w, ee);
-      const ns = mazeNorthPortalCol(cx, cz - 1);
-      const nn = mazeNorthPortalCol(cx, cz);
-      openHorizPortalStrip(horiz, ns, 0);
-      openHorizPortalStrip(horiz, nn, h);
-    }
-
     function mazeCellDegreeOpen(gx, gy, vert, horiz, w, h) {
       let d = 0;
       if (!horiz[gx][gy]) d++;
@@ -2688,151 +2606,11 @@
       }
     }
 
-    /** ~18% of chunks use a hand-authored preset room (deterministic per coord). */
-    function getMazePresetKind(cx, cz) {
-      const r = mazeHashSeed(cx, cz, 0x5e7acc01)() >>> 0;
-      if ((r % 41) >= 8) return null;
-      const kinds = ["narrow", "open", "wide", "gridDoors", "openHigh"];
-      return kinds[(r >>> 5) % kinds.length];
-    }
-
-    /**
-     * Fixed layouts: narrow hall, wide hall, open chamber, repeating door-grid (fine tiling),
-     * and tall-ceiling warehouse space. Grid uses ~3-cell rhythm so door gaps fit the player.
-     */
-    function buildMazePresetLayout(cx, cz, kind) {
-      const w = MAZE_CELLS;
-      const h = MAZE_CELLS;
-      const rng = mazeHashSeed(cx, cz, 0xa17abeef ^ kind.length);
-
-      const solid = () => ({
-        vert: Array(w + 1)
-          .fill(0)
-          .map(() => Array(h).fill(true)),
-        horiz: Array(w)
-          .fill(0)
-          .map(() => Array(h + 1).fill(true)),
-      });
-      const empty = () => ({
-        vert: Array(w + 1)
-          .fill(0)
-          .map(() => Array(h).fill(false)),
-        horiz: Array(w)
-          .fill(0)
-          .map(() => Array(h + 1).fill(false)),
-      });
-
-      let vert;
-      let horiz;
-      const lightsPlan = [];
-      let chunkWallH;
-
-      if (kind === "narrow") {
-        ({ vert, horiz } = solid());
-        if (rng() < 0.5) {
-          for (let iy = 0; iy < h; iy++) {
-            vert[7][iy] = true;
-            vert[8][iy] = true;
-          }
-          for (let iy = 1; iy <= h - 1; iy++) {
-            horiz[7][iy] = false;
-          }
-          lightsPlan.push({ gx: 7, gy: 4, kind: "wall" }, { gx: 7, gy: 10, kind: "wall" });
-        } else {
-          for (let ix = 0; ix < w; ix++) {
-            horiz[ix][7] = true;
-            horiz[ix][8] = true;
-          }
-          for (let ix = 1; ix <= w - 1; ix++) {
-            vert[ix][7] = false;
-          }
-          lightsPlan.push({ gx: 4, gy: 7, kind: "wall" }, { gx: 10, gy: 7, kind: "wall" });
-        }
-      } else if (kind === "open") {
-        ({ vert, horiz } = empty());
-        lightsPlan.push(
-          { gx: 7, gy: 7, kind: "area" },
-          { gx: 4, gy: 4, kind: "roof" },
-          { gx: 10, gy: 10, kind: "roof" }
-        );
-      } else if (kind === "openHigh") {
-        ({ vert, horiz } = empty());
-        chunkWallH = MAZE_WALL_H * 2.85;
-        lightsPlan.push(
-          { gx: 7, gy: 7, kind: "area" },
-          { gx: 3, gy: 11, kind: "roof" },
-          { gx: 11, gy: 3, kind: "roof" },
-          { gx: 3, gy: 3, kind: "wall" },
-          { gx: 11, gy: 11, kind: "wall" }
-        );
-      } else if (kind === "wide") {
-        ({ vert, horiz } = solid());
-        for (let iy = 0; iy < h; iy++) {
-          vert[5][iy] = true;
-          vert[10][iy] = true;
-        }
-        for (let gx = 6; gx <= 9; gx++) {
-          for (let iy = 0; iy < h; iy++) {
-            vert[gx][iy] = false;
-          }
-        }
-        for (let gx = 5; gx <= 9; gx++) {
-          for (let iy = 1; iy <= h - 1; iy++) {
-            horiz[gx][iy] = false;
-          }
-        }
-        lightsPlan.push({ gx: 7, gy: 4, kind: "roof" }, { gx: 7, gy: 10, kind: "roof" });
-      } else if (kind === "gridDoors") {
-        ({ vert, horiz } = empty());
-        const dividers = [3, 6, 9, 12];
-        for (const ix of dividers) {
-          for (let iy = 0; iy < h; iy++) {
-            vert[ix][iy] = true;
-          }
-        }
-        for (const iy of dividers) {
-          for (let ix = 0; ix < w; ix++) {
-            horiz[ix][iy] = true;
-          }
-        }
-        for (const ix of dividers) {
-          for (let b = 0; b < 5; b++) {
-            openVertPortalStrip(vert, ix, b * 3 + 1);
-          }
-        }
-        for (const iy of dividers) {
-          for (let b = 0; b < 5; b++) {
-            openHorizPortalStrip(horiz, b * 3 + 1, iy);
-          }
-        }
-        /** Fine repeating “warehouse rack” grid: wall intersections with 3-wide door gaps (player-sized). */
-        lightsPlan.push({ gx: 7, gy: 7, kind: "area" });
-      } else {
-        ({ vert, horiz } = empty());
-      }
-
-      return { vert, horiz, lightsPlan, chunkWallH };
-    }
-
     /**
      * Sparse “backrooms” layout: fewer walls, wide/narrow halls, gaps for shooting, forks & long runs.
      * Not a perfect maze — connectivity + dead-end passes keep FPS flow sane.
      */
     function generateMazeChunkGrid(cx, cz) {
-      const preset = getMazePresetKind(cx, cz);
-      if (preset) {
-        const built = buildMazePresetLayout(cx, cz, preset);
-        applyMazeChunkPortals(cx, cz, built.vert, built.horiz);
-        mazeKnockDownWallsUntilConnected(
-          built.vert,
-          built.horiz,
-          MAZE_CELLS,
-          MAZE_CELLS,
-          mazeHashSeed(cx, cz, 0x99887766)
-        );
-        return built;
-      }
-
       const rng = mazeHashSeed(cx, cz, 0x10203040);
       const w = MAZE_CELLS;
       const h = MAZE_CELLS;
@@ -2886,7 +2664,14 @@
         }
       }
 
-      applyMazeChunkPortals(cx, cz, vert, horiz);
+      const ew = mazeEastPortalRow(cx - 1, cz);
+      const ee = mazeEastPortalRow(cx, cz);
+      openVertPortalStrip(vert, 0, ew);
+      openVertPortalStrip(vert, w, ee);
+      const ns = mazeNorthPortalCol(cx, cz - 1);
+      const nn = mazeNorthPortalCol(cx, cz);
+      openHorizPortalStrip(horiz, ns, 0);
+      openHorizPortalStrip(horiz, nn, h);
 
       mazeKnockDownWallsUntilConnected(vert, horiz, w, h, rng);
       mazeReduceDeadEnds(vert, horiz, w, h, rng);
@@ -3058,9 +2843,7 @@
       const ox = cx * MAZE_CHUNK_WORLD;
       const oz = cz * MAZE_CHUNK_WORLD;
       const cw = MAZE_CELL_SIZE;
-      const { vert, horiz, lightsPlan, chunkWallH } = generateMazeChunkGrid(cx, cz);
-      const wallH = chunkWallH != null ? chunkWallH : MAZE_WALL_H;
-      const ceilingLightY = wallH - 0.08;
+      const { vert, horiz, lightsPlan } = generateMazeChunkGrid(cx, cz);
       const w = MAZE_CELLS;
       const h = MAZE_CELLS;
 
@@ -3096,7 +2879,7 @@
         )
       );
       ceilPl.rotation.x = Math.PI / 2;
-      ceilPl.position.set(ox + MAZE_CHUNK_WORLD / 2, wallH, oz + MAZE_CHUNK_WORLD / 2);
+      ceilPl.position.set(ox + MAZE_CHUNK_WORLD / 2, MAZE_WALL_H, oz + MAZE_CHUNK_WORLD / 2);
       ceilPl.receiveShadow = true;
       scene.add(ceilPl);
       chunkMeshes.push(ceilPl);
@@ -3120,10 +2903,10 @@
           const wz = oz + (iy + 0.5) * cw;
           pushWall(
             MAZE_WALL_THICK,
-            wallH,
+            MAZE_WALL_H,
             cw + 0.02,
             wx,
-            wallH / 2,
+            MAZE_WALL_H / 2,
             wz,
             0x6b7384
           );
@@ -3137,10 +2920,10 @@
           const wz = oz + iy * cw;
           pushWall(
             cw + 0.02,
-            wallH,
+            MAZE_WALL_H,
             MAZE_WALL_THICK,
             wx,
-            wallH / 2,
+            MAZE_WALL_H / 2,
             wz,
             0x6b7384
           );
@@ -3161,7 +2944,7 @@
             108 * MAZE_LIGHT_INTENSITY_SCALE,
             MAZE_CHUNK_WORLD * 0.62
           );
-          L.position.set(px, ceilingLightY, pz);
+          L.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
           L.castShadow = false;
           scene.add(L);
           chunkLights.push(L);
@@ -3177,7 +2960,7 @@
               metalness: 0.2,
             })
           );
-          bulb.position.set(px, ceilingLightY, pz);
+          bulb.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
           bulb.castShadow = false;
           scene.add(bulb);
           chunkMeshes.push(bulb);
@@ -3242,7 +3025,7 @@
           chunkLights.push(sconceFill);
           registerMazeCullLight(sconceFill, key);
         } else if (kind === "area") {
-          const ceilingY = ceilingLightY;
+          const ceilingY = MAZE_CEILING_LIGHT_Y;
           const fill = createPhysicalPointLight(
             0xfff0e4,
             200 * MAZE_LIGHT_INTENSITY_SCALE,
@@ -4263,60 +4046,30 @@
       }
     }
 
-    let menuBgmCandidateIdx = 0;
-
-    function applyMenuBgmSrcAtCurrentIndex() {
-      const bases = getGameAssetBaseCandidates();
-      if (!menuBgmAudio || menuBgmCandidateIdx >= bases.length) return false;
-      try {
-        const href = new URL("menu.mp3", normalizeGameAssetBase(bases[menuBgmCandidateIdx])).href;
-        menuBgmAudio.src = href;
+    function getMenuBgmUrl() {
+      for (const base of getGameAssetBaseCandidates()) {
         try {
-          menuBgmAudio.crossOrigin =
-            new URL(href).origin !== window.location.origin ? "anonymous" : "";
-        } catch (_) {
-          menuBgmAudio.crossOrigin = "";
-        }
-        menuBgmAudio.load();
-        return true;
+          return new URL("menu.mp3", normalizeGameAssetBase(base)).href;
+        } catch (_) {}
+      }
+      try {
+        return new URL("menu.mp3", pageDirFromLocation()).href;
       } catch (_) {
-        menuBgmCandidateIdx++;
-        return applyMenuBgmSrcAtCurrentIndex();
+        return "menu.mp3";
       }
     }
-
     function ensureMenuBgmAudio() {
       if (menuBgmAudio) return;
+      const bgmUrl = getMenuBgmUrl();
       menuBgmAudio = new Audio();
+      try {
+        if (new URL(bgmUrl).origin !== window.location.origin) {
+          menuBgmAudio.crossOrigin = "anonymous";
+        }
+      } catch (_) {}
+      menuBgmAudio.src = bgmUrl;
       menuBgmAudio.loop = true;
       menuBgmAudio.preload = "auto";
-      try {
-        menuBgmAudio.playsInline = true;
-        menuBgmAudio.setAttribute("playsinline", "");
-      } catch (_) {}
-      menuBgmCandidateIdx = 0;
-      menuBgmAudio.addEventListener(
-        "loadeddata",
-        () => {
-          wireMenuBgmThroughAnalyser();
-          applyAudioVolumes();
-        },
-        { once: true }
-      );
-      menuBgmAudio.addEventListener(
-        "error",
-        () => {
-          menuBgmCandidateIdx++;
-          if (menuBgmCandidateIdx >= getGameAssetBaseCandidates().length) return;
-          applyMenuBgmSrcAtCurrentIndex();
-        }
-      );
-      menuBgmAudio.addEventListener("canplaythrough", () => {
-        if (menuEl.style.display !== "none" && menuBgmAudio && menuBgmAudio.paused) {
-          tryPlayMenuBgm();
-        }
-      });
-      applyMenuBgmSrcAtCurrentIndex();
       wireMenuBgmThroughAnalyser();
       if (!menuBgmMenuGain) {
         menuBgmAudio.volume = THREE.MathUtils.clamp(
@@ -4352,7 +4105,6 @@
       if (p && typeof p.catch === "function") p.catch(() => {});
     }
     function onMenuBgmUserGesture() {
-      syncGameRendererSize();
       void (async () => {
         try {
           if (audioCtx.state === "suspended") {
@@ -5506,69 +5258,6 @@
       updateMedKit(dt);
     }
 
-    function emitPlayerMoveNetwork() {
-      if (!MULTIPLAYER || typeof socket.emit !== "function") return;
-      socket.emit("move", {
-        x: player.position.x,
-        y: player.position.y,
-        z: player.position.z,
-        yaw: player.yaw,
-        name: playerName,
-        weapon: state.weaponIndex,
-        lightsOn: playerBodyLight.visible,
-      });
-    }
-
-    /** Browsers throttle rAF when the tab is in the background; this keeps the room + zombie host in sync. */
-    function tickMultiplayerWhileTabInBackground() {
-      if (!MULTIPLAYER || document.visibilityState !== "hidden" || !started || paused || !gameWorldReady) {
-        return;
-      }
-      const dt = 0.05;
-      emitPlayerMoveNetwork();
-      if (
-        CURRENT_MAP === "arena" &&
-        ARENA_COOP &&
-        ZOMBIE_AUTHORITY &&
-        gameWorldReady &&
-        player.health > 0
-      ) {
-        updateEnemies(dt);
-        _zombieSyncAcc += dt;
-        if (_zombieSyncAcc >= 1 / 14) {
-          _zombieSyncAcc = 0;
-          socket.emit("zombieSync", {
-            score: state.score,
-            zombies: state.enemies.map((e, idx) => ({
-              i: e.netIndex ?? idx,
-              x: e.group.position.x,
-              z: e.group.position.z,
-              y: e.visYaw,
-              hp: e.hp,
-              a: e.alive ? 1 : 0,
-              rt: e.respawnTimer,
-            })),
-          });
-        }
-      }
-    }
-
-    function stopMultiplayerTabKeepalive() {
-      if (mpTabHiddenKeepaliveId != null) {
-        clearInterval(mpTabHiddenKeepaliveId);
-        mpTabHiddenKeepaliveId = null;
-      }
-    }
-
-    function syncMultiplayerTabKeepalive() {
-      stopMultiplayerTabKeepalive();
-      if (MULTIPLAYER && document.visibilityState === "hidden") {
-        mpTabHiddenKeepaliveId = setInterval(tickMultiplayerWhileTabInBackground, 50);
-      }
-    }
-
-    document.addEventListener("visibilitychange", syncMultiplayerTabKeepalive);
-
     function updatePlayer(dt) {
       if (player.health <= 0) {
         camera.position.copy(player.position);
@@ -5628,7 +5317,15 @@
       camera.rotation.y = player.yaw;
       camera.rotation.x = player.pitch;
       if (MULTIPLAYER) {
-        emitPlayerMoveNetwork();
+        socket.emit("move", {
+          x: player.position.x,
+          y: player.position.y,
+          z: player.position.z,
+          yaw: player.yaw,
+          name: playerName,
+          weapon: state.weaponIndex,
+          lightsOn: playerBodyLight.visible,
+        });
       }
     }
     function showDeathScreen(killer) {
@@ -6380,7 +6077,7 @@
     function animate() {
       requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.033);
-      if (document.visibilityState === "hidden" && !MULTIPLAYER) return;
+      if (document.visibilityState === "hidden") return;
 
       if (MULTIPLAYER) {
         const k = 1 - Math.exp(-17 * dt);
@@ -6421,12 +6118,6 @@
       }
 
       if (started && menuEl.style.display === "none" && !gameWorldReady) {
-        tickFpsMeter(dt);
-        renderer.render(scene, camera);
-        return;
-      }
-
-      if (document.visibilityState === "hidden" && MULTIPLAYER) {
         tickFpsMeter(dt);
         renderer.render(scene, camera);
         return;
@@ -6725,7 +6416,6 @@
 
       weaponRoot.visible = true;
       gameWorldReady = true;
-      syncMultiplayerTabKeepalive();
       refreshLocalPlayerLightsForCurrentState();
       gameBootOverlay.style.display = "none";
       gameBootOverlay.setAttribute("aria-busy", "false");
@@ -6736,7 +6426,6 @@
     }
 
     function goToMenu() {
-      stopMultiplayerTabKeepalive();
       hideDeathScreen();
       hidePause();
       closeSettingsModal();
@@ -6756,7 +6445,6 @@
       menuBackdropLightSmooth = 0;
       startMenuBackdropLoop();
       tryPlayMenuBgm();
-      startPreGameViewportSyncLoop();
       player.health = 100;
       weaponRoot.visible = true;
       camera.fov = 75;
@@ -6952,27 +6640,11 @@
     window.addEventListener("load", () => {
       syncGameRendererSize();
     });
-    window.addEventListener("orientationchange", () => {
-      requestAnimationFrame(() => syncGameRendererSize());
-    });
-    window.addEventListener(
-      "pageshow",
-      (e) => {
-        requestAnimationFrame(() => syncGameRendererSize());
-        if (e.persisted) requestAnimationFrame(() => syncGameRendererSize());
-      }
-    );
     try {
       if (window.visualViewport) {
         window.visualViewport.addEventListener("resize", () => syncGameRendererSize());
-        window.visualViewport.addEventListener("scroll", () => syncGameRendererSize());
       }
     } catch (_) {}
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") {
-        requestAnimationFrame(() => syncGameRendererSize());
-      }
-    });
   </script>
 </body>
 </html>
