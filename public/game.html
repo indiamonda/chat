@@ -24,7 +24,6 @@
     })();
   </script>
   <title>Abandoned Orphanage Prototype</title>
-  <base href="https://chat.jimmyqrg,com" />
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
   <meta name="game-asset-base" content="" />
@@ -541,6 +540,13 @@
         var meta = document.querySelector('meta[name="game-asset-base"]');
         var mb = meta && meta.content != null ? String(meta.content).trim() : "";
         if (mb) bases.push(normBase(mb));
+        var mpMeta = document.querySelector('meta[name="game-multiplayer-origin"]');
+        var mp = mpMeta && mpMeta.content != null ? String(mpMeta.content).trim() : "";
+        if (mp) {
+          try {
+            bases.push(new URL("/", mp).href);
+          } catch (eMp) {}
+        }
         var lastSeg = "";
         try {
           var segs = new URL(dir).pathname.replace(/\/+$/, "").split("/").filter(Boolean);
@@ -876,7 +882,7 @@
       }
     }
 
-    const PLAYER_LIGHT_COLOR = 0xfff6ec;
+    const PLAYER_LIGHT_COLOR = 0xfff0d4;
     // Soft body halo (local camera only) — stronger so it still reads in the arena next to many maze lights.
     const PLAYER_BODY_INTENSITY = 10;
     const PLAYER_BODY_DISTANCE = 300;
@@ -1492,8 +1498,8 @@
     }
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x020305);
-    scene.fog = new THREE.Fog(0x020305, 16, 72);
+    scene.background = new THREE.Color(0x070504);
+    scene.fog = new THREE.Fog(0x070504, 16, 72);
 
     const camera = new THREE.PerspectiveCamera(
       75,
@@ -1527,10 +1533,10 @@
 
     // Same luminance as pre–r155 legacy lights: physically correct shading drops ~π× vs old scaling.
     const _LEGACY_L = Math.PI;
-    const hemi = new THREE.HemisphereLight(0x2c3848, 0x0f1114, 0.14 * _LEGACY_L);
+    const hemi = new THREE.HemisphereLight(0x524838, 0x141008, 0.14 * _LEGACY_L);
     scene.add(hemi);
 
-    const moon = new THREE.DirectionalLight(0x5a6880, 0.11 * _LEGACY_L);
+    const moon = new THREE.DirectionalLight(0xc8b078, 0.11 * _LEGACY_L);
     moon.position.set(28, 34, 22);
     moon.castShadow = true;
     moon.shadow.mapSize.set(256, 256);
@@ -1676,6 +1682,14 @@
       const meta = document.querySelector('meta[name="game-asset-base"]');
       const raw = meta && meta.content != null ? String(meta.content).trim() : "";
       if (raw) out.push(normalizeGameAssetBase(raw));
+
+      const mpMeta = document.querySelector('meta[name="game-multiplayer-origin"]');
+      const mpRaw = mpMeta && mpMeta.content != null ? String(mpMeta.content).trim() : "";
+      if (mpRaw) {
+        try {
+          out.push(new URL("/", mpRaw).href);
+        } catch (_) {}
+      }
 
       const dir = pageDirFromLocation();
       let parent = null;
@@ -2392,7 +2406,7 @@
 
         if (kind === "roof") {
           const L = createPhysicalPointLight(
-            0xfff2dd,
+            0xffecd0,
             108 * MAZE_LIGHT_INTENSITY_SCALE,
             MAZE_CHUNK_WORLD * 0.62
           );
@@ -2405,8 +2419,8 @@
           const bulb = new THREE.Mesh(
             new THREE.CylinderGeometry(0.14, 0.18, 0.12, 8),
             new THREE.MeshStandardMaterial({
-              color: 0xfff6ec,
-              emissive: 0xffeed0,
+              color: 0xfff2de,
+              emissive: 0xfff0d0,
               emissiveIntensity: 0.9,
               roughness: 0.35,
               metalness: 0.2,
@@ -2453,7 +2467,7 @@
           chunkMeshes.push(sconce);
 
           const spot = createPhysicalSpotLight(
-            0xffecd8,
+            0xffe4c8,
             220 * MAZE_LIGHT_INTENSITY_SCALE,
             56,
             Math.PI / 4.2,
@@ -2467,7 +2481,7 @@
           chunkLights.push(spot);
           registerMazeCullLight(spot, key);
           const sconceFill = createPhysicalPointLight(
-            0xffe8d0,
+            0xffe2c4,
             28 * MAZE_LIGHT_INTENSITY_SCALE,
             11
           );
@@ -2479,7 +2493,7 @@
         } else if (kind === "area") {
           const ceilingY = MAZE_CEILING_LIGHT_Y;
           const fill = createPhysicalPointLight(
-            0xfff5ee,
+            0xfff0e4,
             200 * MAZE_LIGHT_INTENSITY_SCALE,
             MAZE_CHUNK_WORLD * 0.88
           );
@@ -2490,7 +2504,7 @@
           registerMazeCullLight(fill, key);
 
           const wideDown = createPhysicalSpotLight(
-            0xfff1e6,
+            0xffebd8,
             320 * MAZE_LIGHT_INTENSITY_SCALE,
             MAZE_CHUNK_WORLD * 0.95,
             Math.PI / 2.05,
