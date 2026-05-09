@@ -1970,6 +1970,10 @@
       compileSceneShaders();
     }
 
+    let _lastSyncW = -1;
+    let _lastSyncH = -1;
+    let _lastSyncPr = -1;
+
     function syncGameRendererSize() {
       let w = 0;
       let h = 0;
@@ -1987,29 +1991,22 @@
       }
       w = Math.max(2, w);
       h = Math.max(2, h);
+      const pr = getPixelRatioForQuality();
+      if (w === _lastSyncW && h === _lastSyncH && pr === _lastSyncPr) {
+        return;
+      }
+      _lastSyncW = w;
+      _lastSyncH = h;
+      _lastSyncPr = pr;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      renderer.setPixelRatio(getPixelRatioForQuality());
+      renderer.setPixelRatio(pr);
       renderer.setSize(w, h, true);
     }
 
-    let _syncRendererBootstrapFrames = 0;
     applyGraphicsQuality();
 
-    let _bootVpUntil = 0;
-    let _bootVpFrames = 0;
-    function bootViewportSyncFrames() {
-      syncGameRendererSize();
-      const vp = getSafeViewportSize();
-      const t = performance.now();
-      if (!_bootVpUntil) _bootVpUntil = t + 2800;
-      const undersized = vp.w < 48 || vp.h < 48;
-      _bootVpFrames++;
-      if (_bootVpFrames < 300 && (t < _bootVpUntil || undersized)) {
-        requestAnimationFrame(bootViewportSyncFrames);
-      }
-    }
-    requestAnimationFrame(bootViewportSyncFrames);
+    requestAnimationFrame(() => syncGameRendererSize());
 
     try {
       if (typeof ResizeObserver !== "undefined" && app) {
@@ -2021,27 +2018,32 @@
       }
     } catch (_) {}
 
-    /** Main WebGL isn't driven until gameplay (`animate`) — keep sizing correct on menu + loading overlay (fixes black canvas until resize). */
-    let _preGameViewportLoopOn = false;
+    /** Menu / boot overlay only — low-rate sync (never every gameplay frame). */
+    let _preGameViewportIntervalId = 0;
     function startPreGameViewportSyncLoop() {
-      if (_preGameViewportLoopOn) return;
-      _preGameViewportLoopOn = true;
-      function tick() {
-        syncGameRendererSize();
-        if (!gameWorldReady) {
-          requestAnimationFrame(tick);
-        } else {
-          _preGameViewportLoopOn = false;
+      try {
+        if (_preGameViewportIntervalId) {
+          clearInterval(_preGameViewportIntervalId);
+          _preGameViewportIntervalId = 0;
         }
-      }
-      requestAnimationFrame(tick);
+      } catch (_) {}
+      syncGameRendererSize();
+      _preGameViewportIntervalId = setInterval(() => {
+        if (gameWorldReady) {
+          try {
+            clearInterval(_preGameViewportIntervalId);
+          } catch (_) {}
+          _preGameViewportIntervalId = 0;
+          return;
+        }
+        syncGameRendererSize();
+      }, 500);
     }
     startPreGameViewportSyncLoop();
 
     const worldSize = 260;
 
     const texLoader = new THREE.TextureLoader();
-    texLoader.setCrossOrigin("anonymous");
 
     function pageDirFromLocation() {
       try {
@@ -6421,10 +6423,6 @@
 
     function animate() {
       requestAnimationFrame(animate);
-      if (_syncRendererBootstrapFrames < 180) {
-        _syncRendererBootstrapFrames++;
-        syncGameRendererSize();
-      }
       const dt = Math.min(clock.getDelta(), 0.033);
       if (document.visibilityState === "hidden" && !MULTIPLAYER) return;
 
