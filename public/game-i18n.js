@@ -1182,7 +1182,7 @@ const KO = {
   qualityPerfFidelity: "성능 / 화질",
   qualityBlurb:
     "렌더링만 변경. 좀비 동기나 플레이는 동일. 밝기는 단계별로 맞춤.",
-  textureDetail: "텍스처 디테일",
+  textureDetail: "텍스처",
   renderDistHeader: "렌더 거리",
   renderDistBlurb:
     "이후는 안개로 어두워지고 빛도 약해집니다. 플레이에는 영향 없음.",
@@ -1257,11 +1257,11 @@ const IT = {
   qualityHeader: "Qualità",
   qualityPerfFidelity: "prestazioni / fedeltà",
   qualityBlurb:
-    "Solo rendering — sincronia zombie e gameplay invariati. Luminosità bilanciata.",
-  textureDetail: "Dettaglio texture",
+    "Solo la grafica — sincronizzazione degli zombie e gameplay invariati. Luminosità bilanciata su tutti i livelli.",
+  textureDetail: "Texture",
   renderDistHeader: "Distanza di rendering",
   renderDistBlurb:
-    "Oltre, il mondo scompare nella nebbia; le luci si attenuano.",
+    "Oltre questa distanza il mondo si dissolve nella nebbia e le luci si attenuano. Non cambia il gameplay.",
   on: "ON",
   off: "OFF",
   closeTitle: "Chiudi",
