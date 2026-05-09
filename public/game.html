@@ -216,6 +216,45 @@
       height: 2px;
     }
 
+    /* Med Kit reticle: no cross; circle ring + HOLD (ring stroke toggled in JS). */
+    .medkit-reticle {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: 120px;
+      height: 120px;
+      margin: -60px 0 0 -60px;
+      pointer-events: none;
+      z-index: 26;
+      opacity: 1;
+      transition: opacity 0.1s ease;
+    }
+
+    .medkit-reticle.hidden {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    .medkit-reticle svg {
+      display: block;
+      width: 120px;
+      height: 120px;
+    }
+
+    .medkit-hold-txt {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-family: "Audiowide", sans-serif;
+      font-size: 11px;
+      letter-spacing: 0.28em;
+      color: rgba(255, 255, 255, 0.96);
+      text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95);
+      pointer-events: none;
+      margin-left: 0.14em;
+    }
+
     .hitmarker {
       position: fixed;
       left: 50%;
@@ -775,6 +814,28 @@
   <div class="hint" id="hint">Click anywhere</div>
   <div class="flash" id="flash"></div>
   <div class="crosshair" id="crosshair"></div>
+  <div id="medkitReticle" class="medkit-reticle hidden" aria-hidden="true">
+    <svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+      <!-- Flip X so dash draws CCW from top (toward left first). -->
+      <g transform="translate(60 60) scale(-1 1) translate(-60 -60)">
+        <circle
+          id="medkitRingProg"
+          cx="60"
+          cy="60"
+          r="44"
+          fill="none"
+          stroke="rgba(140, 235, 175, 0.96)"
+          stroke-width="3"
+          stroke-linecap="round"
+          stroke-dasharray="276.46"
+          stroke-dashoffset="276.46"
+          transform="rotate(-90 60 60)"
+          opacity="0"
+        />
+      </g>
+    </svg>
+    <span class="medkit-hold-txt">HOLD</span>
+  </div>
   <div class="hitmarker" id="hitmarker"></div>
   <div id="deathOverlay" style="position:fixed;inset:0;z-index:50;pointer-events:none;display:none;">
     <div id="deathFade" style="position:absolute;inset:0;background:rgba(0,0,0,0);transition:none;"></div>
@@ -880,6 +941,8 @@
     const hint = document.getElementById("hint");
     const flash = document.getElementById("flash");
     const crosshairEl = document.getElementById("crosshair");
+    const medKitReticleEl = document.getElementById("medkitReticle");
+    const medKitRingProgEl = document.getElementById("medkitRingProg");
     const hitmarkerEl = document.getElementById("hitmarker");
     const menuWallBackdropCanvas = document.getElementById("menuWallBackdrop");
     const menuEl = document.getElementById("menu");
@@ -1266,7 +1329,8 @@
       const ei = data.ei | 0;
       if (ei < 0 || ei >= state.enemies.length) return;
       const enemy = state.enemies[ei];
-      const wi = ((data.weaponIndex | 0) % weapons.length + weapons.length) % weapons.length;
+      let wi = ((data.weaponIndex | 0) % weapons.length + weapons.length) % weapons.length;
+      if (wi === 4) wi = 0;
       const w = weapons[wi];
       applyDamage(enemy, data.zone, w);
       drawEnemyHp(enemy);
@@ -3267,6 +3331,12 @@
       weaponBobY: 0,
       weaponBobRotZ: 0,
       camShake: 0,
+      medKitHealProgress: 0,
+      medKitRingVisual: 0,
+      medKitNeedsRelease: false,
+      medKitDefilling: false,
+      medKitDefillPhase: 0,
+      medKitDefillStart: 0,
     };
 
     const weapons = [
@@ -3353,7 +3423,28 @@
         soundBase: 900,
         adsFov: 75,
         adsSpeed: 10,
-      }
+      },
+      {
+        name: "Med Kit",
+        fireDelay: 1e9,
+        auto: false,
+        pellets: 0,
+        spreadBase: 0,
+        spreadBloomAdd: 0,
+        spreadBloomMax: 0,
+        recover: 1,
+        recoil: 0,
+        damageHead: 0,
+        damageBody: 0,
+        damageLegs: 0,
+        color: 0xffffff,
+        magSize: 1,
+        ammo: 1,
+        reloadTime: 1e9,
+        soundBase: 440,
+        adsFov: 75,
+        adsSpeed: 10,
+      },
     ];
     function weapon() {
       return weapons[state.weaponIndex];
@@ -3372,10 +3463,10 @@
         ${roomLine}
         Abandoned Orphanage<br>
         WASD move | Space jump | R reload<br>
-        Mouse aim | RMB zoom | Weapons: 1 2 3 4<br>
+        Mouse aim | RMB zoom | Weapons: 1 2 3 4 | <b>5</b> Med Kit (hold M1 to heal 10s)<br>
         Map: ${mapLabel}${MULTIPLAYER ? " (MP)" : ""}<br>
         Weapon: ${w.name}<br>
-        Bullets: ${w.ammo} / ${w.magSize}${state.reloading ? "（Refilling...）" : ""}<br>
+        ${state.weaponIndex === 4 ? "" : `Bullets: ${w.ammo} / ${w.magSize}${state.reloading ? "（Refilling...）" : ""}<br>`}
         Health: ${Math.max(0, Math.floor(player.health))} / ${player.maxHealth}<br>
         Score: ${state.score}
       `;
@@ -4240,11 +4331,33 @@
       return root;
     }
 
+    /** Compact first-aid case (procedural): white shell + recessed red cross + latch strip — readable at arm’s length. */
+    function makeMedKitModel() {
+      const root = new THREE.Group();
+      const kit = new THREE.Group();
+      const mCase = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.38, metalness: 0.06 });
+      const mCross = new THREE.MeshStandardMaterial({ color: 0xc81e1e, roughness: 0.45 });
+      const mLatch = new THREE.MeshStandardMaterial({ color: 0x5c6169, roughness: 0.5 });
+      addMeshPart(kit, new THREE.BoxGeometry(0.26, 0.16, 0.075), mCase, 0, 0, 0);
+      addMeshPart(kit, new THREE.BoxGeometry(0.045, 0.11, 0.078), mCross, 0, 0, 0.041);
+      addMeshPart(kit, new THREE.BoxGeometry(0.11, 0.045, 0.078), mCross, 0, 0, 0.041);
+      addMeshPart(kit, new THREE.BoxGeometry(0.24, 0.022, 0.078), mLatch, 0, 0.068, 0);
+      addMeshPart(kit, new THREE.BoxGeometry(0.055, 0.035, 0.08), mCase, -0.1, 0, 0.04);
+      kit.position.set(0.27, -0.19, -0.66);
+      kit.rotation.y = -0.09;
+      root.add(kit);
+      root.userData.gun = kit;
+      root.userData.basePos = kit.position.clone();
+      root.userData.adsOffset = new THREE.Vector3(-0.14, 0.07, 0.16);
+      return root;
+    }
+
     const weaponModels = [
       makeWeaponModel(0),
       makeWeaponModel(1),
       makeWeaponModel(2),
-      makeWeaponModel(3)
+      makeWeaponModel(3),
+      makeMedKitModel(),
     ];
 
     weaponModels.forEach((w, i) => {
@@ -4252,10 +4365,31 @@
       weaponRoot.add(w);
     });
 
+    const MED_KIT_HEAL_DURATION = 10;
+    const MED_KIT_RING_LEN = 2 * Math.PI * 44;
+    const MED_KIT_DEFILL_DURATION = 0.18;
+
+    function applyMedKitRingVisual(p) {
+      if (!medKitRingProgEl) return;
+      const cl = Math.min(1, Math.max(0, p));
+      medKitRingProgEl.style.strokeDashoffset = `${MED_KIT_RING_LEN * (1 - cl)}`;
+      medKitRingProgEl.setAttribute("opacity", cl > 0.001 ? "1" : "0");
+    }
+
     function setWeapon(index) {
+      const prev = state.weaponIndex;
       state.weaponIndex = index;
       state.ads = false;
       state.adsProgress = 0;
+      if (prev === 4 || index === 4) {
+        state.medKitHealProgress = 0;
+        state.medKitRingVisual = 0;
+        state.medKitNeedsRelease = false;
+        state.medKitDefilling = false;
+        state.medKitDefillPhase = 0;
+        state.medKitDefillStart = 0;
+        applyMedKitRingVisual(0);
+      }
       weaponModels.forEach((w, i) => {
         w.visible = i === index;
       });
@@ -4263,6 +4397,7 @@
     }
 
     function startReload() {
+      if (state.weaponIndex === 4) return;
       const w = weapon();
       if (state.reloading) return;
       if (w.ammo >= w.magSize) return;
@@ -4315,6 +4450,7 @@
       if (k === "2") setWeapon(1);
       if (k === "3") setWeapon(2);
       if (k === "4") setWeapon(3);
+      if (k === "5") setWeapon(4);
       if (k === "r") startReload();
     });
 
@@ -4350,7 +4486,7 @@
     document.addEventListener("mousedown", (e) => {
       if (!gameWorldReady || !state.locked || player.health <= 0) return;
       if (e.button === 2) {
-        if (!state.reloading) state.ads = true;
+        if (state.weaponIndex !== 4 && !state.reloading) state.ads = true;
       }
     });
 
@@ -4583,6 +4719,7 @@
 
     function tryShoot() {
       if (!gameWorldReady || paused || player.health <= 0) return;
+      if (state.weaponIndex === 4) return;
       const now = performance.now();
       const w = weapon();
       const shootingAds = (state.ads || keys.shift) && !state.reloading && player.health > 0;
@@ -4727,10 +4864,69 @@
       updateHud();
     }
 
+    function updateMedKit(dt) {
+      if (!medKitRingProgEl || state.weaponIndex !== 4 || player.health <= 0 || paused) return;
+
+      if (!state.mouseDown) {
+        state.medKitNeedsRelease = false;
+      }
+
+      if (state.medKitDefilling) {
+        state.medKitDefillPhase += dt / MED_KIT_DEFILL_DURATION;
+        if (state.medKitDefillPhase >= 1) {
+          state.medKitDefilling = false;
+          state.medKitDefillPhase = 0;
+          state.medKitRingVisual = 0;
+          applyMedKitRingVisual(0);
+        } else {
+          const p = state.medKitDefillStart * (1 - state.medKitDefillPhase);
+          state.medKitRingVisual = p;
+          applyMedKitRingVisual(p);
+        }
+        return;
+      }
+
+      const canHeal = player.health < player.maxHealth;
+      const wantsHold = state.mouseDown && canHeal && !state.medKitNeedsRelease;
+
+      if (wantsHold) {
+        state.medKitHealProgress += dt / MED_KIT_HEAL_DURATION;
+        if (state.medKitHealProgress >= 1) {
+          player.health = Math.min(player.maxHealth, player.health + 50);
+          state.medKitHealProgress = 0;
+          state.medKitRingVisual = 0;
+          state.medKitNeedsRelease = true;
+          applyMedKitRingVisual(0);
+          updateHud();
+        } else {
+          state.medKitRingVisual = state.medKitHealProgress;
+          applyMedKitRingVisual(state.medKitHealProgress);
+        }
+      } else {
+        if (state.medKitHealProgress > 0 && !state.medKitNeedsRelease) {
+          state.medKitDefilling = true;
+          state.medKitDefillStart = state.medKitHealProgress;
+          state.medKitDefillPhase = 0;
+          state.medKitHealProgress = 0;
+          const p = state.medKitDefillStart;
+          state.medKitRingVisual = p;
+          applyMedKitRingVisual(p);
+        } else if (!state.medKitNeedsRelease) {
+          state.medKitRingVisual = 0;
+          applyMedKitRingVisual(0);
+        }
+      }
+    }
+
     function updateWeaponVisuals(dt, isMoving) {
       const t = performance.now() * 0.001;
 
-      const usingAds = (state.ads || keys.shift) && !state.reloading && player.health > 0 && state.weaponIndex !== 3;
+      const usingAds =
+        (state.ads || keys.shift) &&
+        !state.reloading &&
+        player.health > 0 &&
+        state.weaponIndex !== 3 &&
+        state.weaponIndex !== 4;
         
       let bobX = 0;
       let bobY = 0;
@@ -4798,8 +4994,12 @@
       gun.position.y += (targetY - gun.position.y) * Math.min(1, dt * 16);
       gun.position.z += (targetZ - gun.position.z) * Math.min(1, dt * 16);
          
-      const hideCrosshair = usingAds && state.weaponIndex !== 1;
+      const hideCrosshair =
+        (usingAds && state.weaponIndex !== 1) || state.weaponIndex === 4;
       crosshairEl.classList.toggle("hidden", hideCrosshair);
+      if (medKitReticleEl) {
+        medKitReticleEl.classList.toggle("hidden", state.weaponIndex !== 4);
+      }
 
       weaponRoot.position.set(
         state.weaponBobX + reloadX,
@@ -4834,6 +5034,7 @@
 
       const movingNow = keys.w || keys.a || keys.s || keys.d;
       updateWeaponVisuals(dt, movingNow);
+      updateMedKit(dt);
     }
 
     function updatePlayer(dt) {
@@ -4905,6 +5106,7 @@
       killerEnemy = killer || null;
       deathAnimTime = 0;
       crosshairEl.classList.add("hidden");
+      if (medKitReticleEl) medKitReticleEl.classList.add("hidden");
       state.mouseDown = false;
       state.ads = false;
       weaponRoot.visible = false;
