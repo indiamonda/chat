@@ -8,13 +8,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- Base URL must be the folder containing this HTML file so ./walls.png and ./game-ui/ resolve when the game lives in a subpath (e.g. /html/game.html). -->
+  <!-- Base URL = directory of this document (not the last "/" in "https://"). Required for game-ui/, walls.png, menu.mp3. -->
   <script>
     (function () {
+      /**
+       * Directory URL for resolving relative assets (same logic as pageDirFromLocation in the game module).
+       * Must not use raw lastIndexOf("/") on the full URL — for https://host.com that yields "https://" only.
+       */
+      function computeAssetBaseDir(href) {
+        var page = String(href).split(/[#?]/)[0];
+        try {
+          var u = new URL(page);
+          var p = u.pathname || "/";
+          if (!p || p === "/") {
+            return u.origin + "/";
+          }
+          if (p.endsWith("/")) {
+            return u.origin + p;
+          }
+          var li = p.lastIndexOf("/");
+          return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
+        } catch (e1) {
+          var schemeRest = page.indexOf("/", page.indexOf("//") + 2);
+          var slash = page.lastIndexOf("/");
+          if (schemeRest >= 0 && slash > schemeRest) {
+            return page.slice(0, slash + 1);
+          }
+          return page.endsWith("/") ? page : page + "/";
+        }
+      }
       try {
-        var page = String(location.href).split(/[#?]/)[0];
-        var slash = page.lastIndexOf("/");
-        var dir = slash >= 0 ? page.slice(0, slash + 1) : page + "/";
+        var dir = computeAssetBaseDir(location.href);
+        try {
+          window.__GAME_ASSET_BASE_DIR__ = dir;
+        } catch (eG) {}
         var b = document.createElement("base");
         b.href = dir;
         var cs = document.head.querySelector("meta[charset]");
@@ -564,9 +591,24 @@
         return s.endsWith("/") ? s : s + "/";
       }
       try {
-        var page = String(location.href).split(/[#?]/)[0];
-        var slash = page.lastIndexOf("/");
-        var dir = slash >= 0 ? page.slice(0, slash + 1) : page + "/";
+        var dir =
+          typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__
+            ? window.__GAME_ASSET_BASE_DIR__
+            : (function () {
+                var page = String(location.href).split(/[#?]/)[0];
+                try {
+                  var u = new URL(page);
+                  var p = u.pathname || "/";
+                  if (!p || p === "/") return u.origin + "/";
+                  if (p.endsWith("/")) return u.origin + p;
+                  var li = p.lastIndexOf("/");
+                  return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
+                } catch (e0) {
+                  var sr = page.indexOf("/", page.indexOf("//") + 2);
+                  var slash = page.lastIndexOf("/");
+                  return sr >= 0 && slash > sr ? page.slice(0, slash + 1) : page.endsWith("/") ? page : page + "/";
+                }
+              })();
         var bases = [];
         var meta = document.querySelector('meta[name="game-asset-base"]');
         var mb = meta && meta.content != null ? String(meta.content).trim() : "";
@@ -1753,9 +1795,31 @@
     texLoader.setCrossOrigin("anonymous");
 
     function pageDirFromLocation() {
+      try {
+        if (typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__) {
+          return window.__GAME_ASSET_BASE_DIR__;
+        }
+      } catch (_) {}
       const page = String(window.location.href).split(/[#?]/)[0];
-      const slash = page.lastIndexOf("/");
-      return slash >= 0 ? page.slice(0, slash + 1) : page + "/";
+      try {
+        const u = new URL(page);
+        const p = u.pathname || "/";
+        if (!p || p === "/") {
+          return u.origin + "/";
+        }
+        if (p.endsWith("/")) {
+          return u.origin + p;
+        }
+        const li = p.lastIndexOf("/");
+        return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
+      } catch (_) {
+        const schemeRest = page.indexOf("/", page.indexOf("//") + 2);
+        const slash = page.lastIndexOf("/");
+        if (schemeRest >= 0 && slash > schemeRest) {
+          return page.slice(0, slash + 1);
+        }
+        return page.endsWith("/") ? page : page + "/";
+      }
     }
 
     function normalizeGameAssetBase(b) {
@@ -3675,14 +3739,14 @@
       if (p && typeof p.catch === "function") p.catch(() => {});
     }
     function onMenuBgmUserGesture() {
-      const play = () => {
+      void (async () => {
+        try {
+          if (audioCtx.state === "suspended") {
+            await audioCtx.resume();
+          }
+        } catch (_) {}
         tryPlayMenuBgm();
-      };
-      if (audioCtx.state === "suspended") {
-        audioCtx.resume().then(play).catch(play);
-      } else {
-        play();
-      }
+      })();
     }
     ["pointerdown", "keydown", "touchstart"].forEach((ev) => {
       window.addEventListener(ev, onMenuBgmUserGesture, { capture: true });
