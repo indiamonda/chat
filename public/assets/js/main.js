@@ -8423,64 +8423,13 @@ function bindAdmin() {
   // listener attached once to #app in init(), so they survive re-renders
   // (e.g. socket-driven render() calls without bindAdmin()).
 
-  // Moderation queue tab
+  // Moderation queue tab — initial fetch only; status / card actions use #app
+  // delegated click handler in init() so they survive loadModerationQueue → render().
   const adminTab = new URLSearchParams(window.location.search || '').get('tab') || 'action';
   if (adminTab === 'moderation') {
     if (!state._modReports || (state._modReports.items?.length === 0 && !state._modReports.loading)) {
       loadModerationQueue();
     }
-    document.querySelectorAll('[data-mod-status]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const status = btn.dataset.modStatus;
-        loadModerationQueue(status, state._modReports?.search || '');
-      });
-    });
-    // mod-queue-search uses a delegated input listener attached once to #app
-    // in init(), so it survives re-renders without bindAdmin() being called.
-    document.querySelectorAll('[data-mod-action]').forEach((btn) => {
-      btn.addEventListener('click', async (ev) => {
-        const action = btn.dataset.modAction;
-        const reportId = btn.dataset.reportId;
-        if (!action || !reportId) return;
-        if (action === 'view') {
-          showModerationDetailModal(reportId);
-          return;
-        }
-        if (action === 'jump') {
-          ev.preventDefault();
-          const messageId = btn.dataset.messageId;
-          const rType = btn.dataset.roomType;
-          const rId = btn.dataset.roomId;
-          if (!messageId) return;
-          const card = btn.closest('[data-report-id]');
-          await navigateToReportedMessage({
-            report_id: reportId,
-            message_id: messageId,
-            room_type: rType,
-            room_id: rId,
-            target_user_id: card?.dataset?.targetId || null,
-            reporter_id: card?.dataset?.reporterId || null,
-          });
-          return;
-        }
-        try {
-          if (action === 'claim') {
-            await apiPatch(`/api/reports/${reportId}`, { assign_to_me: true, status: 'in_review' });
-          } else if (action === 'resolve') {
-            await apiPatch(`/api/reports/${reportId}`, { status: 'resolved', outcome: 'reviewed' });
-          } else if (action === 'reject') {
-            await apiPatch(`/api/reports/${reportId}`, { status: 'rejected', outcome: 'no_action' });
-          } else if (action === 'duplicate') {
-            await apiPatch(`/api/reports/${reportId}`, { status: 'duplicate', outcome: 'duplicate' });
-          }
-          await loadReportCounts();
-          await loadModerationQueue(state._modReports.status, state._modReports.search || '');
-          showToast(tx('modActionDone', 'Report updated.'), 'success');
-        } catch (err) {
-          showToast(err.message || 'Failed to update report');
-        }
-      });
-    });
   }
 
   // Export tab
@@ -9263,6 +9212,65 @@ async function init() {
         } else {
           navigateTo(`/chat/group/?panel=${encodeURIComponent(PANEL_TO_URL[item.room_id] || item.room_id)}`);
         }
+        return;
+      }
+      // Moderation queue: survives render() from loadModerationQueue (bindAdmin is not re-run each render).
+      const modStatusBtn = e.target.closest('button[data-mod-status]');
+      if (modStatusBtn && state.user?.is_allowed) {
+        const status = modStatusBtn.dataset.modStatus;
+        if (status) {
+          e.preventDefault();
+          loadModerationQueue(status, state._modReports?.search || '');
+          return;
+        }
+      }
+      const modActionBtn = e.target.closest('[data-mod-action]');
+      if (modActionBtn && state.user?.is_allowed) {
+        const action = modActionBtn.dataset.modAction;
+        const reportId = modActionBtn.dataset.reportId;
+        if (!action || !reportId) return;
+        if (action === 'view') {
+          e.preventDefault();
+          showModerationDetailModal(reportId);
+          return;
+        }
+        if (action === 'jump') {
+          e.preventDefault();
+          const messageId = modActionBtn.dataset.messageId;
+          const rType = modActionBtn.dataset.roomType;
+          const rId = modActionBtn.dataset.roomId;
+          if (!messageId) return;
+          const card = modActionBtn.closest('[data-report-id]');
+          void navigateToReportedMessage({
+            report_id: reportId,
+            message_id: messageId,
+            room_type: rType,
+            room_id: rId,
+            target_user_id: card?.dataset?.targetId || null,
+            reporter_id: card?.dataset?.reporterId || null,
+          });
+          return;
+        }
+        e.preventDefault();
+        void (async () => {
+          try {
+            if (action === 'claim') {
+              await apiPatch(`/api/reports/${reportId}`, { assign_to_me: true, status: 'in_review' });
+            } else if (action === 'resolve') {
+              await apiPatch(`/api/reports/${reportId}`, { status: 'resolved', outcome: 'reviewed' });
+            } else if (action === 'reject') {
+              await apiPatch(`/api/reports/${reportId}`, { status: 'rejected', outcome: 'no_action' });
+            } else if (action === 'duplicate') {
+              await apiPatch(`/api/reports/${reportId}`, { status: 'duplicate', outcome: 'duplicate' });
+            }
+            await loadReportCounts();
+            await loadModerationQueue(state._modReports?.status || 'open', state._modReports?.search || '');
+            showToast(tx('modActionDone', 'Report updated.'), 'success');
+          } catch (err) {
+            showToast(err.message || 'Failed to update report');
+          }
+        })();
+        return;
       }
       // Admin timeout form: searchable user picker + duration chips. All
       // interactions are delegated so they survive re-renders.
