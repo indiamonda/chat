@@ -1074,7 +1074,40 @@
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js";
     import { Reflector } from "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/objects/Reflector.js";
-    import { LANGUAGE_OPTIONS, GAME_I18N } from "./game-i18n.js";
+
+    /**
+     * Load UI strings from `game-i18n.js` beside this document.
+     * A static `import "./game-i18n.js"` can follow `<base href>` and fetch the wrong URL (404), which aborts
+     * the entire module before menu buttons / menu BGM wiring run.
+     */
+    async function loadGameI18nModule() {
+      const candidates = [];
+      try {
+        candidates.push(new URL("./game-i18n.js", import.meta.url).href);
+      } catch (_) {}
+      try {
+        candidates.push(new URL("/game-i18n.js", location.origin).href);
+      } catch (_) {}
+      try {
+        const path = String(location.pathname || "/");
+        const dir = path.endsWith("/") ? path : path.replace(/\/[^/]+$/, "/");
+        const u = new URL("game-i18n.js", location.origin + (dir.startsWith("/") ? dir : `/${dir}`));
+        if (!candidates.includes(u.href)) candidates.push(u.href);
+      } catch (_) {}
+      const fallback = "https://tintly555.github.io/games/fps/game-i18n.js";
+      if (!candidates.includes(fallback)) candidates.push(fallback);
+      let lastErr = null;
+      for (const href of candidates) {
+        try {
+          return await import(/* webpackIgnore: true */ href);
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      console.error("[game] game-i18n.js failed from all candidates", candidates, lastErr);
+      throw lastErr || new Error("game-i18n");
+    }
+    const { LANGUAGE_OPTIONS, GAME_I18N } = await loadGameI18nModule();
 
     const app = document.getElementById("app");
     const hud = document.getElementById("hud");
@@ -2406,7 +2439,11 @@
 
     /** Precompile programs after scene/map changes so gameplay avoids shader hitch spikes. */
     function compileSceneShaders() {
-      renderer.compile(scene, camera);
+      try {
+        renderer.compile(scene, camera);
+      } catch (e) {
+        console.warn("[game] compileSceneShaders", e);
+      }
     }
 
     // Same luminance as pre–r155 legacy lights: physically correct shading drops ~π× vs old scaling.
@@ -2725,7 +2762,11 @@
       }
     }
 
-    applyGraphicsQuality();
+    try {
+      applyGraphicsQuality();
+    } catch (e) {
+      console.error("[game] applyGraphicsQuality (initial)", e);
+    }
     requestAnimationFrame(() => {
       syncGameRendererSize();
       requestAnimationFrame(() => syncGameRendererSize());
@@ -6313,21 +6354,28 @@
     }
 
     function syncSettingsUI() {
-      rngMasterVol.value = String(Math.round(gameSettings.masterVolume * 100));
-      rngMusicVol.value = String(Math.round(gameSettings.musicVolume * 100));
-      rngSfxVol.value = String(Math.round(gameSettings.soundVolume * 100));
-      lblMasterVol.textContent = `${rngMasterVol.value}%`;
-      lblMusicVol.textContent = `${rngMusicVol.value}%`;
-      lblSfxVol.textContent = `${rngSfxVol.value}%`;
-      qualityLabel.textContent = t(`qualityTier${gameSettings.qualityIndex}`);
-      textureLabel.textContent = gameSettings.texturesOn ? t("on") : t("off");
-      const rdi = THREE.MathUtils.clamp(
-        gameSettings.renderDistanceIndex | 0,
-        0,
-        RENDER_DISTANCE_LEVELS.length - 1
-      );
-      renderDistanceLabel.textContent = t(`renderDist${rdi}`);
-      if (languageUiLabel) languageUiLabel.textContent = LANGUAGE_OPTIONS[languageIndexFromSettings()].native;
+      try {
+        if (rngMasterVol) rngMasterVol.value = String(Math.round(gameSettings.masterVolume * 100));
+        if (rngMusicVol) rngMusicVol.value = String(Math.round(gameSettings.musicVolume * 100));
+        if (rngSfxVol) rngSfxVol.value = String(Math.round(gameSettings.soundVolume * 100));
+        if (lblMasterVol && rngMasterVol) lblMasterVol.textContent = `${rngMasterVol.value}%`;
+        if (lblMusicVol && rngMusicVol) lblMusicVol.textContent = `${rngMusicVol.value}%`;
+        if (lblSfxVol && rngSfxVol) lblSfxVol.textContent = `${rngSfxVol.value}%`;
+        if (qualityLabel) qualityLabel.textContent = t(`qualityTier${gameSettings.qualityIndex}`);
+        if (textureLabel) textureLabel.textContent = gameSettings.texturesOn ? t("on") : t("off");
+        const rdi = THREE.MathUtils.clamp(
+          gameSettings.renderDistanceIndex | 0,
+          0,
+          RENDER_DISTANCE_LEVELS.length - 1
+        );
+        if (renderDistanceLabel) renderDistanceLabel.textContent = t(`renderDist${rdi}`);
+        if (languageUiLabel) {
+          const opt = LANGUAGE_OPTIONS[languageIndexFromSettings()];
+          if (opt) languageUiLabel.textContent = opt.native;
+        }
+      } catch (e) {
+        console.warn("[game] syncSettingsUI", e);
+      }
     }
 
     function openSettingsModal() {
@@ -7606,14 +7654,14 @@
       nameModal._pendingMap = mapName;
     }
 
-    btnArena.addEventListener("click", () => showMenuPanel("menuArenaMode"));
-    btnArenaSingle.addEventListener("click", () => startGame("arena", false));
-    btnArenaCoop.addEventListener("click", () => showLobby("arena-coop"));
-    btnArenaBack.addEventListener("click", () => showMenuPanel("menuMain"));
+    btnArena?.addEventListener("click", () => showMenuPanel("menuArenaMode"));
+    btnArenaSingle?.addEventListener("click", () => startGame("arena", false));
+    btnArenaCoop?.addEventListener("click", () => showLobby("arena-coop"));
+    btnArenaBack?.addEventListener("click", () => showMenuPanel("menuMain"));
 
-    btnCrossfire.addEventListener("click", () => showLobby("crossfire"));
+    btnCrossfire?.addEventListener("click", () => showLobby("crossfire"));
 
-    btnQuickplay.addEventListener("click", () => {
+    btnQuickplay?.addEventListener("click", () => {
       socket.emit("quickplay", pendingLobbyMode, (res) => {
         if (res.error) { codeError.textContent = res.error; return; }
         const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
@@ -7621,7 +7669,7 @@
       });
     });
 
-    btnCreateRoom.addEventListener("click", () => {
+    btnCreateRoom?.addEventListener("click", () => {
       socket.emit("createRoom", pendingLobbyMode, (res) => {
         if (res.error) { codeError.textContent = res.error; return; }
         const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
@@ -7629,13 +7677,13 @@
       });
     });
 
-    btnJoinCode.addEventListener("click", () => {
+    btnJoinCode?.addEventListener("click", () => {
       codeError.textContent = "";
       codeInput.value = "";
       showMenuPanel("menuJoinCode");
     });
 
-    btnCodeJoin.addEventListener("click", () => {
+    btnCodeJoin?.addEventListener("click", () => {
       const code = codeInput.value.trim().toUpperCase();
       if (!code) { codeError.textContent = t("enterCodeError"); return; }
       socket.emit("joinByCode", { code, mode: pendingLobbyMode }, (res) => {
@@ -7645,17 +7693,17 @@
       });
     });
 
-    codeInput.addEventListener("keydown", (e) => {
+    codeInput?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") btnCodeJoin.click();
     });
 
-    btnCodeBack.addEventListener("click", () => showMenuPanel("menuLobby"));
-    btnLobbyBack.addEventListener("click", () => {
+    btnCodeBack?.addEventListener("click", () => showMenuPanel("menuLobby"));
+    btnLobbyBack?.addEventListener("click", () => {
       if (pendingLobbyMode === "crossfire") showMenuPanel("menuMain");
       else showMenuPanel("menuArenaMode");
     });
 
-    btnNameOk.addEventListener("click", () => {
+    btnNameOk?.addEventListener("click", () => {
       playerName = nameInput.value.trim().slice(0, 16) || t("namePlaceholder");
       nameModal.style.display = "none";
       const map = nameModal._pendingMap || "crossfire";
@@ -7663,23 +7711,23 @@
       startGame(map, true, coopArena);
     });
 
-    nameInput.addEventListener("keydown", (e) => {
+    nameInput?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") btnNameOk.click();
     });
 
-    btnDeathRestart.addEventListener("click", () => startGame(CURRENT_MAP));
-    btnDeathSettings.addEventListener("click", () => openSettingsModal());
-    btnDeathQuit.addEventListener("click", goToMenu);
-    btnResume.addEventListener("click", () => {
+    btnDeathRestart?.addEventListener("click", () => startGame(CURRENT_MAP));
+    btnDeathSettings?.addEventListener("click", () => openSettingsModal());
+    btnDeathQuit?.addEventListener("click", goToMenu);
+    btnResume?.addEventListener("click", () => {
       hidePause();
-      renderer.domElement.requestPointerLock();
+      renderer?.domElement?.requestPointerLock();
     });
-    btnPauseSettings.addEventListener("click", () => openSettingsModal());
-    btnPauseRestart.addEventListener("click", () => startGame(CURRENT_MAP));
-    btnPauseQuit.addEventListener("click", goToMenu);
-    btnMenuSettings.addEventListener("click", () => openSettingsModal());
+    btnPauseSettings?.addEventListener("click", () => openSettingsModal());
+    btnPauseRestart?.addEventListener("click", () => startGame(CURRENT_MAP));
+    btnPauseQuit?.addEventListener("click", goToMenu);
+    btnMenuSettings?.addEventListener("click", () => openSettingsModal());
 
-    btnCloseSettings.addEventListener("click", () => closeSettingsModal());
+    btnCloseSettings?.addEventListener("click", () => closeSettingsModal());
     settingsModal.addEventListener("click", (e) => {
       if (e.target === settingsModal) closeSettingsModal();
     });
@@ -7704,6 +7752,7 @@
     }
 
     function bindVolSlider(rangeEl, labelEl, key, applyFn) {
+      if (!rangeEl || !labelEl) return;
       rangeEl.addEventListener("input", () => {
         const v = (+rangeEl.value || 0) / 100;
         gameSettings[key] = v;
@@ -7722,17 +7771,17 @@
       saveGameSettings();
       applyGraphicsQuality();
     }
-    btnQualityPrev.addEventListener("click", () => cycleQuality(-1));
-    btnQualityNext.addEventListener("click", () => cycleQuality(1));
+    btnQualityPrev?.addEventListener("click", () => cycleQuality(-1));
+    btnQualityNext?.addEventListener("click", () => cycleQuality(1));
 
-    btnTexturePrev.addEventListener("click", () => {
+    btnTexturePrev?.addEventListener("click", () => {
       gameSettings.texturesOn = false;
       syncSettingsUI();
       saveGameSettings();
       applyWallTexture();
       compileSceneShaders();
     });
-    btnTextureNext.addEventListener("click", () => {
+    btnTextureNext?.addEventListener("click", () => {
       gameSettings.texturesOn = true;
       syncSettingsUI();
       saveGameSettings();
@@ -7748,8 +7797,8 @@
       applySceneFogAndCameraFar();
       compileSceneShaders();
     }
-    btnRenderDistPrev.addEventListener("click", () => cycleRenderDistance(-1));
-    btnRenderDistNext.addEventListener("click", () => cycleRenderDistance(1));
+    btnRenderDistPrev?.addEventListener("click", () => cycleRenderDistance(-1));
+    btnRenderDistNext?.addEventListener("click", () => cycleRenderDistance(1));
 
     function cycleLanguage(delta) {
       const n = LANGUAGE_OPTIONS.length;
@@ -7758,10 +7807,14 @@
       saveGameSettings();
       applyGameLanguage();
     }
-    btnLangPrev.addEventListener("click", () => cycleLanguage(-1));
-    btnLangNext.addEventListener("click", () => cycleLanguage(1));
+    btnLangPrev?.addEventListener("click", () => cycleLanguage(-1));
+    btnLangNext?.addEventListener("click", () => cycleLanguage(1));
 
-    applyGameLanguage();
+    try {
+      applyGameLanguage();
+    } catch (e) {
+      console.warn("[game] applyGameLanguage", e);
+    }
 
     window.addEventListener("resize", () => {
       syncGameRendererSize();
