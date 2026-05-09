@@ -125,8 +125,8 @@ const EN = {
 
 const ZH = {
   gameTitle: "无光之境",
-  creditsGame: "游戏：Tintly555",
-  creditsMusic: "音乐：J有点死了",
+  creditsGame: "游戏制作：Tintly555",
+  creditsMusic: "音乐制作：J有点死了",
   btnZombieArena: "丧尸竞技场",
   btnCrossfire: "交叉火力（对战）",
   btnSettings: "设置",
@@ -227,8 +227,8 @@ const ZH = {
 
 const ZH_HANT = {
   gameTitle: "無光之境",
-  creditsGame: "遊戲：Tintly555",
-  creditsMusic: "音樂：J有點死了",
+  creditsGame: "遊戲製作：Tintly555",
+  creditsMusic: "音樂製作：J有點死了",
   btnZombieArena: "殭屍競技場",
   btnCrossfire: "交叉火力（對戰）",
   btnSettings: "設定",
