@@ -57,6 +57,46 @@
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
   <meta name="game-asset-base" content="" />
+  <!-- Where static files from public/ are mounted: empty = site root (e.g. Fly: /walls.png). GitHub Pages subpath: content="/games/fps" -->
+  <meta name="game-static-prefix" content="" />
+  <script>
+    (function () {
+      function deployedPublicRoot() {
+        try {
+          var m = document.querySelector('meta[name="game-static-prefix"]');
+          var pre = m && m.content != null ? String(m.content).trim() : "";
+          if (pre && pre.charAt(0) !== "/") pre = "/" + pre;
+          pre = pre.replace(/\/+$/, "");
+          return location.origin + pre + "/";
+        } catch (e) {
+          try {
+            return location.origin + "/";
+          } catch (e2) {
+            return "/";
+          }
+        }
+      }
+      try {
+        var R = deployedPublicRoot();
+        try {
+          window.__GAME_STATIC_ROOT__ = R;
+        } catch (e0) {}
+        var el = document.documentElement;
+        el.style.setProperty(
+          "--game-ui-menu-bg",
+          'url("' + new URL("game-ui/game-ui-menu-background.png", R).href + '")'
+        );
+        el.style.setProperty(
+          "--game-ui-btn-texture",
+          'url("' + new URL("game-ui/game-ui-button-texture.png", R).href + '")'
+        );
+        el.style.setProperty(
+          "--game-ui-settings-bg",
+          'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", R).href + '")'
+        );
+      } catch (e1) {}
+    })();
+  </script>
   <!-- Socket.IO from CDN so menu/game always initialize even when socket.io.min.js isn’t deployed beside this file. -->
   <script defer src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js" crossorigin="anonymous"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -613,6 +653,11 @@
         var meta = document.querySelector('meta[name="game-asset-base"]');
         var mb = meta && meta.content != null ? String(meta.content).trim() : "";
         if (mb) bases.push(normBase(mb));
+        var sr =
+          typeof window.__GAME_STATIC_ROOT__ === "string" && window.__GAME_STATIC_ROOT__
+            ? window.__GAME_STATIC_ROOT__
+            : "";
+        if (sr) bases.push(normBase(sr));
         var mpMeta = document.querySelector('meta[name="game-multiplayer-origin"]');
         var mp = mpMeta && mpMeta.content != null ? String(mpMeta.content).trim() : "";
         if (mp) {
@@ -1828,6 +1873,27 @@
       return s.endsWith("/") ? s : s + "/";
     }
 
+    function getDeployedPublicRootHref() {
+      try {
+        if (typeof window.__GAME_STATIC_ROOT__ === "string" && window.__GAME_STATIC_ROOT__) {
+          return window.__GAME_STATIC_ROOT__;
+        }
+      } catch (_) {}
+      try {
+        const meta = document.querySelector('meta[name="game-static-prefix"]');
+        let pre = meta && meta.content != null ? String(meta.content).trim() : "";
+        if (pre && !pre.startsWith("/")) pre = "/" + pre;
+        pre = pre.replace(/\/+$/, "");
+        return window.location.origin + pre + "/";
+      } catch (_) {
+        try {
+          return window.location.origin + "/";
+        } catch (_) {
+          return "/";
+        }
+      }
+    }
+
     function getGameAssetBaseCandidates() {
       const explicit = [];
       const meta = document.querySelector('meta[name="game-asset-base"]');
@@ -1887,7 +1953,7 @@
       }
       remoteFallbacks.push("https://tintly555.github.io/games/fps/");
 
-      const merged = [...explicit, ...nearOrigin, ...farOrigin, ...remoteFallbacks];
+      const merged = [...explicit, getDeployedPublicRootHref(), ...nearOrigin, ...farOrigin, ...remoteFallbacks];
       return [...new Set(merged)];
     }
 
