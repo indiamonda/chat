@@ -1234,6 +1234,10 @@
         rp.rightArm.add(rp.gunModel);
         rp.currentWeapon = data.weapon;
       }
+      if (typeof data.lightsOn === "boolean" && rp.flashOuter && rp.flashInner) {
+        rp.flashOuter.visible = data.lightsOn;
+        rp.flashInner.visible = data.lightsOn;
+      }
       rp.group.visible = true;
     });
 
@@ -1721,10 +1725,14 @@
 
       group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       group.visible = false;
+      /** Until `enemyMove` carries `lightsOn`, match legacy always-on flashlight for remote players. */
+      flashOuter.visible = true;
+      flashInner.visible = true;
       return { group, x: 0, y: 1.65, z: 0, yaw: 0, name: name || "Player",
                nameSprite: ns.sprite, nameCanvas: ns.canvas, nameCtx: ns.ctx, nameTex: ns.tex,
                rightArm, leftArm, rightLeg: legR, leftLeg: legL, walkPhase: 0,
-               gunModel, currentWeapon: 1 };
+               gunModel, currentWeapon: 1,
+               flashOuter, flashInner };
     }
 
     function getSafeViewportSize() {
@@ -5169,7 +5177,8 @@
           z: player.position.z,
           yaw: player.yaw,
           name: playerName,
-          weapon: state.weaponIndex
+          weapon: state.weaponIndex,
+          lightsOn: playerBodyLight.visible,
         });
       }
     }
