@@ -23,7 +23,9 @@
       } catch (e) {}
     })();
   </script>
-  <title>Abandoned Orphanage Prototype</title>
+  <title>Abandoned Orphanage</title>
+  <!-- Only the script-injected <base> above should set the document base (folder of this HTML).
+       A second fixed base (e.g. chat origin) breaks relative game-ui/ + walls.png when the page is not at site root or when assets live beside this file. -->
   <!-- Socket.IO / multiplayer API host only — do not use as primary CDN for game-ui / menu.mp3 (same-origin loads avoid 404 + Web Audio CORS). -->
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
@@ -3673,10 +3675,14 @@
       if (p && typeof p.catch === "function") p.catch(() => {});
     }
     function onMenuBgmUserGesture() {
+      const play = () => {
+        tryPlayMenuBgm();
+      };
       if (audioCtx.state === "suspended") {
-        audioCtx.resume().catch(() => {});
+        audioCtx.resume().then(play).catch(play);
+      } else {
+        play();
       }
-      tryPlayMenuBgm();
     }
     ["pointerdown", "keydown", "touchstart"].forEach((ev) => {
       window.addEventListener(ev, onMenuBgmUserGesture, { capture: true });
