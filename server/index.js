@@ -917,7 +917,15 @@ app.use((req, res, next) => {
   }
 });
 
-app.use(express.static(publicDir));
+app.use(express.static(publicDir, {
+  setHeaders(res, filePath) {
+    // Let menu.mp3 / game-ui images load from pages on another origin (e.g. GitHub Pages)
+    // when used with crossOrigin + MediaElementSource / Web Audio / TextureLoader.
+    if (/\.(?:mp3|ogg|wav|webp|png|jpe?g|gif|svg)$/i.test(filePath)) {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    }
+  },
+}));
 
 /** Public config for client (e.g. reCAPTCHA site key). */
 app.get('/api/config', (req, res) => {
