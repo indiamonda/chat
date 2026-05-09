@@ -1892,6 +1892,8 @@ gameNsp.on('connection', (socket) => {
       y: +data.y || 1.65,
       z: +data.z || 0,
     });
+    const lightsOn =
+      typeof data.lightsOn === 'boolean' ? data.lightsOn : true;
     socket.to(currentRoom).emit('enemyMove', {
       id: socket.id,
       x: +data.x || 0,
@@ -1900,6 +1902,7 @@ gameNsp.on('connection', (socket) => {
       yaw: +data.yaw || 0,
       name: typeof data.name === 'string' ? data.name.slice(0, 16) : undefined,
       weapon: Number.isFinite(+data.weapon) ? (+data.weapon | 0) : undefined,
+      lightsOn,
     });
   });
 
