@@ -351,6 +351,11 @@
       pointer-events: none;
     }
 
+    /* When in-game, the menu backdrop canvas must NOT cover #app — its last frame would otherwise sit on top of the game and look like a black screen until the user resizes. */
+    body.in-game #menuWallBackdrop {
+      display: none;
+    }
+
     .menu {
       position: fixed;
       inset: 0;
@@ -3934,30 +3939,54 @@
       }
     }
 
-    function getMenuBgmUrl() {
+    /** All possible menu.mp3 URLs to try; first that loads wins. */
+    function getMenuBgmUrlList() {
+      const urls = [];
       for (const base of getGameAssetBaseCandidates()) {
         try {
-          return new URL("menu.mp3", normalizeGameAssetBase(base)).href;
+          urls.push(new URL("menu.mp3", normalizeGameAssetBase(base)).href);
         } catch (_) {}
       }
       try {
-        return new URL("menu.mp3", pageDirFromLocation()).href;
-      } catch (_) {
-        return "menu.mp3";
-      }
+        urls.push(new URL("menu.mp3", pageDirFromLocation()).href);
+      } catch (_) {}
+      return [...new Set(urls)];
     }
-    function ensureMenuBgmAudio() {
-      if (menuBgmAudio) return;
-      const bgmUrl = getMenuBgmUrl();
-      menuBgmAudio = new Audio();
+
+    let _menuBgmFallbackIdx = 0;
+    let _menuBgmCandidates = null;
+    function _menuBgmTrySrc(idx) {
+      if (!_menuBgmCandidates || idx >= _menuBgmCandidates.length) return;
+      const url = _menuBgmCandidates[idx];
       try {
-        if (new URL(bgmUrl).origin !== window.location.origin) {
+        if (new URL(url).origin !== window.location.origin) {
           menuBgmAudio.crossOrigin = "anonymous";
         }
       } catch (_) {}
-      menuBgmAudio.src = bgmUrl;
+      menuBgmAudio.src = url;
+      try { menuBgmAudio.load(); } catch (_) {}
+    }
+
+    function ensureMenuBgmAudio() {
+      if (menuBgmAudio) return;
+      _menuBgmCandidates = getMenuBgmUrlList();
+      _menuBgmFallbackIdx = 0;
+      menuBgmAudio = new Audio();
       menuBgmAudio.loop = true;
       menuBgmAudio.preload = "auto";
+      menuBgmAudio.addEventListener("error", () => {
+        _menuBgmFallbackIdx++;
+        if (_menuBgmFallbackIdx < _menuBgmCandidates.length) {
+          _menuBgmTrySrc(_menuBgmFallbackIdx);
+          if (menuBgmUnlocked && menuEl.style.display !== "none") {
+            const p = menuBgmAudio.play();
+            if (p && typeof p.catch === "function") p.catch(() => {});
+          }
+        } else {
+          console.warn("[menu bgm] all sources failed");
+        }
+      });
+      _menuBgmTrySrc(0);
       wireMenuBgmThroughAnalyser();
       if (!menuBgmMenuGain) {
         menuBgmAudio.volume = THREE.MathUtils.clamp(
@@ -6191,6 +6220,7 @@
       state.camShake = 0;
       ensureAmbientWindLoop();
       menuEl.style.display = "none";
+      document.body.classList.add("in-game");
       stopMenuBackdropLoop();
       pauseMenuBgm();
 
@@ -6283,7 +6313,11 @@
 
       weaponRoot.visible = true;
       gameBootLabel.textContent = "Preparing display…";
+      /** Force a fresh layout + size sync before flipping gameWorldReady so the first rendered frame already fills the screen. */
       await waitForRenderableViewport();
+      syncGameRendererSize();
+      renderer.render(scene, camera);
+      await new Promise((r) => requestAnimationFrame(r));
       gameWorldReady = true;
       refreshLocalPlayerLightsForCurrentState();
       gameBootOverlay.style.display = "none";
@@ -6309,6 +6343,8 @@
       gameBootOverlay.style.display = "none";
       gameBootOverlay.setAttribute("aria-busy", "false");
       menuEl.style.display = "flex";
+      document.body.classList.remove("in-game");
+      try { resizeMenuWallBackdrop(); } catch (_) {}
       showMenuPanel("menuMain");
       menuBgmPeakSessionMax = 1e-6;
       menuBackdropLightSmooth = 0;
