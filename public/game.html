@@ -1186,6 +1186,357 @@
 
     loadGameSettings();
 
+    /** Resolve static assets (walls, game-ui, menu.mp3). Declared before WebGL so menu BGM still loads if the renderer throws. */
+    function pageDirFromLocation() {
+      try {
+        if (typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__) {
+          return window.__GAME_ASSET_BASE_DIR__;
+        }
+      } catch (_) {}
+      const page = String(window.location.href).split(/[#?]/)[0];
+      try {
+        const u = new URL(page);
+        const p = u.pathname || "/";
+        const segs0 = p.replace(/\/+$/, "").split("/").filter(Boolean);
+        const bareGame = segs0.length === 1 && segs0[0].toLowerCase() === "game";
+        if (!p || p === "/") {
+          return u.origin + "/";
+        }
+        if (bareGame) {
+          return u.origin + "/";
+        }
+        if (p.endsWith("/")) {
+          return u.origin + p;
+        }
+        const li = p.lastIndexOf("/");
+        return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
+      } catch (_) {
+        const schemeRest = page.indexOf("/", page.indexOf("//") + 2);
+        const slash = page.lastIndexOf("/");
+        if (schemeRest >= 0 && slash > schemeRest) {
+          return page.slice(0, slash + 1);
+        }
+        return page.endsWith("/") ? page : page + "/";
+      }
+    }
+
+    function normalizeGameAssetBase(b) {
+      if (!b) return "";
+      const s = String(b).trim();
+      return s.endsWith("/") ? s : s + "/";
+    }
+
+    function getDeployedPublicRootHref() {
+      try {
+        if (typeof window.__GAME_STATIC_ROOT__ === "string" && window.__GAME_STATIC_ROOT__) {
+          return window.__GAME_STATIC_ROOT__;
+        }
+      } catch (_) {}
+      try {
+        const meta = document.querySelector('meta[name="game-static-prefix"]');
+        let pre = meta && meta.content != null ? String(meta.content).trim() : "";
+        if (pre && !pre.startsWith("/")) pre = "/" + pre;
+        pre = pre.replace(/\/+$/, "");
+        if (pre) {
+          return window.location.origin + pre + "/";
+        }
+      } catch (_) {}
+      try {
+        if (typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__) {
+          return window.__GAME_ASSET_BASE_DIR__;
+        }
+      } catch (_) {}
+      try {
+        return window.location.origin + "/";
+      } catch (_) {
+        return "/";
+      }
+    }
+
+    function getGameAssetBaseCandidates() {
+      const explicit = [];
+      const meta = document.querySelector('meta[name="game-asset-base"]');
+      const raw = meta && meta.content != null ? String(meta.content).trim() : "";
+      if (raw) explicit.push(normalizeGameAssetBase(raw));
+
+      const dir = pageDirFromLocation();
+      let parent = null;
+      let grandparent = null;
+      try {
+        parent = new URL("../", dir).href;
+        grandparent = new URL("../../", dir).href;
+      } catch (_) {}
+
+      let lastSeg = "";
+      try {
+        const segs = new URL(dir).pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+        lastSeg = (segs[segs.length - 1] || "").toLowerCase();
+      } catch (_) {}
+
+      const pageOrder = [];
+      if (lastSeg === "html") {
+        if (parent) pageOrder.push(parent);
+        if (grandparent) pageOrder.push(grandparent);
+        pageOrder.push(dir);
+      } else {
+        pageOrder.push(dir);
+        if (parent) pageOrder.push(parent);
+        if (grandparent) pageOrder.push(grandparent);
+      }
+
+      let here = "";
+      try {
+        here = window.location.origin;
+      } catch (_) {}
+
+      const nearOrigin = [];
+      const farOrigin = [];
+      for (const b of pageOrder) {
+        try {
+          if (here && new URL(b).origin === here) nearOrigin.push(b);
+          else farOrigin.push(b);
+        } catch (_) {
+          farOrigin.push(b);
+        }
+      }
+
+      const remoteFallbacks = [];
+      const mpMeta = document.querySelector('meta[name="game-multiplayer-origin"]');
+      const mpRaw = mpMeta && mpMeta.content != null ? String(mpMeta.content).trim() : "";
+      if (mpRaw) {
+        try {
+          remoteFallbacks.push(new URL("/", mpRaw).href);
+        } catch (_) {}
+      }
+      remoteFallbacks.push("https://tintly555.github.io/games/fps/");
+
+      const merged = [
+        ...explicit,
+        dir,
+        getDeployedPublicRootHref(),
+        ...nearOrigin,
+        ...farOrigin,
+        ...remoteFallbacks,
+      ];
+      return [...new Set(merged)];
+    }
+
+    let menuBgmAnalyser = null;
+    let menuBgmMenuGain = null;
+    let menuBgmMediaSrc = null;
+    let menuBgmTimeBuf = null;
+    let menuBgmPeakSessionMax = 1e-6;
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioMaster = audioCtx.createGain();
+    const audioSfx = audioCtx.createGain();
+    const audioMusic = audioCtx.createGain();
+    audioSfx.connect(audioMaster);
+    audioMusic.connect(audioMaster);
+    audioMaster.connect(audioCtx.destination);
+
+    let menuBgmAudio = null;
+    let menuBgmUnlocked = false;
+
+    function applyAudioVolumes() {
+      audioMaster.gain.value = gameSettings.masterVolume;
+      audioSfx.gain.value = gameSettings.soundVolume;
+      audioMusic.gain.value = gameSettings.musicVolume;
+      if (menuBgmAudio) {
+        if (_menuBgmGapTimer != null) {
+          menuBgmAudio.volume = 0;
+        } else if (typeof _menuBgmHandleTimeUpdate === "function") {
+          _menuBgmHandleTimeUpdate();
+        } else {
+          menuBgmAudio.volume = THREE.MathUtils.clamp(
+            gameSettings.masterVolume * gameSettings.musicVolume,
+            0,
+            1
+          );
+        }
+      }
+    }
+    applyAudioVolumes();
+
+    function wireMenuBgmThroughAnalyser() {
+      if (!menuBgmAudio || menuBgmMediaSrc) return;
+      try {
+        menuBgmMediaSrc = audioCtx.createMediaElementSource(menuBgmAudio);
+        menuBgmAnalyser = audioCtx.createAnalyser();
+        menuBgmAnalyser.fftSize = 2048;
+        menuBgmAnalyser.smoothingTimeConstant = 0.42;
+        menuBgmMenuGain = audioCtx.createGain();
+        menuBgmMediaSrc.connect(menuBgmAnalyser);
+        menuBgmAnalyser.connect(menuBgmMenuGain);
+        menuBgmMenuGain.connect(audioMaster);
+        menuBgmTimeBuf = new Uint8Array(menuBgmAnalyser.fftSize);
+        menuBgmAudio.volume = 0;
+        applyAudioVolumes();
+      } catch (err) {
+        menuBgmMediaSrc = null;
+        menuBgmAnalyser = null;
+        menuBgmMenuGain = null;
+        menuBgmTimeBuf = null;
+      }
+    }
+
+    /** menu.mp3: same-origin first (real file); do not use game-multiplayer-origin — that host often serves SPA HTML for /menu.mp3. */
+    function getMenuBgmUrlList() {
+      const urls = [];
+      const push = (href) => {
+        try {
+          if (href) urls.push(typeof href === "string" ? href : new URL(href).href);
+        } catch (_) {}
+      };
+      try {
+        push(new URL("menu.mp3", window.location.origin + "/").href);
+      } catch (_) {}
+      for (const base of getGameAssetBaseCandidates()) {
+        try {
+          push(new URL("menu.mp3", normalizeGameAssetBase(base)).href);
+        } catch (_) {}
+      }
+      try {
+        push(new URL("menu.mp3", pageDirFromLocation()).href);
+      } catch (_) {}
+      push("https://tintly555.github.io/games/fps/menu.mp3");
+      return [...new Set(urls)];
+    }
+
+    let _menuBgmFallbackIdx = 0;
+    let _menuBgmCandidates = null;
+    function _menuBgmTrySrc(idx) {
+      if (!_menuBgmCandidates || idx >= _menuBgmCandidates.length) return;
+      const url = _menuBgmCandidates[idx];
+      try {
+        const u = new URL(url, window.location.href);
+        if (u.origin === window.location.origin) {
+          menuBgmAudio.removeAttribute("crossOrigin");
+        } else {
+          menuBgmAudio.crossOrigin = "anonymous";
+        }
+      } catch (_) {
+        try {
+          menuBgmAudio.removeAttribute("crossOrigin");
+        } catch (__) {}
+      }
+      menuBgmAudio.src = url;
+      try {
+        menuBgmAudio.load();
+      } catch (_) {}
+    }
+
+    const MENU_BGM_FADE_SECS = 8;
+    const MENU_BGM_GAP_SECS = 2;
+    let _menuBgmGapTimer = null;
+    function _menuBgmTargetVolume() {
+      return THREE.MathUtils.clamp(gameSettings.masterVolume * gameSettings.musicVolume, 0, 1);
+    }
+    function _menuBgmClearGapTimer() {
+      if (_menuBgmGapTimer != null) {
+        clearTimeout(_menuBgmGapTimer);
+        _menuBgmGapTimer = null;
+      }
+    }
+    function _menuBgmHandleTimeUpdate() {
+      if (!menuBgmAudio) return;
+      const dur = Number(menuBgmAudio.duration);
+      if (!Number.isFinite(dur) || dur <= MENU_BGM_FADE_SECS) {
+        menuBgmAudio.volume = _menuBgmTargetVolume();
+        return;
+      }
+      const remaining = dur - menuBgmAudio.currentTime;
+      const target = _menuBgmTargetVolume();
+      if (remaining <= MENU_BGM_FADE_SECS) {
+        const k = Math.max(0, Math.min(1, remaining / MENU_BGM_FADE_SECS));
+        menuBgmAudio.volume = target * k;
+      } else {
+        menuBgmAudio.volume = target;
+      }
+    }
+    function _menuBgmHandleEnded() {
+      if (!menuBgmAudio) return;
+      _menuBgmClearGapTimer();
+      menuBgmAudio.volume = 0;
+      _menuBgmGapTimer = setTimeout(() => {
+        _menuBgmGapTimer = null;
+        if (!menuBgmAudio) return;
+        if (!menuBgmUnlocked) return;
+        if (menuEl.style.display === "none") return;
+        try {
+          menuBgmAudio.currentTime = 0;
+        } catch (_) {}
+        menuBgmAudio.volume = _menuBgmTargetVolume();
+        const p = menuBgmAudio.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      }, MENU_BGM_GAP_SECS * 1000);
+    }
+    function ensureMenuBgmAudio() {
+      if (menuBgmAudio) return;
+      _menuBgmCandidates = getMenuBgmUrlList();
+      _menuBgmFallbackIdx = 0;
+      menuBgmAudio = new Audio();
+      menuBgmAudio.loop = false;
+      menuBgmAudio.preload = "auto";
+      menuBgmAudio.volume = _menuBgmTargetVolume();
+      menuBgmAudio.addEventListener("error", () => {
+        _menuBgmFallbackIdx++;
+        if (_menuBgmFallbackIdx < _menuBgmCandidates.length) {
+          _menuBgmTrySrc(_menuBgmFallbackIdx);
+          if (menuBgmUnlocked && menuEl.style.display !== "none") {
+            const p = menuBgmAudio.play();
+            if (p && typeof p.catch === "function") p.catch(() => {});
+          }
+        } else {
+          const code = menuBgmAudio.error ? menuBgmAudio.error.code : "";
+          console.warn("[menu bgm] all sources failed", _menuBgmCandidates, "lastMediaError", code);
+        }
+      });
+      menuBgmAudio.addEventListener("canplay", () => {
+        if (menuBgmUnlocked && menuEl.style.display !== "none") {
+          const p = menuBgmAudio.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        }
+      });
+      menuBgmAudio.addEventListener("timeupdate", _menuBgmHandleTimeUpdate);
+      menuBgmAudio.addEventListener("ended", _menuBgmHandleEnded);
+      _menuBgmTrySrc(0);
+    }
+    function pauseMenuBgm() {
+      if (!menuBgmAudio) return;
+      _menuBgmClearGapTimer();
+      try {
+        menuBgmAudio.pause();
+      } catch (_) {}
+    }
+    function tryPlayMenuBgm() {
+      if (menuEl.style.display === "none") return;
+      if (!menuBgmUnlocked) return;
+      ensureMenuBgmAudio();
+      if (_menuBgmGapTimer != null) return;
+      _menuBgmHandleTimeUpdate();
+      const p = menuBgmAudio.play();
+      if (p && typeof p.catch === "function") {
+        p.catch((err) => {
+          console.warn("[menu bgm] play() rejected", err && err.message);
+        });
+      }
+    }
+    function onMenuBgmUserGesture() {
+      menuBgmUnlocked = true;
+      void (async () => {
+        try {
+          if (audioCtx.state === "suspended") {
+            await audioCtx.resume();
+          }
+        } catch (_) {}
+        tryPlayMenuBgm();
+      })();
+    }
+    ["pointerdown", "keydown", "touchstart"].forEach((ev) => {
+      window.addEventListener(ev, onMenuBgmUserGesture, { capture: true });
+    });
+
     let CURRENT_MAP = "arena";
     let MULTIPLAYER = false;
     /** True only for Zombie Arena played via ARENA CO-OP lobby (no damage vs other players). */
@@ -2317,142 +2668,6 @@
     const texLoader = new THREE.TextureLoader();
     texLoader.setCrossOrigin("anonymous");
 
-    function pageDirFromLocation() {
-      try {
-        if (typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__) {
-          return window.__GAME_ASSET_BASE_DIR__;
-        }
-      } catch (_) {}
-      const page = String(window.location.href).split(/[#?]/)[0];
-      try {
-        const u = new URL(page);
-        const p = u.pathname || "/";
-        const segs0 = p.replace(/\/+$/, "").split("/").filter(Boolean);
-        const bareGame = segs0.length === 1 && segs0[0].toLowerCase() === "game";
-        if (!p || p === "/") {
-          return u.origin + "/";
-        }
-        if (bareGame) {
-          return u.origin + "/";
-        }
-        if (p.endsWith("/")) {
-          return u.origin + p;
-        }
-        const li = p.lastIndexOf("/");
-        return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
-      } catch (_) {
-        const schemeRest = page.indexOf("/", page.indexOf("//") + 2);
-        const slash = page.lastIndexOf("/");
-        if (schemeRest >= 0 && slash > schemeRest) {
-          return page.slice(0, slash + 1);
-        }
-        return page.endsWith("/") ? page : page + "/";
-      }
-    }
-
-    function normalizeGameAssetBase(b) {
-      if (!b) return "";
-      const s = String(b).trim();
-      return s.endsWith("/") ? s : s + "/";
-    }
-
-    function getDeployedPublicRootHref() {
-      try {
-        if (typeof window.__GAME_STATIC_ROOT__ === "string" && window.__GAME_STATIC_ROOT__) {
-          return window.__GAME_STATIC_ROOT__;
-        }
-      } catch (_) {}
-      try {
-        const meta = document.querySelector('meta[name="game-static-prefix"]');
-        let pre = meta && meta.content != null ? String(meta.content).trim() : "";
-        if (pre && !pre.startsWith("/")) pre = "/" + pre;
-        pre = pre.replace(/\/+$/, "");
-        if (pre) {
-          return window.location.origin + pre + "/";
-        }
-      } catch (_) {}
-      try {
-        if (typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__) {
-          return window.__GAME_ASSET_BASE_DIR__;
-        }
-      } catch (_) {}
-      try {
-        return window.location.origin + "/";
-      } catch (_) {
-        return "/";
-      }
-    }
-
-    function getGameAssetBaseCandidates() {
-      const explicit = [];
-      const meta = document.querySelector('meta[name="game-asset-base"]');
-      const raw = meta && meta.content != null ? String(meta.content).trim() : "";
-      if (raw) explicit.push(normalizeGameAssetBase(raw));
-
-      const dir = pageDirFromLocation();
-      let parent = null;
-      let grandparent = null;
-      try {
-        parent = new URL("../", dir).href;
-        grandparent = new URL("../../", dir).href;
-      } catch (_) {}
-
-      let lastSeg = "";
-      try {
-        const segs = new URL(dir).pathname.replace(/\/+$/, "").split("/").filter(Boolean);
-        lastSeg = (segs[segs.length - 1] || "").toLowerCase();
-      } catch (_) {}
-
-      const pageOrder = [];
-      // Common bad deploy: only game.html under .../html/ while walls.png + game-ui/ live one level up.
-      if (lastSeg === "html") {
-        if (parent) pageOrder.push(parent);
-        if (grandparent) pageOrder.push(grandparent);
-        pageOrder.push(dir);
-      } else {
-        pageOrder.push(dir);
-        if (parent) pageOrder.push(parent);
-        if (grandparent) pageOrder.push(grandparent);
-      }
-
-      let here = "";
-      try {
-        here = window.location.origin;
-      } catch (_) {}
-
-      const nearOrigin = [];
-      const farOrigin = [];
-      for (const b of pageOrder) {
-        try {
-          if (here && new URL(b).origin === here) nearOrigin.push(b);
-          else farOrigin.push(b);
-        } catch (_) {
-          farOrigin.push(b);
-        }
-      }
-
-      /** Multiplayer origin last: static files should load from the same host as this HTML when possible (avoids 404 + MediaElementSource CORS). */
-      const remoteFallbacks = [];
-      const mpMeta = document.querySelector('meta[name="game-multiplayer-origin"]');
-      const mpRaw = mpMeta && mpMeta.content != null ? String(mpMeta.content).trim() : "";
-      if (mpRaw) {
-        try {
-          remoteFallbacks.push(new URL("/", mpRaw).href);
-        } catch (_) {}
-      }
-      remoteFallbacks.push("https://tintly555.github.io/games/fps/");
-
-      const merged = [
-        ...explicit,
-        dir,
-        getDeployedPublicRootHref(),
-        ...nearOrigin,
-        ...farOrigin,
-        ...remoteFallbacks,
-      ];
-      return [...new Set(merged)];
-    }
-
     function getWallTextureUrlList() {
       const urls = [];
       for (const base of getGameAssetBaseCandidates()) {
@@ -2475,11 +2690,6 @@
 
     const MENU_BACKDROP_LIGHT_MIN = 0.38;
     const MENU_BACKDROP_LIGHT_MAX = 6.2;
-    let menuBgmAnalyser = null;
-    let menuBgmMenuGain = null;
-    let menuBgmMediaSrc = null;
-    let menuBgmTimeBuf = null;
-    let menuBgmPeakSessionMax = 1e-6;
     let menuBackdropLightSmooth = 0;
 
     function updateMenuBackdropLightFromMusic() {
@@ -4596,235 +4806,6 @@
       ctx.strokeRect(4, 8, 120, 8);
       enemy.hpTexture.needsUpdate = true;
     }
-
-    
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const audioMaster = audioCtx.createGain();
-    const audioSfx = audioCtx.createGain();
-    const audioMusic = audioCtx.createGain();
-    audioSfx.connect(audioMaster);
-    audioMusic.connect(audioMaster);
-    audioMaster.connect(audioCtx.destination);
-
-    let menuBgmAudio = null;
-    /** Set on first pointer/key/touch in the page; required for menu.mp3 (autoplay) and to resume after game. */
-    let menuBgmUnlocked = false;
-
-    function applyAudioVolumes() {
-      audioMaster.gain.value = gameSettings.masterVolume;
-      audioSfx.gain.value = gameSettings.soundVolume;
-      audioMusic.gain.value = gameSettings.musicVolume;
-      if (menuBgmAudio) {
-        if (_menuBgmGapTimer != null) {
-          menuBgmAudio.volume = 0;
-        } else if (typeof _menuBgmHandleTimeUpdate === "function") {
-          _menuBgmHandleTimeUpdate();
-        } else {
-          menuBgmAudio.volume = THREE.MathUtils.clamp(
-            gameSettings.masterVolume * gameSettings.musicVolume,
-            0,
-            1
-          );
-        }
-      }
-    }
-    applyAudioVolumes();
-
-    function wireMenuBgmThroughAnalyser() {
-      if (!menuBgmAudio || menuBgmMediaSrc) return;
-      try {
-        menuBgmMediaSrc = audioCtx.createMediaElementSource(menuBgmAudio);
-        menuBgmAnalyser = audioCtx.createAnalyser();
-        menuBgmAnalyser.fftSize = 2048;
-        menuBgmAnalyser.smoothingTimeConstant = 0.42;
-        menuBgmMenuGain = audioCtx.createGain();
-        menuBgmMediaSrc.connect(menuBgmAnalyser);
-        menuBgmAnalyser.connect(menuBgmMenuGain);
-        menuBgmMenuGain.connect(audioMaster);
-        menuBgmTimeBuf = new Uint8Array(menuBgmAnalyser.fftSize);
-        menuBgmAudio.volume = 0;
-        applyAudioVolumes();
-      } catch (err) {
-        menuBgmMediaSrc = null;
-        menuBgmAnalyser = null;
-        menuBgmMenuGain = null;
-        menuBgmTimeBuf = null;
-      }
-    }
-
-    /** All possible menu.mp3 URLs to try; first that loads wins. */
-    function getMenuBgmUrlList() {
-      const urls = [];
-      const push = (href) => {
-        try {
-          if (href) urls.push(typeof href === "string" ? href : new URL(href).href);
-        } catch (_) {}
-      };
-      try {
-        const mpMeta = document.querySelector('meta[name="game-multiplayer-origin"]');
-        const mpRaw = mpMeta && mpMeta.content != null ? String(mpMeta.content).trim() : "";
-        if (mpRaw) {
-          try {
-            push(new URL("menu.mp3", new URL("/", mpRaw).href).href);
-          } catch (_) {}
-        }
-      } catch (_) {}
-      for (const base of getGameAssetBaseCandidates()) {
-        try {
-          push(new URL("menu.mp3", normalizeGameAssetBase(base)).href);
-        } catch (_) {}
-      }
-      try {
-        push(new URL("menu.mp3", pageDirFromLocation()).href);
-      } catch (_) {}
-      try {
-        push(new URL("menu.mp3", window.location.origin + "/").href);
-      } catch (_) {}
-      push("https://tintly555.github.io/games/fps/menu.mp3");
-      return [...new Set(urls)];
-    }
-
-    let _menuBgmFallbackIdx = 0;
-    let _menuBgmCandidates = null;
-    function _menuBgmTrySrc(idx) {
-      if (!_menuBgmCandidates || idx >= _menuBgmCandidates.length) return;
-      const url = _menuBgmCandidates[idx];
-      try {
-        const u = new URL(url, window.location.href);
-        if (u.origin === window.location.origin) {
-          menuBgmAudio.removeAttribute("crossOrigin");
-        } else {
-          menuBgmAudio.crossOrigin = "anonymous";
-        }
-      } catch (_) {
-        try {
-          menuBgmAudio.removeAttribute("crossOrigin");
-        } catch (__) {}
-      }
-      menuBgmAudio.src = url;
-      try {
-        menuBgmAudio.load();
-      } catch (_) {}
-    }
-
-    /**
-     * Custom loop with a fade tail: fade volume to 0 over the final FADE_SECS, then hold silent for GAP_SECS,
-     * then restart from 0 at the user-configured volume. Native `audio.loop` is disabled so we can shape the tail.
-     */
-    const MENU_BGM_FADE_SECS = 8;
-    const MENU_BGM_GAP_SECS = 2;
-    let _menuBgmGapTimer = null;
-    function _menuBgmTargetVolume() {
-      return THREE.MathUtils.clamp(gameSettings.masterVolume * gameSettings.musicVolume, 0, 1);
-    }
-    function _menuBgmClearGapTimer() {
-      if (_menuBgmGapTimer != null) {
-        clearTimeout(_menuBgmGapTimer);
-        _menuBgmGapTimer = null;
-      }
-    }
-    function _menuBgmHandleTimeUpdate() {
-      if (!menuBgmAudio) return;
-      const dur = Number(menuBgmAudio.duration);
-      if (!Number.isFinite(dur) || dur <= MENU_BGM_FADE_SECS) {
-        menuBgmAudio.volume = _menuBgmTargetVolume();
-        return;
-      }
-      const remaining = dur - menuBgmAudio.currentTime;
-      const target = _menuBgmTargetVolume();
-      if (remaining <= MENU_BGM_FADE_SECS) {
-        const k = Math.max(0, Math.min(1, remaining / MENU_BGM_FADE_SECS));
-        menuBgmAudio.volume = target * k;
-      } else {
-        menuBgmAudio.volume = target;
-      }
-    }
-    function _menuBgmHandleEnded() {
-      if (!menuBgmAudio) return;
-      _menuBgmClearGapTimer();
-      menuBgmAudio.volume = 0;
-      _menuBgmGapTimer = setTimeout(() => {
-        _menuBgmGapTimer = null;
-        if (!menuBgmAudio) return;
-        if (!menuBgmUnlocked) return;
-        if (menuEl.style.display === "none") return;
-        try {
-          menuBgmAudio.currentTime = 0;
-        } catch (_) {}
-        menuBgmAudio.volume = _menuBgmTargetVolume();
-        const p = menuBgmAudio.play();
-        if (p && typeof p.catch === "function") p.catch(() => {});
-      }, MENU_BGM_GAP_SECS * 1000);
-    }
-    function ensureMenuBgmAudio() {
-      if (menuBgmAudio) return;
-      _menuBgmCandidates = getMenuBgmUrlList();
-      _menuBgmFallbackIdx = 0;
-      menuBgmAudio = new Audio();
-      menuBgmAudio.loop = false;
-      menuBgmAudio.preload = "auto";
-      menuBgmAudio.volume = _menuBgmTargetVolume();
-      menuBgmAudio.addEventListener("error", () => {
-        _menuBgmFallbackIdx++;
-        if (_menuBgmFallbackIdx < _menuBgmCandidates.length) {
-          _menuBgmTrySrc(_menuBgmFallbackIdx);
-          if (menuBgmUnlocked && menuEl.style.display !== "none") {
-            const p = menuBgmAudio.play();
-            if (p && typeof p.catch === "function") p.catch(() => {});
-          }
-        } else {
-          const code = menuBgmAudio.error ? menuBgmAudio.error.code : "";
-          console.warn("[menu bgm] all sources failed", _menuBgmCandidates, "lastMediaError", code);
-        }
-      });
-      menuBgmAudio.addEventListener("canplay", () => {
-        if (menuBgmUnlocked && menuEl.style.display !== "none") {
-          const p = menuBgmAudio.play();
-          if (p && typeof p.catch === "function") p.catch(() => {});
-        }
-      });
-      menuBgmAudio.addEventListener("timeupdate", _menuBgmHandleTimeUpdate);
-      menuBgmAudio.addEventListener("ended", _menuBgmHandleEnded);
-      _menuBgmTrySrc(0);
-    }
-    function pauseMenuBgm() {
-      if (!menuBgmAudio) return;
-      _menuBgmClearGapTimer();
-      try {
-        menuBgmAudio.pause();
-      } catch (_) {}
-    }
-    /**
-     * Menu music: play only while the main menu is visible, and only after any user gesture this session.
-     * In-game: pause. Return to menu: play again (goToMenu + prior unlock from playing / menu use).
-     */
-    function tryPlayMenuBgm() {
-      if (menuEl.style.display === "none") return;
-      if (!menuBgmUnlocked) return;
-      ensureMenuBgmAudio();
-      if (_menuBgmGapTimer != null) return;
-      _menuBgmHandleTimeUpdate();
-      const p = menuBgmAudio.play();
-      if (p && typeof p.catch === "function") {
-        p.catch((err) => {
-          console.warn("[menu bgm] play() rejected", err && err.message);
-        });
-      }
-    }
-    function onMenuBgmUserGesture() {
-      menuBgmUnlocked = true;
-      void (async () => {
-        try {
-          if (audioCtx.state === "suspended") {
-            await audioCtx.resume();
-          }
-        } catch (_) {}
-        tryPlayMenuBgm();
-      })();
-    }
-    ["pointerdown", "keydown", "touchstart"].forEach((ev) => {
-      window.addEventListener(ev, onMenuBgmUserGesture, { capture: true });
-    });
 
     let ambientWindNode = null;
     function ensureAmbientWindLoop() {
