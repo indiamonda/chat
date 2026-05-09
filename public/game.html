@@ -71,6 +71,9 @@
         if (cs && cs.nextSibling) document.head.insertBefore(b, cs.nextSibling);
         else document.head.appendChild(b);
       } catch (e) {}
+      try {
+        window.__gameComputeAssetBaseDir = computeAssetBaseDir;
+      } catch (eExp) {}
     })();
   </script>
   <title>Abandoned Orphanage</title>
@@ -84,7 +87,21 @@
   <meta name="game-static-prefix" content="" />
   <script>
     (function () {
+      function normRoot(u) {
+        if (!u) return "";
+        var s = String(u).trim();
+        return s.endsWith("/") ? s : s + "/";
+      }
       function deployedPublicRoot() {
+        try {
+          var ab = document.querySelector('meta[name="game-asset-base"]');
+          var abt = ab && ab.content != null ? String(ab.content).trim() : "";
+          if (abt) {
+            try {
+              return normRoot(new URL(abt, location.href).href);
+            } catch (eAb) {}
+          }
+        } catch (e0) {}
         try {
           var m = document.querySelector('meta[name="game-static-prefix"]');
           var pre = m && m.content != null ? String(m.content).trim() : "";
@@ -93,15 +110,20 @@
           if (pre) {
             return location.origin + pre + "/";
           }
-        } catch (e) {}
+        } catch (e1) {}
         try {
           if (typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__) {
             return window.__GAME_ASSET_BASE_DIR__;
           }
         } catch (e2) {}
         try {
+          if (typeof window.__gameComputeAssetBaseDir === "function") {
+            return window.__gameComputeAssetBaseDir(location.href);
+          }
+        } catch (e3) {}
+        try {
           return location.origin + "/";
-        } catch (e3) {
+        } catch (e4) {
           return "/";
         }
       }
@@ -126,15 +148,30 @@
       } catch (e1) {}
     })();
   </script>
+  <!-- three/examples/jsm modules import the bare specifier "three"; import maps are required in the browser. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js"
+      }
+    }
+  </script>
   <!-- Socket.IO from CDN so menu/game always initialize even when socket.io.min.js isn’t deployed beside this file. -->
   <script defer src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js" crossorigin="anonymous"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
   <style>
+    /**
+     * Do not set --game-ui-* urls here: an earlier head script assigns absolute URLs from __GAME_ASSET_BASE_DIR__.
+     * Relative urls in :root would override those and break loading when <base href> or deploy path ≠ asset root.
+     */
     :root {
-      --game-ui-menu-bg: url("game-ui/game-ui-menu-background.png");
-      --game-ui-btn-texture: url("game-ui/game-ui-button-texture.png");
-      --game-ui-settings-bg: url("game-ui/game-ui-settings-panel-bg.png");
+      --game-ui-menu-bg: none;
+      --game-ui-btn-texture: none;
+      --game-ui-settings-bg: none;
+      /** Menu / UI overlays: arrow cursor PNG (64×42), hotspot at tip */
+      --game-ui-menu-pointer: url("game-ui/game-ui-menu-pointer.png") 6 4, default;
+      --game-ui-menu-pointer-action: url("game-ui/game-ui-menu-pointer.png") 6 4, pointer;
     }
 
     #app {
@@ -389,6 +426,21 @@
       background-size: cover;
       background-position: center;
       background-repeat: no-repeat;
+      cursor: var(--game-ui-menu-pointer);
+    }
+
+    .menu button,
+    .menu h1,
+    .menu h2,
+    .menu p,
+    .menu .menu-panels-wrap {
+      cursor: var(--game-ui-menu-pointer-action);
+    }
+
+    .menu input[type="text"],
+    .menu input[type="search"],
+    .menu textarea {
+      cursor: text;
     }
 
     .menu h1 {
@@ -408,7 +460,7 @@
       padding: 14px 18px;
       font-size: 18px;
       border-radius: 10px;
-      cursor: pointer;
+      cursor: var(--game-ui-menu-pointer-action);
       font-weight: 600;
       font-family: 'Audiowide', sans-serif;
       text-transform: uppercase;
@@ -476,6 +528,31 @@
       align-items: center;
       background: rgba(0,0,0,0.72);
       backdrop-filter: blur(6px);
+      cursor: var(--game-ui-menu-pointer);
+    }
+
+    #settingsModal button,
+    #settingsModal .settings-tab,
+    #settingsModal .settings-close,
+    #settingsModal .cycle-arrow {
+      cursor: var(--game-ui-menu-pointer-action);
+    }
+
+    #settingsModal input[type="range"] {
+      cursor: ew-resize;
+    }
+
+    #nameModal {
+      cursor: var(--game-ui-menu-pointer);
+    }
+
+    #nameModal .overlay-btn,
+    #nameModal h2 {
+      cursor: var(--game-ui-menu-pointer-action);
+    }
+
+    #nameModal input[type="text"] {
+      cursor: text;
     }
 
     .settings-shell {
@@ -709,24 +786,33 @@
         return s.endsWith("/") ? s : s + "/";
       }
       try {
-        var dir =
-          typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__
-            ? window.__GAME_ASSET_BASE_DIR__
-            : (function () {
-                var page = String(location.href).split(/[#?]/)[0];
-                try {
-                  var u = new URL(page);
-                  var p = u.pathname || "/";
-                  if (!p || p === "/") return u.origin + "/";
-                  if (p.endsWith("/")) return u.origin + p;
-                  var li = p.lastIndexOf("/");
-                  return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
-                } catch (e0) {
-                  var sr = page.indexOf("/", page.indexOf("//") + 2);
-                  var slash = page.lastIndexOf("/");
-                  return sr >= 0 && slash > sr ? page.slice(0, slash + 1) : page.endsWith("/") ? page : page + "/";
-                }
-              })();
+        var dir;
+        if (typeof window.__GAME_ASSET_BASE_DIR__ === "string" && window.__GAME_ASSET_BASE_DIR__) {
+          dir = window.__GAME_ASSET_BASE_DIR__;
+        } else if (typeof window.__gameComputeAssetBaseDir === "function") {
+          try {
+            dir = window.__gameComputeAssetBaseDir(location.href);
+          } catch (eC) {
+            dir = null;
+          }
+        }
+        if (!dir) {
+          dir = (function () {
+            var page = String(location.href).split(/[#?]/)[0];
+            try {
+              var u = new URL(page);
+              var p = u.pathname || "/";
+              if (!p || p === "/") return u.origin + "/";
+              if (p.endsWith("/")) return u.origin + p;
+              var li = p.lastIndexOf("/");
+              return li >= 0 ? u.origin + p.slice(0, li + 1) : u.origin + "/";
+            } catch (e0) {
+              var sr = page.indexOf("/", page.indexOf("//") + 2);
+              var slash = page.lastIndexOf("/");
+              return sr >= 0 && slash > sr ? page.slice(0, slash + 1) : page.endsWith("/") ? page : page + "/";
+            }
+          })();
+        }
         var bases = [];
         var meta = document.querySelector('meta[name="game-asset-base"]');
         var mb = meta && meta.content != null ? String(meta.content).trim() : "";
@@ -973,6 +1059,7 @@
 
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js";
+    import { Reflector } from "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/objects/Reflector.js";
 
     const app = document.getElementById("app");
     const hud = document.getElementById("hud");
@@ -1133,6 +1220,8 @@
     let _renderTick = 0;
     let _fpsFrames = 0;
     let _fpsTimeAccum = 0;
+    /** Must exist before `applyGraphicsQuality()` (called early); maze culling uses this budget. */
+    let MAX_MAZE_LIGHTS_ACTIVE = 40;
     function tickFpsMeter(dt) {
       _fpsFrames++;
       _fpsTimeAccum += dt;
@@ -1163,16 +1252,78 @@
      * Punctual lights only (Point / Spot). Hemisphere & directional lights have no decay in Three.js.
      * https://threejs.org/docs/#api/en/lights/PointLight
      * https://threejs.org/docs/#api/en/lights/SpotLight
+     *
+     * Environment lights (sconces, ceiling lamps, area panels) are tracked in a registry so
+     * `retuneEnvironmentLights()` can rescale intensity / range / decay / shadow softness when the
+     * graphics quality changes — this is what makes the shade dissolve smoothly at distance on high tiers.
      */
     const ENVIRONMENT_LIGHT_DECAY = 3;
     const PLAYER_BODY_LIGHT_DECAY = 3;
     const FLASHLIGHT_LIGHT_DECAY = 0.1;
 
+    const environmentLights = [];
+
+    function trackEnvLight(L, baseIntensity, baseDistance, baseDecay) {
+      L.userData = L.userData || {};
+      L.userData.envLight = true;
+      L.userData.baseIntensity = baseIntensity;
+      L.userData.baseDistance = baseDistance;
+      L.userData.baseDecay = baseDecay;
+      environmentLights.push(L);
+      tuneEnvLight(L);
+      return L;
+    }
+
+    /** Apply the current quality profile to a single environment light (intensity / range / decay / soft shadow). */
+    function tuneEnvLight(L) {
+      if (!L || !L.userData || !L.userData.envLight) return;
+      const lp = getQualityLightProfile();
+      L.intensity = L.userData.baseIntensity * lp.intensityScale;
+      L.distance = L.userData.baseDistance * lp.rangeScale;
+      L.decay = L.userData.baseDecay * lp.decayBoost;
+      if (L.isSpotLight && lp.punctualShadows && !L.userData._punctualShadowSetUp) {
+        L.castShadow = true;
+        L.shadow.mapSize.set(512, 512);
+        L.shadow.bias = -0.0008;
+        L.shadow.normalBias = 0.012;
+        L.shadow.radius = lp.shadowRadius;
+        try { L.shadow.blurSamples = lp.shadowBlurSamples; } catch (_) {}
+        L.userData._punctualShadowSetUp = true;
+      }
+      if (L.castShadow && L.shadow) {
+        L.shadow.radius = lp.shadowRadius;
+        try { L.shadow.blurSamples = lp.shadowBlurSamples; } catch (_) {}
+      }
+    }
+
+    function retuneEnvironmentLights() {
+      for (let i = 0; i < environmentLights.length; i++) {
+        tuneEnvLight(environmentLights[i]);
+      }
+    }
+
+    /**
+     * Forward-assignable hooks. The real implementations are defined later, after their dependencies exist.
+     * Using assignable refs (instead of function declarations) avoids redefinition issues caused by hoisting.
+     */
+    let retuneZombieEyeLights = () => {};
+    let applyPuddlesForQuality = () => {};
+
     function createPhysicalPointLight(color, intensity, distance, decay = ENVIRONMENT_LIGHT_DECAY) {
-      return new THREE.PointLight(color, intensity, distance, decay);
+      const L = new THREE.PointLight(color, intensity, distance, decay);
+      return trackEnvLight(L, intensity, distance, decay);
     }
 
     function createPhysicalSpotLight(color, intensity, distance, angle, penumbra, decay = ENVIRONMENT_LIGHT_DECAY) {
+      const L = new THREE.SpotLight(color, intensity, distance, angle, penumbra, decay);
+      return trackEnvLight(L, intensity, distance, decay);
+    }
+
+    /** Player flashlight / body halo: NOT scaled by tier — it's local to the camera and already tuned. */
+    function createPlayerPointLight(color, intensity, distance, decay) {
+      return new THREE.PointLight(color, intensity, distance, decay);
+    }
+    function createPlayerSpotLight(color, intensity, distance, angle, penumbra, decay) {
       return new THREE.SpotLight(color, intensity, distance, angle, penumbra, decay);
     }
 
@@ -1362,6 +1513,20 @@
       applyZombieSyncPayload(data);
     });
 
+    socket.on("zombieShotTrail", (data) => {
+      if (!data) return;
+      if (!MULTIPLAYER || !ARENA_COOP || CURRENT_MAP !== "arena") return;
+      if (ZOMBIE_AUTHORITY) return;
+      const sx = +data.sx;
+      const sy = +data.sy;
+      const sz = +data.sz;
+      const x = +data.x;
+      const y = +data.y;
+      const z = +data.z;
+      if (![sx, sy, sz, x, y, z].every((n) => Number.isFinite(n))) return;
+      createZombieGunnerBulletTrail(new THREE.Vector3(sx, sy, sz), new THREE.Vector3(x, y, z));
+    });
+
     socket.on("zombieDamaged", (data) => {
       if (!gameWorldReady) return;
       if (!MULTIPLAYER || !ARENA_COOP || CURRENT_MAP !== "arena") return;
@@ -1379,6 +1544,7 @@
         enemy.alive = false;
         enemy.respawnTimer = 3.0;
         enemy.group.visible = false;
+        detachEyeLightFrom(enemy);
         state.score += 1;
       }
       updateHud();
@@ -1727,7 +1893,7 @@
       const flashTarget = new THREE.Object3D();
       // Avatar mesh faces +Z; group uses yaw+π so forward is +Z here — unlike camera flash (-Z).
       flashTarget.position.set(0, 0, 1);
-      const flashOuter = createPhysicalSpotLight(
+      const flashOuter = createPlayerSpotLight(
         PLAYER_LIGHT_COLOR,
         FLASH_OUTER_INTENSITY,
         FLASH_OUTER_DISTANCE,
@@ -1735,7 +1901,7 @@
         FLASH_OUTER_PEN,
         FLASHLIGHT_LIGHT_DECAY
       );
-      const flashInner = createPhysicalSpotLight(
+      const flashInner = createPlayerSpotLight(
         PLAYER_LIGHT_COLOR,
         FLASH_INNER_INTENSITY,
         FLASH_INNER_DISTANCE,
@@ -1826,10 +1992,12 @@
 
     // Same luminance as pre–r155 legacy lights: physically correct shading drops ~π× vs old scaling.
     const _LEGACY_L = Math.PI;
-    const hemi = new THREE.HemisphereLight(0x524838, 0x141008, 0.14 * _LEGACY_L);
+    const HEMI_BASE_INTENSITY = 0.14 * _LEGACY_L;
+    const MOON_BASE_INTENSITY = 0.11 * _LEGACY_L;
+    const hemi = new THREE.HemisphereLight(0x524838, 0x141008, HEMI_BASE_INTENSITY);
     scene.add(hemi);
 
-    const moon = new THREE.DirectionalLight(0xc8b078, 0.11 * _LEGACY_L);
+    const moon = new THREE.DirectionalLight(0xc8b078, MOON_BASE_INTENSITY);
     moon.position.set(28, 34, 22);
     moon.castShadow = true;
     moon.shadow.mapSize.set(256, 256);
@@ -1837,6 +2005,7 @@
     moon.shadow.camera.right = 100;
     moon.shadow.camera.top = 100;
     moon.shadow.camera.bottom = -100;
+    moon.shadow.radius = 1;
     scene.add(moon);
 
     const fallbackColor = "#13151d";
@@ -1884,6 +2053,134 @@
       return { near: 19, far: 96 };
     }
 
+    /**
+     * Per-quality light realism profile.
+     * - intensityScale: extra punch for environment lamps (subtle for potato, brighter for high/extreme).
+     * - rangeScale: how far each lamp reaches before its falloff fully fades — bigger = softer dissolve at the edge.
+     *   Real luminaires don't have a hard cutoff; range is just the distance where intensity reaches 0, so larger
+     *   values let high/extreme tiers behave more like physical lights with smooth long-distance attenuation.
+     * - decayBoost: how aggressively intensity drops with distance. Lower = closer to inverse-square reality;
+     *   slightly higher decay on potato keeps perf cost down.
+     * - shadowRadius: PCF blur radius for soft shadow penumbra (only used for soft shadow types).
+     * - shadowBlurSamples: how many taps for the percentage-closer filter (PCFSoftShadowMap).
+     * - moonIntensityMul / hemiIntensityMul: multipliers applied on top of the legacy values.
+     * - punctualShadows: true = sconce / area lamps cast shadows (PCF) for a near-photoreal look.
+     * - mazeLightBudget: how many of the maze's per-chunk lights stay visible to the GPU at once.
+     */
+    function getQualityLightProfile() {
+      const q = getQualityId();
+      if (q === "potato") {
+        return {
+          intensityScale: 1.0,
+          rangeScale: 1.0,
+          decayBoost: 1.05,
+          shadowRadius: 1,
+          shadowBlurSamples: 4,
+          moonIntensityMul: 1.0,
+          hemiIntensityMul: 1.0,
+          punctualShadows: false,
+          mazeLightBudget: 24,
+        };
+      }
+      if (q === "regular") {
+        return {
+          intensityScale: 1.18,
+          rangeScale: 1.45,
+          decayBoost: 0.92,
+          shadowRadius: 2.5,
+          shadowBlurSamples: 8,
+          moonIntensityMul: 1.05,
+          hemiIntensityMul: 1.1,
+          punctualShadows: false,
+          mazeLightBudget: 36,
+        };
+      }
+      if (q === "high") {
+        return {
+          intensityScale: 1.32,
+          rangeScale: 1.75,
+          decayBoost: 0.84,
+          shadowRadius: 4.5,
+          shadowBlurSamples: 16,
+          moonIntensityMul: 1.1,
+          hemiIntensityMul: 1.18,
+          punctualShadows: true,
+          mazeLightBudget: 48,
+        };
+      }
+      // extreme
+      return {
+        intensityScale: 1.48,
+        rangeScale: 2.05,
+        decayBoost: 0.78,
+        shadowRadius: 7,
+        shadowBlurSamples: 24,
+        moonIntensityMul: 1.18,
+        hemiIntensityMul: 1.28,
+        punctualShadows: true,
+        mazeLightBudget: 64,
+      };
+    }
+
+    /** Tier-specific knobs the wall/floor/water systems consume to look more 3D. */
+    function getQualitySurfaceProfile() {
+      const q = getQualityId();
+      if (q === "potato") {
+        return {
+          surface: "lambert",
+          normalScale: 0,
+          roughness: 1,
+          metalness: 0,
+          envMapIntensity: 0,
+          parallax: 0,
+          extremeDisplacement: 0,
+          wallSegments: 1,
+          floorPuddles: false,
+          puddleReflectorTex: 0,
+        };
+      }
+      if (q === "regular") {
+        return {
+          surface: "standard",
+          normalScale: 0.55,
+          roughness: 0.95,
+          metalness: 0.02,
+          envMapIntensity: 0.5,
+          parallax: 0,
+          extremeDisplacement: 0,
+          wallSegments: 1,
+          floorPuddles: false,
+          puddleReflectorTex: 0,
+        };
+      }
+      if (q === "high") {
+        return {
+          surface: "standard",
+          normalScale: 0.95,
+          roughness: 0.88,
+          metalness: 0.04,
+          envMapIntensity: 0.8,
+          parallax: 0.012,
+          extremeDisplacement: 0,
+          wallSegments: 4,
+          floorPuddles: true,
+          puddleReflectorTex: 384,
+        };
+      }
+      return {
+        surface: "standard",
+        normalScale: 1.4,
+        roughness: 0.78,
+        metalness: 0.06,
+        envMapIntensity: 1.0,
+        parallax: 0.022,
+        extremeDisplacement: 0.16,
+        wallSegments: 12,
+        floorPuddles: true,
+        puddleReflectorTex: 640,
+      };
+    }
+
     /** Distance fog + camera far: darkness and light fade beyond render distance (scaled by preset). */
     function applySceneFogAndCameraFar() {
       if (!scene.fog || !scene.fog.isFog) return;
@@ -1904,7 +2201,12 @@
       camera.updateProjectionMatrix();
     }
 
-    /** Local rendering: tone mapping, capped resolution, shadows, fog distance, textures — each step should look more realistic, not just heavier. */
+    /**
+     * Local rendering: tone mapping, capped resolution, shadows, fog distance, textures, light realism profile.
+     * Higher tiers spend the budget on softer penumbra, longer light reach, and physically-tuned falloff so the
+     * shade dissolves naturally at distance instead of clipping to a hard ring (real punctual lights do not have
+     * a sharp edge — at distance their intensity simply fades through inverse-square attenuation).
+     */
     function applyGraphicsQuality() {
       const q = getQualityId();
       let shadowSz = 256;
@@ -1918,21 +2220,23 @@
         toneMapping = THREE.NoToneMapping;
         toneExposure = 1;
       } else if (q === "regular") {
-        shadowSz = 384;
+        shadowSz = 512;
         shadowType = THREE.PCFSoftShadowMap;
         toneMapping = THREE.ACESFilmicToneMapping;
         toneExposure = 1;
       } else if (q === "high") {
-        shadowSz = 640;
+        shadowSz = 1024;
         shadowType = THREE.PCFSoftShadowMap;
         toneMapping = THREE.ACESFilmicToneMapping;
         toneExposure = 1.05;
       } else if (q === "extreme") {
-        shadowSz = 896;
+        shadowSz = 1536;
         shadowType = THREE.PCFSoftShadowMap;
         toneMapping = THREE.ACESFilmicToneMapping;
         toneExposure = 1.1;
       }
+
+      const lp = getQualityLightProfile();
 
       renderer.toneMapping = toneMapping;
       renderer.toneMappingExposure = toneExposure;
@@ -1941,8 +2245,15 @@
       moon.shadow.mapSize.set(shadowSz, shadowSz);
       moon.shadow.bias = q === "potato" ? -0.0012 : q === "regular" ? -0.0009 : -0.00065;
       moon.shadow.normalBias = q === "potato" ? 0.035 : q === "extreme" ? 0.008 : 0.018;
+      moon.shadow.radius = lp.shadowRadius;
+      try { moon.shadow.blurSamples = lp.shadowBlurSamples; } catch (_) {}
+      moon.intensity = MOON_BASE_INTENSITY * lp.moonIntensityMul;
+      hemi.intensity = HEMI_BASE_INTENSITY * lp.hemiIntensityMul;
+      MAX_MAZE_LIGHTS_ACTIVE = lp.mazeLightBudget;
 
       applySceneFogAndCameraFar();
+      retuneEnvironmentLights();
+      retuneZombieEyeLights();
 
       if (warFilmOverlay) {
         warFilmOverlay.style.opacity = q === "extreme" ? "0.07" : q === "high" ? "0.035" : "0";
@@ -1962,6 +2273,7 @@
 
       syncGameRendererSize();
       applyWallTexture();
+      applyPuddlesForQuality();
       compileSceneShaders();
     }
 
@@ -2244,7 +2556,12 @@
       menuBackdropPoint.position.set(0, 6.2, 1.4);
       menuBackdropScene.add(menuBackdropPoint);
 
-      const wallMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+      // Menu wall: Standard so normal map adds a hint of depth even before any in-game tier change.
+      const wallMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.92,
+        metalness: 0.04,
+      });
       const wallGeo = new THREE.PlaneGeometry(28, 16);
       menuBackdropWall = new THREE.Mesh(wallGeo, wallMat);
       menuBackdropWall.position.set(0, 6.2, -11);
@@ -2279,6 +2596,21 @@
             tex.repeat.set(5, 3);
             tex.colorSpace = THREE.SRGBColorSpace;
             wallMat.map = tex;
+            if (wallNormalTex) {
+              const nm = wallNormalTex.clone();
+              nm.needsUpdate = true;
+              nm.wrapS = nm.wrapT = THREE.RepeatWrapping;
+              nm.repeat.set(5, 3);
+              wallMat.normalMap = nm;
+              wallMat.normalScale = new THREE.Vector2(0.85, 0.85);
+            }
+            if (wallRoughnessTex) {
+              const rm = wallRoughnessTex.clone();
+              rm.needsUpdate = true;
+              rm.wrapS = rm.wrapT = THREE.RepeatWrapping;
+              rm.repeat.set(5, 3);
+              wallMat.roughnessMap = rm;
+            }
             wallMat.needsUpdate = true;
             menuBackdropReady = true;
             startMenuBackdropLoop();
@@ -2337,6 +2669,145 @@
       tryNext();
     }
 
+    /**
+     * Procedural surface maps generated from walls.png:
+     *  - wallNormalTex: per-pixel surface normal derived from a Sobel gradient on the texture's luminance, so
+     *    bricks / cracks deflect the lighting and walls stop looking like a flat printed sheet.
+     *  - wallRoughnessTex: brighter pixels (mortar / smooth highlights) are slightly less rough than darker
+     *    grout / shadowed pits, giving each region its own micro-specular response.
+     *  - wallDisplacementTex: luminance-based height map used by the EXTREME tier on tessellated wall meshes
+     *    so the geometry actually pushes in/out — that's what removes the lingering 2D feel up close.
+     *
+     * All three are SRGB-decoded into linear; downstream materials assign them as LinearSpace textures.
+     */
+    let wallNormalTex = null;
+    let wallRoughnessTex = null;
+    let wallDisplacementTex = null;
+
+    function _wallTexImageToCanvas(img) {
+      const w = Math.min(512, img.naturalWidth || img.width || 256);
+      const h = Math.min(512, img.naturalHeight || img.height || 256);
+      const cv = document.createElement("canvas");
+      cv.width = w;
+      cv.height = h;
+      const ctx = cv.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, w, h);
+      return { cv, ctx, w, h };
+    }
+
+    function _luminance(r, g, b) {
+      return (r * 0.2126 + g * 0.7152 + b * 0.0722);
+    }
+
+    function generateWallSurfaceMapsFromImage(img) {
+      try {
+        const { ctx, w, h } = _wallTexImageToCanvas(img);
+        const src = ctx.getImageData(0, 0, w, h).data;
+
+        const lum = new Float32Array(w * h);
+        for (let i = 0, p = 0; i < src.length; i += 4, p++) {
+          lum[p] = _luminance(src[i], src[i + 1], src[i + 2]) / 255;
+        }
+
+        // Normal map (RGB) via Sobel — tiles cleanly because walls.png itself tiles.
+        const normalCv = document.createElement("canvas");
+        normalCv.width = w;
+        normalCv.height = h;
+        const nctx = normalCv.getContext("2d");
+        const nimg = nctx.createImageData(w, h);
+        const nstrength = 4.5;
+        const sample = (x, y) => lum[((y + h) % h) * w + ((x + w) % w)];
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const tl = sample(x - 1, y - 1);
+            const t  = sample(x,     y - 1);
+            const tr = sample(x + 1, y - 1);
+            const l  = sample(x - 1, y);
+            const r  = sample(x + 1, y);
+            const bl = sample(x - 1, y + 1);
+            const b  = sample(x,     y + 1);
+            const br = sample(x + 1, y + 1);
+            const dx = (tr + 2 * r + br) - (tl + 2 * l + bl);
+            const dy = (bl + 2 * b + br) - (tl + 2 * t + tr);
+            const nx = -dx * nstrength;
+            const ny = -dy * nstrength;
+            const nz = 1.0;
+            const inv = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+            const i4 = (y * w + x) * 4;
+            nimg.data[i4    ] = ((nx * inv) * 0.5 + 0.5) * 255 | 0;
+            nimg.data[i4 + 1] = ((ny * inv) * 0.5 + 0.5) * 255 | 0;
+            nimg.data[i4 + 2] = ((nz * inv) * 0.5 + 0.5) * 255 | 0;
+            nimg.data[i4 + 3] = 255;
+          }
+        }
+        nctx.putImageData(nimg, 0, 0);
+
+        // Roughness: darker patches = rougher (grout / pits), lighter highlights = slightly smoother.
+        const roughCv = document.createElement("canvas");
+        roughCv.width = w;
+        roughCv.height = h;
+        const rctx = roughCv.getContext("2d");
+        const rimg = rctx.createImageData(w, h);
+        for (let p = 0; p < lum.length; p++) {
+          const k = lum[p];
+          const v = THREE.MathUtils.clamp(0.96 - (k - 0.5) * 0.32, 0.55, 0.99) * 255 | 0;
+          const i4 = p * 4;
+          rimg.data[i4    ] = v;
+          rimg.data[i4 + 1] = v;
+          rimg.data[i4 + 2] = v;
+          rimg.data[i4 + 3] = 255;
+        }
+        rctx.putImageData(rimg, 0, 0);
+
+        // Displacement: luminance-derived height; subtle so seams don't pop.
+        const dispCv = document.createElement("canvas");
+        dispCv.width = w;
+        dispCv.height = h;
+        const dctx = dispCv.getContext("2d");
+        const dimg = dctx.createImageData(w, h);
+        for (let p = 0; p < lum.length; p++) {
+          const v = THREE.MathUtils.clamp(lum[p], 0, 1) * 255 | 0;
+          const i4 = p * 4;
+          dimg.data[i4    ] = v;
+          dimg.data[i4 + 1] = v;
+          dimg.data[i4 + 2] = v;
+          dimg.data[i4 + 3] = 255;
+        }
+        dctx.putImageData(dimg, 0, 0);
+
+        const aniso = getMaxTextureAnisotropy();
+
+        wallNormalTex = new THREE.CanvasTexture(normalCv);
+        wallNormalTex.wrapS = wallNormalTex.wrapT = THREE.RepeatWrapping;
+        wallNormalTex.colorSpace = THREE.NoColorSpace;
+        wallNormalTex.anisotropy = aniso;
+
+        wallRoughnessTex = new THREE.CanvasTexture(roughCv);
+        wallRoughnessTex.wrapS = wallRoughnessTex.wrapT = THREE.RepeatWrapping;
+        wallRoughnessTex.colorSpace = THREE.NoColorSpace;
+        wallRoughnessTex.anisotropy = aniso;
+
+        wallDisplacementTex = new THREE.CanvasTexture(dispCv);
+        wallDisplacementTex.wrapS = wallDisplacementTex.wrapT = THREE.RepeatWrapping;
+        wallDisplacementTex.colorSpace = THREE.NoColorSpace;
+        wallDisplacementTex.anisotropy = aniso;
+      } catch (err) {
+        wallNormalTex = null;
+        wallRoughnessTex = null;
+        wallDisplacementTex = null;
+      }
+    }
+
+    function _cloneTexWithRepeat(tex, rx, ry) {
+      const t = tex.clone();
+      t.needsUpdate = true;
+      t.wrapS = THREE.RepeatWrapping;
+      t.wrapT = THREE.RepeatWrapping;
+      t.repeat.set(rx, ry);
+      t.anisotropy = getMaxTextureAnisotropy();
+      return t;
+    }
+
     function tryLoadWallsTexture(urls, index) {
       if (index >= urls.length) {
         wallTextureLoaded = false;
@@ -2354,7 +2825,10 @@
           tex.anisotropy = getMaxTextureAnisotropy();
           wallTexture = tex;
           wallTextureLoaded = true;
-          applyWallTexture();
+          if (tex.image) {
+            generateWallSurfaceMapsFromImage(tex.image);
+          }
+          rebuildAllWallMaterials();
           compileSceneShaders();
         },
         undefined,
@@ -2370,63 +2844,196 @@
     /** Floor / ceiling planes (crossfire + maze chunks): same world-space texture scale. */
     const FLOOR_CEILING_METERS_PER_REPEAT = 5;
 
+    /**
+     * Build a single wall-surface material for the given repeat & tint at the current quality.
+     * Potato uses Lambert (diffuse-only, cheapest path); regular/high/extreme use MeshStandardMaterial with
+     * progressively stronger normal / roughness / displacement contribution — that's what makes the bricks read
+     * with real surface depth instead of a printed-on photo.
+     */
     function makeWallMaterial(repeatX, repeatY, color) {
       const tint = color || fallbackWallColor;
-      if (wallTextureLoaded && wallTexture && gameSettings.texturesOn) {
-        const t = wallTexture.clone();
-        t.needsUpdate = true;
-        t.wrapS = THREE.RepeatWrapping;
-        t.wrapT = THREE.RepeatWrapping;
-        t.repeat.set(repeatX, repeatY);
-        t.anisotropy = getMaxTextureAnisotropy();
-        return new THREE.MeshLambertMaterial({ map: t, color: tint });
+      const sp = getQualitySurfaceProfile();
+      const haveTex = wallTextureLoaded && wallTexture && gameSettings.texturesOn;
+      if (!haveTex || sp.surface === "lambert") {
+        if (haveTex) {
+          return new THREE.MeshLambertMaterial({
+            map: _cloneTexWithRepeat(wallTexture, repeatX, repeatY),
+            color: tint,
+          });
+        }
+        return new THREE.MeshLambertMaterial({ color: tint });
       }
-      // Diffuse-only like textured walls — StandardMaterial still picks up specular/Fresnel even at high roughness.
-      return new THREE.MeshLambertMaterial({ color: tint });
+      const mat = new THREE.MeshStandardMaterial({
+        map: _cloneTexWithRepeat(wallTexture, repeatX, repeatY),
+        color: tint,
+        roughness: sp.roughness,
+        metalness: sp.metalness,
+      });
+      if (wallNormalTex && sp.normalScale > 0) {
+        mat.normalMap = _cloneTexWithRepeat(wallNormalTex, repeatX, repeatY);
+        mat.normalScale = new THREE.Vector2(sp.normalScale, sp.normalScale);
+      }
+      if (wallRoughnessTex) {
+        mat.roughnessMap = _cloneTexWithRepeat(wallRoughnessTex, repeatX, repeatY);
+      }
+      if (wallDisplacementTex && sp.extremeDisplacement > 0) {
+        mat.displacementMap = _cloneTexWithRepeat(wallDisplacementTex, repeatX, repeatY);
+        mat.displacementScale = sp.extremeDisplacement;
+        mat.displacementBias = -sp.extremeDisplacement * 0.5;
+      }
+      mat.envMapIntensity = sp.envMapIntensity;
+      return mat;
     }
 
-    function applyWallTexture() {
+    /**
+     * Rebuild the materials of every tracked wall / floor / ceiling mesh from scratch.
+     * We swap the whole material so that potato↔regular↔high↔extreme transitions can move between Lambert /
+     * Standard / displaced-Standard. Cheap because materials are flyweights and meshes share repeats.
+     */
+    function rebuildAllWallMaterials() {
       if (!wallTexture) return;
+      const sp = getQualitySurfaceProfile();
       for (const entry of _texturedMeshes) {
         const { mesh, rx, ry, tint, faceRepeats } = entry;
-        const baseTint = tint || 0xaaaaaa;
         if (faceRepeats && Array.isArray(mesh.material)) {
-          const mats = mesh.material;
-          for (let i = 0; i < mats.length && i < faceRepeats.length; i++) {
-            const fr = faceRepeats[i];
-            if (gameSettings.texturesOn) {
-              const t = wallTexture.clone();
-              t.needsUpdate = true;
-              t.wrapS = THREE.RepeatWrapping;
-              t.wrapT = THREE.RepeatWrapping;
-              t.repeat.set(fr.rx, fr.ry);
-              t.anisotropy = getMaxTextureAnisotropy();
-              mats[i].map = t;
-              mats[i].color.set(baseTint);
-            } else {
-              mats[i].map = null;
-              mats[i].color.set(tint || fallbackWallColor);
-            }
-            mats[i].needsUpdate = true;
+          const oldMats = mesh.material;
+          const newMats = faceRepeats.map((fr) => makeWallMaterial(fr.rx, fr.ry, tint));
+          mesh.material = newMats;
+          for (const m of oldMats) {
+            try { m.dispose(); } catch (_) {}
           }
         } else {
-          if (gameSettings.texturesOn) {
-            const t = wallTexture.clone();
-            t.needsUpdate = true;
-            t.wrapS = THREE.RepeatWrapping;
-            t.wrapT = THREE.RepeatWrapping;
-            t.repeat.set(rx, ry);
-            t.anisotropy = getMaxTextureAnisotropy();
-            mesh.material.map = t;
-            mesh.material.color.set(baseTint);
-          } else {
-            mesh.material.map = null;
-            mesh.material.color.set(tint || fallbackWallColor);
-          }
-          mesh.material.needsUpdate = true;
+          const old = mesh.material;
+          mesh.material = makeWallMaterial(rx || 1, ry || 1, tint);
+          try { old.dispose(); } catch (_) {}
+        }
+        // Extreme: subdivide the wall geometry on demand so displacementMap actually moves vertices.
+        if (sp.extremeDisplacement > 0 && entry.boxDims && !entry._displacedSegments) {
+          try {
+            mesh.geometry.dispose();
+            mesh.geometry = new THREE.BoxGeometry(
+              entry.boxDims.w, entry.boxDims.h, entry.boxDims.d,
+              sp.wallSegments, sp.wallSegments, sp.wallSegments
+            );
+            entry._displacedSegments = sp.wallSegments;
+          } catch (_) {}
+        } else if (sp.extremeDisplacement === 0 && entry.boxDims && entry._displacedSegments) {
+          try {
+            mesh.geometry.dispose();
+            mesh.geometry = new THREE.BoxGeometry(entry.boxDims.w, entry.boxDims.h, entry.boxDims.d, 1, 1, 1);
+            entry._displacedSegments = 0;
+          } catch (_) {}
         }
       }
     }
+
+    /** Public alias used by older call sites (e.g. applyGraphicsQuality / texturesOn toggle). */
+    function applyWallTexture() {
+      rebuildAllWallMaterials();
+    }
+
+    /**
+     * Standing-water puddles for High / Extreme quality.
+     *
+     * Each puddle is a low-poly quad slightly above the floor that uses a `Reflector` shader to render the
+     * scene from a mirrored virtual camera, then darkens + tints the result so it reads as wet concrete rather
+     * than a literal mirror. Real puddles are mostly Fresnel reflection at grazing angles; we approximate that
+     * with a darker base color and a faint distortion-free render.
+     *
+     * `chunkPuddles` tracks every active puddle Reflector (per maze chunk) so they can be torn down on quality
+     * change or chunk unload, since each Reflector owns a WebGLRenderTarget that must be `dispose()`'d.
+     */
+    const PUDDLE_DARK_COLOR = 0x0e1014;
+    const chunkPuddles = new Map();
+
+    function _puddleSeedRng(cx, cz, salt) {
+      return mazeHashSeed(cx, cz, 0x90123456 ^ (salt | 0));
+    }
+
+    function _placePuddleAt(px, pz, sizeR, sizeC, chunkKey) {
+      const sp = getQualitySurfaceProfile();
+      if (!sp.floorPuddles) return null;
+      const txRes = sp.puddleReflectorTex || 384;
+      const geo = new THREE.PlaneGeometry(sizeR * 2, sizeC * 2, 1, 1);
+      let reflector;
+      try {
+        reflector = new Reflector(geo, {
+          color: PUDDLE_DARK_COLOR,
+          textureWidth: txRes,
+          textureHeight: txRes,
+          clipBias: 0.003,
+          multisample: 0,
+        });
+      } catch (e) {
+        try { geo.dispose(); } catch (_) {}
+        return null;
+      }
+      reflector.rotation.x = -Math.PI / 2;
+      reflector.position.set(px, 0.012, pz);
+      reflector.userData.puddleChunkKey = chunkKey;
+      reflector.userData.isPuddle = true;
+      reflector.renderOrder = -1;
+      scene.add(reflector);
+      return reflector;
+    }
+
+    /** Pick 0–3 puddle anchors from the chunk grid (avoid exterior portal cells; favor open intersections). */
+    function _planChunkPuddles(cx, cz, vert, horiz, w, h) {
+      const rng = _puddleSeedRng(cx, cz, 0x77);
+      const positions = [];
+      const want = 1 + ((rng() * 3) | 0); // 1..3
+      for (let attempt = 0; attempt < 32 && positions.length < want; attempt++) {
+        const gx = 1 + ((rng() * (w - 2)) | 0);
+        const gy = 1 + ((rng() * (h - 2)) | 0);
+        const deg = mazeCellDegreeOpen(gx, gy, vert, horiz, w, h);
+        if (deg < 2) continue;
+        positions.push({ gx, gy, r: 0.55 + rng() * 0.65, c: 0.55 + rng() * 0.65 });
+      }
+      return positions;
+    }
+
+    function buildChunkPuddles(cx, cz, vert, horiz, w, h, chunkKey) {
+      const sp = getQualitySurfaceProfile();
+      if (!sp.floorPuddles) return [];
+      const ox = cx * MAZE_CHUNK_WORLD;
+      const oz = cz * MAZE_CHUNK_WORLD;
+      const cw = MAZE_CELL_SIZE;
+      const plans = _planChunkPuddles(cx, cz, vert, horiz, w, h);
+      const made = [];
+      for (const p of plans) {
+        const px = ox + (p.gx + 0.5) * cw;
+        const pz = oz + (p.gy + 0.5) * cw;
+        const r = _placePuddleAt(px, pz, p.r, p.c, chunkKey);
+        if (r) made.push(r);
+      }
+      return made;
+    }
+
+    function disposeChunkPuddles(chunkKey) {
+      const arr = chunkPuddles.get(chunkKey);
+      if (!arr) return;
+      for (const r of arr) {
+        scene.remove(r);
+        try { if (r.dispose) r.dispose(); } catch (_) {}
+        try { if (r.geometry && r.geometry.dispose) r.geometry.dispose(); } catch (_) {}
+      }
+      chunkPuddles.delete(chunkKey);
+    }
+
+    /** Rebuild all puddles when quality flips between has-puddles ↔ no-puddles, or reflector resolution changes. */
+    applyPuddlesForQuality = function () {
+      for (const [key] of chunkPuddles) {
+        disposeChunkPuddles(key);
+      }
+      const sp = getQualitySurfaceProfile();
+      if (!sp.floorPuddles) return;
+      for (const [key, ch] of mazeChunks) {
+        if (!ch._puddleSpec) continue;
+        const { cx, cz, vert, horiz, w, h } = ch._puddleSpec;
+        const arr = buildChunkPuddles(cx, cz, vert, horiz, w, h, key);
+        if (arr.length) chunkPuddles.set(key, arr);
+      }
+    };
 
     const floorMat = makeWallMaterial(
       worldSize / FLOOR_CEILING_METERS_PER_REPEAT,
@@ -2502,14 +3109,23 @@
         rep(w, h),
       ];
       const materials = faceRepeats.map((fr) => makeWallMaterial(fr.rx, fr.ry, color));
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), materials);
+      // Subdivide on extreme tier so displacementMap actually pushes vertices.
+      const sp = getQualitySurfaceProfile();
+      const seg = sp.extremeDisplacement > 0 ? sp.wallSegments : 1;
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d, seg, seg, seg), materials);
       mesh.position.set(x, y, z);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       scene.add(mesh);
       wallMeshes.push(mesh);
       wallBoxes.push(new THREE.Box3().setFromObject(mesh));
-      _texturedMeshes.push({ mesh, faceRepeats, tint: color });
+      _texturedMeshes.push({
+        mesh,
+        faceRepeats,
+        tint: color,
+        boxDims: { w, h, d },
+        _displacedSegments: seg > 1 ? seg : 0,
+      });
       return mesh;
     }
 
@@ -2528,7 +3144,6 @@
     let mazeChunkPollAcc = 0;
     /** WebGL forward shading has a hard limit on fragment light uniforms — register maze lamps and cull visibility each frame. */
     const mazeCullableLights = [];
-    const MAX_MAZE_LIGHTS_ACTIVE = 40;
 
     function mazeHashSeed(cx, cz, salt = 0) {
       let h = mazeWorldSeed ^ salt ^ (cx * 73856093) ^ (cz * 19349663) ^ (cx * cz * 83492791);
@@ -3092,7 +3707,14 @@
         }
       }
 
-      mazeChunks.set(key, { meshes: chunkMeshes, lights: chunkLights });
+      const puddles = buildChunkPuddles(cx, cz, vert, horiz, MAZE_CELLS, MAZE_CELLS, key);
+      if (puddles.length) chunkPuddles.set(key, puddles);
+
+      mazeChunks.set(key, {
+        meshes: chunkMeshes,
+        lights: chunkLights,
+        _puddleSpec: { cx, cz, vert, horiz, w: MAZE_CELLS, h: MAZE_CELLS },
+      });
     }
 
     function registerMazeCullLight(light, chunkKey) {
@@ -3133,6 +3755,7 @@
       const ch = mazeChunks.get(key);
       if (!ch) return;
       pruneMazeCullLightsForChunk(key);
+      disposeChunkPuddles(key);
       for (const mesh of ch.meshes) {
         scene.remove(mesh);
         const wi = wallMeshes.indexOf(mesh);
@@ -3718,14 +4341,83 @@
       const jawBone = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.12, 0.32), matSkinD);
       jawBone.position.set(0, -0.24, 0.02); headGroup.add(jawBone);
 
-      const eyeGlowMat = new THREE.MeshBasicMaterial({ color: eyeColor });
-      const eyeSocketMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 1, metalness: 0 });
-      const sockL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.10, 0.04), eyeSocketMat);
-      sockL.position.set(-0.10, 0.06, 0.20); headGroup.add(sockL);
+      /**
+       * Realistic glowing eyes.
+       *
+       *  - Deep socket: dark recessed box inside the skull (sells the depth so the bright pupil reads as 3D).
+       *  - Inner pupil: small sphere, MeshBasicMaterial at full color — unaffected by lighting (looks like an LED).
+       *  - Outer corona: larger transparent additive sphere over the pupil — fakes a soft bloom halo even without
+       *    post-processing, so the glow blends with the surrounding ambient light at distance.
+       *  - Specular cap: tiny shiny sphere with a touch of metalness so the reflection of the room moves across
+       *    the eye when the player walks past (the wet "alive" look).
+       *
+       * The actual coloured point light is created on demand by the eye-light scheduler in `updateEnemies` so we
+       * don't blow the WebGL forward-shading uniform light limit when many zombies exist; only the closest few
+       * zombies project real light at any time.
+       */
+      const eyeColorVec = new THREE.Color(eyeColor);
+
+      const eyeSocketMat = new THREE.MeshStandardMaterial({ color: 0x07080a, roughness: 1, metalness: 0 });
+      const sockL = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.11, 0.06), eyeSocketMat);
+      sockL.position.set(-0.10, 0.06, 0.18); headGroup.add(sockL);
       const sockR = sockL.clone(); sockR.position.x = 0.10; headGroup.add(sockR);
-      const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.05), eyeGlowMat);
-      eyeL.position.set(-0.10, 0.06, 0.215); headGroup.add(eyeL);
-      const eyeR = eyeL.clone(); eyeR.position.x = 0.10; headGroup.add(eyeR);
+
+      const pupilGeo = new THREE.SphereGeometry(0.046, 10, 8);
+      const pupilMat = new THREE.MeshBasicMaterial({
+        color: eyeColorVec.clone().multiplyScalar(1.45),
+        toneMapped: false,
+      });
+      const eyeL = new THREE.Mesh(pupilGeo, pupilMat);
+      eyeL.position.set(-0.10, 0.06, 0.22);
+      headGroup.add(eyeL);
+      const eyeR = new THREE.Mesh(pupilGeo, pupilMat);
+      eyeR.position.set(0.10, 0.06, 0.22);
+      headGroup.add(eyeR);
+
+      const coronaGeo = new THREE.SphereGeometry(0.085, 10, 8);
+      const coronaMat = new THREE.MeshBasicMaterial({
+        color: eyeColorVec.clone().multiplyScalar(0.85),
+        transparent: true,
+        opacity: 0.42,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const coronaL = new THREE.Mesh(coronaGeo, coronaMat);
+      coronaL.position.copy(eyeL.position);
+      coronaL.renderOrder = 2;
+      headGroup.add(coronaL);
+      const coronaR = new THREE.Mesh(coronaGeo, coronaMat);
+      coronaR.position.copy(eyeR.position);
+      coronaR.renderOrder = 2;
+      headGroup.add(coronaR);
+
+      const specMat = new THREE.MeshStandardMaterial({
+        color: eyeColorVec.clone().lerp(new THREE.Color(0xffffff), 0.55),
+        emissive: eyeColorVec.clone().multiplyScalar(0.4),
+        emissiveIntensity: 1,
+        roughness: 0.18,
+        metalness: 0.55,
+      });
+      const specL = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 6), specMat);
+      specL.position.set(-0.10, 0.07, 0.255);
+      headGroup.add(specL);
+      const specR = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 6), specMat);
+      specR.position.set(0.10, 0.07, 0.255);
+      headGroup.add(specR);
+
+      const _zombieEyeRefs = {
+        eyeColor: eyeColorVec.clone(),
+        pupilMat,
+        coronaMat,
+        specMat,
+        coronaL,
+        coronaR,
+        baseCoronaOpacity: 0.42,
+        // Real point light is created later (see attachEyeLightTo) only when this zombie is close enough to matter.
+        light: null,
+        wantLight: false,
+      };
 
       const brow = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, 0.08), matSkinD);
       brow.position.set(0, 0.15, 0.19); headGroup.add(brow);
@@ -3887,7 +4579,8 @@
         targetId: null,
         retargetTimer: 0,
         moveYaw: 0,
-        rangedLosAcquireTimer: 0
+        rangedLosAcquireTimer: 0,
+        eyeRefs: _zombieEyeRefs,
       };
     }
 
@@ -4301,15 +4994,17 @@
       }
     }
 
-    function createBulletTrail(start, end, color) {
+    /** Short-lived additive line trail (player weapons + synced MP shots). */
+    function pushTracerRibbon(start, end, color, maxLife, opacityMul = 1) {
       const hex = typeof color === "number" ? color : new THREE.Color(color).getHex();
+      const om = THREE.MathUtils.clamp(opacityMul, 0, 2);
       const a = start.clone();
       const b = end.clone();
       const geomCore = new THREE.BufferGeometry().setFromPoints([a, b]);
       const matCore = new THREE.LineBasicMaterial({
         color: hex,
         transparent: true,
-        opacity: 1,
+        opacity: om,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
@@ -4318,7 +5013,7 @@
       const matGlow = new THREE.LineBasicMaterial({
         color: hex,
         transparent: true,
-        opacity: 0.42,
+        opacity: 0.42 * om,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
@@ -4327,16 +5022,47 @@
       trailGroup.add(lineCore);
       trailGroup.add(lineGlow);
       tracerGroup.add(trailGroup);
-      const maxLife = 0.28;
       state.tracers.push({
         group: trailGroup,
         parts: [
-          { geometry: geomCore, material: matCore, baseOpacity: 1 },
-          { geometry: geomGlow, material: matGlow, baseOpacity: 0.42 },
+          { geometry: geomCore, material: matCore, baseOpacity: om },
+          { geometry: geomGlow, material: matGlow, baseOpacity: 0.42 * om },
         ],
         life: maxLife,
         maxLife,
       });
+    }
+
+    function createBulletTrail(start, end, color) {
+      pushTracerRibbon(start, end, color, 0.28, 1);
+    }
+
+    /** Gunner zombie shots: bright red, wider visible “beam” + longer decay; host syncs to co-op peers. */
+    const ZOMBIE_GUNNER_TRAIL_COLOR = 0xff1414;
+    function createZombieGunnerBulletTrail(start, end) {
+      const dir = new THREE.Vector3().subVectors(end, start);
+      const len = dir.length();
+      if (len < 1e-5) return;
+      dir.multiplyScalar(1 / len);
+      let up = new THREE.Vector3(0, 1, 0);
+      if (Math.abs(dir.dot(up)) > 0.9) up = new THREE.Vector3(1, 0, 0);
+      const side = new THREE.Vector3().crossVectors(dir, up).normalize().multiplyScalar(0.048);
+      const life = 0.52;
+      pushTracerRibbon(start, end, ZOMBIE_GUNNER_TRAIL_COLOR, life, 1);
+      pushTracerRibbon(
+        start.clone().add(side),
+        end.clone().add(side),
+        ZOMBIE_GUNNER_TRAIL_COLOR,
+        life * 0.92,
+        0.62
+      );
+      pushTracerRibbon(
+        start.clone().sub(side),
+        end.clone().sub(side),
+        ZOMBIE_GUNNER_TRAIL_COLOR,
+        life * 0.92,
+        0.62
+      );
     }
 
     function emitShootNetwork(muzzle, end, color, hitType, extras = {}) {
@@ -4360,7 +5086,7 @@
     const playerLightTarget = new THREE.Object3D();
     playerLightTarget.position.set(0, 0, -1);
 
-    const playerBodyLight = createPhysicalPointLight(
+    const playerBodyLight = createPlayerPointLight(
       PLAYER_LIGHT_COLOR,
       PLAYER_BODY_INTENSITY,
       PLAYER_BODY_DISTANCE,
@@ -4369,7 +5095,7 @@
     playerBodyLight.position.set(0, -0.22, 0.08);
     camera.add(playerBodyLight);
 
-    const flashOuterLocal = createPhysicalSpotLight(
+    const flashOuterLocal = createPlayerSpotLight(
       PLAYER_LIGHT_COLOR,
       FLASH_OUTER_INTENSITY,
       FLASH_OUTER_DISTANCE,
@@ -4377,7 +5103,7 @@
       FLASH_OUTER_PEN,
       FLASHLIGHT_LIGHT_DECAY
     );
-    const flashInnerLocal = createPhysicalSpotLight(
+    const flashInnerLocal = createPlayerSpotLight(
       PLAYER_LIGHT_COLOR,
       FLASH_INNER_INTENSITY,
       FLASH_INNER_DISTANCE,
@@ -4827,6 +5553,7 @@
 
     function rebuildEnemyRoster() {
       for (const enemy of state.enemies) {
+        detachEyeLightFrom(enemy);
         scene.remove(enemy.group);
       }
       state.enemies.length = 0;
@@ -5027,6 +5754,7 @@
               bestEnemy.alive = false;
               bestEnemy.respawnTimer = 3.0;
               bestEnemy.group.visible = false;
+              detachEyeLightFrom(bestEnemy);
               state.score += 1;
             }
           }
@@ -5775,6 +6503,122 @@
       updateHud();
     }
 
+    /**
+     * Tier-aware zombie-eye animation + colored eye light scheduler.
+     *
+     *  - Corona pulses: a low-amplitude breathing curve so eyes feel "alive"; the pulse rate ties to whether
+     *    the zombie is currently aware of a target (faster + brighter when hostile).
+     *  - Eye lights: real `THREE.PointLight`s but only attached to the closest few zombies to camera (and only
+     *    on regular+ tiers) so we never blow the WebGL forward shading uniform light limit.  This actually
+     *    casts coloured light onto nearby walls / floors — that's what gives the eyes their cinematic glow.
+     */
+    const MAX_ACTIVE_EYE_LIGHTS_BY_TIER = { potato: 0, regular: 4, high: 8, extreme: 14 };
+    const _eyeTmp = new THREE.Vector3();
+
+    function _eyeBaseLightConfig(type) {
+      if (type === "fast")   return { intensity: 1.6, distance: 4.5, decay: 1.6 };
+      if (type === "gunner") return { intensity: 1.4, distance: 4.0, decay: 1.7 };
+      if (type === "tank")   return { intensity: 2.4, distance: 6.5, decay: 1.4 };
+      return { intensity: 1.7, distance: 4.8, decay: 1.6 };
+    }
+
+    function attachEyeLightTo(enemy) {
+      const er = enemy.eyeRefs;
+      if (!er || er.light) return;
+      const cfg = _eyeBaseLightConfig(enemy.type);
+      const L = new THREE.PointLight(er.eyeColor.getHex(), cfg.intensity, cfg.distance, cfg.decay);
+      L.castShadow = false;
+      enemy.group.add(L);
+      // Anchor between the eyes so the cast glow looks like both pupils are emitting.
+      L.position.set(0, 1.84 + 0.06, 0.27);
+      er.light = L;
+      er._lightBase = cfg;
+    }
+
+    function detachEyeLightFrom(enemy) {
+      const er = enemy.eyeRefs;
+      if (!er || !er.light) return;
+      enemy.group.remove(er.light);
+      try { er.light.dispose && er.light.dispose(); } catch (_) {}
+      er.light = null;
+    }
+
+    retuneZombieEyeLights = function () {
+      const tier = getQualityId();
+      const lp = getQualityLightProfile();
+      const cap = MAX_ACTIVE_EYE_LIGHTS_BY_TIER[tier] || 0;
+      // Cap reached or tier is potato → strip every light immediately so the next frame's scheduler sees a clean state.
+      if (cap === 0) {
+        for (const e of state.enemies) detachEyeLightFrom(e);
+        return;
+      }
+      // Re-tune already-attached lights to the new intensity/range scaling.
+      for (const e of state.enemies) {
+        const er = e.eyeRefs;
+        if (!er || !er.light || !er._lightBase) continue;
+        er.light.intensity = er._lightBase.intensity * lp.intensityScale;
+        er.light.distance = er._lightBase.distance * lp.rangeScale;
+        er.light.decay = er._lightBase.decay * lp.decayBoost;
+      }
+    };
+
+    function updateZombieEyeFx(dt) {
+      const tier = getQualityId();
+      const cap = MAX_ACTIVE_EYE_LIGHTS_BY_TIER[tier] || 0;
+      const t = performance.now() * 0.001;
+
+      const candidates = [];
+      for (let i = 0; i < state.enemies.length; i++) {
+        const e = state.enemies[i];
+        if (!e || !e.alive || !e.eyeRefs) continue;
+        const er = e.eyeRefs;
+        const pulseHz = e.aware ? 4.5 : 1.6;
+        const pulse = 0.5 + 0.5 * Math.sin(t * pulseHz + i * 0.91);
+        const aware = e.aware ? 1 : 0.5;
+        const op = THREE.MathUtils.clamp(er.baseCoronaOpacity * (0.65 + 0.55 * pulse * aware), 0, 0.95);
+        if (er.coronaMat) er.coronaMat.opacity = op;
+        if (er.pupilMat) {
+          const k = 1.0 + 0.45 * pulse * aware;
+          er.pupilMat.color.copy(er.eyeColor).multiplyScalar(1.45 * k);
+        }
+        if (cap > 0) {
+          _eyeTmp.copy(e.group.position).sub(camera.position);
+          const d2 = _eyeTmp.lengthSq();
+          // Closer + aware zombies score higher (smaller numeric value = picked first).
+          const score = d2 * (e.aware ? 0.55 : 1.4);
+          candidates.push({ e, score });
+        }
+      }
+
+      if (cap > 0) {
+        candidates.sort((a, b) => a.score - b.score);
+        const keep = new Set();
+        for (let i = 0; i < Math.min(cap, candidates.length); i++) {
+          const e = candidates[i].e;
+          if (!e.eyeRefs.light) attachEyeLightTo(e);
+          keep.add(e);
+        }
+        // Strip lights from anyone that fell out of the active window (e.g. moved far / went unaware).
+        for (const c of candidates) {
+          if (!keep.has(c.e) && c.e.eyeRefs.light) detachEyeLightFrom(c.e);
+        }
+        // Modulate intensity with pulse on all active lights.
+        const lp = getQualityLightProfile();
+        for (const e of keep) {
+          const er = e.eyeRefs;
+          if (!er.light || !er._lightBase) continue;
+          const pulseHz = e.aware ? 4.5 : 1.6;
+          const pulse = 0.5 + 0.5 * Math.sin(t * pulseHz + (e.netIndex || 0) * 0.91);
+          const k = 0.7 + 0.55 * pulse * (e.aware ? 1 : 0.45);
+          er.light.intensity = er._lightBase.intensity * lp.intensityScale * k;
+        }
+      } else {
+        for (const e of state.enemies) {
+          if (e.eyeRefs && e.eyeRefs.light) detachEyeLightFrom(e);
+        }
+      }
+    }
+
     function updateEnemies(dt) {
       if (!gameWorldReady) return;
       if (player.health > 0 && player.health < player.maxHealth) {
@@ -5958,7 +6802,17 @@
                 (target.y ?? 1.65) + 1.25 + (Math.random() - 0.5) * 0.45,
                 target.z + (Math.random() - 0.5) * 0.45
               );
-              createBulletTrail(_visOrigin.clone(), _tracerEnd.clone(), 0xff6666);
+              createZombieGunnerBulletTrail(_visOrigin.clone(), _tracerEnd.clone());
+              if (MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena" && ZOMBIE_AUTHORITY) {
+                socket.emit("zombieShotTrail", {
+                  sx: _visOrigin.x,
+                  sy: _visOrigin.y,
+                  sz: _visOrigin.z,
+                  x: _tracerEnd.x,
+                  y: _tracerEnd.y,
+                  z: _tracerEnd.z,
+                });
+              }
             }
           }
         } else {
@@ -6142,6 +6996,7 @@
         if (runZombieAi) {
           updateEnemies(dt);
         }
+        if (gameWorldReady) updateZombieEyeFx(dt);
         if (gameWorldReady) updateDeathAnim(dt);
         if (gameWorldReady && MULTIPLAYER && ARENA_COOP && ZOMBIE_AUTHORITY && CURRENT_MAP === "arena") {
           _zombieSyncAcc += dt;
@@ -6315,6 +7170,7 @@
       buildNavGrid();
 
       for (const enemy of state.enemies) {
+        detachEyeLightFrom(enemy);
         scene.remove(enemy.group);
       }
       state.enemies.length = 0;
@@ -6420,6 +7276,7 @@
       camera.fov = 75;
       camera.updateProjectionMatrix();
       for (const enemy of state.enemies) {
+        detachEyeLightFrom(enemy);
         scene.remove(enemy.group);
       }
       state.enemies.length = 0;
