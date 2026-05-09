@@ -129,6 +129,9 @@
       position: fixed;
       inset: 0;
       z-index: 1;
+      width: 100vw;
+      height: 100vh;
+      cursor: none;
     }
 
     html, body {
@@ -141,13 +144,10 @@
       color: #fff;
     }
 
-    #app {
-      position: fixed;
-      inset: 0;
-      z-index: 1;
-      width: 100vw;
-      height: 100vh;
-      cursor: none;
+    #app canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
     }
 
     /* Restore OS cursor when pointer lock is released (death screen, menu). */
@@ -1820,6 +1820,9 @@
     renderer.shadowMap.type = THREE.BasicShadowMap;
     renderer.sortObjects = false;
     app.appendChild(renderer.domElement);
+    renderer.domElement.style.display = "block";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
 
     /** Precompile programs after scene/map changes so gameplay avoids shader hitch spikes. */
     function compileSceneShaders() {
@@ -1968,13 +1971,29 @@
     }
 
     function syncGameRendererSize() {
+      let w = 0;
+      let h = 0;
+      try {
+        if (app) {
+          const r = app.getBoundingClientRect();
+          w = Math.round(r.width);
+          h = Math.round(r.height);
+        }
+      } catch (_) {}
       const vp = getSafeViewportSize();
-      camera.aspect = vp.w / vp.h;
+      if (w < 32 || h < 32) {
+        w = vp.w;
+        h = vp.h;
+      }
+      w = Math.max(2, w);
+      h = Math.max(2, h);
+      camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setPixelRatio(getPixelRatioForQuality());
-      renderer.setSize(vp.w, vp.h);
+      renderer.setSize(w, h, true);
     }
 
+    let _syncRendererBootstrapFrames = 0;
     applyGraphicsQuality();
 
     let _bootVpUntil = 0;
@@ -2001,6 +2020,23 @@
         if (document.documentElement) ro.observe(document.documentElement);
       }
     } catch (_) {}
+
+    /** Main WebGL isn't driven until gameplay (`animate`) — keep sizing correct on menu + loading overlay (fixes black canvas until resize). */
+    let _preGameViewportLoopOn = false;
+    function startPreGameViewportSyncLoop() {
+      if (_preGameViewportLoopOn) return;
+      _preGameViewportLoopOn = true;
+      function tick() {
+        syncGameRendererSize();
+        if (!gameWorldReady) {
+          requestAnimationFrame(tick);
+        } else {
+          _preGameViewportLoopOn = false;
+        }
+      }
+      requestAnimationFrame(tick);
+    }
+    startPreGameViewportSyncLoop();
 
     const worldSize = 260;
 
@@ -2309,9 +2345,10 @@
       } catch (_) {}
       try {
         const root = document.documentElement;
+        const menuBgHref = new URL("game-ui/game-ui-menu-background.png", b).href;
         root.style.setProperty(
           "--game-ui-menu-bg",
-          `url("${new URL("game-ui/game-ui-menu-background.png", b).href}")`
+          `url("${menuBgHref}")`
         );
         root.style.setProperty(
           "--game-ui-btn-texture",
@@ -2321,6 +2358,16 @@
           "--game-ui-settings-bg",
           `url("${new URL("game-ui/game-ui-settings-panel-bg.png", b).href}")`
         );
+        if (menuEl) {
+          menuEl.style.backgroundColor = "#070504";
+          menuEl.style.backgroundImage = [
+            "radial-gradient(ellipse 92% 72% at 50% 38%, rgba(14, 18, 28, 0.62) 0%, rgba(6, 8, 14, 0.78) 58%, rgba(2, 3, 10, 0.88) 100%)",
+            `url("${menuBgHref}")`,
+          ].join(", ");
+          menuEl.style.backgroundSize = "cover, cover";
+          menuEl.style.backgroundPosition = "center, center";
+          menuEl.style.backgroundRepeat = "no-repeat";
+        }
       } catch (_) {}
       try {
         if (typeof menuBgmAudio !== "undefined" && menuBgmAudio) {
@@ -2377,6 +2424,9 @@
       );
     }
     tryLoadWallsTexture(getWallTextureUrlList(), 0);
+    try {
+      applyResolvedGameAssetBase(pageDirFromLocation());
+    } catch (_) {}
     resolveGameUiLayersFromProbe();
 
     const _texturedMeshes = [];
@@ -4287,6 +4337,14 @@
         menuBgmAudio.setAttribute("playsinline", "");
       } catch (_) {}
       menuBgmCandidateIdx = 0;
+      menuBgmAudio.addEventListener(
+        "loadeddata",
+        () => {
+          wireMenuBgmThroughAnalyser();
+          applyAudioVolumes();
+        },
+        { once: true }
+      );
       menuBgmAudio.addEventListener(
         "error",
         () => {
@@ -6363,6 +6421,10 @@
 
     function animate() {
       requestAnimationFrame(animate);
+      if (_syncRendererBootstrapFrames < 180) {
+        _syncRendererBootstrapFrames++;
+        syncGameRendererSize();
+      }
       const dt = Math.min(clock.getDelta(), 0.033);
       if (document.visibilityState === "hidden" && !MULTIPLAYER) return;
 
@@ -6740,6 +6802,7 @@
       menuBackdropLightSmooth = 0;
       startMenuBackdropLoop();
       tryPlayMenuBgm();
+      startPreGameViewportSyncLoop();
       player.health = 100;
       weaponRoot.visible = true;
       camera.fov = 75;
