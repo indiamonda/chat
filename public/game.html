@@ -217,6 +217,17 @@
       text-shadow: 0 2px 16px rgba(0, 0, 0, 0.65);
     }
 
+    /* Full-screen WebGL wall (same texture + Lambert as in-game); sits under #menu */
+    #menuWallBackdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 98;
+      width: 100%;
+      height: 100%;
+      display: block;
+      pointer-events: none;
+    }
+
     .menu {
       position: fixed;
       inset: 0;
@@ -229,13 +240,7 @@
       gap: 12px;
       box-sizing: border-box;
       padding: 28px 16px 22px;
-      background-color: #08090e;
-      background-image:
-        radial-gradient(ellipse 120% 90% at 50% 45%, rgba(15,18,28,0.25) 0%, rgba(4,5,10,0.92) 75%, rgba(2,3,6,1) 100%),
-        linear-gradient(180deg, rgba(3,4,8,0.88) 0%, rgba(8,10,16,0.45) 42%, rgba(2,3,7,0.95) 100%),
-        var(--game-ui-menu-bg);
-      background-size: cover;
-      background-position: center;
+      background: transparent;
     }
 
     .menu h1 {
@@ -248,7 +253,9 @@
       opacity: 0.8;
     }
 
+    /* Main menu: textured buttons only */
     .menu button {
+      box-sizing: border-box;
       width: 220px;
       padding: 14px 18px;
       font-size: 18px;
@@ -256,25 +263,51 @@
       cursor: pointer;
       font-weight: 600;
       font-family: 'Audiowide', sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      background-color: transparent;
+      background-image: var(--game-ui-btn-texture);
+      background-size: 100% 100%;
+      background-repeat: no-repeat;
+      color: #e8eef8;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+      transition: filter 0.15s, border-color 0.15s;
+    }
+    .menu button:hover {
+      filter: brightness(1.07);
+      border-color: rgba(255, 255, 255, 0.34);
     }
 
+    /* Pause / death / name modal: frosted flat buttons (no texture) */
     .overlay-btn {
+      box-sizing: border-box;
       width: 200px;
       padding: 12px 16px;
       font-family: 'Audiowide', sans-serif;
       font-size: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
       border-radius: 8px;
       cursor: pointer;
-      background: rgba(255,255,255,0.08);
-      color: #fff;
+      text-transform: uppercase;
       letter-spacing: 2px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
       backdrop-filter: blur(4px);
       transition: background 0.15s, border-color 0.15s;
     }
     .overlay-btn:hover {
-      background: rgba(255,255,255,0.18);
-      border-color: rgba(255,255,255,0.6);
+      background: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+
+    .overlay-btn.overlay-btn-accent {
+      border-color: rgba(79, 209, 255, 0.45);
+    }
+    .overlay-btn.overlay-btn-accent:hover {
+      border-color: rgba(79, 209, 255, 0.65);
+      background: rgba(79, 209, 255, 0.12);
     }
 
     .menu-panels-wrap {
@@ -284,43 +317,6 @@
       justify-content: center;
       gap: 12px;
       width: 100%;
-    }
-
-    .menu-main-settings {
-      margin-top: 12px;
-    }
-
-    .menu-textured-btn {
-      background-color: transparent;
-      background-image: var(--game-ui-btn-texture);
-      background-size: 100% 100%;
-      background-repeat: no-repeat;
-      color: #e8eef8;
-      text-shadow: 0 1px 3px rgba(0,0,0,0.85);
-      border: 1px solid rgba(255,255,255,0.22);
-      box-shadow: 0 4px 14px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
-    }
-
-    .menu button:not(.menu-footer-settings) {
-      background-color: transparent;
-      background-image: var(--game-ui-btn-texture);
-      background-size: 100% 100%;
-      background-repeat: no-repeat;
-      color: #e8eef8;
-      text-shadow: 0 1px 3px rgba(0,0,0,0.85);
-      border: 1px solid rgba(255,255,255,0.22);
-      box-shadow: 0 4px 14px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.12);
-    }
-
-    .menu-footer-settings {
-      margin-top: 8px;
-      width: 220px;
-      padding: 12px 18px;
-      font-size: 15px;
-      letter-spacing: 3px;
-      cursor: pointer;
-      font-family: 'Audiowide', sans-serif;
-      border-radius: 10px;
     }
 
     #settingsModal {
@@ -640,6 +636,7 @@
   </script>
 </head>
 <body>
+  <canvas id="menuWallBackdrop" aria-hidden="true"></canvas>
   <div id="menu" class="menu">
     <div class="menu-panels-wrap">
     <div id="menuMain" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
@@ -647,27 +644,27 @@
       <p>by Tintly555 and JimmyQrg</p>
       <button type="button" id="btnArena">Zombie Arena</button>
       <button type="button" id="btnCrossfire">Crossfire (PVP)</button>
-      <button type="button" class="menu-textured-btn menu-main-settings" id="btnMenuSettings">SETTINGS</button>
+      <button type="button" id="btnMenuSettings">SETTINGS</button>
     </div>
     <div id="menuArenaMode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
       <h2 style="font-family:'Audiowide',sans-serif;font-size:28px;margin:0 0 14px 0;letter-spacing:3px;">ZOMBIE ARENA</h2>
       <button type="button" id="btnArenaSingle">SINGLEPLAYER</button>
       <button type="button" id="btnArenaCoop">CO-OP MODE</button>
-      <button type="button" id="btnArenaBack" style="margin-top:6px;font-size:14px;">← BACK</button>
+      <button type="button" id="btnArenaBack">← BACK</button>
     </div>
     <div id="menuLobby" style="display:none;flex-direction:column;align-items:center;gap:10px;">
       <h2 id="lobbyTitle" style="font-family:'Audiowide',sans-serif;font-size:24px;margin:0 0 10px 0;letter-spacing:2px;">MULTIPLAYER</h2>
       <button type="button" id="btnQuickplay">QUICK PLAY</button>
       <button type="button" id="btnCreateRoom">CREATE A ROOM</button>
       <button type="button" id="btnJoinCode">JOIN VIA CODE</button>
-      <button type="button" id="btnLobbyBack" style="margin-top:6px;font-size:14px;">← BACK</button>
+      <button type="button" id="btnLobbyBack">← BACK</button>
     </div>
     <div id="menuJoinCode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
       <h2 style="font-family:'Audiowide',sans-serif;font-size:24px;margin:0 0 6px 0;letter-spacing:2px;">JOIN VIA CODE</h2>
       <input id="codeInput" type="text" maxlength="10" placeholder="ROOM CODE" style="font-family:'Audiowide',sans-serif;width:180px;padding:10px 14px;font-size:18px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;text-transform:uppercase;letter-spacing:4px;">
       <p id="codeError" style="font-family:'Audiowide',sans-serif;color:#e53e3e;font-size:13px;margin:4px 0 0 0;min-height:18px;"></p>
       <button type="button" id="btnCodeJoin">JOIN</button>
-      <button type="button" id="btnCodeBack" style="font-size:14px;">← BACK</button>
+      <button type="button" id="btnCodeBack">← BACK</button>
     </div>
     </div>
   </div>
@@ -693,17 +690,17 @@
     <div id="deathUI" style="position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;align-items:center;gap:14px;pointer-events:auto;">
       <h1 id="deathTitle" style="font-family:'Audiowide',sans-serif;font-size:52px;margin:0 0 6px 0;color:#e53e3e;text-shadow:0 0 30px rgba(229,62,62,0.5);letter-spacing:4px;">DEFEAT</h1>
       <p id="deathScore" style="font-family:'Audiowide',sans-serif;font-size:16px;margin:0 0 18px 0;opacity:0.8;">Score: 0</p>
-      <button class="overlay-btn" type="button" id="btnDeathRestart">RESTART</button>
-      <button class="overlay-btn menu-textured-btn" type="button" id="btnDeathSettings" style="border-color:rgba(79,209,255,0.45);">SETTINGS</button>
-      <button class="overlay-btn" type="button" id="btnDeathQuit">QUIT</button>
+      <button type="button" class="overlay-btn" id="btnDeathRestart">RESTART</button>
+      <button type="button" class="overlay-btn overlay-btn-accent" id="btnDeathSettings">SETTINGS</button>
+      <button type="button" class="overlay-btn" id="btnDeathQuit">QUIT</button>
     </div>
   </div>
   <div id="pauseOverlay" style="position:fixed;inset:0;z-index:55;display:none;flex-direction:column;justify-content:center;align-items:center;gap:14px;background:rgba(0,0,0,0.5);">
     <h1 style="font-family:'Audiowide',sans-serif;font-size:48px;margin:0 0 10px 0;color:#fff;letter-spacing:4px;">PAUSED</h1>
-    <button class="overlay-btn" type="button" id="btnResume">RESUME</button>
-    <button class="overlay-btn menu-textured-btn" type="button" id="btnPauseSettings" style="border-color:rgba(79,209,255,0.45);">SETTINGS</button>
-    <button class="overlay-btn" type="button" id="btnPauseRestart" style="display:none;">RESTART</button>
-    <button class="overlay-btn" type="button" id="btnPauseQuit">QUIT</button>
+    <button type="button" class="overlay-btn" id="btnResume">RESUME</button>
+    <button type="button" class="overlay-btn overlay-btn-accent" id="btnPauseSettings">SETTINGS</button>
+    <button type="button" class="overlay-btn" id="btnPauseRestart" style="display:none;">RESTART</button>
+    <button type="button" class="overlay-btn" id="btnPauseQuit">QUIT</button>
   </div>
   <div id="chatBox" style="position:fixed;bottom:10px;left:10px;z-index:40;pointer-events:none;font-family:'Audiowide',sans-serif;display:flex;flex-direction:column;justify-content:flex-end;">
     <div id="chatMessages" style="display:flex;flex-direction:column;gap:2px;margin-bottom:6px;overflow:hidden;"></div>
@@ -782,7 +779,7 @@
     const flash = document.getElementById("flash");
     const crosshairEl = document.getElementById("crosshair");
     const hitmarkerEl = document.getElementById("hitmarker");
-    const menuEl = document.getElementById("menu");
+    const menuWallBackdropCanvas = document.getElementById("menuWallBackdrop");
     const menuMain = document.getElementById("menuMain");
     const menuArenaMode = document.getElementById("menuArenaMode");
     const menuLobby = document.getElementById("menuLobby");
@@ -1770,6 +1767,152 @@
       }
       return [...new Set(urls)];
     }
+
+    /** Mini Three scene behind main menu: wall texture (Lambert, in-game style) + warm fill + center lamp; lamp intensity follows menu.mp3 (session peak = 100%). */
+    let menuBackdropRenderer = null;
+    let menuBackdropScene = null;
+    let menuBackdropCamera = null;
+    let menuBackdropWall = null;
+    let menuBackdropHemi = null;
+    let menuBackdropPoint = null;
+    let menuBackdropReady = false;
+    let menuBackdropRaf = 0;
+
+    const MENU_BACKDROP_LIGHT_MIN = 0.38;
+    const MENU_BACKDROP_LIGHT_MAX = 6.2;
+    let menuBgmAnalyser = null;
+    let menuBgmMenuGain = null;
+    let menuBgmMediaSrc = null;
+    let menuBgmTimeBuf = null;
+    let menuBgmPeakSessionMax = 1e-6;
+    let menuBackdropLightSmooth = 0;
+
+    function updateMenuBackdropLightFromMusic() {
+      if (!menuBackdropPoint) return;
+      if (!menuBgmAnalyser || !menuBgmTimeBuf) {
+        menuBackdropPoint.intensity = MENU_BACKDROP_LIGHT_MIN;
+        return;
+      }
+      menuBgmAnalyser.getByteTimeDomainData(menuBgmTimeBuf);
+      let peak = 0;
+      for (let i = 0; i < menuBgmTimeBuf.length; i++) {
+        const v = Math.abs(menuBgmTimeBuf[i] - 128) / 128;
+        if (v > peak) peak = v;
+      }
+      menuBgmPeakSessionMax = Math.max(menuBgmPeakSessionMax, peak);
+      const norm = menuBgmPeakSessionMax > 1e-5 ? Math.min(1, peak / menuBgmPeakSessionMax) : 0;
+      menuBackdropLightSmooth += (norm - menuBackdropLightSmooth) * 0.14;
+      menuBackdropPoint.intensity =
+        MENU_BACKDROP_LIGHT_MIN +
+        menuBackdropLightSmooth * (MENU_BACKDROP_LIGHT_MAX - MENU_BACKDROP_LIGHT_MIN);
+    }
+
+    function resizeMenuWallBackdrop() {
+      if (!menuBackdropRenderer || !menuBackdropCamera || !menuWallBackdropCanvas) return;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      menuBackdropCamera.aspect = w / Math.max(1, h);
+      menuBackdropCamera.updateProjectionMatrix();
+      menuBackdropRenderer.setSize(w, h, false);
+    }
+
+    function menuBackdropFrame() {
+      if (!menuBackdropReady || !menuBackdropRenderer) return;
+      if (menuEl.style.display === "none") {
+        menuBackdropRaf = 0;
+        return;
+      }
+      updateMenuBackdropLightFromMusic();
+      menuBackdropRenderer.render(menuBackdropScene, menuBackdropCamera);
+      menuBackdropRaf = requestAnimationFrame(menuBackdropFrame);
+    }
+
+    function startMenuBackdropLoop() {
+      if (!menuBackdropReady || menuBackdropRaf) return;
+      if (menuEl.style.display === "none") return;
+      menuBackdropRaf = requestAnimationFrame(menuBackdropFrame);
+    }
+
+    function stopMenuBackdropLoop() {
+      if (menuBackdropRaf) {
+        cancelAnimationFrame(menuBackdropRaf);
+        menuBackdropRaf = 0;
+      }
+    }
+
+    function initMenuWallBackdrop() {
+      if (!menuWallBackdropCanvas || menuBackdropRenderer) return;
+      menuBackdropScene = new THREE.Scene();
+      menuBackdropScene.background = new THREE.Color(0x070504);
+
+      menuBackdropCamera = new THREE.PerspectiveCamera(
+        48,
+        window.innerWidth / Math.max(1, window.innerHeight),
+        0.1,
+        80
+      );
+      menuBackdropCamera.position.set(0, 6.2, 7.2);
+      menuBackdropCamera.lookAt(0, 6.2, -10);
+
+      menuBackdropHemi = new THREE.HemisphereLight(0xffe8c8, 0x141008, 0.11 * Math.PI);
+      menuBackdropScene.add(menuBackdropHemi);
+
+      menuBackdropPoint = new THREE.PointLight(0xffe6b8, MENU_BACKDROP_LIGHT_MIN, 46, 2);
+      menuBackdropPoint.position.set(0, 6.2, 1.4);
+      menuBackdropScene.add(menuBackdropPoint);
+
+      const wallMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+      const wallGeo = new THREE.PlaneGeometry(28, 16);
+      menuBackdropWall = new THREE.Mesh(wallGeo, wallMat);
+      menuBackdropWall.position.set(0, 6.2, -11);
+      menuBackdropScene.add(menuBackdropWall);
+
+      menuBackdropRenderer = new THREE.WebGLRenderer({
+        canvas: menuWallBackdropCanvas,
+        antialias: true,
+        alpha: false,
+        powerPreference: "low-power",
+      });
+      menuBackdropRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      menuBackdropRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+      menuBackdropRenderer.toneMappingExposure = 0.95;
+      menuBackdropRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      resizeMenuWallBackdrop();
+
+      const urls = getWallTextureUrlList();
+      let idx = 0;
+      function tryWall() {
+        if (idx >= urls.length) {
+          wallMat.color.set("#3b4334");
+          menuBackdropReady = true;
+          startMenuBackdropLoop();
+          return;
+        }
+        const u = urls[idx];
+        texLoader.load(
+          u,
+          (tex) => {
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(5, 3);
+            tex.colorSpace = THREE.SRGBColorSpace;
+            wallMat.map = tex;
+            wallMat.needsUpdate = true;
+            menuBackdropReady = true;
+            startMenuBackdropLoop();
+          },
+          undefined,
+          () => {
+            idx++;
+            tryWall();
+          }
+        );
+      }
+      tryWall();
+
+      window.addEventListener("resize", resizeMenuWallBackdrop);
+    }
+
+    initMenuWallBackdrop();
 
     function applyResolvedGameAssetBase(base) {
       const b = normalizeGameAssetBase(base);
@@ -3366,7 +3509,13 @@
       audioMaster.gain.value = gameSettings.masterVolume;
       audioSfx.gain.value = gameSettings.soundVolume;
       audioMusic.gain.value = gameSettings.musicVolume;
-      if (menuBgmAudio) {
+      if (menuBgmMenuGain) {
+        menuBgmMenuGain.gain.value = THREE.MathUtils.clamp(
+          gameSettings.masterVolume * gameSettings.musicVolume,
+          0,
+          1
+        );
+      } else if (menuBgmAudio) {
         menuBgmAudio.volume = THREE.MathUtils.clamp(
           gameSettings.masterVolume * gameSettings.musicVolume,
           0,
@@ -3375,6 +3524,28 @@
       }
     }
     applyAudioVolumes();
+
+    function wireMenuBgmThroughAnalyser() {
+      if (!menuBgmAudio || menuBgmMediaSrc) return;
+      try {
+        menuBgmMediaSrc = audioCtx.createMediaElementSource(menuBgmAudio);
+        menuBgmAnalyser = audioCtx.createAnalyser();
+        menuBgmAnalyser.fftSize = 2048;
+        menuBgmAnalyser.smoothingTimeConstant = 0.42;
+        menuBgmMenuGain = audioCtx.createGain();
+        menuBgmMediaSrc.connect(menuBgmAnalyser);
+        menuBgmAnalyser.connect(menuBgmMenuGain);
+        menuBgmMenuGain.connect(audioMaster);
+        menuBgmTimeBuf = new Uint8Array(menuBgmAnalyser.fftSize);
+        menuBgmAudio.volume = 0;
+        applyAudioVolumes();
+      } catch (err) {
+        menuBgmMediaSrc = null;
+        menuBgmAnalyser = null;
+        menuBgmMenuGain = null;
+        menuBgmTimeBuf = null;
+      }
+    }
 
     function getMenuBgmUrl() {
       for (const base of getGameAssetBaseCandidates()) {
@@ -3393,11 +3564,16 @@
       menuBgmAudio = new Audio(getMenuBgmUrl());
       menuBgmAudio.loop = true;
       menuBgmAudio.preload = "auto";
-      menuBgmAudio.volume = THREE.MathUtils.clamp(
-        gameSettings.masterVolume * gameSettings.musicVolume,
-        0,
-        1
-      );
+      wireMenuBgmThroughAnalyser();
+      if (!menuBgmMenuGain) {
+        menuBgmAudio.volume = THREE.MathUtils.clamp(
+          gameSettings.masterVolume * gameSettings.musicVolume,
+          0,
+          1
+        );
+      } else {
+        applyAudioVolumes();
+      }
     }
     function pauseMenuBgm() {
       if (!menuBgmAudio) return;
@@ -3409,11 +3585,16 @@
     function tryPlayMenuBgm() {
       if (menuEl.style.display === "none") return;
       ensureMenuBgmAudio();
-      menuBgmAudio.volume = THREE.MathUtils.clamp(
-        gameSettings.masterVolume * gameSettings.musicVolume,
-        0,
-        1
-      );
+      wireMenuBgmThroughAnalyser();
+      if (!menuBgmMenuGain) {
+        menuBgmAudio.volume = THREE.MathUtils.clamp(
+          gameSettings.masterVolume * gameSettings.musicVolume,
+          0,
+          1
+        );
+      } else {
+        applyAudioVolumes();
+      }
       const p = menuBgmAudio.play();
       if (p && typeof p.catch === "function") p.catch(() => {});
     }
@@ -4457,6 +4638,7 @@
 
       btnDeathQuit.textContent = "QUIT";
       btnDeathRestart.textContent = MULTIPLAYER ? "RESPAWN" : "RESTART";
+      btnDeathSettings.style.display = "";
 
       if (CURRENT_MAP === "crossfire") {
         deathUI.style.display = "flex";
@@ -5389,6 +5571,7 @@
       state.camShake = 0;
       ensureAmbientWindLoop();
       menuEl.style.display = "none";
+      stopMenuBackdropLoop();
       pauseMenuBgm();
 
       clearMap();
@@ -5505,6 +5688,9 @@
       gameBootOverlay.setAttribute("aria-busy", "false");
       menuEl.style.display = "flex";
       showMenuPanel("menuMain");
+      menuBgmPeakSessionMax = 1e-6;
+      menuBackdropLightSmooth = 0;
+      startMenuBackdropLoop();
       tryPlayMenuBgm();
       player.health = 100;
       weaponRoot.visible = true;
