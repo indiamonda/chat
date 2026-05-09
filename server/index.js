@@ -828,12 +828,17 @@ const CORS_ALLOW_LIST = new Set([
   'https://jchat.fly.dev',
 ]);
 
+/** Same rules as Express CORS middleware — must stay in sync with Socket.IO `cors.origin`. */
+function isAllowedBrowserOrigin(origin) {
+  return CORS_ALLOW_LIST.has(origin)
+    || /^https?:\/\/localhost(?::\d+)?$/i.test(origin)
+    || /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin);
+}
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
-    const allowed = CORS_ALLOW_LIST.has(origin)
-      || /^https?:\/\/localhost(?::\d+)?$/i.test(origin)
-      || /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i.test(origin);
+    const allowed = isAllowedBrowserOrigin(origin);
     if (allowed) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
@@ -1606,7 +1611,14 @@ app.use((err, req, res, next) => {
 });
 
 const io = new Server(httpServer, {
-  cors: { origin: [...CORS_ALLOW_LIST], credentials: true },
+  // Previously only CORS_ALLOW_LIST — localhost / 127.0.0.1 worked for HTTP but failed Socket.IO
+  // handshake (polling + WS) during local dev because Express allowed those origins separately.
+  cors: {
+    origin: (origin, callback) => {
+      callback(null, !origin || isAllowedBrowserOrigin(origin));
+    },
+    credentials: true,
+  },
   pingInterval: 20000,
   pingTimeout: 10000,
   connectTimeout: 45000,
