@@ -1884,6 +1884,22 @@ gameNsp.on('connection', (socket) => {
     socket.to(currentRoom).emit('zombieSync', data);
   });
 
+  socket.on('zombieShotTrail', (data) => {
+    if (!currentRoom || typeof data !== 'object' || data === null) return;
+    const members = gameRooms.get(currentRoom);
+    if (!members || members.size === 0) return;
+    const hostId = [...members][0];
+    if (socket.id !== hostId) return;
+    const sx = +data.sx;
+    const sy = +data.sy;
+    const sz = +data.sz;
+    const x = +data.x;
+    const y = +data.y;
+    const z = +data.z;
+    if (![sx, sy, sz, x, y, z].every((n) => Number.isFinite(n))) return;
+    socket.to(currentRoom).emit('zombieShotTrail', { sx, sy, sz, x, y, z });
+  });
+
   socket.on('zombieDamage', (data) => {
     if (!currentRoom || typeof data !== 'object' || data === null) return;
     const ei = Math.floor(+data.ei);
