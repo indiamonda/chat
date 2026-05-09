@@ -1312,7 +1312,7 @@
     });
 
     socket.on("damaged", (data) => {
-      if (!gameWorldReady) return;
+      if (!gameWorldReady || menuEl.style.display !== "none") return;
       if (player.health <= 0) return;
       player.health = Math.max(0, player.health - (data.damage || 0));
       player.regenTimer = 0;
@@ -1331,12 +1331,14 @@
     });
 
     socket.on("zombieSync", (data) => {
+      if (!gameWorldReady) return;
       if (!MULTIPLAYER || !ARENA_COOP || CURRENT_MAP !== "arena") return;
       if (ZOMBIE_AUTHORITY) return;
       applyZombieSyncPayload(data);
     });
 
     socket.on("zombieDamaged", (data) => {
+      if (!gameWorldReady) return;
       if (!MULTIPLAYER || !ARENA_COOP || CURRENT_MAP !== "arena") return;
       if (!ZOMBIE_AUTHORITY || !data) return;
       if (data.by === socket.id) return;
@@ -1738,28 +1740,24 @@
     function getSafeViewportSize() {
       try {
         const vv = window.visualViewport;
-        let w = window.innerWidth;
-        let h = window.innerHeight;
-        if (vv && vv.width >= 2 && vv.height >= 2) {
-          w = vv.width;
-          h = vv.height;
+        const de = typeof document !== "undefined" ? document.documentElement : null;
+        const iw = window.innerWidth || 0;
+        const ih = window.innerHeight || 0;
+        const vw = vv && vv.width ? vv.width : 0;
+        const vh = vv && vv.height ? vv.height : 0;
+        const cw = de ? de.clientWidth || 0 : 0;
+        const ch = de ? de.clientHeight || 0 : 0;
+        /** Fullscreen / macOS: one of these is often 0 until layout; take the max so we never setSize(0). */
+        let w = Math.max(iw, vw, cw);
+        let h = Math.max(ih, vh, ch);
+        if (w < 4 || h < 4) {
+          const aw = typeof screen !== "undefined" && screen.availWidth ? screen.availWidth : 0;
+          const ah = typeof screen !== "undefined" && screen.availHeight ? screen.availHeight : 0;
+          w = Math.max(w, aw);
+          h = Math.max(h, ah);
         }
-        w = Math.max(
-          1,
-          w ||
-            (typeof document !== "undefined" &&
-              document.documentElement &&
-              document.documentElement.clientWidth) ||
-            1
-        );
-        h = Math.max(
-          1,
-          h ||
-            (typeof document !== "undefined" &&
-              document.documentElement &&
-              document.documentElement.clientHeight) ||
-            1
-        );
+        w = Math.max(1, w);
+        h = Math.max(1, h);
         return { w, h };
       } catch (_) {
         return { w: 1, h: 1 };
@@ -1948,6 +1946,27 @@
       camera.updateProjectionMatrix();
       renderer.setPixelRatio(getPixelRatioForQuality());
       renderer.setSize(vp.w, vp.h);
+    }
+
+    /**
+     * Keep boot overlay up until the WebGL canvas has real dimensions. Otherwise gameplay (zombies, MP damage)
+     * runs while the framebuffer is 0×0 or stale — resizing then “starts” the picture but the player may already be dead.
+     */
+    const MIN_GAME_VIEWPORT_PX = 24;
+    async function waitForRenderableViewport() {
+      const MAX_FRAMES = 360;
+      for (let i = 0; i < MAX_FRAMES; i++) {
+        syncGameRendererSize();
+        try {
+          resizeMenuWallBackdrop();
+        } catch (_) {}
+        const el = renderer.domElement;
+        void el.offsetHeight;
+        const w = el.clientWidth | 0;
+        const h = el.clientHeight | 0;
+        if (w >= MIN_GAME_VIEWPORT_PX && h >= MIN_GAME_VIEWPORT_PX) return;
+        await new Promise((r) => requestAnimationFrame(r));
+      }
     }
 
     applyGraphicsQuality();
@@ -3870,6 +3889,8 @@
     audioMaster.connect(audioCtx.destination);
 
     let menuBgmAudio = null;
+    /** Set on first pointer/key/touch in the page; required for menu.mp3 (autoplay) and to resume after game. */
+    let menuBgmUnlocked = false;
 
     function applyAudioVolumes() {
       audioMaster.gain.value = gameSettings.masterVolume;
@@ -3954,9 +3975,13 @@
         menuBgmAudio.pause();
       } catch (_) {}
     }
-    /** Browser autoplay policy: start only after a user gesture; safe to call repeatedly. */
+    /**
+     * Menu music: play only while the main menu is visible, and only after any user gesture this session.
+     * In-game: pause. Return to menu: play again (goToMenu + prior unlock from playing / menu use).
+     */
     function tryPlayMenuBgm() {
       if (menuEl.style.display === "none") return;
+      if (!menuBgmUnlocked) return;
       ensureMenuBgmAudio();
       wireMenuBgmThroughAnalyser();
       if (!menuBgmMenuGain) {
@@ -3972,6 +3997,7 @@
       if (p && typeof p.catch === "function") p.catch(() => {});
     }
     function onMenuBgmUserGesture() {
+      menuBgmUnlocked = true;
       void (async () => {
         try {
           if (audioCtx.state === "suspended") {
@@ -5984,6 +6010,7 @@
       }
 
       if (started && menuEl.style.display === "none" && !gameWorldReady) {
+        syncGameRendererSize();
         tickFpsMeter(dt);
         renderer.render(scene, camera);
         return;
@@ -6255,6 +6282,8 @@
       compileSceneShaders();
 
       weaponRoot.visible = true;
+      gameBootLabel.textContent = "Preparing display…";
+      await waitForRenderableViewport();
       gameWorldReady = true;
       refreshLocalPlayerLightsForCurrentState();
       gameBootOverlay.style.display = "none";
