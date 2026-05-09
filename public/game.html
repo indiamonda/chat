@@ -366,7 +366,14 @@
       gap: 12px;
       box-sizing: border-box;
       padding: 28px 16px 22px;
-      background: transparent;
+      /* --game-ui-menu-bg is set from JS (absolute URL); was unused before — image never appeared */
+      background-color: #070504;
+      background-image:
+        radial-gradient(ellipse 92% 72% at 50% 38%, rgba(14, 18, 28, 0.62) 0%, rgba(6, 8, 14, 0.78) 58%, rgba(2, 3, 10, 0.88) 100%),
+        var(--game-ui-menu-bg);
+      background-size: cover, cover;
+      background-position: center, center;
+      background-repeat: no-repeat;
     }
 
     .menu h1 {
@@ -1089,6 +1096,8 @@
     let ZOMBIE_HOST_KNOWN = true;
     let _spawnRng = null;
     let _zombieSyncAcc = 0;
+    /** While the tab is hidden, `requestAnimationFrame` is throttled; this keeps multiplayer + zombie host ticks alive. */
+    let mpTabHiddenKeepaliveId = null;
     let ROOM_CODE = "";
     let pendingLobbyMode = "";
     let started = false;
@@ -2086,7 +2095,17 @@
         }
       }
 
+      const resolved = [];
+      try {
+        const rb =
+          typeof window.__GAME_RESOLVED_ASSET_BASE__ === "string"
+            ? window.__GAME_RESOLVED_ASSET_BASE__.trim()
+            : "";
+        if (rb) resolved.push(normalizeGameAssetBase(rb));
+      } catch (_) {}
+
       const merged = [
+        ...resolved,
         ...explicit,
         dir,
         getDeployedPublicRootHref(),
@@ -2255,6 +2274,9 @@
     function applyResolvedGameAssetBase(base) {
       const b = normalizeGameAssetBase(base);
       try {
+        window.__GAME_RESOLVED_ASSET_BASE__ = b;
+      } catch (_) {}
+      try {
         const root = document.documentElement;
         root.style.setProperty(
           "--game-ui-menu-bg",
@@ -2268,6 +2290,13 @@
           "--game-ui-settings-bg",
           `url("${new URL("game-ui/game-ui-settings-panel-bg.png", b).href}")`
         );
+      } catch (_) {}
+      try {
+        if (typeof menuBgmAudio !== "undefined" && menuBgmAudio) {
+          menuBgmCandidateIdx = 0;
+          applyMenuBgmSrcAtCurrentIndex();
+          tryPlayMenuBgm();
+        }
       } catch (_) {}
     }
 
@@ -2527,6 +2556,20 @@
       }
     }
 
+    /** Align chunk-edge portals with neighbors (same strips as procedural maze). */
+    function applyMazeChunkPortals(cx, cz, vert, horiz) {
+      const w = MAZE_CELLS;
+      const h = MAZE_CELLS;
+      const ew = mazeEastPortalRow(cx - 1, cz);
+      const ee = mazeEastPortalRow(cx, cz);
+      openVertPortalStrip(vert, 0, ew);
+      openVertPortalStrip(vert, w, ee);
+      const ns = mazeNorthPortalCol(cx, cz - 1);
+      const nn = mazeNorthPortalCol(cx, cz);
+      openHorizPortalStrip(horiz, ns, 0);
+      openHorizPortalStrip(horiz, nn, h);
+    }
+
     function mazeCellDegreeOpen(gx, gy, vert, horiz, w, h) {
       let d = 0;
       if (!horiz[gx][gy]) d++;
@@ -2606,11 +2649,151 @@
       }
     }
 
+    /** ~18% of chunks use a hand-authored preset room (deterministic per coord). */
+    function getMazePresetKind(cx, cz) {
+      const r = mazeHashSeed(cx, cz, 0x5e7acc01)() >>> 0;
+      if ((r % 41) >= 8) return null;
+      const kinds = ["narrow", "open", "wide", "gridDoors", "openHigh"];
+      return kinds[(r >>> 5) % kinds.length];
+    }
+
+    /**
+     * Fixed layouts: narrow hall, wide hall, open chamber, repeating door-grid (fine tiling),
+     * and tall-ceiling warehouse space. Grid uses ~3-cell rhythm so door gaps fit the player.
+     */
+    function buildMazePresetLayout(cx, cz, kind) {
+      const w = MAZE_CELLS;
+      const h = MAZE_CELLS;
+      const rng = mazeHashSeed(cx, cz, 0xa17abeef ^ kind.length);
+
+      const solid = () => ({
+        vert: Array(w + 1)
+          .fill(0)
+          .map(() => Array(h).fill(true)),
+        horiz: Array(w)
+          .fill(0)
+          .map(() => Array(h + 1).fill(true)),
+      });
+      const empty = () => ({
+        vert: Array(w + 1)
+          .fill(0)
+          .map(() => Array(h).fill(false)),
+        horiz: Array(w)
+          .fill(0)
+          .map(() => Array(h + 1).fill(false)),
+      });
+
+      let vert;
+      let horiz;
+      const lightsPlan = [];
+      let chunkWallH;
+
+      if (kind === "narrow") {
+        ({ vert, horiz } = solid());
+        if (rng() < 0.5) {
+          for (let iy = 0; iy < h; iy++) {
+            vert[7][iy] = true;
+            vert[8][iy] = true;
+          }
+          for (let iy = 1; iy <= h - 1; iy++) {
+            horiz[7][iy] = false;
+          }
+          lightsPlan.push({ gx: 7, gy: 4, kind: "wall" }, { gx: 7, gy: 10, kind: "wall" });
+        } else {
+          for (let ix = 0; ix < w; ix++) {
+            horiz[ix][7] = true;
+            horiz[ix][8] = true;
+          }
+          for (let ix = 1; ix <= w - 1; ix++) {
+            vert[ix][7] = false;
+          }
+          lightsPlan.push({ gx: 4, gy: 7, kind: "wall" }, { gx: 10, gy: 7, kind: "wall" });
+        }
+      } else if (kind === "open") {
+        ({ vert, horiz } = empty());
+        lightsPlan.push(
+          { gx: 7, gy: 7, kind: "area" },
+          { gx: 4, gy: 4, kind: "roof" },
+          { gx: 10, gy: 10, kind: "roof" }
+        );
+      } else if (kind === "openHigh") {
+        ({ vert, horiz } = empty());
+        chunkWallH = MAZE_WALL_H * 2.85;
+        lightsPlan.push(
+          { gx: 7, gy: 7, kind: "area" },
+          { gx: 3, gy: 11, kind: "roof" },
+          { gx: 11, gy: 3, kind: "roof" },
+          { gx: 3, gy: 3, kind: "wall" },
+          { gx: 11, gy: 11, kind: "wall" }
+        );
+      } else if (kind === "wide") {
+        ({ vert, horiz } = solid());
+        for (let iy = 0; iy < h; iy++) {
+          vert[5][iy] = true;
+          vert[10][iy] = true;
+        }
+        for (let gx = 6; gx <= 9; gx++) {
+          for (let iy = 0; iy < h; iy++) {
+            vert[gx][iy] = false;
+          }
+        }
+        for (let gx = 5; gx <= 9; gx++) {
+          for (let iy = 1; iy <= h - 1; iy++) {
+            horiz[gx][iy] = false;
+          }
+        }
+        lightsPlan.push({ gx: 7, gy: 4, kind: "roof" }, { gx: 7, gy: 10, kind: "roof" });
+      } else if (kind === "gridDoors") {
+        ({ vert, horiz } = empty());
+        const dividers = [3, 6, 9, 12];
+        for (const ix of dividers) {
+          for (let iy = 0; iy < h; iy++) {
+            vert[ix][iy] = true;
+          }
+        }
+        for (const iy of dividers) {
+          for (let ix = 0; ix < w; ix++) {
+            horiz[ix][iy] = true;
+          }
+        }
+        for (const ix of dividers) {
+          for (let b = 0; b < 5; b++) {
+            openVertPortalStrip(vert, ix, b * 3 + 1);
+          }
+        }
+        for (const iy of dividers) {
+          for (let b = 0; b < 5; b++) {
+            openHorizPortalStrip(horiz, b * 3 + 1, iy);
+          }
+        }
+        /** Fine repeating “warehouse rack” grid: wall intersections with 3-wide door gaps (player-sized). */
+        lightsPlan.push({ gx: 7, gy: 7, kind: "area" });
+      } else {
+        ({ vert, horiz } = empty());
+      }
+
+      return { vert, horiz, lightsPlan, chunkWallH };
+    }
+
     /**
      * Sparse “backrooms” layout: fewer walls, wide/narrow halls, gaps for shooting, forks & long runs.
      * Not a perfect maze — connectivity + dead-end passes keep FPS flow sane.
      */
     function generateMazeChunkGrid(cx, cz) {
+      const preset = getMazePresetKind(cx, cz);
+      if (preset) {
+        const built = buildMazePresetLayout(cx, cz, preset);
+        applyMazeChunkPortals(cx, cz, built.vert, built.horiz);
+        mazeKnockDownWallsUntilConnected(
+          built.vert,
+          built.horiz,
+          MAZE_CELLS,
+          MAZE_CELLS,
+          mazeHashSeed(cx, cz, 0x99887766)
+        );
+        return built;
+      }
+
       const rng = mazeHashSeed(cx, cz, 0x10203040);
       const w = MAZE_CELLS;
       const h = MAZE_CELLS;
@@ -2664,14 +2847,7 @@
         }
       }
 
-      const ew = mazeEastPortalRow(cx - 1, cz);
-      const ee = mazeEastPortalRow(cx, cz);
-      openVertPortalStrip(vert, 0, ew);
-      openVertPortalStrip(vert, w, ee);
-      const ns = mazeNorthPortalCol(cx, cz - 1);
-      const nn = mazeNorthPortalCol(cx, cz);
-      openHorizPortalStrip(horiz, ns, 0);
-      openHorizPortalStrip(horiz, nn, h);
+      applyMazeChunkPortals(cx, cz, vert, horiz);
 
       mazeKnockDownWallsUntilConnected(vert, horiz, w, h, rng);
       mazeReduceDeadEnds(vert, horiz, w, h, rng);
@@ -2843,7 +3019,9 @@
       const ox = cx * MAZE_CHUNK_WORLD;
       const oz = cz * MAZE_CHUNK_WORLD;
       const cw = MAZE_CELL_SIZE;
-      const { vert, horiz, lightsPlan } = generateMazeChunkGrid(cx, cz);
+      const { vert, horiz, lightsPlan, chunkWallH } = generateMazeChunkGrid(cx, cz);
+      const wallH = chunkWallH != null ? chunkWallH : MAZE_WALL_H;
+      const ceilingLightY = wallH - 0.08;
       const w = MAZE_CELLS;
       const h = MAZE_CELLS;
 
@@ -2879,7 +3057,7 @@
         )
       );
       ceilPl.rotation.x = Math.PI / 2;
-      ceilPl.position.set(ox + MAZE_CHUNK_WORLD / 2, MAZE_WALL_H, oz + MAZE_CHUNK_WORLD / 2);
+      ceilPl.position.set(ox + MAZE_CHUNK_WORLD / 2, wallH, oz + MAZE_CHUNK_WORLD / 2);
       ceilPl.receiveShadow = true;
       scene.add(ceilPl);
       chunkMeshes.push(ceilPl);
@@ -2903,10 +3081,10 @@
           const wz = oz + (iy + 0.5) * cw;
           pushWall(
             MAZE_WALL_THICK,
-            MAZE_WALL_H,
+            wallH,
             cw + 0.02,
             wx,
-            MAZE_WALL_H / 2,
+            wallH / 2,
             wz,
             0x6b7384
           );
@@ -2920,10 +3098,10 @@
           const wz = oz + iy * cw;
           pushWall(
             cw + 0.02,
-            MAZE_WALL_H,
+            wallH,
             MAZE_WALL_THICK,
             wx,
-            MAZE_WALL_H / 2,
+            wallH / 2,
             wz,
             0x6b7384
           );
@@ -2944,7 +3122,7 @@
             108 * MAZE_LIGHT_INTENSITY_SCALE,
             MAZE_CHUNK_WORLD * 0.62
           );
-          L.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
+          L.position.set(px, ceilingLightY, pz);
           L.castShadow = false;
           scene.add(L);
           chunkLights.push(L);
@@ -2960,7 +3138,7 @@
               metalness: 0.2,
             })
           );
-          bulb.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
+          bulb.position.set(px, ceilingLightY, pz);
           bulb.castShadow = false;
           scene.add(bulb);
           chunkMeshes.push(bulb);
@@ -3025,7 +3203,7 @@
           chunkLights.push(sconceFill);
           registerMazeCullLight(sconceFill, key);
         } else if (kind === "area") {
-          const ceilingY = MAZE_CEILING_LIGHT_Y;
+          const ceilingY = ceilingLightY;
           const fill = createPhysicalPointLight(
             0xfff0e4,
             200 * MAZE_LIGHT_INTENSITY_SCALE,
@@ -4046,31 +4224,44 @@
       }
     }
 
-    function getMenuBgmUrl() {
-      for (const base of getGameAssetBaseCandidates()) {
-        try {
-          return new URL("menu.mp3", normalizeGameAssetBase(base)).href;
-        } catch (_) {}
-      }
+    let menuBgmCandidateIdx = 0;
+
+    function applyMenuBgmSrcAtCurrentIndex() {
+      const bases = getGameAssetBaseCandidates();
+      if (!menuBgmAudio || menuBgmCandidateIdx >= bases.length) return false;
       try {
-        return new URL("menu.mp3", pageDirFromLocation()).href;
+        const href = new URL("menu.mp3", normalizeGameAssetBase(bases[menuBgmCandidateIdx])).href;
+        menuBgmAudio.src = href;
+        try {
+          menuBgmAudio.crossOrigin =
+            new URL(href).origin !== window.location.origin ? "anonymous" : "";
+        } catch (_) {
+          menuBgmAudio.crossOrigin = "";
+        }
+        menuBgmAudio.load();
+        return true;
       } catch (_) {
-        return "menu.mp3";
+        menuBgmCandidateIdx++;
+        return applyMenuBgmSrcAtCurrentIndex();
       }
     }
+
     function ensureMenuBgmAudio() {
       if (menuBgmAudio) return;
-      const bgmUrl = getMenuBgmUrl();
       menuBgmAudio = new Audio();
-      try {
-        if (new URL(bgmUrl).origin !== window.location.origin) {
-          menuBgmAudio.crossOrigin = "anonymous";
-        }
-      } catch (_) {}
-      menuBgmAudio.src = bgmUrl;
       menuBgmAudio.loop = true;
       menuBgmAudio.preload = "auto";
+      menuBgmCandidateIdx = 0;
+      menuBgmAudio.addEventListener(
+        "error",
+        () => {
+          menuBgmCandidateIdx++;
+          if (menuBgmCandidateIdx >= getGameAssetBaseCandidates().length) return;
+          applyMenuBgmSrcAtCurrentIndex();
+        }
+      );
       wireMenuBgmThroughAnalyser();
+      applyMenuBgmSrcAtCurrentIndex();
       if (!menuBgmMenuGain) {
         menuBgmAudio.volume = THREE.MathUtils.clamp(
           gameSettings.masterVolume * gameSettings.musicVolume,
@@ -5258,6 +5449,69 @@
       updateMedKit(dt);
     }
 
+    function emitPlayerMoveNetwork() {
+      if (!MULTIPLAYER || typeof socket.emit !== "function") return;
+      socket.emit("move", {
+        x: player.position.x,
+        y: player.position.y,
+        z: player.position.z,
+        yaw: player.yaw,
+        name: playerName,
+        weapon: state.weaponIndex,
+        lightsOn: playerBodyLight.visible,
+      });
+    }
+
+    /** Browsers throttle rAF when the tab is in the background; this keeps the room + zombie host in sync. */
+    function tickMultiplayerWhileTabInBackground() {
+      if (!MULTIPLAYER || document.visibilityState !== "hidden" || !started || paused || !gameWorldReady) {
+        return;
+      }
+      const dt = 0.05;
+      emitPlayerMoveNetwork();
+      if (
+        CURRENT_MAP === "arena" &&
+        ARENA_COOP &&
+        ZOMBIE_AUTHORITY &&
+        gameWorldReady &&
+        player.health > 0
+      ) {
+        updateEnemies(dt);
+        _zombieSyncAcc += dt;
+        if (_zombieSyncAcc >= 1 / 14) {
+          _zombieSyncAcc = 0;
+          socket.emit("zombieSync", {
+            score: state.score,
+            zombies: state.enemies.map((e, idx) => ({
+              i: e.netIndex ?? idx,
+              x: e.group.position.x,
+              z: e.group.position.z,
+              y: e.visYaw,
+              hp: e.hp,
+              a: e.alive ? 1 : 0,
+              rt: e.respawnTimer,
+            })),
+          });
+        }
+      }
+    }
+
+    function stopMultiplayerTabKeepalive() {
+      if (mpTabHiddenKeepaliveId != null) {
+        clearInterval(mpTabHiddenKeepaliveId);
+        mpTabHiddenKeepaliveId = null;
+      }
+    }
+
+    function syncMultiplayerTabKeepalive() {
+      stopMultiplayerTabKeepalive();
+      if (MULTIPLAYER && document.visibilityState === "hidden") {
+        mpTabHiddenKeepaliveId = setInterval(tickMultiplayerWhileTabInBackground, 50);
+      }
+    }
+
+    document.addEventListener("visibilitychange", syncMultiplayerTabKeepalive);
+
     function updatePlayer(dt) {
       if (player.health <= 0) {
         camera.position.copy(player.position);
@@ -5317,15 +5571,7 @@
       camera.rotation.y = player.yaw;
       camera.rotation.x = player.pitch;
       if (MULTIPLAYER) {
-        socket.emit("move", {
-          x: player.position.x,
-          y: player.position.y,
-          z: player.position.z,
-          yaw: player.yaw,
-          name: playerName,
-          weapon: state.weaponIndex,
-          lightsOn: playerBodyLight.visible,
-        });
+        emitPlayerMoveNetwork();
       }
     }
     function showDeathScreen(killer) {
@@ -6077,7 +6323,7 @@
     function animate() {
       requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.033);
-      if (document.visibilityState === "hidden") return;
+      if (document.visibilityState === "hidden" && !MULTIPLAYER) return;
 
       if (MULTIPLAYER) {
         const k = 1 - Math.exp(-17 * dt);
@@ -6118,6 +6364,12 @@
       }
 
       if (started && menuEl.style.display === "none" && !gameWorldReady) {
+        tickFpsMeter(dt);
+        renderer.render(scene, camera);
+        return;
+      }
+
+      if (document.visibilityState === "hidden" && MULTIPLAYER) {
         tickFpsMeter(dt);
         renderer.render(scene, camera);
         return;
@@ -6416,6 +6668,7 @@
 
       weaponRoot.visible = true;
       gameWorldReady = true;
+      syncMultiplayerTabKeepalive();
       refreshLocalPlayerLightsForCurrentState();
       gameBootOverlay.style.display = "none";
       gameBootOverlay.setAttribute("aria-busy", "false");
@@ -6426,6 +6679,7 @@
     }
 
     function goToMenu() {
+      stopMultiplayerTabKeepalive();
       hideDeathScreen();
       hidePause();
       closeSettingsModal();
