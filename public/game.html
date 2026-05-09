@@ -4655,14 +4655,32 @@
     /** All possible menu.mp3 URLs to try; first that loads wins. */
     function getMenuBgmUrlList() {
       const urls = [];
+      const push = (href) => {
+        try {
+          if (href) urls.push(typeof href === "string" ? href : new URL(href).href);
+        } catch (_) {}
+      };
+      try {
+        const mpMeta = document.querySelector('meta[name="game-multiplayer-origin"]');
+        const mpRaw = mpMeta && mpMeta.content != null ? String(mpMeta.content).trim() : "";
+        if (mpRaw) {
+          try {
+            push(new URL("menu.mp3", new URL("/", mpRaw).href).href);
+          } catch (_) {}
+        }
+      } catch (_) {}
       for (const base of getGameAssetBaseCandidates()) {
         try {
-          urls.push(new URL("menu.mp3", normalizeGameAssetBase(base)).href);
+          push(new URL("menu.mp3", normalizeGameAssetBase(base)).href);
         } catch (_) {}
       }
       try {
-        urls.push(new URL("menu.mp3", pageDirFromLocation()).href);
+        push(new URL("menu.mp3", pageDirFromLocation()).href);
       } catch (_) {}
+      try {
+        push(new URL("menu.mp3", window.location.origin + "/").href);
+      } catch (_) {}
+      push("https://tintly555.github.io/games/fps/menu.mp3");
       return [...new Set(urls)];
     }
 
@@ -4672,12 +4690,21 @@
       if (!_menuBgmCandidates || idx >= _menuBgmCandidates.length) return;
       const url = _menuBgmCandidates[idx];
       try {
-        if (new URL(url).origin !== window.location.origin) {
+        const u = new URL(url, window.location.href);
+        if (u.origin === window.location.origin) {
+          menuBgmAudio.removeAttribute("crossOrigin");
+        } else {
           menuBgmAudio.crossOrigin = "anonymous";
         }
-      } catch (_) {}
+      } catch (_) {
+        try {
+          menuBgmAudio.removeAttribute("crossOrigin");
+        } catch (__) {}
+      }
       menuBgmAudio.src = url;
-      try { menuBgmAudio.load(); } catch (_) {}
+      try {
+        menuBgmAudio.load();
+      } catch (_) {}
     }
 
     /**
@@ -4746,7 +4773,8 @@
             if (p && typeof p.catch === "function") p.catch(() => {});
           }
         } else {
-          console.warn("[menu bgm] all sources failed", _menuBgmCandidates);
+          const code = menuBgmAudio.error ? menuBgmAudio.error.code : "";
+          console.warn("[menu bgm] all sources failed", _menuBgmCandidates, "lastMediaError", code);
         }
       });
       menuBgmAudio.addEventListener("canplay", () => {
