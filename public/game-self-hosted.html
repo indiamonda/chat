@@ -940,7 +940,7 @@
       <p data-i18n="creditsGame">Game by Tintly555</p>
       <p data-i18n="creditsMusic">Music by JimmyQrg</p>
       <button type="button" id="btnArena" data-i18n="btnZombieArena">Zombie Arena</button>
-      <button type="button" id="btnCrossfire" data-i18n="btnCrossfire">Crossfire (PVP)</button>
+      <button type="button" id="btnCrossfire" data-i18n="btnCrossfirePickMap">Crossfire (PVP — select map)</button>
       <button type="button" id="btnMenuSettings" data-i18n="btnSettings">SETTINGS</button>
     </div>
     <div id="menuArenaMode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
@@ -949,8 +949,16 @@
       <button type="button" id="btnArenaCoop" data-i18n="btnCoopMode">CO-OP MODE</button>
       <button type="button" id="btnArenaBack" data-i18n="btnBack">← BACK</button>
     </div>
+    <div id="menuPvpMaps" style="display:none;flex-direction:column;align-items:center;gap:10px;">
+      <h2 style="font-family:var(--game-font-ui);font-size:24px;margin:0 0 10px 0;letter-spacing:2px;" data-i18n="pvpMapTitle">CROSSFIRE — MAP</h2>
+      <p style="font-family:var(--game-font-ui);font-size:12px;opacity:0.78;margin:0 0 8px 0;max-width:300px;text-align:center;line-height:1.45;" data-i18n="pvpMapDesc">Choose the PVP layout, then use Quick Play / Create / Join.</p>
+      <button type="button" id="btnPvpMapClassic" data-i18n="pvpMapClassic">CLASSIC (ORIGINAL)</button>
+      <button type="button" id="btnPvpMapGrid" data-i18n="pvpMapGrid">GRID KILLHOUSE</button>
+      <button type="button" id="btnPvpMapBack" data-i18n="pvpMapBack">← BACK</button>
+    </div>
     <div id="menuLobby" style="display:none;flex-direction:column;align-items:center;gap:10px;">
       <h2 id="lobbyTitle" style="font-family:var(--game-font-ui);font-size:24px;margin:0 0 10px 0;letter-spacing:2px;">MULTIPLAYER</h2>
+      <p id="lobbyError" style="font-family:var(--game-font-ui);color:#e53e3e;font-size:13px;margin:0 0 6px 0;min-height:20px;text-align:center;max-width:300px;line-height:1.35;"></p>
       <button type="button" id="btnQuickplay" data-i18n="btnQuickPlay">QUICK PLAY</button>
       <button type="button" id="btnCreateRoom" data-i18n="btnCreateRoom">CREATE A ROOM</button>
       <button type="button" id="btnJoinCode" data-i18n="btnJoinViaCode">JOIN VIA CODE</button>
@@ -1241,6 +1249,17 @@
       bootPrep: "Preparing display…",
       lobbyArenaCoop: "ARENA CO-OP",
       lobbyCrossfire: "CROSSFIRE (PVP)",
+      lobbyPickModeFirst: "Choose CO-OP or a PVP map first.",
+      mpNoServerAck: "No response from server.",
+      mpMissingRoomId: "Could not join — missing room id from server.",
+      pvpMapTitle: "CROSSFIRE — MAP",
+      pvpMapDesc: "Choose the PVP layout, then use Quick Play / Create / Join.",
+      pvpMapClassic: "CLASSIC (ORIGINAL)",
+      pvpMapGrid: "GRID KILLHOUSE",
+      pvpMapBack: "← BACK",
+      btnCrossfirePickMap: "Crossfire (PVP — select map)",
+      mapCrossfireClassic: "crossfire PVP — classic map",
+      mapCrossfireGrid: "crossfire PVP — bright duel map",
       ariaLoading: "Loading",
       languagePickLabel: "Language",
     };
@@ -2799,6 +2818,10 @@
     const menuLobby = document.getElementById("menuLobby");
     const lobbyTitle = document.getElementById("lobbyTitle");
     const menuJoinCode = document.getElementById("menuJoinCode");
+    const menuPvpMaps = document.getElementById("menuPvpMaps");
+    const btnPvpMapClassic = document.getElementById("btnPvpMapClassic");
+    const btnPvpMapGrid = document.getElementById("btnPvpMapGrid");
+    const btnPvpMapBack = document.getElementById("btnPvpMapBack");
     const gameBootOverlay = document.getElementById("gameBootOverlay");
     const gameBootLabel = document.getElementById("gameBootLabel");
     const codeInput = document.getElementById("codeInput");
@@ -3333,6 +3356,11 @@
     });
 
     let CURRENT_MAP = "arena";
+    /** Set from PVP map picker; used when `pendingLobbyMode === "crossfire"`. */
+    let PENDING_PVP_MAP = "crossfire";
+    function isPvpCrossfireMap(m) {
+      return m === "crossfire" || m === "crossfire_grid";
+    }
     let MULTIPLAYER = false;
     /** True only for Zombie Arena played via ARENA CO-OP lobby (no damage vs other players). */
     let ARENA_COOP = false;
