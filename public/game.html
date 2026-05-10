@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <!--
-  Public deploy (example): https://tintly555.github.io/games/fps/ — static assets + relay host configured via metas below.
-  This repo copy: edit here; on GitHub Pages you typically set game-static-prefix and point game-multiplayer-origin at your relay.
-  Self-hosted tree: open game-self-hosted.html (game-multiplayer-origin and game-static-prefix usually empty for same-origin assets).
+  Public deploy (example): https://tintly555.github.io/games/fps/ — reference tree; this file defaults game-asset-base to https://chat.jimmyqrg.com/ so static assets work when the HTML is used standalone.
+  game-self-hosted.html: leave game-asset-base empty for same-origin-only assets.
   Crossfire = PVP; Arena = PVE / co-op vs zombies.
 -->
 <html lang="en">
@@ -102,8 +101,8 @@
        A second fixed base (e.g. chat origin) breaks relative game-ui/ + walls.png when the page is not at site root or when assets live beside this file. -->
   <!-- Multiplayer only: Socket.IO API origin — not a CDN for walls.png / game-ui. Empty content = same origin (typical for game-self-hosted.html). -->
   <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
-  <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
-  <meta name="game-asset-base" content="" />
+  <!-- Absolute base for walls.png, game-ui/, menu.mp3, … — set to this app’s origin so a lone copy of game.html still loads assets (file:// or foreign host). Use content="" for same-origin-only. -->
+  <meta name="game-asset-base" content="https://chat.jimmyqrg.com/" />
   <!-- Where static files from public/ are mounted: empty = site root (e.g. Fly: /walls.png). GitHub Pages subpath: content="/games/fps" -->
   <meta name="game-static-prefix" content="" />
   <script>
