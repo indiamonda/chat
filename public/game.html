@@ -985,7 +985,8 @@
   <div id="fpsOverlay" style="position:fixed;top:10px;right:14px;z-index:45;pointer-events:none;text-align:right;font-family:var(--game-font-ui);font-size:13px;color:rgba(245,248,255,0.92);text-shadow:0 1px 5px rgba(0,0,0,0.85);line-height:1.4;">
     <div id="fpsValue">— FPS</div>
     <div id="fpsChatHint" style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;" data-i18n="fpsChatHint">Press T to chat</div>
-    <div id="fpsLightHint" style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;" data-i18n="fpsLightHint">Press L to toggle light &amp; flashlight</div>
+    <div id="fpsHintFlash" style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;">Press L to toggle light &amp; flashlight</div>
+    <div id="fpsHintZoom" style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;">Press Z to zoom flashlight</div>
   </div>
   <div class="hint" id="hint" data-i18n="hintClick">Click anywhere</div>
   <div class="flash" id="flash"></div>
@@ -1171,6 +1172,7 @@
       loadingWorld: "Loading world…",
       fpsChatHint: "Press T to chat",
       fpsLightHint: "Press L to toggle light & flashlight",
+      fpsFlashZoomHint: "Press Z to zoom flashlight",
       hintClick: "Click anywhere",
       medkitHold: "HOLD",
       combatHit: "HIT",
@@ -1286,6 +1288,7 @@
       loadingWorld: "正在加载世界…",
       fpsChatHint: "按 T 打开聊天",
       fpsLightHint: "按 L 开关照明与手电",
+      fpsFlashZoomHint: "按 Z 切换手电变焦",
       hintClick: "点击任意处",
       medkitHold: "按住",
       combatHit: "命中",
@@ -1390,6 +1393,7 @@
       loadingWorld: "正在載入世界…",
       fpsChatHint: "按 T 開啟聊天",
       fpsLightHint: "按 L 切換照明與手電筒",
+      fpsFlashZoomHint: "按 Z 切換手電變焦",
       hintClick: "點擊任意處",
       medkitHold: "按住",
       combatHit: "命中",
@@ -1494,6 +1498,7 @@
       loadingWorld: "Cargando el mundo…",
       fpsChatHint: "T abre el chat",
       fpsLightHint: "L enciende la luz y la linterna",
+      fpsFlashZoomHint: "Z zoom de linterna",
       hintClick: "Clic en cualquier sitio",
       medkitHold: "MANTÉN",
       deathDefeated: "DERROTADO",
@@ -1596,6 +1601,7 @@
       loadingWorld: "दुनिया लोड हो रही है…",
       fpsChatHint: "चैट के लिए T दबाएँ",
       fpsLightHint: "L से लाइट और टॉर्च चालू/बंद",
+      fpsFlashZoomHint: "Z से टॉर्च ज़ूम",
       hintClick: "कहीं भी क्लिक करें",
       medkitHold: "दबाए रखें",
       deathDefeated: "पराजित",
@@ -1698,6 +1704,7 @@
       loadingWorld: "جاري تحميل العالم…",
       fpsChatHint: "T للدردشة",
       fpsLightHint: "L للإضاءة والمصباح اليدوي",
+      fpsFlashZoomHint: "Z لتكبير المصباح",
       hintClick: "انقر في أي مكان",
       medkitHold: "استمر بالضغط",
       deathDefeated: "هُزمت",
@@ -1800,6 +1807,7 @@
       loadingWorld: "Chargement du monde…",
       fpsChatHint: "T pour ouvrir le chat",
       fpsLightHint: "L pour la lumière et la lampe",
+      fpsFlashZoomHint: "Z zoom lampe",
       hintClick: "Cliquez n'importe où",
       medkitHold: "MAINTENIR",
       deathDefeated: "VAINCU",
@@ -1902,6 +1910,7 @@
       loadingWorld: "Carregando mundo…",
       fpsChatHint: "T abre o chat",
       fpsLightHint: "L acende luz e lanterna",
+      fpsFlashZoomHint: "Z zoom da lanterna",
       hintClick: "Clique em qualquer lugar",
       medkitHold: "SEGURE",
       deathDefeated: "DERROTADO",
@@ -2004,6 +2013,7 @@
       loadingWorld: "Загрузка мира…",
       fpsChatHint: "T — открыть чат",
       fpsLightHint: "L — свет и фонарь",
+      fpsFlashZoomHint: "Z — зум фонаря",
       hintClick: "Кликните где угодно",
       medkitHold: "ДЕРЖИТЕ",
       deathDefeated: "ПОВЕРЖЁН",
@@ -2106,6 +2116,7 @@
       loadingWorld: "ワールド読込中…",
       fpsChatHint: "T でチャットを開く",
       fpsLightHint: "L で光源・フラッシュライトのオン／オフ",
+      fpsFlashZoomHint: "Z で懐中電灯ズーム",
       hintClick: "どこでもクリック",
       medkitHold: "長押し",
       deathDefeated: "撃破された",
@@ -2208,6 +2219,7 @@
       loadingWorld: "Welt wird geladen…",
       fpsChatHint: "T öffnet den Chat",
       fpsLightHint: "L schaltet Licht & Taschenlampe",
+      fpsFlashZoomHint: "Z Taschenlampen-Zoom",
       hintClick: "Irgendwo klicken",
       medkitHold: "HALTEN",
       deathDefeated: "BESIEGT",
@@ -2310,6 +2322,7 @@
       loadingWorld: "월드 로딩 중…",
       fpsChatHint: "T 로 채팅",
       fpsLightHint: "L 로 조명·손전등 전환",
+      fpsFlashZoomHint: "Z 손전등 줌",
       hintClick: "아무 곳이나 클릭",
       medkitHold: "길게 누르기",
       deathDefeated: "격파됨",
@@ -2387,6 +2400,7 @@
       loadingWorld: "Caricamento mondo…",
       fpsChatHint: "T apre la chat",
       fpsLightHint: "L accende luce e torcia",
+      fpsFlashZoomHint: "Z zoom torcia",
       hintClick: "Clicca ovunque",
       medkitHold: "TIENI",
       deathDefeated: "SCONFITTO",
@@ -2489,6 +2503,7 @@
       loadingWorld: "Wereld laden…",
       fpsChatHint: "T opent de chat",
       fpsLightHint: "L schakelt lamp & zaklamp",
+      fpsFlashZoomHint: "Z zaklampzoom",
       hintClick: "Klik ergens",
       medkitHold: "INGEDRUKT HOUDEN",
       deathDefeated: "VERSLAGEN",
@@ -2591,6 +2606,7 @@
       loadingWorld: "Ładowanie świata…",
       fpsChatHint: "T — czat",
       fpsLightHint: "L — światło i latarka",
+      fpsFlashZoomHint: "Z zoom latarki",
       hintClick: "Kliknij gdziekolwiek",
       medkitHold: "PRZYTRZYMAJ",
       deathDefeated: "POLEGŁY",
@@ -2693,6 +2709,7 @@
       loadingWorld: "Dünya yükleniyor…",
       fpsChatHint: "Sohbet için T",
       fpsLightHint: "L ışık ve el feneri",
+      fpsFlashZoomHint: "Z el feneri yakınlaştırma",
       hintClick: "Herhangi bir yere tıklayın",
       medkitHold: "BASILI TUT",
       deathDefeated: "YENİLDİN",
@@ -3608,12 +3625,25 @@
         rp.name = data.name;
         updateNameSprite(rp, data.name);
       }
-      if (data.weapon != null && data.weapon !== rp.currentWeapon) {
-        rp.rightArm.remove(rp.gunModel);
-        rp.gunModel = makeThirdPersonGun(data.weapon);
-        rp.gunModel.position.set(0.15, -0.42, -0.28);
-        rp.rightArm.add(rp.gunModel);
-        rp.currentWeapon = data.weapon;
+      let rawWeapon;
+      if (data) {
+        if (data.weapon !== undefined && data.weapon !== null) rawWeapon = data.weapon;
+        else if (data.weaponIndex !== undefined && data.weaponIndex !== null) rawWeapon = data.weaponIndex;
+        else if (data.w !== undefined && data.w !== null) rawWeapon = data.w;
+      }
+      if (rawWeapon !== undefined && rawWeapon !== null) {
+        const w = ((Number(rawWeapon) | 0) % 5 + 5) % 5;
+        if (w !== rp.currentWeapon) {
+          rp.rightArm.remove(rp.gunModel);
+          rp.gunModel = makeThirdPersonGun(w);
+          rp.gunModel.position.set(
+            w === 4 ? 0.1 : 0.15,
+            w === 4 ? -0.55 : -0.42,
+            w === 4 ? -0.1 : -0.28
+          );
+          rp.rightArm.add(rp.gunModel);
+          rp.currentWeapon = w;
+        }
       }
       rp.group.visible = true;
     });
@@ -3970,6 +4000,12 @@
         addMeshPart(g, new THREE.BoxGeometry(0.06, 0.06, 0.12), mDark, 0, 0.01, 0.26);
         addMeshPart(g, new THREE.BoxGeometry(0.05, 0.14, 0.06), mDark, 0, -0.10, 0.06);
         addMeshPart(g, new THREE.BoxGeometry(0.04, 0.14, 0.05), mBlack, 0, -0.08, -0.04);
+      } else if (type === 4) {
+        const mRed = new THREE.MeshStandardMaterial({ color: 0xc83232, roughness: 0.55 });
+        const mWhite = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.65 });
+        addMeshPart(g, new THREE.BoxGeometry(0.28, 0.10, 0.18), mWhite, 0, 0, 0);
+        addMeshPart(g, new THREE.BoxGeometry(0.24, 0.035, 0.14), mRed, 0, 0.062, 0.002);
+        addMeshPart(g, new THREE.BoxGeometry(0.07, 0.07, 0.05), mDark, 0.13, 0, 0);
       }
       g.scale.set(0.9, 0.9, 0.9);
       return g;
@@ -4552,21 +4588,35 @@
     /** Distance fog + camera far: darkness and light fade beyond render distance (scaled by preset). */
     function applySceneFogAndCameraFar() {
       if (!scene.fog || !scene.fog.isFog) return;
-      const base = getQualityFogBase();
-      const rdIdx = THREE.MathUtils.clamp(
-        gameSettings.renderDistanceIndex | 0,
-        0,
-        RENDER_DISTANCE_LEVELS.length - 1
-      );
-      const scale = RENDER_DISTANCE_LEVELS[rdIdx].scale;
-      const far = Math.max(22, base.far * scale);
-      const near = THREE.MathUtils.clamp(base.near * scale * 0.97, 4, Math.max(8, far - 12));
+      let far;
+      let near;
+      if (CURRENT_MAP === "crossfire_grid") {
+        const rdIdx = THREE.MathUtils.clamp(
+          gameSettings.renderDistanceIndex | 0,
+          0,
+          RENDER_DISTANCE_LEVELS.length - 1
+        );
+        const scale = RENDER_DISTANCE_LEVELS[rdIdx].scale;
+        far = Math.max(140, 210 * scale);
+        near = THREE.MathUtils.clamp(28 * scale, 14, far - 28);
+        scene.fog.color.set(0xc9dbf5);
+        scene.background.set(0xe8f2ff);
+      } else {
+        const base = getQualityFogBase();
+        const rdIdx = THREE.MathUtils.clamp(
+          gameSettings.renderDistanceIndex | 0,
+          0,
+          RENDER_DISTANCE_LEVELS.length - 1
+        );
+        const scale = RENDER_DISTANCE_LEVELS[rdIdx].scale;
+        far = Math.max(22, base.far * scale);
+        near = THREE.MathUtils.clamp(base.near * scale * 0.97, 4, Math.max(8, far - 12));
+        scene.fog.color.set(getCurrentMapFogColor());
+        scene.background.set(getCurrentMapBackgroundColor());
+      }
       scene.fog.near = near;
       scene.fog.far = far;
-      scene.fog.color.set(getCurrentMapFogColor());
-      scene.background.set(getCurrentMapBackgroundColor());
-
-      camera.far = THREE.MathUtils.clamp(far + 32, 52, 260);
+      camera.far = THREE.MathUtils.clamp(far + 48, 52, 280);
       camera.updateProjectionMatrix();
     }
 
@@ -6250,6 +6300,18 @@
 
       addWindowWallX(-28, 28, 14, H, 1.0, 4, 1.2, 3.0);
       addWindowWallX( 28,-28, 14, H, 1.0, 4, 1.2, 3.0);
+
+      const cfAmb = new THREE.AmbientLight(0xaabccf, 1.15);
+      scene.add(cfAmb);
+      pvpMapLights.push(cfAmb);
+      const cfHemi = new THREE.HemisphereLight(0xc9d6ea, 0x2a2218, 2.4);
+      scene.add(cfHemi);
+      pvpMapLights.push(cfHemi);
+      const cfSun = new THREE.DirectionalLight(0xffecd8, 4.2);
+      cfSun.position.set(10, 38, 18);
+      cfSun.castShadow = false;
+      scene.add(cfSun);
+      pvpMapLights.push(cfSun);
     }
 
     /** PVP alt layout: perimeter + cover posts + fill lights (open-roof duel). */
@@ -6284,20 +6346,30 @@
         [-20, 20], [0, 20], [20, 20],
       ];
       for (const [lx, lz] of lightPos) {
-        const L = createPhysicalPointLight(0xfff4e2, 88 * Math.PI, 34, 2.4);
-        L.position.set(lx, H - 0.5, lz);
+        const L = createPhysicalPointLight(0xfff6ee, 520, 150, 2.2);
+        L.position.set(lx, H + 1.2, lz);
         L.castShadow = false;
         scene.add(L);
         pvpMapLights.push(L);
       }
-      const hemiFill = new THREE.HemisphereLight(0xdfe9ff, 0x3f3426, 1.05 * Math.PI);
+      const rimTop = createPhysicalPointLight(0xeaf6ff, 380, 180, 2.4);
+      rimTop.position.set(0, H + 8, 0);
+      rimTop.castShadow = false;
+      scene.add(rimTop);
+      pvpMapLights.push(rimTop);
+      // Open-roof duel map needs stable global fill, not flashlight dependence.
+      const ambFill = new THREE.AmbientLight(0xd4e2f5, 2.1);
+      scene.add(ambFill);
+      pvpMapLights.push(ambFill);
+      const hemiFill = new THREE.HemisphereLight(0xeef6ff, 0x5c5348, 4.2);
       scene.add(hemiFill);
       pvpMapLights.push(hemiFill);
-      const sunFill = new THREE.DirectionalLight(0xfff0dc, 0.84 * Math.PI);
-      sunFill.position.set(14, 30, 10);
+      const sunFill = new THREE.DirectionalLight(0xfff6ea, 9.5);
+      sunFill.position.set(18, 42, 14);
       sunFill.castShadow = false;
       scene.add(sunFill);
       pvpMapLights.push(sunFill);
+      // New duel map should feel open/bright: force no ceiling regardless of previous map state.
       ceiling.visible = false;
     }
 
@@ -6307,7 +6379,8 @@
       crossfire_grid: buildMapCrossfireGrid,
     };
 
-    const ZOMBIE_COUNT = 32;
+    /** Baseline roster size before the global 2× multiplier and arena co-op player scaling. */
+    const ZOMBIE_COUNT_BASE = 32;
     /** Multiplier for how far from players a zombie must spawn (0.4 = tighter / closer spawns). */
     const ZOMBIE_SPAWN_PLAYER_CLEAR_SCALE = 0.4;
     const SPAWN_MIN_DIST_BASE = 18 * ZOMBIE_SPAWN_PLAYER_CLEAR_SCALE;
@@ -6343,6 +6416,19 @@
       return positions;
     }
 
+    /** Arena co-op: scale horde with party size (local + remotes). Solo arena uses 1. */
+    function getHumanCountForZombieScaling() {
+      if (MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena") {
+        return Math.max(1, 1 + remotePlayers.size);
+      }
+      return 1;
+    }
+
+    /** 2× baseline density; multiply again by human count in arena co-op. */
+    function getTargetZombieCount() {
+      return ZOMBIE_COUNT_BASE * 2 * getHumanCountForZombieScaling();
+    }
+
     function findSpawnPosition(minDist) {
       if (CURRENT_MAP === "arena") {
         const players = getAllPlayerPositions();
@@ -6369,6 +6455,17 @@
           }
           if (tooClose) continue;
           return { x, z, usedDist: dist };
+        }
+        /** Avoid the old fixed offset fallback — it often lands inside maze walls as the map grows, so fewer zombies stay active. */
+        const pcx = Math.floor(px / MAZE_CHUNK_WORLD);
+        const pcz = Math.floor(pz / MAZE_CHUNK_WORLD);
+        for (let dz = -2; dz <= 2; dz++) {
+          for (let dx = -2; dx <= 2; dx++) {
+            const s = pickOpenMazeSpawnInChunk(pcx + dx, pcz + dz);
+            if (arenaXZClearForSpawn(s.x, s.z, 0.5)) {
+              return { x: s.x, z: s.z, usedDist: SPAWN_MIN_DIST_FLOOR };
+            }
+          }
         }
         const x = px + 14;
         const z = pz;
@@ -6580,18 +6677,44 @@
               : CURRENT_MAP;
       const mpSuffix = MULTIPLAYER ? ` ${t("hudMpSuffix")}` : "";
       const reloadParen = state.reloading ? ` (${t("hudRefilling")})` : "";
+      const aimLine =
+        CURRENT_MAP === "crossfire_grid"
+          ? gameSettings.language === "zh"
+            ? "鼠标瞄准 | 右键机瞄 | 亮图无需手电"
+            : "Mouse aim | RMB ADS | Bright map — no flashlight"
+          : t("hudAimLine");
       hud.innerHTML = `
         ${roomLine}
         ${t("gameTitle")}<br>
         ${t("hudMoveLine")}<br>
-        ${t("hudAimLine")}<br>
+        ${aimLine}<br>
         ${t("hudMapPrefix")} ${mapLabel}${mpSuffix}<br>
         ${t("hudWeaponPrefix")} ${wName}<br>
         ${state.weaponIndex === 4 ? "" : `${t("hudBulletsPrefix")} ${w.ammo} / ${w.magSize}${reloadParen}<br>`}
         ${t("hudHealthPrefix")} ${Math.max(0, Math.floor(player.health))} / ${player.maxHealth}<br>
         ${t("hudScorePrefix")} ${state.score}
       `;
+      refreshFpsOverlayHints();
     }
+
+    function refreshFpsOverlayHints() {
+      const elL = document.getElementById("fpsHintFlash");
+      const elZ = document.getElementById("fpsHintZoom");
+      if (!elL || !elZ) return;
+      if (CURRENT_MAP === "crossfire_grid") {
+        elL.textContent =
+          gameSettings.language === "zh"
+            ? "室外单挑亮图：手电已关（无需照明）"
+            : "Bright duel map — flashlight stays off";
+        elZ.textContent = "";
+        elZ.style.display = "none";
+      } else {
+        elZ.style.display = "";
+        elL.textContent = t("fpsLightHint");
+        elZ.textContent = t("fpsFlashZoomHint");
+      }
+    }
+
     updateHud();
 
     function collidesWithWalls(pos) {
@@ -7467,6 +7590,49 @@
     flashOuterLocal.target = playerLightTarget;
     flashInnerLocal.target = playerLightTarget;
 
+    const FLASHLIGHT_ZOOM_PRESETS = [
+      {
+        outerAng: FLASH_OUTER_ANGLE,
+        outerDist: FLASH_OUTER_DISTANCE,
+        outerPen: FLASH_OUTER_PEN,
+        innerAng: FLASH_INNER_ANGLE,
+        innerDist: FLASH_INNER_DISTANCE,
+        innerPen: FLASH_INNER_PEN,
+      },
+      {
+        outerAng: Math.PI / 7,
+        outerDist: 420,
+        outerPen: 0.22,
+        innerAng: Math.PI / 32,
+        innerDist: 145,
+        innerPen: 0.04,
+      },
+      {
+        outerAng: Math.PI / 5,
+        outerDist: 300,
+        outerPen: 0.42,
+        innerAng: Math.PI / 22,
+        innerDist: 85,
+        innerPen: 0.07,
+      },
+    ];
+    let flashlightZoomIndex = 0;
+
+    function applyFlashlightZoomProfile(nextIdx) {
+      flashlightZoomIndex =
+        ((nextIdx | 0) % FLASHLIGHT_ZOOM_PRESETS.length + FLASHLIGHT_ZOOM_PRESETS.length) %
+        FLASHLIGHT_ZOOM_PRESETS.length;
+      const p = FLASHLIGHT_ZOOM_PRESETS[flashlightZoomIndex];
+      flashOuterLocal.angle = p.outerAng;
+      flashOuterLocal.distance = p.outerDist;
+      flashOuterLocal.penumbra = p.outerPen;
+      flashInnerLocal.angle = p.innerAng;
+      flashInnerLocal.distance = p.innerDist;
+      flashInnerLocal.penumbra = p.innerPen;
+    }
+
+    applyFlashlightZoomProfile(0);
+
     function setLocalPlayerLights(on) {
       playerBodyLight.visible = on;
       flashOuterLocal.visible = on;
@@ -7713,6 +7879,23 @@
         e.preventDefault();
         return;
       }
+      if (
+        k === "z" &&
+        started &&
+        gameWorldReady &&
+        menuEl.style.display === "none" &&
+        !chatOpen &&
+        !settingsModalOpen
+      ) {
+        if (CURRENT_MAP === "crossfire_grid") {
+          e.preventDefault();
+          return;
+        }
+        applyFlashlightZoomProfile(flashlightZoomIndex + 1);
+        playFlashlightToggleSound();
+        e.preventDefault();
+        return;
+      }
       if (k === "t" && started && !paused && player.health > 0) {
         e.preventDefault();
         document.exitPointerLock();
@@ -7934,6 +8117,22 @@
     /** Gunner (ranged): seconds of clear line-of-sight to target before firing is allowed. Resets when LOS breaks. */
     const RANGED_LOS_ACQUIRE_DELAY = 0.62;
 
+    /** Grow roster when co-op party joins mid-match (host only); clients follow `zombieSync`. */
+    function ensureZombieRosterSizedForAuthority() {
+      if (!gameWorldReady || CURRENT_MAP !== "arena") return;
+      if (MULTIPLAYER && ARENA_COOP && !ZOMBIE_AUTHORITY) return;
+      const target = getTargetZombieCount();
+      while (state.enemies.length < target) {
+        const i = state.enemies.length;
+        const { x, z } = findSpawnPosition(SPAWN_MIN_DIST_BASE);
+        const type = ZOMBIE_TYPES[i % ZOMBIE_TYPES.length];
+        const zombie = makeZombie(x, z, type);
+        zombie.netIndex = i;
+        drawEnemyHp(zombie);
+        state.enemies.push(zombie);
+      }
+    }
+
     function rebuildEnemyRoster() {
       for (const enemy of state.enemies) {
         detachEyeLightFrom(enemy);
@@ -7945,7 +8144,7 @@
         ? mulberry32(hashRoomSeed(activeRoomId))
         : null;
 
-      for (let i = 0; i < ZOMBIE_COUNT; i++) {
+      for (let i = 0; i < getTargetZombieCount(); i++) {
         const { x, z } = findSpawnPosition(SPAWN_MIN_DIST_BASE);
         const type = ZOMBIE_TYPES[i % ZOMBIE_TYPES.length];
         const zombie = makeZombie(x, z, type);
@@ -8421,6 +8620,7 @@
           yaw: player.yaw,
           name: playerName,
           weapon: state.weaponIndex,
+          weaponIndex: state.weaponIndex,
           reloading: state.reloading,
         });
       }
@@ -8994,6 +9194,17 @@
       if (!gameWorldReady) return;
       if (!data || !Array.isArray(data.zombies)) return;
       if (typeof data.score === "number") state.score = data.score;
+      let maxEi = -1;
+      for (const z of data.zombies) maxEi = Math.max(maxEi, z.i | 0);
+      while (state.enemies.length < maxEi + 1) {
+        const i = state.enemies.length;
+        const zNew = makeZombie(0, 0, ZOMBIE_TYPES[i % ZOMBIE_TYPES.length]);
+        zNew.netIndex = i;
+        zNew.alive = false;
+        zNew.group.visible = false;
+        drawEnemyHp(zNew);
+        state.enemies.push(zNew);
+      }
       for (const z of data.zombies) {
         const ei = z.i | 0;
         if (ei < 0 || ei >= state.enemies.length) continue;
@@ -9148,6 +9359,8 @@
       if (MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena" && !ZOMBIE_AUTHORITY) {
         return;
       }
+
+      if (CURRENT_MAP === "arena") ensureZombieRosterSizedForAuthority();
 
       visFrameCounter++;
       if ((visFrameCounter % 5) === 0) rebuildFlowField();
@@ -9738,6 +9951,7 @@
       menuEl.style.display = "none";
       document.body.classList.add("in-game");
       stopMenuBackdropLoop();
+      /** Menu BGM (`menu.mp3`) pauses during gameplay so SFX read clearly — not deleted. Ship `menu.mp3` beside index.html or menu stays silent (404). */
       pauseMenuBgm();
 
       clearMap();
