@@ -3138,9 +3138,11 @@ async function voiceJoin() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
     state._voiceLocalStream = stream;
     state._voiceMicOn = true;
+    stream.getAudioTracks().forEach((t) => { t.enabled = true; });
     state._voiceCamOn = false;
     state._voiceScreenOn = false;
     state._voiceJoined = true;
+    voiceBroadcastMediaState();
     state.socket?.emit('voice:join', (res) => {
       if (res?.participants) {
         state._voiceParticipants = res.participants;
@@ -3187,6 +3189,21 @@ function voiceCreatePeer(peerId, initiator) {
   if (state._voicePeers[peerId]) { state._voicePeers[peerId].close(); }
   const pc = new RTCPeerConnection(RTC_CONFIG);
   state._voicePeers[peerId] = pc;
+
+  let negotiating = false;
+  const sendOffer = async () => {
+    if (!initiator || negotiating || pc.signalingState !== 'stable') return;
+    try {
+      negotiating = true;
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      state.socket?.emit('voice:offer', { to: peerId, offer: pc.localDescription }, () => {});
+    } catch (_) {
+      // Ignore transient offer races; a later negotiationneeded will retry.
+    } finally {
+      negotiating = false;
+    }
+  };
 
   if (state._voiceLocalStream) {
     for (const track of state._voiceLocalStream.getTracks()) {
@@ -3243,13 +3260,10 @@ function voiceCreatePeer(peerId, initiator) {
   };
 
   if (initiator) {
-    pc.onnegotiationneeded = async () => {
-      try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        state.socket?.emit('voice:offer', { to: peerId, offer: pc.localDescription }, () => {});
-      } catch (_) {}
-    };
+    pc.onnegotiationneeded = sendOffer;
+    // Some browsers can miss negotiationneeded when handlers are attached late.
+    // Force an initial offer so mic audio always gets a transport path.
+    queueMicrotask(() => { void sendOffer(); });
   }
 
   return pc;

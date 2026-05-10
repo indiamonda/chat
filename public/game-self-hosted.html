@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
-  Same as game.html but does not point game-multiplayer-origin at chat.jimmyqrg.com.
-  Socket.IO and asset fallbacks use this page’s origin only (unless you set meta below).
-  Crossfire mode is PVP (player vs player); Arena is PVE / co-op vs zombies.
+  Same game as game.html; default empty game-multiplayer-origin = Socket.IO on this origin (unless you set the meta).
+  Use alongside your own relay or leave empty for local-only / offline stub when io is missing.
+  Crossfire = PVP; Arena = PVE / co-op vs zombies.
 -->
 <html lang="en">
 <head>
@@ -76,16 +76,34 @@
       try {
         window.__gameComputeAssetBaseDir = computeAssetBaseDir;
       } catch (eExp) {}
+      /**
+       * Layout 0 = this repo (`public/game-ui/…`). Layout 1 = tintly555.github.io/games/fps (flat PNG names).
+       * @see https://github.com/tintly555/tintly555.github.io/tree/main/games/fps
+       */
+      try {
+        window.__FPS_UI_LAYER_PATHS__ = [
+          {
+            menu: "game-ui/game-ui-menu-background.png",
+            btn: "game-ui/game-ui-button-texture.png",
+            settings: "game-ui/game-ui-settings-panel-bg.png",
+          },
+          {
+            menu: "background.png",
+            btn: "game-ui-button-texture.png",
+            settings: "game-ui-settings-panel-bg.png",
+          },
+        ];
+      } catch (ePaths) {}
     })();
   </script>
   <title>Zone No Light</title>
   <!-- Only the script-injected <base> above should set the document base (folder of this HTML).
        A second fixed base (e.g. chat origin) breaks relative game-ui/ + walls.png when the page is not at site root or when assets live beside this file. -->
-  <!-- Socket.IO / multiplayer API host only — do not use as primary CDN for game-ui / menu.mp3 (same-origin loads avoid 404 + Web Audio CORS). -->
+  <!-- Multiplayer only: Socket.IO API origin — not a CDN for walls/game-ui. Empty = same origin (typical for this file). -->
   <meta name="game-multiplayer-origin" content="" />
   <!-- Optional absolute base for walls.png + game-ui/ when this HTML is embedded or hosted away from those files (empty = auto-detect). -->
   <meta name="game-asset-base" content="" />
-  <!-- Where static files from public/ are mounted: empty = site root (e.g. Fly: /walls.png). GitHub Pages subpath: content="/games/fps" -->
+  <!-- Where static files from public/ are mounted: empty = site root. GitHub Pages example (tintly555): content="/games/fps" so CSS/game resolves game-ui or flat PNGs beside index.html -->
   <meta name="game-static-prefix" content="" />
   <script>
     (function () {
@@ -135,18 +153,36 @@
           window.__GAME_STATIC_ROOT__ = R;
         } catch (e0) {}
         var el = document.documentElement;
-        el.style.setProperty(
-          "--game-ui-menu-bg",
-          'url("' + new URL("game-ui/game-ui-menu-background.png", R).href + '")'
-        );
-        el.style.setProperty(
-          "--game-ui-btn-texture",
-          'url("' + new URL("game-ui/game-ui-button-texture.png", R).href + '")'
-        );
-        el.style.setProperty(
-          "--game-ui-settings-bg",
-          'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", R).href + '")'
-        );
+        var PATHS = window.__FPS_UI_LAYER_PATHS__ || [];
+        function installUiFromLayout(layoutIdx) {
+          var L = PATHS[layoutIdx];
+          if (!L) return;
+          el.style.setProperty("--game-ui-menu-bg", 'url("' + new URL(L.menu, R).href + '")');
+          el.style.setProperty("--game-ui-btn-texture", 'url("' + new URL(L.btn, R).href + '")');
+          el.style.setProperty("--game-ui-settings-bg", 'url("' + new URL(L.settings, R).href + '")');
+        }
+        var uiIdx = 0;
+        function probeHeadUiLayout() {
+          if (uiIdx >= PATHS.length) return;
+          var im = new Image();
+          im.onload = function () {
+            try {
+              window.__GAME_UI_LAYOUT_INDEX__ = uiIdx;
+            } catch (eSet) {}
+            installUiFromLayout(uiIdx);
+          };
+          im.onerror = function () {
+            uiIdx++;
+            probeHeadUiLayout();
+          };
+          try {
+            im.src = new URL(PATHS[uiIdx].menu, R).href;
+          } catch (eSrc) {
+            uiIdx++;
+            probeHeadUiLayout();
+          }
+        }
+        probeHeadUiLayout();
         try {
           var curMouse = new URL("mouse.png", R).href;
           el.style.setProperty("--game-cursor-default", 'url("' + curMouse + '") 0 0, auto');
@@ -163,8 +199,6 @@
       }
     }
   </script>
-  <!-- Socket.IO from CDN so menu/game always initialize even when socket.io.min.js isn’t deployed beside this file. -->
-  <script defer src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js" crossorigin="anonymous"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Audiowide = Latin sci-fi headings; Noto* = same neutral tech look for every localized script (CJK, Arabic, Devanagari, Cyrillic, etc.). -->
@@ -212,7 +246,14 @@
       z-index: 1;
       width: 100vw;
       height: 100vh;
+      min-height: 100dvh;
       cursor: none;
+    }
+
+    #app canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
     }
 
     /* Restore visible cursor when pointer lock is released (death screen, pause). */
@@ -896,37 +937,46 @@
         }
         bases.push("https://tintly555.github.io/games/fps/");
         var root = document.documentElement;
+        var PATHS = window.__FPS_UI_LAYER_PATHS__ || [];
         var bi = 0;
-        function apply(base) {
+        var li = 0;
+        function applyLayoutFromBase(layoutIdx, base) {
           var b = normBase(base);
-          root.style.setProperty(
-            "--game-ui-menu-bg",
-            'url("' + new URL("game-ui/game-ui-menu-background.png", b).href + '")'
-          );
-          root.style.setProperty(
-            "--game-ui-btn-texture",
-            'url("' + new URL("game-ui/game-ui-button-texture.png", b).href + '")'
-          );
-          root.style.setProperty(
-            "--game-ui-settings-bg",
-            'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", b).href + '")'
-          );
+          var L = PATHS[layoutIdx];
+          if (!L) return;
+          try {
+            window.__GAME_UI_LAYOUT_INDEX__ = layoutIdx;
+          } catch (eIdx) {}
+          root.style.setProperty("--game-ui-menu-bg", 'url("' + new URL(L.menu, b).href + '")');
+          root.style.setProperty("--game-ui-btn-texture", 'url("' + new URL(L.btn, b).href + '")');
+          root.style.setProperty("--game-ui-settings-bg", 'url("' + new URL(L.settings, b).href + '")');
         }
-        function tryNext() {
+        function tryBaseAndLayout() {
           if (bi >= bases.length) return;
-          var base = bases[bi++];
+          if (li >= PATHS.length) {
+            li = 0;
+            bi++;
+            tryBaseAndLayout();
+            return;
+          }
+          var base = bases[bi];
+          var L = PATHS[li];
           var img = new Image();
           img.onload = function () {
-            apply(base);
+            applyLayoutFromBase(li, base);
           };
-          img.onerror = tryNext;
+          img.onerror = function () {
+            li++;
+            tryBaseAndLayout();
+          };
           try {
-            img.src = new URL("game-ui/game-ui-menu-background.png", normBase(base)).href;
+            img.src = new URL(L.menu, normBase(base)).href;
           } catch (e3) {
-            tryNext();
+            li++;
+            tryBaseAndLayout();
           }
         }
-        tryNext();
+        tryBaseAndLayout();
       } catch (e4) {}
     })();
   </script>
@@ -1121,6 +1171,17 @@
       </div>
     </div>
   </div>
+
+  <!-- Same-origin socket.io.min.js first (e.g. tintly555.github.io/games/fps); synchronous fallback keeps `io` defined before the module below. -->
+  <script src="socket.io.min.js"></script>
+  <script>
+    (function () {
+      if (typeof io === "function") return;
+      document.write(
+        '<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js"><\/script>'
+      );
+    })();
+  </script>
 
   <script type="module">
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js";
@@ -3022,6 +3083,9 @@
         refreshOverlayTexts();
       } catch (_) {}
       try {
+        refreshFpsOverlayHints();
+      } catch (_) {}
+      try {
         if (typeof pendingLobbyMode === "string" && menuLobby && menuLobby.style.display !== "none" && lobbyTitle) {
           if (pendingLobbyMode === "arena-coop") {
             lobbyTitle.textContent = t("lobbyArenaCoop");
@@ -3556,13 +3620,26 @@
         on() {},
         emit(_ev, ...args) {
           const last = args[args.length - 1];
-          if (typeof last === "function") {
-            if (_ev === "joinRoom") {
-              queueMicrotask(() => last({ ok: true, hostId: "offline", roomKey: String(args[0] || "") }));
-            } else {
-              queueMicrotask(() => last({ error: "Network unavailable" }));
-            }
+          if (typeof last !== "function") return;
+          const reply = (payload) => queueMicrotask(() => last(payload));
+          if (_ev === "joinRoom") {
+            reply({ ok: true, hostId: "offline", roomKey: String(args[0] || "") });
+            return;
           }
+          if (_ev === "quickplay" || _ev === "createRoom") {
+            const mode = String(args[0] || "arena");
+            const code = (Math.random().toString(36).slice(2, 8) + "XX").slice(0, 6).toUpperCase();
+            reply({ roomKey: `${mode}:${code}`, room: code, code });
+            return;
+          }
+          if (_ev === "joinByCode") {
+            const payload = args[0] || {};
+            const code = String(payload.code || "LOCAL").toUpperCase();
+            const mode = String(payload.mode || "arena");
+            reply({ roomKey: `${mode}:${code}`, room: code, code });
+            return;
+          }
+          reply({ error: "Network unavailable (Socket.IO not loaded or offline stub)" });
         },
         disconnect() {},
       };
@@ -3580,12 +3657,20 @@
 
     const multiplayerOrigin = getMultiplayerOrigin();
 
-    const socket = typeof io === "function"
-      ? io(`${multiplayerOrigin}/game`, {
+    const _ioFactory = typeof globalThis.io === "function" ? globalThis.io : null;
+    if (!_ioFactory) {
+      console.warn(
+        "[multiplayer] socket.io-client not available (blocked, wrong script order, or local build missing io). Using offline stub."
+      );
+    }
+
+    const socket = _ioFactory
+      ? _ioFactory(`${multiplayerOrigin}/game`, {
           transports: ["websocket", "polling"],
           reconnection: true,
-          reconnectionAttempts: 10,
+          reconnectionAttempts: 12,
           reconnectionDelay: 800,
+          timeout: 20000,
         })
       : createOfflineSocketStub();
 
@@ -4919,44 +5004,88 @@
 
     initMenuWallBackdrop();
 
+    /** Same two layouts as `window.__FPS_UI_LAYER_PATHS__` in the head (repo `game-ui/` vs tintly555.github.io flat PNGs). */
+    const DEFAULT_GAME_UI_LAYER_PATHS = [
+      {
+        menu: "game-ui/game-ui-menu-background.png",
+        btn: "game-ui/game-ui-button-texture.png",
+        settings: "game-ui/game-ui-settings-panel-bg.png",
+      },
+      {
+        menu: "background.png",
+        btn: "game-ui-button-texture.png",
+        settings: "game-ui-settings-panel-bg.png",
+      },
+    ];
+
+    function getGameUiLayerPaths() {
+      try {
+        if (typeof window !== "undefined" && window.__FPS_UI_LAYER_PATHS__ && window.__FPS_UI_LAYER_PATHS__.length) {
+          return window.__FPS_UI_LAYER_PATHS__;
+        }
+      } catch (_) {}
+      return DEFAULT_GAME_UI_LAYER_PATHS;
+    }
+
+    function getGameUiLayoutIndex() {
+      try {
+        if (typeof window !== "undefined" && typeof window.__GAME_UI_LAYOUT_INDEX__ === "number") {
+          return window.__GAME_UI_LAYOUT_INDEX__;
+        }
+      } catch (_) {}
+      return 0;
+    }
+
     function applyResolvedGameAssetBase(base) {
       const b = normalizeGameAssetBase(base);
       try {
         const root = document.documentElement;
-        root.style.setProperty(
-          "--game-ui-menu-bg",
-          `url("${new URL("game-ui/game-ui-menu-background.png", b).href}")`
-        );
-        root.style.setProperty(
-          "--game-ui-btn-texture",
-          `url("${new URL("game-ui/game-ui-button-texture.png", b).href}")`
-        );
-        root.style.setProperty(
-          "--game-ui-settings-bg",
-          `url("${new URL("game-ui/game-ui-settings-panel-bg.png", b).href}")`
-        );
+        const paths = getGameUiLayerPaths();
+        let idx = getGameUiLayoutIndex();
+        const L = paths[idx] || paths[0];
+        root.style.setProperty("--game-ui-menu-bg", `url("${new URL(L.menu, b).href}")`);
+        root.style.setProperty("--game-ui-btn-texture", `url("${new URL(L.btn, b).href}")`);
+        root.style.setProperty("--game-ui-settings-bg", `url("${new URL(L.settings, b).href}")`);
       } catch (_) {}
     }
 
     function resolveGameUiLayersFromProbe() {
       const candidates = getGameAssetBaseCandidates();
-      let i = 0;
-      function tryNext() {
-        if (i >= candidates.length) return;
-        const base = normalizeGameAssetBase(candidates[i++]);
+      const paths = getGameUiLayerPaths();
+      let bi = 0;
+      let li = 0;
+      function tryProbe() {
+        if (bi >= candidates.length) return;
+        if (li >= paths.length) {
+          li = 0;
+          bi++;
+          tryProbe();
+          return;
+        }
+        const base = normalizeGameAssetBase(candidates[bi]);
+        const L = paths[li];
         let testUrl;
         try {
-          testUrl = new URL("game-ui/game-ui-menu-background.png", base).href;
+          testUrl = new URL(L.menu, base).href;
         } catch (_) {
-          tryNext();
+          li++;
+          tryProbe();
           return;
         }
         const img = new Image();
-        img.onload = () => applyResolvedGameAssetBase(base);
-        img.onerror = () => tryNext();
+        img.onload = () => {
+          try {
+            if (typeof window !== "undefined") window.__GAME_UI_LAYOUT_INDEX__ = li;
+          } catch (_) {}
+          applyResolvedGameAssetBase(candidates[bi]);
+        };
+        img.onerror = () => {
+          li++;
+          tryProbe();
+        };
         img.src = testUrl;
       }
-      tryNext();
+      tryProbe();
     }
 
     /**
@@ -5424,6 +5553,9 @@
     const tracerGroup = new THREE.Group();
     const bloodGroup = new THREE.Group();
     scene.add(decalGroup, sparkGroup, tracerGroup, bloodGroup);
+
+    /** Hard cap so tracer ribbon GC + scene graph cannot grow without bound if FPS dips. */
+    const MAX_TRACER_RIBBONS = 96;
 
     const MAX_BLOOD_MESHES = 36;
     const MAX_SPARK_MESHES = 36;
@@ -6088,11 +6220,17 @@
     }
 
     function cullMazeLightsNearCamera() {
-      if (!mazeCullableLights.length) return;
+      const lights = mazeCullableLights;
+      const n = lights.length;
+      if (!n) return;
       const cx = camera.position.x;
       const cy = camera.position.y;
       const cz = camera.position.z;
-      const scored = mazeCullableLights.map((L) => {
+      while (_mazeLightCullScratch.length < n) {
+        _mazeLightCullScratch.push({ L: null, d2: 0 });
+      }
+      for (let i = 0; i < n; i++) {
+        const L = lights[i];
         const p = L.position;
         const dx = p.x - cx;
         const dy = p.y - cy;
@@ -6100,11 +6238,15 @@
         let d2 = dx * dx + dz * dz + dy * dy * 0.45;
         if (L.isSpotLight) d2 *= 0.5;
         else if (L.isPointLight && p.y < MAZE_CEILING_LIGHT_Y - 0.5) d2 *= 0.65;
-        return { L, d2 };
-      });
+        const row = _mazeLightCullScratch[i];
+        row.L = L;
+        row.d2 = d2;
+      }
+      const scored = _mazeLightCullScratch;
+      scored.length = n;
       scored.sort((a, b) => a.d2 - b.d2);
       const maxV = MAX_MAZE_LIGHTS_ACTIVE;
-      for (let i = 0; i < scored.length; i++) {
+      for (let i = 0; i < n; i++) {
         scored[i].L.visible = i < maxV;
       }
     }
@@ -6548,6 +6690,8 @@
       medKitDefilling: false,
       medKitDefillPhase: 0,
       medKitDefillStart: 0,
+      /** 0–1 smooth zoom while holding medkit heal; lerps out on release / finish. */
+      medKitZoomProgress: 0,
     };
 
     applyGraphicsQuality();
@@ -6709,7 +6853,8 @@
       const elL = document.getElementById("fpsHintFlash");
       const elZ = document.getElementById("fpsHintZoom");
       if (!elL || !elZ) return;
-      if (CURRENT_MAP === "crossfire_grid") {
+      const inGame = gameWorldReady && menuEl && menuEl.style.display === "none";
+      if (CURRENT_MAP === "crossfire_grid" && inGame) {
         elL.textContent =
           gameSettings.language === "zh"
             ? "室外单挑亮图：手电已关（无需照明）"
@@ -7475,6 +7620,15 @@
 
     /** Short-lived additive line trail (player weapons + synced MP shots). */
     function pushTracerRibbon(start, end, color, maxLife, opacityMul = 1) {
+      while (state.tracers.length >= MAX_TRACER_RIBBONS && state.tracers.length > 0) {
+        const old = state.tracers.shift();
+        if (!old) break;
+        tracerGroup.remove(old.group);
+        for (const p of old.parts) {
+          try { p.geometry.dispose(); } catch (_) {}
+          try { p.material.dispose(); } catch (_) {}
+        }
+      }
       const hex = typeof color === "number" ? color : new THREE.Color(color).getHex();
       const om = THREE.MathUtils.clamp(opacityMul, 0, 2);
       const a = start.clone();
@@ -7673,6 +7827,8 @@
 
     /** Camera-space Y offset so the view-model sits ~20px lower on a typical 1080p window (FOV 75). */
     const WEAPON_VIEW_DROP_Y = -0.032;
+    /** Pistol ADS: raise view-model ~20px when aimed (same scale as WEAPON_VIEW_DROP_Y). */
+    const PISTOL_ADS_EXTRA_UP_Y = 0.032;
 
     function makeWeaponModel(type) {
       const root = new THREE.Group();
@@ -7707,7 +7863,7 @@
         fng.position.set(0, -0.065, 0.04); gunGroup.add(fng);
 
         gunGroup.position.set(0.26, -0.22, -0.72);
-        adsOffset.set(-0.26, 0.095, 0.26);
+        adsOffset.set(-0.26, 0.095 + PISTOL_ADS_EXTRA_UP_Y, 0.26);
 
       } else if (type === 1) {
         addMeshPart(gunGroup, new THREE.BoxGeometry(0.13, 0.14, 0.88), mMetal, 0, 0, 0);
@@ -7836,6 +7992,7 @@
         state.medKitDefilling = false;
         state.medKitDefillPhase = 0;
         state.medKitDefillStart = 0;
+        state.medKitZoomProgress = 0;
         applyMedKitRingVisual(0);
       }
       weaponModels.forEach((w, i) => {
@@ -8536,7 +8693,23 @@
         state.weaponBobRotZ + reloadRotZ
       );
 
-      const targetFov = usingAds ? 38 : 75;
+      const MED_KIT_HOLD_ZOOM_FOV = 56;
+      const wantsMedKitZoom =
+        state.weaponIndex === 4 &&
+        player.health > 0 &&
+        player.health < player.maxHealth &&
+        state.mouseDown &&
+        !state.medKitNeedsRelease &&
+        !state.medKitDefilling;
+      state.medKitZoomProgress +=
+        ((wantsMedKitZoom ? 1 : 0) - state.medKitZoomProgress) * Math.min(1, dt * 10);
+
+      let targetFov = 75;
+      if (usingAds) {
+        targetFov = 38;
+      } else if (state.weaponIndex === 4) {
+        targetFov = THREE.MathUtils.lerp(75, MED_KIT_HOLD_ZOOM_FOV, state.medKitZoomProgress);
+      }
       if (camera.fov !== targetFov) {
         camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 10);
         camera.updateProjectionMatrix();
@@ -8857,6 +9030,11 @@
     let navMinX = 0, navMinZ = 0, navCols = 0, navRows = 0;
     let flowDirX = null, flowDirZ = null;
     let flowPlayerC = -1, flowPlayerR = -1;
+    /** Reused flow-field BFS buffers — avoids large TypedArray + queue allocations every nav-cell crossing (GC churn). */
+    let _flowBfsDistBuf = null;
+    let _flowBfsQueueReuse = [];
+    /** Reused {L,d2} rows for maze light cull sort — avoids `.map()` allocating every frame. */
+    let _mazeLightCullScratch = [];
 
     function buildNavGrid() {
       if (CURRENT_MAP === "arena") {
@@ -8903,11 +9081,17 @@
       flowPlayerR = pr;
 
       const total = navCols * navRows;
-      const dist = new Uint16Array(total).fill(65535);
+      if (!_flowBfsDistBuf || _flowBfsDistBuf.length !== total) {
+        _flowBfsDistBuf = new Uint16Array(total);
+      }
+      const dist = _flowBfsDistBuf;
+      dist.fill(65535);
       const goalIdx = pr * navCols + pc;
       dist[goalIdx] = 0;
 
-      const queue = [goalIdx];
+      const queue = _flowBfsQueueReuse;
+      queue.length = 0;
+      queue.push(goalIdx);
       let head = 0;
       while (head < queue.length) {
         const idx = queue[head++];
@@ -9904,6 +10088,21 @@
       if (lastErr) console.warn("[boot] missing image", rel);
     }
 
+    /** Try several relative paths (e.g. repo `game-ui/…` vs tintly555 flat PNG names); first hit wins. */
+    async function preloadBootImageRelFirstOf(relativeOptionRels) {
+      for (const rel of relativeOptionRels) {
+        const bases = getGameAssetBaseCandidates();
+        for (const b of bases) {
+          try {
+            const u = new URL(rel, normalizeGameAssetBase(b)).href;
+            await loadBootImage(u);
+            return;
+          } catch (_) {}
+        }
+      }
+      console.warn("[boot] missing image, tried", relativeOptionRels);
+    }
+
     async function preloadWallTextureForBoot() {
       const urls = getWallTextureUrlList();
       for (const u of urls) {
@@ -9918,9 +10117,9 @@
 
     async function preloadCriticalGameAssets() {
       await Promise.all([
-        preloadBootImageRel("game-ui/game-ui-menu-background.png"),
-        preloadBootImageRel("game-ui/game-ui-button-texture.png"),
-        preloadBootImageRel("game-ui/game-ui-settings-panel-bg.png"),
+        preloadBootImageRelFirstOf(["game-ui/game-ui-menu-background.png", "background.png"]),
+        preloadBootImageRelFirstOf(["game-ui/game-ui-button-texture.png", "game-ui-button-texture.png"]),
+        preloadBootImageRelFirstOf(["game-ui/game-ui-settings-panel-bg.png", "game-ui-settings-panel-bg.png"]),
       ]);
       await preloadWallTextureForBoot();
     }
@@ -10012,6 +10211,7 @@
       player.regenTimer = 0;
       state.ads = false;
       state.adsProgress = 0;
+      state.medKitZoomProgress = 0;
       state.mouseDown = false;
       state.reloading = false;
       state.recoil = 0;
