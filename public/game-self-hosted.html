@@ -3628,17 +3628,23 @@
             reply({ ok: true, hostId: "offline", roomKey: String(args[0] || "") });
             return;
           }
-          if (_ev === "quickplay" || _ev === "createRoom") {
+          if (_ev === "quickplay") {
             const mode = String(args[0] || "arena");
             const code = (Math.random().toString(36).slice(2, 8) + "XX").slice(0, 6).toUpperCase();
-            reply({ roomKey: `${mode}:${code}`, room: code, code });
+            reply({ roomKey: `qp:${mode}:${code}`, room: code, code });
+            return;
+          }
+          if (_ev === "createRoom") {
+            const mode = String(args[0] || "arena");
+            const code = (Math.random().toString(36).slice(2, 8) + "XX").slice(0, 6).toUpperCase();
+            reply({ roomKey: `cr:${mode}:${code}`, code, room: code });
             return;
           }
           if (_ev === "joinByCode") {
             const payload = args[0] || {};
             const code = String(payload.code || "LOCAL").toUpperCase();
             const mode = String(payload.mode || "arena");
-            reply({ roomKey: `${mode}:${code}`, room: code, code });
+            reply({ roomKey: `cr:${mode}:${code}`, room: code, code });
             return;
           }
           reply({ error: "Network unavailable (Socket.IO not loaded or offline stub)" });
@@ -3810,7 +3816,7 @@
     });
 
     socket.on("damaged", (data) => {
-      if (!gameWorldReady || menuEl.style.display !== "none") return;
+      if (!gameWorldReady) return;
       if (player.health <= 0) return;
       player.health = Math.max(0, player.health - (data.damage || 0));
       player.regenTimer = 0;
@@ -10534,7 +10540,8 @@
         roomKey = roomStr.trim();
       }
       if (!roomKey && shortCode && pendingLobbyMode) {
-        roomKey = `${pendingLobbyMode}:${shortCode}`;
+        /** Must match server `quickplay` keys (`qp:<mode>:<code>`). Bare `mode:code` becomes `game:…` in joinRoom and breaks matchmaking. */
+        roomKey = `qp:${pendingLobbyMode}:${shortCode}`;
       }
       if (!roomKey && shortCode) {
         roomKey = shortCode;
@@ -10690,7 +10697,9 @@
       if (e.key === "Enter") btnNameOk.click();
     });
 
-    btnDeathRestart.addEventListener("click", () => startGame(CURRENT_MAP));
+    btnDeathRestart.addEventListener("click", () =>
+      startGame(CURRENT_MAP, MULTIPLAYER, ARENA_COOP)
+    );
     btnDeathSettings.addEventListener("click", () => openSettingsModal());
     btnDeathQuit.addEventListener("click", goToMenu);
     btnResume.addEventListener("click", () => {
@@ -10698,7 +10707,9 @@
       renderer.domElement.requestPointerLock();
     });
     btnPauseSettings.addEventListener("click", () => openSettingsModal());
-    btnPauseRestart.addEventListener("click", () => startGame(CURRENT_MAP));
+    btnPauseRestart.addEventListener("click", () =>
+      startGame(CURRENT_MAP, MULTIPLAYER, ARENA_COOP)
+    );
     btnPauseQuit.addEventListener("click", goToMenu);
     btnMenuSettings.addEventListener("click", () => openSettingsModal());
 
