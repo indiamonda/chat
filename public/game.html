@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
-  Public deploy (example): https://tintly555.github.io/games/fps/ — reference tree; this file defaults game-asset-base to https://chat.jimmyqrg.com/ so static assets work when the HTML is used standalone.
-  game-self-hosted.html: leave game-asset-base empty for same-origin-only assets.
+  Standalone copy of the FPS game: game-asset-base points at https://chat.jimmyqrg.com/ so walls.png, game-ui/, menu.mp3 load from this app when the HTML is opened alone or off-origin.
+  For same-repo GitHub Pages layout (…/games/fps/), use game-self-hosted.html instead.
   Crossfire = PVP; Arena = PVE / co-op vs zombies.
 -->
 <html lang="en">
@@ -3614,7 +3614,7 @@
           const last = args[args.length - 1];
           if (typeof last !== "function") return;
           const reply = (payload) => queueMicrotask(() => last(payload));
-          if (_ev === "joinRoom") {
+            if (_ev === "joinRoom") {
             reply({ ok: true, hostId: "offline", roomKey: String(args[0] || "") });
             return;
           }
@@ -3719,14 +3719,14 @@
       if (rawWeapon !== undefined && rawWeapon !== null) {
         const w = ((Number(rawWeapon) | 0) % 5 + 5) % 5;
         if (w !== rp.currentWeapon) {
-          rp.rightArm.remove(rp.gunModel);
+        rp.rightArm.remove(rp.gunModel);
           rp.gunModel = makeThirdPersonGun(w);
           rp.gunModel.position.set(
             w === 4 ? 0.1 : 0.15,
             w === 4 ? -0.55 : -0.42,
             w === 4 ? -0.1 : -0.28
           );
-          rp.rightArm.add(rp.gunModel);
+        rp.rightArm.add(rp.gunModel);
           rp.currentWeapon = w;
         }
       }
@@ -3807,6 +3807,7 @@
       state.flashTimer = 0.14;
       addHitIndicator(data.x || 0, data.z || 0);
       triggerCamShake(0.085);
+      playReceivedDamageSound(data.hitKind === "melee" ? "melee" : "bullet");
       updateHud();
       if (player.health <= 0) {
         showDeathScreen(null);
@@ -4687,13 +4688,13 @@
         scene.fog.color.set(0xc9dbf5);
         scene.background.set(0xe8f2ff);
       } else {
-        const base = getQualityFogBase();
-        const rdIdx = THREE.MathUtils.clamp(
-          gameSettings.renderDistanceIndex | 0,
-          0,
-          RENDER_DISTANCE_LEVELS.length - 1
-        );
-        const scale = RENDER_DISTANCE_LEVELS[rdIdx].scale;
+      const base = getQualityFogBase();
+      const rdIdx = THREE.MathUtils.clamp(
+        gameSettings.renderDistanceIndex | 0,
+        0,
+        RENDER_DISTANCE_LEVELS.length - 1
+      );
+      const scale = RENDER_DISTANCE_LEVELS[rdIdx].scale;
         far = Math.max(22, base.far * scale);
         near = THREE.MathUtils.clamp(base.near * scale * 0.97, 4, Math.max(8, far - 12));
         scene.fog.color.set(getCurrentMapFogColor());
@@ -5331,9 +5332,9 @@
         if (entry.boxDims) {
           const curSeg = entry._displacedSegments | 0;
           if (dispScale > 0 && targetSeg !== curSeg) {
-            try {
-              mesh.geometry.dispose();
-              mesh.geometry = new THREE.BoxGeometry(
+          try {
+            mesh.geometry.dispose();
+            mesh.geometry = new THREE.BoxGeometry(
                 entry.boxDims.w,
                 entry.boxDims.h,
                 entry.boxDims.d,
@@ -5342,13 +5343,13 @@
                 targetSeg
               );
               entry._displacedSegments = targetSeg;
-            } catch (_) {}
+          } catch (_) {}
           } else if (dispScale === 0 && curSeg > 0) {
-            try {
-              mesh.geometry.dispose();
-              mesh.geometry = new THREE.BoxGeometry(entry.boxDims.w, entry.boxDims.h, entry.boxDims.d, 1, 1, 1);
-              entry._displacedSegments = 0;
-            } catch (_) {}
+          try {
+            mesh.geometry.dispose();
+            mesh.geometry = new THREE.BoxGeometry(entry.boxDims.w, entry.boxDims.h, entry.boxDims.d, 1, 1, 1);
+            entry._displacedSegments = 0;
+          } catch (_) {}
           }
         }
       }
@@ -6813,12 +6814,12 @@
           : "";
       const mapLabel =
         CURRENT_MAP === "arena"
-          ? t("mapArena")
+            ? t("mapArena")
           : CURRENT_MAP === "crossfire_grid"
             ? t("mapCrossfireGrid")
             : isPvpCrossfireMap(CURRENT_MAP)
               ? t("mapCrossfireClassic")
-              : CURRENT_MAP;
+            : CURRENT_MAP;
       const mpSuffix = MULTIPLAYER ? ` ${t("hudMpSuffix")}` : "";
       const reloadParen = state.reloading ? ` (${t("hudRefilling")})` : "";
       const aimLine =
@@ -7605,6 +7606,64 @@
           bs.start();
         } catch (_) {}
       });
+    }
+
+    /** Local player hurt: bullet (PvP / default MP) vs melee (zombie). Uses Web Audio only. */
+    function playReceivedDamageSound(kind) {
+      if (audioCtx.state === "suspended") void audioCtx.resume();
+      const melee = kind === "melee";
+      const now = audioCtx.currentTime;
+      const buf = getGunNoiseBuffer(melee ? 0.15 : 0.085);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = melee ? "lowpass" : "bandpass";
+      bp.frequency.setValueAtTime(melee ? 680 : 3100, now);
+      if (!melee) bp.Q.setValueAtTime(0.82, now);
+      const ng = audioCtx.createGain();
+      ng.gain.setValueAtTime(0.0001, now);
+      ng.gain.exponentialRampToValueAtTime(melee ? 0.38 : 0.34, now + 0.014);
+      ng.gain.exponentialRampToValueAtTime(0.0001, now + (melee ? 0.17 : 0.095));
+      src.connect(bp);
+      bp.connect(ng);
+      ng.connect(audioSfx);
+      src.start(now);
+      src.stop(now + 0.22);
+      if (melee) {
+        const o = audioCtx.createOscillator();
+        o.type = "triangle";
+        o.frequency.setValueAtTime(88, now);
+        o.frequency.exponentialRampToValueAtTime(48, now + 0.13);
+        const og = audioCtx.createGain();
+        og.gain.setValueAtTime(0.0001, now);
+        og.gain.exponentialRampToValueAtTime(0.09, now + 0.022);
+        og.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+        const lp = audioCtx.createBiquadFilter();
+        lp.type = "lowpass";
+        lp.frequency.value = 420;
+        o.connect(lp);
+        lp.connect(og);
+        og.connect(audioSfx);
+        o.start(now);
+        o.stop(now + 0.16);
+      } else {
+        const o = audioCtx.createOscillator();
+        o.type = "square";
+        o.frequency.setValueAtTime(2200, now);
+        o.frequency.exponentialRampToValueAtTime(760, now + 0.048);
+        const og = audioCtx.createGain();
+        og.gain.setValueAtTime(0.0001, now);
+        og.gain.exponentialRampToValueAtTime(0.048, now + 0.006);
+        og.gain.exponentialRampToValueAtTime(0.0001, now + 0.072);
+        const hp = audioCtx.createBiquadFilter();
+        hp.type = "highpass";
+        hp.frequency.value = 620;
+        o.connect(hp);
+        hp.connect(og);
+        og.connect(audioSfx);
+        o.start(now);
+        o.stop(now + 0.085);
+      }
     }
 
     function triggerCamShake(add = 0.09) {
@@ -8981,6 +9040,7 @@
       player.regenTimer = 0;
       state.flashTimer = 0.14;
       triggerCamShake(0.095);
+      playReceivedDamageSound("melee");
       if (attacker && attacker.group) {
         addHitIndicator(attacker.group.position.x, attacker.group.position.z);
       }
@@ -8998,6 +9058,7 @@
           damage: enemy.attackDamage,
           x: enemy.group.position.x,
           z: enemy.group.position.z,
+          hitKind: "melee",
         });
       } else {
         damagePlayer(enemy.attackDamage, enemy);
@@ -9887,9 +9948,9 @@
             }
             enemy.moving = false;
             enemy.facingYaw += dt * 0.28;
-          } else {
-            enemy.moving = false;
-            enemy.facingYaw += dt * 0.3;
+        } else {
+          enemy.moving = false;
+          enemy.facingYaw += dt * 0.3;
           }
         }
 
@@ -10492,7 +10553,7 @@
           ? `${t("lobbyCrossfire")} — ${t("pvpMapGrid")}`
           : `${t("lobbyCrossfire")} — ${t("pvpMapClassic")}`;
       } else {
-        lobbyTitle.textContent = t(titleKey);
+      lobbyTitle.textContent = t(titleKey);
       }
       const lobbyErr = document.getElementById("lobbyError");
       if (lobbyErr) lobbyErr.textContent = "";
