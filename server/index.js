@@ -1920,11 +1920,13 @@ gameNsp.on('connection', (socket) => {
     if (typeof target !== 'string') return;
     const targetSocket = gameNsp.sockets.get(target);
     if (!targetSocket) return;
+    const hk = data.hitKind === 'melee' ? 'melee' : 'bullet';
     targetSocket.emit('damaged', {
       by: socket.id,
       damage: Math.min(200, Math.max(0, +data.damage || 0)),
       x: +data.x || 0,
       z: +data.z || 0,
+      hitKind: hk,
     });
   });
 
