@@ -7442,31 +7442,118 @@
       ambientWindNode = { src, g };
     }
 
+    const _gunNoiseBuf = {};
+    function getGunNoiseBuffer(durationSec) {
+      const key = durationSec.toFixed(4);
+      if (_gunNoiseBuf[key]) return _gunNoiseBuf[key];
+      const rate = audioCtx.sampleRate;
+      const n = Math.max(64, (rate * durationSec) | 0);
+      const buf = audioCtx.createBuffer(1, n, rate);
+      const d = buf.getChannelData(0);
+      let brown = 0;
+      for (let i = 0; i < n; i++) {
+        const rnd = Math.random() * 2 - 1;
+        brown = 0.985 * brown + 0.015 * rnd;
+        d[i] = brown * 2.4;
+      }
+      _gunNoiseBuf[key] = buf;
+      return buf;
+    }
+
+    /** Layered shots: transient crack + body + mechanical bite + tail + short room echo (per weapon slot). */
     function playGunSound(w) {
-      if (audioCtx.state === "suspended") audioCtx.resume();
-
+      if (audioCtx.state === "suspended") void audioCtx.resume();
+      void w;
       const now = audioCtx.currentTime;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      const filter = audioCtx.createBiquadFilter();
+      const idx = state.weaponIndex;
+      const presets = [
+        { crackMs: 64, crackFc: 4300, crackQ: 0.84, crackG: 0.52, bodyMs: 170, bodyFc: 980, bodyG: 0.2, mechHz: 980, mechG: 0.03, tailMs: 260, tailFc: 1200, tailG: 0.08, echoDelay: 0.072, echoFb: 0.26, echoG: 0.08 },
+        { crackMs: 88, crackFc: 3600, crackQ: 0.72, crackG: 0.68, bodyMs: 250, bodyFc: 740, bodyG: 0.28, mechHz: 760, mechG: 0.045, tailMs: 330, tailFc: 900, tailG: 0.12, echoDelay: 0.082, echoFb: 0.31, echoG: 0.11 },
+        { crackMs: 110, crackFc: 2500, crackQ: 0.56, crackG: 0.82, bodyMs: 330, bodyFc: 520, bodyG: 0.38, mechHz: 520, mechG: 0.02, tailMs: 420, tailFc: 760, tailG: 0.18, echoDelay: 0.094, echoFb: 0.36, echoG: 0.16 },
+        { crackMs: 56, crackFc: 5200, crackQ: 0.92, crackG: 0.45, bodyMs: 185, bodyFc: 1200, bodyG: 0.17, mechHz: 1080, mechG: 0.03, tailMs: 240, tailFc: 1600, tailG: 0.07, echoDelay: 0.064, echoFb: 0.22, echoG: 0.06 },
+      ];
+      const p = presets[idx] || presets[1];
 
-      osc.type = "square";
-      osc.frequency.setValueAtTime(w.soundBase, now);
-      osc.frequency.exponentialRampToValueAtTime(w.soundBase * 0.45, now + 0.08);
+      const crackSrc = audioCtx.createBufferSource();
+      crackSrc.buffer = getGunNoiseBuffer(p.crackMs / 1000);
+      const crackBp = audioCtx.createBiquadFilter();
+      crackBp.type = "bandpass";
+      crackBp.frequency.setValueAtTime(p.crackFc, now);
+      crackBp.Q.setValueAtTime(p.crackQ, now);
+      const crackGain = audioCtx.createGain();
+      crackGain.gain.setValueAtTime(0.0001, now);
+      crackGain.gain.exponentialRampToValueAtTime(p.crackG, now + 0.003);
+      crackGain.gain.exponentialRampToValueAtTime(0.0001, now + p.crackMs / 1000);
+      crackSrc.connect(crackBp);
+      crackBp.connect(crackGain);
+      crackGain.connect(audioSfx);
+      crackSrc.start(now);
+      crackSrc.stop(now + p.crackMs / 1000 + 0.03);
 
-      filter.type = "lowpass";
-      filter.frequency.setValueAtTime(2200, now);
+      const bodySrc = audioCtx.createBufferSource();
+      bodySrc.buffer = getGunNoiseBuffer(p.bodyMs / 1000);
+      const bodyLp = audioCtx.createBiquadFilter();
+      bodyLp.type = "lowpass";
+      bodyLp.frequency.setValueAtTime(p.bodyFc, now);
+      const bodyGain = audioCtx.createGain();
+      bodyGain.gain.setValueAtTime(0.0001, now + 0.002);
+      bodyGain.gain.exponentialRampToValueAtTime(p.bodyG, now + 0.014);
+      bodyGain.gain.exponentialRampToValueAtTime(0.0001, now + p.bodyMs / 1000);
+      bodySrc.connect(bodyLp);
+      bodyLp.connect(bodyGain);
+      bodyGain.connect(audioSfx);
+      bodySrc.start(now + 0.0015);
+      bodySrc.stop(now + p.bodyMs / 1000 + 0.05);
 
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.10, now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.11);
+      const mech = audioCtx.createOscillator();
+      mech.type = idx === 2 ? "sawtooth" : "triangle";
+      mech.frequency.setValueAtTime(p.mechHz, now);
+      mech.frequency.exponentialRampToValueAtTime(Math.max(180, p.mechHz * 0.55), now + 0.08);
+      const mechHp = audioCtx.createBiquadFilter();
+      mechHp.type = "highpass";
+      mechHp.frequency.setValueAtTime(450, now);
+      const mechGain = audioCtx.createGain();
+      mechGain.gain.setValueAtTime(0.0001, now);
+      mechGain.gain.exponentialRampToValueAtTime(p.mechG, now + 0.005);
+      mechGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+      mech.connect(mechHp);
+      mechHp.connect(mechGain);
+      mechGain.connect(audioSfx);
+      mech.start(now + 0.001);
+      mech.stop(now + 0.105);
 
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(audioSfx);
+      const tailSrc = audioCtx.createBufferSource();
+      tailSrc.buffer = getGunNoiseBuffer(p.tailMs / 1000);
+      const tailBp = audioCtx.createBiquadFilter();
+      tailBp.type = "bandpass";
+      tailBp.frequency.setValueAtTime(p.tailFc, now);
+      tailBp.Q.setValueAtTime(0.5, now);
+      const tailGain = audioCtx.createGain();
+      tailGain.gain.setValueAtTime(0.0001, now + 0.006);
+      tailGain.gain.exponentialRampToValueAtTime(p.tailG, now + 0.035);
+      tailGain.gain.exponentialRampToValueAtTime(0.0001, now + p.tailMs / 1000);
+      tailSrc.connect(tailBp);
+      tailBp.connect(tailGain);
+      tailGain.connect(audioSfx);
+      tailSrc.start(now + 0.006);
+      tailSrc.stop(now + p.tailMs / 1000 + 0.06);
 
-      osc.start(now);
-      osc.stop(now + 0.12);
+      const echoIn = audioCtx.createGain();
+      echoIn.gain.setValueAtTime(p.echoG, now);
+      const delay = audioCtx.createDelay(0.22);
+      delay.delayTime.setValueAtTime(p.echoDelay, now);
+      const feedback = audioCtx.createGain();
+      feedback.gain.setValueAtTime(p.echoFb, now);
+      const echoLp = audioCtx.createBiquadFilter();
+      echoLp.type = "lowpass";
+      echoLp.frequency.setValueAtTime(Math.max(700, p.tailFc * 1.1), now);
+      bodyGain.connect(echoIn);
+      echoIn.connect(delay);
+      delay.connect(echoLp);
+      echoLp.connect(audioSfx);
+      delay.connect(feedback);
+      feedback.connect(delay);
+      feedback.gain.exponentialRampToValueAtTime(0.0001, now + 0.5);
     }
 
     let flashlightAudioBuffer = null;
