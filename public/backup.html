@@ -76,7 +76,7 @@
       } catch (eExp) {}
     })();
   </script>
-  <title>Abandoned Orphanage</title>
+  <title>Zone No Light</title>
   <!-- Only the script-injected <base> above should set the document base (folder of this HTML).
        A second fixed base (e.g. chat origin) breaks relative game-ui/ + walls.png when the page is not at site root or when assets live beside this file. -->
   <!-- Socket.IO / multiplayer API host only — do not use as primary CDN for game-ui / menu.mp3 (same-origin loads avoid 404 + Web Audio CORS). -->
@@ -145,6 +145,11 @@
           "--game-ui-settings-bg",
           'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", R).href + '")'
         );
+        try {
+          var curMouse = new URL("mouse.png", R).href;
+          el.style.setProperty("--game-cursor-default", 'url("' + curMouse + '") 0 0, auto');
+          el.style.setProperty("--game-cursor-action", 'url("' + curMouse + '") 0 0, pointer');
+        } catch (eCur) {}
       } catch (e1) {}
     })();
   </script>
@@ -159,7 +164,9 @@
   <!-- Socket.IO from CDN so menu/game always initialize even when socket.io.min.js isn’t deployed beside this file. -->
   <script defer src="https://cdn.jsdelivr.net/npm/socket.io-client@4/dist/socket.io.min.js" crossorigin="anonymous"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Audiowide&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Audiowide = Latin sci-fi headings; Noto* = same neutral tech look for every localized script (CJK, Arabic, Devanagari, Cyrillic, etc.). -->
+  <link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Noto+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     /**
      * Do not set --game-ui-* urls here: an earlier head script assigns absolute URLs from __GAME_ASSET_BASE_DIR__.
@@ -169,9 +176,16 @@
       --game-ui-menu-bg: none;
       --game-ui-btn-texture: none;
       --game-ui-settings-bg: none;
-      /** Menu / UI overlays: arrow cursor PNG (64×42), hotspot at tip */
-      --game-ui-menu-pointer: url("game-ui/game-ui-menu-pointer.png") 6 4, default;
-      --game-ui-menu-pointer-action: url("game-ui/game-ui-menu-pointer.png") 6 4, pointer;
+      /** Custom mouse.png; hotspot top-left tip. Head script sets absolute URLs from deploy root. */
+      --game-cursor-default: url("mouse.png") 0 0, auto;
+      --game-cursor-action: url("mouse.png") 0 0, pointer;
+      --game-ui-menu-pointer: var(--game-cursor-default);
+      --game-ui-menu-pointer-action: var(--game-cursor-action);
+      /**
+       * UI font stack: Audiowide for Latin display; browser picks Noto Sans SC/TC/JP/KR/Arabic/Devanagari for glyphs
+       * Audiowide lacks — keeps the cold tech look close to the game art (cyan edges, dark metal UI).
+       */
+      --game-font-ui: "Audiowide", "Noto Sans", "Noto Sans SC", "Noto Sans TC", "Noto Sans JP", "Noto Sans KR", "Noto Sans Arabic", "Noto Sans Devanagari", ui-sans-serif, system-ui, sans-serif;
     }
 
     #app {
@@ -186,7 +200,7 @@
       height: 100%;
       overflow: hidden;
       background: #000;
-      font-family: 'Audiowide', Arial, sans-serif;
+      font-family: var(--game-font-ui);
       color: #fff;
     }
 
@@ -199,9 +213,9 @@
       cursor: none;
     }
 
-    /* Restore OS cursor when pointer lock is released (death screen, menu). */
+    /* Restore visible cursor when pointer lock is released (death screen, pause). */
     body.show-cursor #app {
-      cursor: default;
+      cursor: var(--game-cursor-default);
     }
 
     .hud {
@@ -312,7 +326,7 @@
       left: 50%;
       top: 50%;
       transform: translate(-50%, -50%);
-      font-family: "Audiowide", sans-serif;
+      font-family: var(--game-font-ui);
       font-size: 11px;
       letter-spacing: 0.28em;
       color: rgba(255, 255, 255, 0.96);
@@ -338,6 +352,12 @@
       opacity: 1;
     }
 
+    .hitmarker.critical::before,
+    .hitmarker.critical::after {
+      background: rgba(255, 86, 86, 0.96);
+      box-shadow: 0 0 10px rgba(255, 86, 86, 0.72);
+    }
+
     .hitmarker::before,
     .hitmarker::after {
       content: "";
@@ -359,6 +379,26 @@
       transform: translate(-50%, -50%) rotate(-45deg);
     }
 
+    #combatFeedback {
+      position: fixed;
+      left: 50%;
+      top: calc(50% + 36px);
+      transform: translate(-50%, 0);
+      z-index: 29;
+      pointer-events: none;
+      font-family: var(--game-font-ui);
+      font-size: 18px;
+      letter-spacing: 0.14em;
+      color: rgba(255, 255, 255, 0);
+      text-shadow: 0 0 10px rgba(0, 0, 0, 0.9);
+      transition: opacity 0.09s linear, transform 0.09s linear, color 0.09s linear;
+      opacity: 0;
+    }
+    #combatFeedback.show {
+      opacity: 1;
+      transform: translate(-50%, -7px);
+    }
+
     /* Full-screen boot: map gen + asset preload before gameplay */
     #gameBootOverlay {
       position: fixed;
@@ -371,7 +411,7 @@
       gap: 18px;
       background: radial-gradient(ellipse 90% 70% at 50% 40%, rgba(18, 22, 34, 0.92) 0%, rgba(4, 6, 12, 0.97) 65%, #020308 100%);
       pointer-events: auto;
-      font-family: 'Audiowide', sans-serif;
+      font-family: var(--game-font-ui);
     }
     #gameBootOverlay .game-boot-spinner {
       width: 52px;
@@ -462,7 +502,7 @@
       border-radius: 10px;
       cursor: var(--game-ui-menu-pointer-action);
       font-weight: 600;
-      font-family: 'Audiowide', sans-serif;
+      font-family: var(--game-font-ui);
       text-transform: uppercase;
       letter-spacing: 0.06em;
       background-color: transparent;
@@ -485,10 +525,10 @@
       box-sizing: border-box;
       width: 200px;
       padding: 12px 16px;
-      font-family: 'Audiowide', sans-serif;
+      font-family: var(--game-font-ui);
       font-size: 16px;
       border-radius: 8px;
-      cursor: pointer;
+      cursor: var(--game-cursor-action);
       text-transform: uppercase;
       letter-spacing: 2px;
       border: 2px solid rgba(255, 255, 255, 0.3);
@@ -582,12 +622,12 @@
     .settings-tab {
       text-align: left;
       padding: 12px 14px;
-      font-family: 'Audiowide', sans-serif;
+      font-family: var(--game-font-ui);
       font-size: 14px;
       letter-spacing: 1px;
       border-radius: 8px;
       border: 1px solid transparent;
-      cursor: pointer;
+      cursor: var(--game-cursor-action);
       background: rgba(255,255,255,0.04);
       color: rgba(230,238,255,0.85);
       transition: background 0.15s, border-color 0.15s;
@@ -654,12 +694,12 @@
       width: 44px;
       height: 38px;
       font-size: 18px;
-      cursor: pointer;
+      cursor: var(--game-cursor-action);
       border-radius: 8px;
       border: 1px solid rgba(255,255,255,0.2);
       background: rgba(0,0,0,0.35);
       color: #fff;
-      font-family: 'Audiowide', sans-serif;
+      font-family: var(--game-font-ui);
     }
 
     .settings-cycle .cycle-value {
@@ -682,7 +722,7 @@
       border: 1px solid rgba(255,255,255,0.25);
       background: rgba(0,0,0,0.45);
       color: #fff;
-      cursor: pointer;
+      cursor: var(--game-cursor-action);
       font-size: 22px;
       line-height: 1;
       z-index: 5;
@@ -894,50 +934,50 @@
   <div id="menu" class="menu">
     <div class="menu-panels-wrap">
     <div id="menuMain" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
-      <h1>Abandoned Orphanage</h1>
-      <p>Game by Tintly555</p>
-      <p>Music by JimmyQrg</p>
-      <button type="button" id="btnArena">Zombie Arena</button>
-      <button type="button" id="btnCrossfire">Crossfire (PVP)</button>
-      <button type="button" id="btnMenuSettings">SETTINGS</button>
+      <h1 data-i18n="gameTitle">Zone No Light</h1>
+      <p data-i18n="creditsGame">Game by Tintly555</p>
+      <p data-i18n="creditsMusic">Music by JimmyQrg</p>
+      <button type="button" id="btnArena" data-i18n="btnZombieArena">Zombie Arena</button>
+      <button type="button" id="btnCrossfire" data-i18n="btnCrossfire">Crossfire (PVP)</button>
+      <button type="button" id="btnMenuSettings" data-i18n="btnSettings">SETTINGS</button>
     </div>
     <div id="menuArenaMode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
-      <h2 style="font-family:'Audiowide',sans-serif;font-size:28px;margin:0 0 14px 0;letter-spacing:3px;">ZOMBIE ARENA</h2>
-      <button type="button" id="btnArenaSingle">SINGLEPLAYER</button>
-      <button type="button" id="btnArenaCoop">CO-OP MODE</button>
-      <button type="button" id="btnArenaBack">← BACK</button>
+      <h2 style="font-family:var(--game-font-ui);font-size:28px;margin:0 0 14px 0;letter-spacing:3px;" data-i18n="zombieArenaTitle">ZOMBIE ARENA</h2>
+      <button type="button" id="btnArenaSingle" data-i18n="btnSingleplayer">SINGLEPLAYER</button>
+      <button type="button" id="btnArenaCoop" data-i18n="btnCoopMode">CO-OP MODE</button>
+      <button type="button" id="btnArenaBack" data-i18n="btnBack">← BACK</button>
     </div>
     <div id="menuLobby" style="display:none;flex-direction:column;align-items:center;gap:10px;">
-      <h2 id="lobbyTitle" style="font-family:'Audiowide',sans-serif;font-size:24px;margin:0 0 10px 0;letter-spacing:2px;">MULTIPLAYER</h2>
-      <button type="button" id="btnQuickplay">QUICK PLAY</button>
-      <button type="button" id="btnCreateRoom">CREATE A ROOM</button>
-      <button type="button" id="btnJoinCode">JOIN VIA CODE</button>
-      <button type="button" id="btnLobbyBack">← BACK</button>
+      <h2 id="lobbyTitle" style="font-family:var(--game-font-ui);font-size:24px;margin:0 0 10px 0;letter-spacing:2px;">MULTIPLAYER</h2>
+      <button type="button" id="btnQuickplay" data-i18n="btnQuickPlay">QUICK PLAY</button>
+      <button type="button" id="btnCreateRoom" data-i18n="btnCreateRoom">CREATE A ROOM</button>
+      <button type="button" id="btnJoinCode" data-i18n="btnJoinViaCode">JOIN VIA CODE</button>
+      <button type="button" id="btnLobbyBack" data-i18n="btnBack">← BACK</button>
     </div>
     <div id="menuJoinCode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
-      <h2 style="font-family:'Audiowide',sans-serif;font-size:24px;margin:0 0 6px 0;letter-spacing:2px;">JOIN VIA CODE</h2>
-      <input id="codeInput" type="text" maxlength="10" placeholder="ROOM CODE" style="font-family:'Audiowide',sans-serif;width:180px;padding:10px 14px;font-size:18px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;text-transform:uppercase;letter-spacing:4px;">
-      <p id="codeError" style="font-family:'Audiowide',sans-serif;color:#e53e3e;font-size:13px;margin:4px 0 0 0;min-height:18px;"></p>
-      <button type="button" id="btnCodeJoin">JOIN</button>
-      <button type="button" id="btnCodeBack">← BACK</button>
+      <h2 style="font-family:var(--game-font-ui);font-size:24px;margin:0 0 6px 0;letter-spacing:2px;" data-i18n="joinViaCodeTitle">JOIN VIA CODE</h2>
+      <input id="codeInput" type="text" maxlength="10" data-i18n-placeholder="roomCodePlaceholder" placeholder="ROOM CODE" style="font-family:var(--game-font-ui);width:180px;padding:10px 14px;font-size:18px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;text-transform:uppercase;letter-spacing:4px;">
+      <p id="codeError" style="font-family:var(--game-font-ui);color:#e53e3e;font-size:13px;margin:4px 0 0 0;min-height:18px;"></p>
+      <button type="button" id="btnCodeJoin" data-i18n="btnJoin">JOIN</button>
+      <button type="button" id="btnCodeBack" data-i18n="btnBack">← BACK</button>
     </div>
     </div>
   </div>
 
   <div id="app"></div>
   <div id="gameBootOverlay" aria-live="polite" aria-busy="true" style="display:none;">
-    <div class="game-boot-spinner" role="status" aria-label="Loading"></div>
-    <p id="gameBootLabel" class="game-boot-text">Loading world…</p>
+    <div class="game-boot-spinner" role="status" data-i18n-aria-label="ariaLoading" aria-label="Loading"></div>
+    <p id="gameBootLabel" class="game-boot-text" data-i18n="loadingWorld">Loading world…</p>
   </div>
   <div id="shadeOverlay" aria-hidden="true"></div>
   <div id="warFilmOverlay" aria-hidden="true"></div>
   <div class="hud" id="hud"></div>
-  <div id="fpsOverlay" style="position:fixed;top:10px;right:14px;z-index:45;pointer-events:none;text-align:right;font-family:'Audiowide',sans-serif;font-size:13px;color:rgba(245,248,255,0.92);text-shadow:0 1px 5px rgba(0,0,0,0.85);line-height:1.4;">
+  <div id="fpsOverlay" style="position:fixed;top:10px;right:14px;z-index:45;pointer-events:none;text-align:right;font-family:var(--game-font-ui);font-size:13px;color:rgba(245,248,255,0.92);text-shadow:0 1px 5px rgba(0,0,0,0.85);line-height:1.4;">
     <div id="fpsValue">— FPS</div>
-    <div style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;">Press T to chat</div>
-    <div style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;">Press L to toggle light &amp; flashlight</div>
+    <div id="fpsChatHint" style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;" data-i18n="fpsChatHint">Press T to chat</div>
+    <div id="fpsLightHint" style="opacity:0.72;font-size:11px;margin-top:3px;letter-spacing:0.02em;" data-i18n="fpsLightHint">Press L to toggle light &amp; flashlight</div>
   </div>
-  <div class="hint" id="hint">Click anywhere</div>
+  <div class="hint" id="hint" data-i18n="hintClick">Click anywhere</div>
   <div class="flash" id="flash"></div>
   <div class="crosshair" id="crosshair"></div>
   <div id="medkitReticle" class="medkit-reticle hidden" aria-hidden="true">
@@ -960,97 +1000,110 @@
         />
       </g>
     </svg>
-    <span class="medkit-hold-txt">HOLD</span>
+    <span class="medkit-hold-txt" data-i18n="medkitHold">HOLD</span>
   </div>
   <div class="hitmarker" id="hitmarker"></div>
+  <div id="combatFeedback"></div>
   <div id="deathOverlay" style="position:fixed;inset:0;z-index:50;pointer-events:none;display:none;">
     <div id="deathFade" style="position:absolute;inset:0;background:rgba(0,0,0,0);transition:none;"></div>
     <div id="deathUI" style="position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;align-items:center;gap:14px;pointer-events:auto;">
-      <h1 id="deathTitle" style="font-family:'Audiowide',sans-serif;font-size:52px;margin:0 0 6px 0;color:#e53e3e;text-shadow:0 0 30px rgba(229,62,62,0.5);letter-spacing:4px;">DEFEAT</h1>
-      <p id="deathScore" style="font-family:'Audiowide',sans-serif;font-size:16px;margin:0 0 18px 0;opacity:0.8;">Score: 0</p>
-      <button type="button" class="overlay-btn" id="btnDeathRestart">RESTART</button>
-      <button type="button" class="overlay-btn overlay-btn-accent" id="btnDeathSettings">SETTINGS</button>
-      <button type="button" class="overlay-btn" id="btnDeathQuit">QUIT</button>
+      <h1 id="deathTitle" style="font-family:var(--game-font-ui);font-size:52px;margin:0 0 6px 0;color:#e53e3e;text-shadow:0 0 30px rgba(229,62,62,0.5);letter-spacing:4px;" data-i18n="deathDefeat">DEFEAT</h1>
+      <p id="deathScore" style="font-family:var(--game-font-ui);font-size:16px;margin:0 0 18px 0;opacity:0.8;">Score: 0</p>
+      <button type="button" class="overlay-btn" id="btnDeathRestart" data-i18n="btnRestart">RESTART</button>
+      <button type="button" class="overlay-btn overlay-btn-accent" id="btnDeathSettings" data-i18n="btnSettings">SETTINGS</button>
+      <button type="button" class="overlay-btn" id="btnDeathQuit" data-i18n="btnQuit">QUIT</button>
     </div>
   </div>
   <div id="pauseOverlay" style="position:fixed;inset:0;z-index:55;display:none;flex-direction:column;justify-content:center;align-items:center;gap:14px;background:rgba(0,0,0,0.5);">
-    <h1 style="font-family:'Audiowide',sans-serif;font-size:48px;margin:0 0 10px 0;color:#fff;letter-spacing:4px;">PAUSED</h1>
-    <button type="button" class="overlay-btn" id="btnResume">RESUME</button>
-    <button type="button" class="overlay-btn overlay-btn-accent" id="btnPauseSettings">SETTINGS</button>
-    <button type="button" class="overlay-btn" id="btnPauseRestart" style="display:none;">RESTART</button>
-    <button type="button" class="overlay-btn" id="btnPauseQuit">QUIT</button>
+    <h1 id="pauseTitle" style="font-family:var(--game-font-ui);font-size:48px;margin:0 0 10px 0;color:#fff;letter-spacing:4px;" data-i18n="paused">PAUSED</h1>
+    <button type="button" class="overlay-btn" id="btnResume" data-i18n="btnResume">RESUME</button>
+    <button type="button" class="overlay-btn overlay-btn-accent" id="btnPauseSettings" data-i18n="btnSettings">SETTINGS</button>
+    <button type="button" class="overlay-btn" id="btnPauseRestart" style="display:none;" data-i18n="pauseRestart">RESTART</button>
+    <button type="button" class="overlay-btn" id="btnPauseQuit" data-i18n="pauseQuit">QUIT</button>
   </div>
-  <div id="chatBox" style="position:fixed;bottom:10px;left:10px;z-index:40;pointer-events:none;font-family:'Audiowide',sans-serif;display:flex;flex-direction:column;justify-content:flex-end;">
+  <div id="chatBox" style="position:fixed;bottom:10px;left:10px;z-index:40;pointer-events:none;font-family:var(--game-font-ui);display:flex;flex-direction:column;justify-content:flex-end;">
     <div id="chatMessages" style="display:flex;flex-direction:column;gap:2px;margin-bottom:6px;overflow:hidden;"></div>
     <div id="chatInputWrap" style="display:none;pointer-events:auto;">
-      <input id="chatInput" type="text" maxlength="200" placeholder="Type a message..." style="font-family:'Audiowide',sans-serif;width:280px;padding:6px 10px;font-size:13px;border:1px solid rgba(79,209,255,0.5);border-radius:6px;background:rgba(13,17,27,0.8);color:#fff;outline:none;">
+      <input id="chatInput" type="text" maxlength="200" data-i18n-placeholder="chatPlaceholder" placeholder="Type a message..." style="font-family:var(--game-font-ui);width:280px;padding:6px 10px;font-size:13px;border:1px solid rgba(79,209,255,0.5);border-radius:6px;background:rgba(13,17,27,0.8);color:#fff;outline:none;">
     </div>
   </div>
   <div id="hitDirContainer" style="position:fixed;inset:0;z-index:35;pointer-events:none;display:flex;justify-content:center;align-items:center;"></div>
   <div id="nameModal" style="position:fixed;inset:0;z-index:110;display:none;justify-content:center;align-items:center;background:rgba(0,0,0,0.7);">
     <div style="background:#1a2236;border-radius:14px;padding:32px 38px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.5);">
-      <h2 style="font-family:'Audiowide',sans-serif;margin:0 0 16px 0;font-size:22px;">ENTER YOUR NAME</h2>
-      <input id="nameInput" type="text" maxlength="16" placeholder="Player" style="font-family:'Audiowide',sans-serif;width:200px;padding:10px 14px;font-size:16px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;">
+      <h2 style="font-family:var(--game-font-ui);margin:0 0 16px 0;font-size:22px;" data-i18n="nameModalTitle">ENTER YOUR NAME</h2>
+      <input id="nameInput" type="text" maxlength="16" data-i18n-placeholder="namePlaceholder" placeholder="Player" style="font-family:var(--game-font-ui);width:200px;padding:10px 14px;font-size:16px;border:2px solid #4fd1ff;border-radius:8px;background:#0d111b;color:#fff;outline:none;text-align:center;">
       <br>
-      <button class="overlay-btn" type="button" id="btnNameOk" style="margin-top:16px;">JOIN</button>
+      <button class="overlay-btn" type="button" id="btnNameOk" style="margin-top:16px;" data-i18n="btnNameJoin">JOIN</button>
     </div>
   </div>
 
   <div id="settingsModal">
     <div class="settings-shell">
       <aside class="settings-tabs">
-        <button type="button" class="settings-tab active" data-scroll-target="settingsSectionAudio">AUDIO</button>
-        <button type="button" class="settings-tab" data-scroll-target="settingsSectionGraphics">GRAPHICS</button>
+        <button type="button" class="settings-tab active" data-scroll-target="settingsSectionAudio" data-i18n="settingsTabAudio">AUDIO</button>
+        <button type="button" class="settings-tab" data-scroll-target="settingsSectionGraphics" data-i18n="settingsTabGraphics">GRAPHICS</button>
+        <button type="button" class="settings-tab" data-scroll-target="settingsSectionLanguage" data-i18n="settingsTabLanguage">LANGUAGE</button>
       </aside>
       <div class="settings-modal-inner-wrap">
-        <button type="button" class="settings-close" id="btnCloseSettings" title="Close">×</button>
+        <button type="button" class="settings-close" id="btnCloseSettings" data-i18n-title="closeTitle" title="Close">×</button>
         <div class="settings-scroll" id="settingsScroll">
           <section class="settings-section" id="settingsSectionAudio">
-            <h2>AUDIO</h2>
+            <h2 data-i18n="settingsAudioH">AUDIO</h2>
             <div class="settings-row">
-              <label>Master volume <span class="value-pill" id="lblMasterVol">100%</span></label>
+              <label><span data-i18n="masterVol">Master volume</span> <span class="value-pill" id="lblMasterVol">100%</span></label>
               <input type="range" id="rngMasterVol" min="0" max="100" value="100" />
             </div>
             <div class="settings-row">
-              <label>Music volume <span class="value-pill" id="lblMusicVol">100%</span></label>
+              <label><span data-i18n="musicVol">Music volume</span> <span class="value-pill" id="lblMusicVol">100%</span></label>
               <input type="range" id="rngMusicVol" min="0" max="100" value="100" />
             </div>
             <div class="settings-row">
-              <label>Sound volume <span class="value-pill" id="lblSfxVol">100%</span></label>
+              <label><span data-i18n="sfxVol">Sound volume</span> <span class="value-pill" id="lblSfxVol">100%</span></label>
               <input type="range" id="rngSfxVol" min="0" max="100" value="100" />
             </div>
           </section>
           <section class="settings-section" id="settingsSectionGraphics">
-            <h2>GRAPHICS</h2>
+            <h2 data-i18n="settingsGraphicsH">GRAPHICS</h2>
             <div class="settings-row">
-              <label>Quality <span class="value-pill">performance / fidelity</span></label>
+              <label><span data-i18n="qualityHeader">Quality</span> <span class="value-pill" data-i18n="qualityPerfFidelity">performance / fidelity</span></label>
               <div class="settings-cycle">
-                <button type="button" class="cycle-arrow" id="btnQualityPrev" aria-label="Lower quality">◀</button>
+                <button type="button" class="cycle-arrow" id="btnQualityPrev" data-i18n-aria-label="ariaLowerQ" aria-label="Lower quality">◀</button>
                 <div class="cycle-value" id="qualityLabel">POTATO</div>
-                <button type="button" class="cycle-arrow" id="btnQualityNext" aria-label="Higher quality">▶</button>
+                <button type="button" class="cycle-arrow" id="btnQualityNext" data-i18n-aria-label="ariaHigherQ" aria-label="Higher quality">▶</button>
               </div>
-              <p style="font-size:11px;opacity:0.65;margin-top:10px;max-width:480px;line-height:1.45;">
+              <p style="font-size:11px;opacity:0.65;margin-top:10px;max-width:480px;line-height:1.45;" data-i18n="qualityBlurb">
                 Does not change zombie sync or gameplay — rendering only. Brightness is matched across tiers so difficulty stays fair.
               </p>
             </div>
             <div class="settings-row">
-              <label>Texture detail</label>
+              <label data-i18n="textureDetail">Texture detail</label>
               <div class="settings-cycle">
-                <button type="button" class="cycle-arrow" id="btnTexturePrev" aria-label="Previous">◀</button>
+                <button type="button" class="cycle-arrow" id="btnTexturePrev" data-i18n-aria-label="ariaTexPrev" aria-label="Previous">◀</button>
                 <div class="cycle-value" id="textureLabel">ON</div>
-                <button type="button" class="cycle-arrow" id="btnTextureNext" aria-label="Next">▶</button>
+                <button type="button" class="cycle-arrow" id="btnTextureNext" data-i18n-aria-label="ariaTexNext" aria-label="Next">▶</button>
               </div>
             </div>
             <div class="settings-row">
-              <label>Render distance</label>
+              <label data-i18n="renderDistHeader">Render distance</label>
               <div class="settings-cycle">
-                <button type="button" class="cycle-arrow" id="btnRenderDistPrev" aria-label="Shorter render distance">◀</button>
+                <button type="button" class="cycle-arrow" id="btnRenderDistPrev" data-i18n-aria-label="ariaDistShorter" aria-label="Shorter render distance">◀</button>
                 <div class="cycle-value" id="renderDistanceLabel">NORMAL</div>
-                <button type="button" class="cycle-arrow" id="btnRenderDistNext" aria-label="Longer render distance">▶</button>
+                <button type="button" class="cycle-arrow" id="btnRenderDistNext" data-i18n-aria-label="ariaDistLonger" aria-label="Longer render distance">▶</button>
               </div>
-              <p style="font-size:11px;opacity:0.65;margin-top:10px;max-width:480px;line-height:1.45;">
+              <p style="font-size:11px;opacity:0.65;margin-top:10px;max-width:480px;line-height:1.45;" data-i18n="renderDistBlurb">
                 Beyond this distance the world fades into darkness (distance fog). Lights dim with the fog. Does not affect gameplay.
               </p>
+            </div>
+          </section>
+          <section class="settings-section" id="settingsSectionLanguage">
+            <h2 data-i18n="settingsLanguageH">LANGUAGE</h2>
+            <div class="settings-row">
+              <label data-i18n="languagePickLabel">Language</label>
+              <div class="settings-cycle">
+                <button type="button" class="cycle-arrow" id="btnLangPrev" data-i18n-aria-label="ariaLangPrev" aria-label="Previous language">◀</button>
+                <div class="cycle-value" id="languageUiLabel">English</div>
+                <button type="button" class="cycle-arrow" id="btnLangNext" data-i18n-aria-label="ariaLangNext" aria-label="Next language">▶</button>
+              </div>
             </div>
           </section>
         </div>
@@ -1062,6 +1115,1671 @@
     import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.182.0/build/three.module.js";
     import { Reflector } from "https://cdn.jsdelivr.net/npm/three@0.182.0/examples/jsm/objects/Reflector.js";
 
+    /** Inline i18n — same data as game-i18n.js (file kept for backup; no import). */
+    /**
+     * UI strings for Zone No Light / 无光之境 — keys shared across all locales.
+     * Fallback: English if a key is missing.
+     */
+    const LANGUAGE_OPTIONS = [
+      { code: "en", native: "English" },
+      { code: "zh", native: "简体中文" },
+      { code: "zh-Hant", native: "繁體中文" },
+      { code: "es", native: "Español" },
+      { code: "hi", native: "हिन्दी" },
+      { code: "ar", native: "العربية" },
+      { code: "fr", native: "Français" },
+      { code: "pt", native: "Português" },
+      { code: "ru", native: "Русский" },
+      { code: "ja", native: "日本語" },
+      { code: "de", native: "Deutsch" },
+      { code: "ko", native: "한국어" },
+      { code: "it", native: "Italiano" },
+      { code: "nl", native: "Nederlands" },
+      { code: "pl", native: "Polski" },
+      { code: "tr", native: "Türkçe" },
+    ];
+    
+    const EN = {
+      gameTitle: "Zone No Light",
+      creditsGame: "Game by Tintly555",
+      creditsMusic: "Music by JimmyQrg",
+      btnZombieArena: "Zombie Arena",
+      btnCrossfire: "Crossfire (PVP)",
+      btnSettings: "SETTINGS",
+      zombieArenaTitle: "ZOMBIE ARENA",
+      btnSingleplayer: "SINGLEPLAYER",
+      btnCoopMode: "CO-OP MODE",
+      btnBack: "← BACK",
+      lobbyMultiplayer: "MULTIPLAYER",
+      btnQuickPlay: "QUICK PLAY",
+      btnCreateRoom: "CREATE A ROOM",
+      btnJoinViaCode: "JOIN VIA CODE",
+      joinViaCodeTitle: "JOIN VIA CODE",
+      roomCodePlaceholder: "ROOM CODE",
+      btnJoin: "JOIN",
+      enterCodeError: "Enter a code",
+      loadingWorld: "Loading world…",
+      fpsChatHint: "Press T to chat",
+      fpsLightHint: "Press L to toggle light & flashlight",
+      hintClick: "Click anywhere",
+      medkitHold: "HOLD",
+      combatHit: "HIT",
+      combatKill: "KILL!",
+      deathDefeated: "DEFEATED",
+      deathDefeat: "DEFEAT",
+      deathScoreFmt: "Score: {score}",
+      btnQuit: "QUIT",
+      btnRestart: "RESTART",
+      btnRespawn: "RESPAWN",
+      paused: "PAUSED",
+      btnResume: "RESUME",
+      pauseRestart: "RESTART",
+      pauseQuit: "QUIT",
+      nameModalTitle: "ENTER YOUR NAME",
+      namePlaceholder: "Player",
+      btnNameJoin: "JOIN",
+      chatPlaceholder: "Type a message…",
+      settingsTabAudio: "AUDIO",
+      settingsTabGraphics: "GRAPHICS",
+      settingsTabLanguage: "LANGUAGE",
+      settingsAudioH: "AUDIO",
+      settingsGraphicsH: "GRAPHICS",
+      settingsLanguageH: "LANGUAGE",
+      masterVol: "Master volume",
+      musicVol: "Music volume",
+      sfxVol: "Sound volume",
+      qualityHeader: "Quality",
+      qualityPerfFidelity: "performance / fidelity",
+      qualityBlurb:
+        "Graphics only — zombie sync and gameplay stay the same. Brightness is balanced across presets so difficulty stays fair.",
+      textureDetail: "Textures",
+      renderDistHeader: "Draw distance",
+      renderDistBlurb:
+        "Past this range the map fades into fog and lights fall off. Does not affect gameplay.",
+      on: "ON",
+      off: "OFF",
+      closeTitle: "Close",
+      ariaLowerQ: "Lower quality",
+      ariaHigherQ: "Higher quality",
+      ariaTexPrev: "Previous",
+      ariaTexNext: "Next",
+      ariaDistShorter: "Shorter render distance",
+      ariaDistLonger: "Longer render distance",
+      ariaLangPrev: "Previous language",
+      ariaLangNext: "Next language",
+      qualityTier0: "POTATO",
+      qualityTier1: "REGULAR",
+      qualityTier2: "HIGH",
+      qualityTier3: "EXTREME",
+      renderDist0: "SHORT",
+      renderDist1: "MEDIUM",
+      renderDist2: "NORMAL",
+      renderDist3: "LONG",
+      renderDist4: "VERY FAR",
+      hudRoom: "Room:",
+      hudMoveLine: "WASD move | Space jump | R reload",
+      hudAimLine:
+        "Mouse aim | RMB zoom | Weapons: 1 2 3 4 | 5 Med Kit (hold M1 to heal 10s)",
+      hudMapPrefix: "Map:",
+      hudWeaponPrefix: "Weapon:",
+      hudBulletsPrefix: "Bullets:",
+      hudRefilling: "Refilling…",
+      hudHealthPrefix: "Health:",
+      hudScorePrefix: "Score:",
+      hudMpSuffix: "(MP)",
+      mapCrossfire: "crossfire (PVP)",
+      mapArena: "zombie arena",
+      weapon0: "Pistol",
+      weapon1: "Assault Rifle",
+      weapon2: "Shotgun",
+      weapon3: "SMG",
+      weapon4: "Med Kit",
+      bootBuild: "Building world…",
+      bootLoad: "Loading assets…",
+      bootPrep: "Preparing display…",
+      lobbyArenaCoop: "ARENA CO-OP",
+      lobbyCrossfire: "CROSSFIRE (PVP)",
+      ariaLoading: "Loading",
+      languagePickLabel: "Language",
+    };
+    
+    const ZH = {
+      gameTitle: "无光之境",
+      creditsGame: "游戏制作：Tintly555",
+      creditsMusic: "音乐制作：J有点死了",
+      btnZombieArena: "丧尸竞技场",
+      btnCrossfire: "交叉火力（对战）",
+      btnSettings: "设置",
+      zombieArenaTitle: "丧尸竞技场",
+      btnSingleplayer: "单人模式",
+      btnCoopMode: "合作模式",
+      btnBack: "← 返回",
+      lobbyMultiplayer: "多人游戏",
+      btnQuickPlay: "快速匹配",
+      btnCreateRoom: "创建房间",
+      btnJoinViaCode: "房间码加入",
+      joinViaCodeTitle: "房间码加入",
+      roomCodePlaceholder: "房间码",
+      btnJoin: "加入",
+      enterCodeError: "请输入房间码",
+      loadingWorld: "正在加载世界…",
+      fpsChatHint: "按 T 打开聊天",
+      fpsLightHint: "按 L 开关照明与手电",
+      hintClick: "点击任意处",
+      medkitHold: "按住",
+      combatHit: "命中",
+      combatKill: "击杀",
+      deathDefeated: "战败",
+      deathDefeat: "阵亡",
+      deathScoreFmt: "分数：{score}",
+      btnQuit: "退出",
+      btnRestart: "重新开始",
+      btnRespawn: "重生",
+      paused: "已暂停",
+      btnResume: "继续",
+      pauseRestart: "重新开始",
+      pauseQuit: "退出",
+      nameModalTitle: "输入昵称",
+      namePlaceholder: "玩家",
+      btnNameJoin: "加入",
+      chatPlaceholder: "输入消息…",
+      settingsTabAudio: "音频",
+      settingsTabGraphics: "画面",
+      settingsTabLanguage: "语言",
+      settingsAudioH: "音频",
+      settingsGraphicsH: "画面",
+      settingsLanguageH: "语言",
+      masterVol: "主音量",
+      musicVol: "音乐音量",
+      sfxVol: "音效音量",
+      qualityHeader: "画质",
+      qualityPerfFidelity: "性能 / 画质",
+      qualityBlurb:
+        "仅影响画面表现，不改变丧尸同步或玩法；各档亮度一致，难度公平。",
+      textureDetail: "贴图",
+      renderDistHeader: "渲染距离",
+      renderDistBlurb:
+        "更远的地方会被距离雾淡化、变暗，灯光也随之减弱；不影响玩法本身。",
+      on: "开",
+      off: "关",
+      closeTitle: "关闭",
+      ariaLowerQ: "降低画质",
+      ariaHigherQ: "提高画质",
+      ariaTexPrev: "上一项",
+      ariaTexNext: "下一项",
+      ariaDistShorter: "缩短渲染距离",
+      ariaDistLonger: "延长渲染距离",
+      ariaLangPrev: "上一语言",
+      ariaLangNext: "下一语言",
+      qualityTier0: "极低",
+      qualityTier1: "标准",
+      qualityTier2: "高",
+      qualityTier3: "极致",
+      renderDist0: "近",
+      renderDist1: "中",
+      renderDist2: "标准",
+      renderDist3: "远",
+      renderDist4: "极远",
+      hudRoom: "房间：",
+      hudMoveLine: "WASD 移动 | 空格跳跃 | R 换弹",
+      hudAimLine:
+        "鼠标瞄准 | 右键开镜 | 武器：1–4 | 5 医疗包（按住左键 10 秒回血）",
+      hudMapPrefix: "地图：",
+      hudWeaponPrefix: "武器：",
+      hudBulletsPrefix: "弹药：",
+      hudRefilling: "装填中…",
+      hudHealthPrefix: "生命：",
+      hudScorePrefix: "分数：",
+      hudMpSuffix: "（多人）",
+      mapCrossfire: "交叉火力（玩家对战）",
+      mapArena: "丧尸竞技场",
+      weapon0: "手枪",
+      weapon1: "突击步枪",
+      weapon2: "霰弹枪",
+      weapon3: "冲锋枪",
+      weapon4: "医疗包",
+      bootBuild: "正在构建世界…",
+      bootLoad: "正在加载资源…",
+      bootPrep: "正在准备画面…",
+      lobbyArenaCoop: "竞技场合作",
+      lobbyCrossfire: "交叉火力（玩家对战）",
+      ariaLoading: "加载中",
+      languagePickLabel: "语言",
+    };
+    
+    const ZH_HANT = {
+      gameTitle: "無光之境",
+      creditsGame: "遊戲製作：Tintly555",
+      creditsMusic: "音樂製作：J有點死了",
+      btnZombieArena: "殭屍競技場",
+      btnCrossfire: "交叉火力（對戰）",
+      btnSettings: "設定",
+      zombieArenaTitle: "殭屍競技場",
+      btnSingleplayer: "單人模式",
+      btnCoopMode: "合作模式",
+      btnBack: "← 返回",
+      lobbyMultiplayer: "多人遊戲",
+      btnQuickPlay: "快速配對",
+      btnCreateRoom: "建立房間",
+      btnJoinViaCode: "房間代碼加入",
+      joinViaCodeTitle: "房間代碼加入",
+      roomCodePlaceholder: "房間代碼",
+      btnJoin: "加入",
+      enterCodeError: "請輸入房間代碼",
+      loadingWorld: "正在載入世界…",
+      fpsChatHint: "按 T 開啟聊天",
+      fpsLightHint: "按 L 切換照明與手電筒",
+      hintClick: "點擊任意處",
+      medkitHold: "按住",
+      combatHit: "命中",
+      combatKill: "擊殺",
+      deathDefeated: "戰敗",
+      deathDefeat: "陣亡",
+      deathScoreFmt: "分數：{score}",
+      btnQuit: "退出",
+      btnRestart: "重新開始",
+      btnRespawn: "重生",
+      paused: "已暫停",
+      btnResume: "繼續",
+      pauseRestart: "重新開始",
+      pauseQuit: "退出",
+      nameModalTitle: "輸入暱稱",
+      namePlaceholder: "玩家",
+      btnNameJoin: "加入",
+      chatPlaceholder: "輸入訊息…",
+      settingsTabAudio: "音訊",
+      settingsTabGraphics: "畫面",
+      settingsTabLanguage: "語言",
+      settingsAudioH: "音訊",
+      settingsGraphicsH: "畫面",
+      settingsLanguageH: "語言",
+      masterVol: "主音量",
+      musicVol: "音樂音量",
+      sfxVol: "音效音量",
+      qualityHeader: "畫質",
+      qualityPerfFidelity: "效能 / 畫質",
+      qualityBlurb:
+        "僅影響畫面表現，不改殭屍同步或玩法；各檔亮度一致，難度公平。",
+      textureDetail: "貼圖",
+      renderDistHeader: "渲染距離",
+      renderDistBlurb:
+        "更遠的地方會被距離霧淡化、變暗，燈光也隨之減弱；不影響玩法本身。",
+      on: "開",
+      off: "關",
+      closeTitle: "關閉",
+      ariaLowerQ: "降低畫質",
+      ariaHigherQ: "提高畫質",
+      ariaTexPrev: "上一項",
+      ariaTexNext: "下一項",
+      ariaDistShorter: "縮短渲染距離",
+      ariaDistLonger: "延長渲染距離",
+      ariaLangPrev: "上一語言",
+      ariaLangNext: "下一語言",
+      qualityTier0: "極低",
+      qualityTier1: "標準",
+      qualityTier2: "高",
+      qualityTier3: "極致",
+      renderDist0: "近",
+      renderDist1: "中",
+      renderDist2: "標準",
+      renderDist3: "遠",
+      renderDist4: "極遠",
+      hudRoom: "房間：",
+      hudMoveLine: "WASD 移動 | 空白鍵跳躍 | R 換彈",
+      hudAimLine:
+        "滑鼠瞄準 | 右鍵開鏡 | 武器：1–4 | 5 醫療包（按住左鍵 10 秒回血）",
+      hudMapPrefix: "地圖：",
+      hudWeaponPrefix: "武器：",
+      hudBulletsPrefix: "彈藥：",
+      hudRefilling: "裝填中…",
+      hudHealthPrefix: "生命：",
+      hudScorePrefix: "分數：",
+      hudMpSuffix: "（多人）",
+      mapCrossfire: "交叉火力（玩家對戰）",
+      mapArena: "殭屍競技場",
+      weapon0: "手槍",
+      weapon1: "突擊步槍",
+      weapon2: "霰彈槍",
+      weapon3: "衝鋒槍",
+      weapon4: "醫療包",
+      bootBuild: "正在建構世界…",
+      bootLoad: "正在載入資源…",
+      bootPrep: "正在準備畫面…",
+      lobbyArenaCoop: "競技場合作",
+      lobbyCrossfire: "交叉火力（玩家對戰）",
+      ariaLoading: "載入中",
+      languagePickLabel: "語言",
+    };
+    
+    const ES = {
+      gameTitle: "Zone No Light",
+      creditsGame: "Juego de Tintly555",
+      creditsMusic: "Música de JimmyQrg",
+      btnZombieArena: "Arena zombis",
+      btnCrossfire: "Fuego cruzado (PvP)",
+      btnSettings: "AJUSTES",
+      zombieArenaTitle: "ARENA ZOMBIS",
+      btnSingleplayer: "UN JUGADOR",
+      btnCoopMode: "COOPERATIVO",
+      btnBack: "← ATRÁS",
+      lobbyMultiplayer: "MULTIJUGADOR",
+      btnQuickPlay: "PARTIDA RÁPIDA",
+      btnCreateRoom: "CREAR SALA",
+      btnJoinViaCode: "UNIRSE CON CÓDIGO",
+      joinViaCodeTitle: "UNIRSE CON CÓDIGO",
+      roomCodePlaceholder: "CÓDIGO",
+      btnJoin: "UNIRSE",
+      enterCodeError: "Escribe un código",
+      loadingWorld: "Cargando el mundo…",
+      fpsChatHint: "T abre el chat",
+      fpsLightHint: "L enciende la luz y la linterna",
+      hintClick: "Clic en cualquier sitio",
+      medkitHold: "MANTÉN",
+      deathDefeated: "DERROTADO",
+      deathDefeat: "DERROTA",
+      deathScoreFmt: "Puntuación: {score}",
+      btnQuit: "SALIR",
+      btnRestart: "REINICIAR",
+      btnRespawn: "RENACER",
+      paused: "PAUSA",
+      btnResume: "CONTINUAR",
+      pauseRestart: "REINICIAR",
+      pauseQuit: "SALIR",
+      nameModalTitle: "TU NOMBRE",
+      namePlaceholder: "Jugador",
+      btnNameJoin: "UNIRSE",
+      chatPlaceholder: "Escribe un mensaje…",
+      settingsTabAudio: "AUDIO",
+      settingsTabGraphics: "GRÁFICOS",
+      settingsTabLanguage: "IDIOMA",
+      settingsAudioH: "AUDIO",
+      settingsGraphicsH: "GRÁFICOS",
+      settingsLanguageH: "IDIOMA",
+      masterVol: "Volumen general",
+      musicVol: "Música",
+      sfxVol: "Efectos",
+      qualityHeader: "Calidad",
+      qualityPerfFidelity: "rendimiento / fidelidad",
+      qualityBlurb:
+        "Solo afecta los gráficos: la sincronización de zombis y la jugabilidad siguen igual. El brillo está compensado en todos los niveles.",
+      textureDetail: "Texturas",
+      renderDistHeader: "Distancia de dibujado",
+      renderDistBlurb:
+        "Más allá de este alcance el mundo se pierde en la niebla y las luces decaen. No cambia la jugabilidad.",
+      on: "SÍ",
+      off: "NO",
+      closeTitle: "Cerrar",
+      ariaLowerQ: "Menos calidad",
+      ariaHigherQ: "Más calidad",
+      ariaTexPrev: "Anterior",
+      ariaTexNext: "Siguiente",
+      ariaDistShorter: "Menos distancia",
+      ariaDistLonger: "Más distancia",
+      ariaLangPrev: "Idioma anterior",
+      ariaLangNext: "Idioma siguiente",
+      qualityTier0: "MÍNIMO",
+      qualityTier1: "NORMAL",
+      qualityTier2: "ALTO",
+      qualityTier3: "MÁXIMO",
+      renderDist0: "CORTA",
+      renderDist1: "MEDIA",
+      renderDist2: "NORMAL",
+      renderDist3: "LARGA",
+      renderDist4: "MUY LARGA",
+      hudRoom: "Sala:",
+      hudMoveLine: "WASD mover | Espacio saltar | R recargar",
+      hudAimLine:
+        "Apunta con el ratón | clic derecho zoom | armas 1–4 | 5 botiquín (mantén el clic izquierdo 10 s)",
+      hudMapPrefix: "Mapa:",
+      hudWeaponPrefix: "Arma:",
+      hudBulletsPrefix: "Balas:",
+      hudRefilling: "Recargando…",
+      hudHealthPrefix: "Salud:",
+      hudScorePrefix: "Puntuación:",
+      hudMpSuffix: "(MJ)",
+      mapCrossfire: "fuego cruzado (PvP)",
+      mapArena: "arena zombis",
+      weapon0: "Pistola",
+      weapon1: "Rifle de asalto",
+      weapon2: "Escopeta",
+      weapon3: "Subfusil",
+      weapon4: "Botiquín",
+      bootBuild: "Generando mundo…",
+      bootLoad: "Cargando recursos…",
+      bootPrep: "Preparando pantalla…",
+      lobbyArenaCoop: "ARENA COOPERATIVA",
+      lobbyCrossfire: "FUEGO CRUZADO (PvP)",
+      ariaLoading: "Cargando",
+      languagePickLabel: "Idioma",
+    };
+    
+    const HI = {
+      gameTitle: "ज़ोन नो लाइट",
+      creditsGame: "गेम: Tintly555",
+      creditsMusic: "संगीत: JimmyQrg",
+      btnZombieArena: "ज़ॉम्बी अखाड़ा",
+      btnCrossfire: "क्रॉसफायर (PvP)",
+      btnSettings: "सेटिंग्स",
+      zombieArenaTitle: "ज़ॉम्बी अखाड़ा",
+      btnSingleplayer: "एकल खिलाड़ी",
+      btnCoopMode: "सहयोग मोड",
+      btnBack: "← वापस",
+      lobbyMultiplayer: "मल्टीप्लेयर",
+      btnQuickPlay: "त्वरित खेल",
+      btnCreateRoom: "कमरा बनाएँ",
+      btnJoinViaCode: "कोड से जुड़ें",
+      joinViaCodeTitle: "कोड से जुड़ें",
+      roomCodePlaceholder: "रूम कोड",
+      btnJoin: "जुड़ें",
+      enterCodeError: "कोड दर्ज करें",
+      loadingWorld: "दुनिया लोड हो रही है…",
+      fpsChatHint: "चैट के लिए T दबाएँ",
+      fpsLightHint: "L से लाइट और टॉर्च चालू/बंद",
+      hintClick: "कहीं भी क्लिक करें",
+      medkitHold: "दबाए रखें",
+      deathDefeated: "पराजित",
+      deathDefeat: "हार",
+      deathScoreFmt: "स्कोर: {score}",
+      btnQuit: "बाहर निकलें",
+      btnRestart: "फिर से",
+      btnRespawn: "पुनर्जन्म",
+      paused: "रुका",
+      btnResume: "जारी",
+      pauseRestart: "फिर से",
+      pauseQuit: "बाहर निकलें",
+      nameModalTitle: "अपना नाम",
+      namePlaceholder: "खिलाड़ी",
+      btnNameJoin: "जुड़ें",
+      chatPlaceholder: "संदेश लिखें…",
+      settingsTabAudio: "ऑडियो",
+      settingsTabGraphics: "ग्राफ़िक्स",
+      settingsTabLanguage: "भाषा",
+      settingsAudioH: "ऑडियो",
+      settingsGraphicsH: "ग्राफ़िक्स",
+      settingsLanguageH: "भाषा",
+      masterVol: "मुख्य आवाज़",
+      musicVol: "संगीत",
+      sfxVol: "ध्वनि प्रभाव",
+      qualityHeader: "गुणवत्ता",
+      qualityPerfFidelity: "प्रदर्शन / गुणवत्ता",
+      qualityBlurb:
+        "सिर्फ़ ग्राफ़िक्स बदलता है — ज़ॉम्बी सिंक और खेल वही रहता है। चमक हर प्रीसेट पर संतुलित है।",
+      textureDetail: "टेक्सचर",
+      renderDistHeader: "दृश्य दूरी",
+      renderDistBlurb:
+        "इससे आगे दुनिया कोहरे में घुल जाती है और रोशनी कम हो जाती है। खेल पर असर नहीं।",
+      on: "चालू",
+      off: "बंद",
+      closeTitle: "बंद करें",
+      ariaLowerQ: "कम गुणवत्ता",
+      ariaHigherQ: "अधिक गुणवत्ता",
+      ariaTexPrev: "पिछला",
+      ariaTexNext: "अगला",
+      ariaDistShorter: "कम दूरी",
+      ariaDistLonger: "अधिक दूरी",
+      ariaLangPrev: "पिछली भाषा",
+      ariaLangNext: "अगली भाषा",
+      qualityTier0: "न्यूनतम",
+      qualityTier1: "सामान्य",
+      qualityTier2: "उच्च",
+      qualityTier3: "अधिकतम",
+      renderDist0: "निकट",
+      renderDist1: "मध्यम",
+      renderDist2: "सामान्य",
+      renderDist3: "दूर",
+      renderDist4: "बहुत दूर",
+      hudRoom: "कमरा:",
+      hudMoveLine: "WASD चलना | स्पेस कूद | R रीलोड",
+      hudAimLine:
+        "माउस से निशाना | दायाँ क्लिक ज़ूम | हथियार 1–4 | 5 मेड किट (बायाँ बटन 10 सेकंड दबाए रखें)",
+      hudMapPrefix: "नक्शा:",
+      hudWeaponPrefix: "हथियार:",
+      hudBulletsPrefix: "गोलियाँ:",
+      hudRefilling: "भर रहा है…",
+      hudHealthPrefix: "स्वास्थ्य:",
+      hudScorePrefix: "स्कोर:",
+      hudMpSuffix: "(मल्टी)",
+      mapCrossfire: "क्रॉसफायर (PvP)",
+      mapArena: "ज़ॉम्बी अखाड़ा",
+      weapon0: "पिस्तौल",
+      weapon1: "असॉल्ट राइफ़ल",
+      weapon2: "शॉटगन",
+      weapon3: "एसएमजी",
+      weapon4: "मेड किट",
+      bootBuild: "दुनिया बन रही है…",
+      bootLoad: "संपत्ति लोड…",
+      bootPrep: "प्रदर्शन तैयार…",
+      lobbyArenaCoop: "अखाड़ा सहयोग",
+      lobbyCrossfire: "क्रॉसफायर (PvP)",
+      ariaLoading: "लोड हो रहा है",
+      languagePickLabel: "भाषा",
+    };
+    
+    const AR = {
+      gameTitle: "زون نو لايت",
+      creditsGame: "اللعبة: Tintly555",
+      creditsMusic: "الموسيقى: JimmyQrg",
+      btnZombieArena: "حلبة الزومبي",
+      btnCrossfire: "النيران المتبادلة (لاعب ضد لاعب)",
+      btnSettings: "الإعدادات",
+      zombieArenaTitle: "حلبة الزومبي",
+      btnSingleplayer: "لاعب واحد",
+      btnCoopMode: "وضع تعاوني",
+      btnBack: "← رجوع",
+      lobbyMultiplayer: "متعدد اللاعبين",
+      btnQuickPlay: "لعب سريع",
+      btnCreateRoom: "إنشاء غرفة",
+      btnJoinViaCode: "الانضمام برمز",
+      joinViaCodeTitle: "الانضمام برمز",
+      roomCodePlaceholder: "رمز الغرفة",
+      btnJoin: "انضم",
+      enterCodeError: "أدخل الرمز",
+      loadingWorld: "جاري تحميل العالم…",
+      fpsChatHint: "T للدردشة",
+      fpsLightHint: "L للإضاءة والمصباح اليدوي",
+      hintClick: "انقر في أي مكان",
+      medkitHold: "استمر بالضغط",
+      deathDefeated: "هُزمت",
+      deathDefeat: "هزيمة",
+      deathScoreFmt: "النقاط: {score}",
+      btnQuit: "خروج",
+      btnRestart: "إعادة",
+      btnRespawn: "إنعاش",
+      paused: "متوقف",
+      btnResume: "متابعة",
+      pauseRestart: "إعادة",
+      pauseQuit: "خروج",
+      nameModalTitle: "أدخل اسمك",
+      namePlaceholder: "لاعب",
+      btnNameJoin: "انضم",
+      chatPlaceholder: "اكتب رسالة…",
+      settingsTabAudio: "الصوت",
+      settingsTabGraphics: "الرسومات",
+      settingsTabLanguage: "اللغة",
+      settingsAudioH: "الصوت",
+      settingsGraphicsH: "الرسومات",
+      settingsLanguageH: "اللغة",
+      masterVol: "الصوت الرئيسي",
+      musicVol: "الموسيقى",
+      sfxVol: "المؤثرات",
+      qualityHeader: "الجودة",
+      qualityPerfFidelity: "أداء / جودة",
+      qualityBlurb:
+        "الرسوم فقط — لا تتغيّر مزامنة الزومبي ولا طريقة اللعب. السطوع متوازن بين المستويات.",
+      textureDetail: "النسيج",
+      renderDistHeader: "مسافة الرسم",
+      renderDistBlurb:
+        "أبعد من ذلك يختفي العالم في الضباب وتخفت الأضواء. لا يؤثر على اللعب.",
+      on: "تشغيل",
+      off: "إيقاف",
+      closeTitle: "إغلاق",
+      ariaLowerQ: "جودة أقل",
+      ariaHigherQ: "جودة أعلى",
+      ariaTexPrev: "السابق",
+      ariaTexNext: "التالي",
+      ariaDistShorter: "مسافة أقصر",
+      ariaDistLonger: "مسافة أطول",
+      ariaLangPrev: "اللغة السابقة",
+      ariaLangNext: "اللغة التالية",
+      qualityTier0: "منخفض",
+      qualityTier1: "عادي",
+      qualityTier2: "عالٍ",
+      qualityTier3: "أقصى",
+      renderDist0: "قصير",
+      renderDist1: "متوسط",
+      renderDist2: "عادي",
+      renderDist3: "طويل",
+      renderDist4: "طويل جداً",
+      hudRoom: "الغرفة:",
+      hudMoveLine: "WASD حركة | مسافة قفز | R إعادة التحميل",
+      hudAimLine:
+        "الفأرة للتصويب | زر أيمن للتكبير | أسلحة 1–4 | 5 حقيبة إسعاف (اضغط زر الفأرة الأيسر 10 ثوانٍ)",
+      hudMapPrefix: "الخريطة:",
+      hudWeaponPrefix: "السلاح:",
+      hudBulletsPrefix: "الذخيرة:",
+      hudRefilling: "جاري التعبئة…",
+      hudHealthPrefix: "الصحة:",
+      hudScorePrefix: "النقاط:",
+      hudMpSuffix: "(متعدد)",
+      mapCrossfire: "نيران متبادلة (لاعب ضد لاعب)",
+      mapArena: "حلبة زومبي",
+      weapon0: "مسدس",
+      weapon1: "بندقية هجومية",
+      weapon2: "شوزن",
+      weapon3: "رشاش خفيف",
+      weapon4: "حقيبة إسعاف",
+      bootBuild: "بناء العالم…",
+      bootLoad: "تحميل الموارد…",
+      bootPrep: "تهيئة العرض…",
+      lobbyArenaCoop: "تعاون الحلبة",
+      lobbyCrossfire: "النيران المتبادلة (لاعب ضد لاعب)",
+      ariaLoading: "جاري التحميل",
+      languagePickLabel: "اللغة",
+    };
+    
+    const FR = {
+      gameTitle: "Zone No Light",
+      creditsGame: "Jeu : Tintly555",
+      creditsMusic: "Musique : JimmyQrg",
+      btnZombieArena: "Arène zombies",
+      btnCrossfire: "Crossfire (PvP)",
+      btnSettings: "PARAMÈTRES",
+      zombieArenaTitle: "ARÈNE ZOMBIES",
+      btnSingleplayer: "SOLO",
+      btnCoopMode: "COOP",
+      btnBack: "← RETOUR",
+      lobbyMultiplayer: "MULTIJOUEUR",
+      btnQuickPlay: "PARTIE RAPIDE",
+      btnCreateRoom: "CRÉER UNE SALLE",
+      btnJoinViaCode: "REJOINDRE AVEC CODE",
+      joinViaCodeTitle: "REJOINDRE AVEC CODE",
+      roomCodePlaceholder: "CODE",
+      btnJoin: "REJOINDRE",
+      enterCodeError: "Entrez un code",
+      loadingWorld: "Chargement du monde…",
+      fpsChatHint: "T pour ouvrir le chat",
+      fpsLightHint: "L pour la lumière et la lampe",
+      hintClick: "Cliquez n'importe où",
+      medkitHold: "MAINTENIR",
+      deathDefeated: "VAINCU",
+      deathDefeat: "DÉFAITE",
+      deathScoreFmt: "Score : {score}",
+      btnQuit: "QUITTER",
+      btnRestart: "RECOMMENCER",
+      btnRespawn: "RÉAPPARAÎTRE",
+      paused: "PAUSE",
+      btnResume: "REPRENDRE",
+      pauseRestart: "RECOMMENCER",
+      pauseQuit: "QUITTER",
+      nameModalTitle: "VOTRE NOM",
+      namePlaceholder: "Joueur",
+      btnNameJoin: "REJOINDRE",
+      chatPlaceholder: "Écrire un message…",
+      settingsTabAudio: "AUDIO",
+      settingsTabGraphics: "GRAPHIQUES",
+      settingsTabLanguage: "LANGUE",
+      settingsAudioH: "AUDIO",
+      settingsGraphicsH: "GRAPHIQUES",
+      settingsLanguageH: "LANGUE",
+      masterVol: "Volume principal",
+      musicVol: "Musique",
+      sfxVol: "Effets sonores",
+      qualityHeader: "Qualité",
+      qualityPerfFidelity: "perf. / fidélité",
+      qualityBlurb:
+        "Graphismes uniquement — synchro des zombies et gameplay inchangés. Luminosité équilibrée sur tous les niveaux.",
+      textureDetail: "Textures",
+      renderDistHeader: "Distance d'affichage",
+      renderDistBlurb:
+        "Au-delà, le niveau se perd dans le brouillard et les lumières faiblissent. Sans impact sur le gameplay.",
+      on: "OUI",
+      off: "NON",
+      closeTitle: "Fermer",
+      ariaLowerQ: "Qualité inférieure",
+      ariaHigherQ: "Qualité supérieure",
+      ariaTexPrev: "Précédent",
+      ariaTexNext: "Suivant",
+      ariaDistShorter: "Distance plus courte",
+      ariaDistLonger: "Distance plus longue",
+      ariaLangPrev: "Langue précédente",
+      ariaLangNext: "Langue suivante",
+      qualityTier0: "MINIMAL",
+      qualityTier1: "NORMAL",
+      qualityTier2: "ÉLEVÉ",
+      qualityTier3: "MAXIMAL",
+      renderDist0: "COURTE",
+      renderDist1: "MOYENNE",
+      renderDist2: "NORMALE",
+      renderDist3: "LONGUE",
+      renderDist4: "TRÈS LONGUE",
+      hudRoom: "Salle :",
+      hudMoveLine: "WASD | Espace sauter | R recharger",
+      hudAimLine:
+        "Souris pour viser | clic droit zoom | armes 1–4 | 5 trousse de secours (maintenez le clic gauche 10 s)",
+      hudMapPrefix: "Carte :",
+      hudWeaponPrefix: "Arme :",
+      hudBulletsPrefix: "Munitions :",
+      hudRefilling: "Rechargement…",
+      hudHealthPrefix: "Santé :",
+      hudScorePrefix: "Score :",
+      hudMpSuffix: "(MJ)",
+      mapCrossfire: "crossfire (PvP)",
+      mapArena: "arène zombies",
+      weapon0: "Pistolet",
+      weapon1: "Fusil d'assaut",
+      weapon2: "Fusil à pompe",
+      weapon3: "Mitraillette",
+      weapon4: "Trousse de soin",
+      bootBuild: "Construction du monde…",
+      bootLoad: "Chargement des assets…",
+      bootPrep: "Préparation de l'affichage…",
+      lobbyArenaCoop: "ARÈNE COOP",
+      lobbyCrossfire: "CROSSFIRE (PvP)",
+      ariaLoading: "Chargement",
+      languagePickLabel: "Langue",
+    };
+    
+    const PT = {
+      gameTitle: "Zone No Light",
+      creditsGame: "Jogo: Tintly555",
+      creditsMusic: "Música: JimmyQrg",
+      btnZombieArena: "Arena zumbis",
+      btnCrossfire: "Fogo cruzado (PvP)",
+      btnSettings: "CONFIGURAÇÕES",
+      zombieArenaTitle: "ARENA ZUMBIS",
+      btnSingleplayer: "UM JOGADOR",
+      btnCoopMode: "COOPERATIVO",
+      btnBack: "← VOLTAR",
+      lobbyMultiplayer: "MULTIJOGADOR",
+      btnQuickPlay: "JOGO RÁPIDO",
+      btnCreateRoom: "CRIAR SALA",
+      btnJoinViaCode: "ENTRAR COM CÓDIGO",
+      joinViaCodeTitle: "ENTRAR COM CÓDIGO",
+      roomCodePlaceholder: "CÓDIGO",
+      btnJoin: "ENTRAR",
+      enterCodeError: "Digite um código",
+      loadingWorld: "Carregando mundo…",
+      fpsChatHint: "T abre o chat",
+      fpsLightHint: "L acende luz e lanterna",
+      hintClick: "Clique em qualquer lugar",
+      medkitHold: "SEGURE",
+      deathDefeated: "DERROTADO",
+      deathDefeat: "DERROTA",
+      deathScoreFmt: "Pontuação: {score}",
+      btnQuit: "SAIR",
+      btnRestart: "REINICIAR",
+      btnRespawn: "RENASCER",
+      paused: "PAUSADO",
+      btnResume: "CONTINUAR",
+      pauseRestart: "REINICIAR",
+      pauseQuit: "SAIR",
+      nameModalTitle: "SEU NOME",
+      namePlaceholder: "Jogador",
+      btnNameJoin: "ENTRAR",
+      chatPlaceholder: "Digite uma mensagem…",
+      settingsTabAudio: "ÁUDIO",
+      settingsTabGraphics: "GRÁFICOS",
+      settingsTabLanguage: "IDIOMA",
+      settingsAudioH: "ÁUDIO",
+      settingsGraphicsH: "GRÁFICOS",
+      settingsLanguageH: "IDIOMA",
+      masterVol: "Volume principal",
+      musicVol: "Música",
+      sfxVol: "Efeitos",
+      qualityHeader: "Qualidade",
+      qualityPerfFidelity: "desempenho / fidelidade",
+      qualityBlurb:
+        "Só mexe nos gráficos — sincronização dos zumbis e jogabilidade iguais. Brilho equilibrado em todos os níveis.",
+      textureDetail: "Texturas",
+      renderDistHeader: "Distância de renderização",
+      renderDistBlurb:
+        "Depois disso o mundo some na névoa e as luzes enfraquecem. Não muda a jogabilidade.",
+      on: "LIG",
+      off: "DESL",
+      closeTitle: "Fechar",
+      ariaLowerQ: "Menor qualidade",
+      ariaHigherQ: "Maior qualidade",
+      ariaTexPrev: "Anterior",
+      ariaTexNext: "Próximo",
+      ariaDistShorter: "Distância menor",
+      ariaDistLonger: "Distância maior",
+      ariaLangPrev: "Idioma anterior",
+      ariaLangNext: "Próximo idioma",
+      qualityTier0: "MÍNIMO",
+      qualityTier1: "NORMAL",
+      qualityTier2: "ALTO",
+      qualityTier3: "MÁXIMO",
+      renderDist0: "CURTA",
+      renderDist1: "MÉDIA",
+      renderDist2: "NORMAL",
+      renderDist3: "LONGA",
+      renderDist4: "MUITO LONGA",
+      hudRoom: "Sala:",
+      hudMoveLine: "WASD mover | Espaço pular | R recarregar",
+      hudAimLine:
+        "Mira com o mouse | botão direito zoom | armas 1–4 | 5 kit médico (segure o botão esquerdo 10 s)",
+      hudMapPrefix: "Mapa:",
+      hudWeaponPrefix: "Arma:",
+      hudBulletsPrefix: "Munição:",
+      hudRefilling: "Recarregando…",
+      hudHealthPrefix: "Vida:",
+      hudScorePrefix: "Pontos:",
+      hudMpSuffix: "(MP)",
+      mapCrossfire: "fogo cruzado (PvP)",
+      mapArena: "arena zumbis",
+      weapon0: "Pistola",
+      weapon1: "Rifle de assalto",
+      weapon2: "Espingarda",
+      weapon3: "Submetralhadora",
+      weapon4: "Kit médico",
+      bootBuild: "Construindo mundo…",
+      bootLoad: "Carregando recursos…",
+      bootPrep: "Preparando tela…",
+      lobbyArenaCoop: "ARENA COOP",
+      lobbyCrossfire: "FOGO CRUZADO (PvP)",
+      ariaLoading: "Carregando",
+      languagePickLabel: "Idioma",
+    };
+    
+    const RU = {
+      gameTitle: "Zone No Light",
+      creditsGame: "Игра: Tintly555",
+      creditsMusic: "Музыка: JimmyQrg",
+      btnZombieArena: "Арена зомби",
+      btnCrossfire: "Перекрёстный огонь (PvP)",
+      btnSettings: "НАСТРОЙКИ",
+      zombieArenaTitle: "АРЕНА ЗОМБИ",
+      btnSingleplayer: "ОДИНОЧНАЯ",
+      btnCoopMode: "КООПЕРАТИВ",
+      btnBack: "← НАЗАД",
+      lobbyMultiplayer: "МУЛЬТИПЛЕЕР",
+      btnQuickPlay: "БЫСТРАЯ ИГРА",
+      btnCreateRoom: "СОЗДАТЬ КОМНАТУ",
+      btnJoinViaCode: "ВОЙТИ ПО КОДУ",
+      joinViaCodeTitle: "ВОЙТИ ПО КОДУ",
+      roomCodePlaceholder: "КОД",
+      btnJoin: "ВОЙТИ",
+      enterCodeError: "Введите код",
+      loadingWorld: "Загрузка мира…",
+      fpsChatHint: "T — открыть чат",
+      fpsLightHint: "L — свет и фонарь",
+      hintClick: "Кликните где угодно",
+      medkitHold: "ДЕРЖИТЕ",
+      deathDefeated: "ПОВЕРЖЁН",
+      deathDefeat: "ПОРАЖЕНИЕ",
+      deathScoreFmt: "Счёт: {score}",
+      btnQuit: "ВЫХОД",
+      btnRestart: "ЗАНОВО",
+      btnRespawn: "РЕСПАУН",
+      paused: "ПАУЗА",
+      btnResume: "ПРОДОЛЖИТЬ",
+      pauseRestart: "ЗАНОВО",
+      pauseQuit: "ВЫХОД",
+      nameModalTitle: "ВАШЕ ИМЯ",
+      namePlaceholder: "Игрок",
+      btnNameJoin: "ВОЙТИ",
+      chatPlaceholder: "Сообщение…",
+      settingsTabAudio: "АУДИО",
+      settingsTabGraphics: "ГРАФИКА",
+      settingsTabLanguage: "ЯЗЫК",
+      settingsAudioH: "АУДИО",
+      settingsGraphicsH: "ГРАФИКА",
+      settingsLanguageH: "ЯЗЫК",
+      masterVol: "Общая громкость",
+      musicVol: "Музыка",
+      sfxVol: "Эффекты",
+      qualityHeader: "Качество",
+      qualityPerfFidelity: "производительность / качество",
+      qualityBlurb:
+        "Только картинка — синхрон зомби и геймплей без изменений. Яркость выровнена на всех пресетах.",
+      textureDetail: "Текстуры",
+      renderDistHeader: "Дальность прорисовки",
+      renderDistBlurb:
+        "Дальше мир уходит в туман, свет слабеет. На геймплей не влияет.",
+      on: "ВКЛ",
+      off: "ВЫКЛ",
+      closeTitle: "Закрыть",
+      ariaLowerQ: "Ниже качество",
+      ariaHigherQ: "Выше качество",
+      ariaTexPrev: "Назад",
+      ariaTexNext: "Вперёд",
+      ariaDistShorter: "Ближе дальность",
+      ariaDistLonger: "Дальше дальность",
+      ariaLangPrev: "Предыдущий язык",
+      ariaLangNext: "Следующий язык",
+      qualityTier0: "МИНИМУМ",
+      qualityTier1: "ОБЫЧНОЕ",
+      qualityTier2: "ВЫСОКОЕ",
+      qualityTier3: "МАКСИМУМ",
+      renderDist0: "КОРОТКАЯ",
+      renderDist1: "СРЕДНЯЯ",
+      renderDist2: "ОБЫЧНАЯ",
+      renderDist3: "ДЛИННАЯ",
+      renderDist4: "ОЧЕНЬ ДЛИННАЯ",
+      hudRoom: "Комната:",
+      hudMoveLine: "WASD | Пробел прыжок | R перезарядка",
+      hudAimLine:
+        "Мышь — прицел | ПКМ — зум | оружие 1–4 | 5 аптечка (держите ЛКМ 10 с)",
+      hudMapPrefix: "Карта:",
+      hudWeaponPrefix: "Оружие:",
+      hudBulletsPrefix: "Патроны:",
+      hudRefilling: "Перезарядка…",
+      hudHealthPrefix: "Здоровье:",
+      hudScorePrefix: "Счёт:",
+      hudMpSuffix: "(сеть)",
+      mapCrossfire: "перекрёстный огонь (PvP)",
+      mapArena: "арена зомби",
+      weapon0: "Пистолет",
+      weapon1: "Штурмовая винтовка",
+      weapon2: "Дробовик",
+      weapon3: "ПП",
+      weapon4: "Аптечка",
+      bootBuild: "Создание мира…",
+      bootLoad: "Загрузка ресурсов…",
+      bootPrep: "Подготовка экрана…",
+      lobbyArenaCoop: "АРЕНА КООП",
+      lobbyCrossfire: "ПЕРЕКРЁСТНЫЙ ОГОНЬ (PvP)",
+      ariaLoading: "Загрузка",
+      languagePickLabel: "Язык",
+    };
+    
+    const JA = {
+      gameTitle: "ゾーン・ノー・ライト",
+      creditsGame: "ゲーム：Tintly555",
+      creditsMusic: "音楽：JimmyQrg",
+      btnZombieArena: "ゾンビアリーナ",
+      btnCrossfire: "クロスファイア（PvP）",
+      btnSettings: "設定",
+      zombieArenaTitle: "ゾンビアリーナ",
+      btnSingleplayer: "シングル",
+      btnCoopMode: "協力プレイ",
+      btnBack: "← 戻る",
+      lobbyMultiplayer: "マルチプレイ",
+      btnQuickPlay: "クイックプレイ",
+      btnCreateRoom: "ルーム作成",
+      btnJoinViaCode: "コードで参加",
+      joinViaCodeTitle: "コードで参加",
+      roomCodePlaceholder: "ルームコード",
+      btnJoin: "参加",
+      enterCodeError: "コードを入力",
+      loadingWorld: "ワールド読込中…",
+      fpsChatHint: "T でチャットを開く",
+      fpsLightHint: "L で光源・フラッシュライトのオン／オフ",
+      hintClick: "どこでもクリック",
+      medkitHold: "長押し",
+      deathDefeated: "撃破された",
+      deathDefeat: "敗北",
+      deathScoreFmt: "スコア：{score}",
+      btnQuit: "終了",
+      btnRestart: "リスタート",
+      btnRespawn: "リスポーン",
+      paused: "一時停止",
+      btnResume: "再開",
+      pauseRestart: "リスタート",
+      pauseQuit: "終了",
+      nameModalTitle: "名前を入力",
+      namePlaceholder: "プレイヤー",
+      btnNameJoin: "参加",
+      chatPlaceholder: "メッセージを入力…",
+      settingsTabAudio: "オーディオ",
+      settingsTabGraphics: "グラフィック",
+      settingsTabLanguage: "言語",
+      settingsAudioH: "オーディオ",
+      settingsGraphicsH: "グラフィック",
+      settingsLanguageH: "言語",
+      masterVol: "マスター音量",
+      musicVol: "BGM",
+      sfxVol: "効果音",
+      qualityHeader: "画質",
+      qualityPerfFidelity: "性能 / 画質",
+      qualityBlurb:
+        "見た目の設定だけ。ゾンビの同期やルールは変わりません。明るさはどの段階でも揃えています。",
+      textureDetail: "テクスチャ",
+      renderDistHeader: "描画距離",
+      renderDistBlurb:
+        "これより先は霧でけぶり、光も弱まります。ゲーム内容には影響しません。",
+      on: "ON",
+      off: "OFF",
+      closeTitle: "閉じる",
+      ariaLowerQ: "画質を下げる",
+      ariaHigherQ: "画質を上げる",
+      ariaTexPrev: "前へ",
+      ariaTexNext: "次へ",
+      ariaDistShorter: "距離を短く",
+      ariaDistLonger: "距離を長く",
+      ariaLangPrev: "前の言語",
+      ariaLangNext: "次の言語",
+      qualityTier0: "最低",
+      qualityTier1: "標準",
+      qualityTier2: "高",
+      qualityTier3: "最高",
+      renderDist0: "短",
+      renderDist1: "中",
+      renderDist2: "標準",
+      renderDist3: "長",
+      renderDist4: "最長",
+      hudRoom: "ルーム:",
+      hudMoveLine: "WASD 移動 | スペース ジャンプ | R リロード",
+      hudAimLine:
+        "マウスで照準 | 右クリックでズーム | 武器 1–4 | 5 メディキット（左クリック 10 秒長押しで回復）",
+      hudMapPrefix: "マップ:",
+      hudWeaponPrefix: "武器:",
+      hudBulletsPrefix: "弾薬:",
+      hudRefilling: "装填中…",
+      hudHealthPrefix: "体力:",
+      hudScorePrefix: "スコア:",
+      hudMpSuffix: "（マルチ）",
+      mapCrossfire: "クロスファイア（PvP）",
+      mapArena: "ゾンビアリーナ",
+      weapon0: "ピストル",
+      weapon1: "アサルトライフル",
+      weapon2: "ショットガン",
+      weapon3: "SMG",
+      weapon4: "メディキット",
+      bootBuild: "ワールド構築中…",
+      bootLoad: "アセット読込…",
+      bootPrep: "表示準備…",
+      lobbyArenaCoop: "アリーナ協力",
+      lobbyCrossfire: "クロスファイア（PvP）",
+      ariaLoading: "読込中",
+      languagePickLabel: "言語",
+    };
+    
+    const DE = {
+      gameTitle: "Zone No Light",
+      creditsGame: "Spiel von Tintly555",
+      creditsMusic: "Musik von JimmyQrg",
+      btnZombieArena: "Zombie-Arena",
+      btnCrossfire: "Crossfire (PvP)",
+      btnSettings: "EINSTELLUNGEN",
+      zombieArenaTitle: "ZOMBIE-ARENA",
+      btnSingleplayer: "EINZELSPIELER",
+      btnCoopMode: "KOOPERATIV",
+      btnBack: "← ZURÜCK",
+      lobbyMultiplayer: "MEHRSPIELER",
+      btnQuickPlay: "SCHNELLSPIEL",
+      btnCreateRoom: "RAUM ERSTELLEN",
+      btnJoinViaCode: "MIT CODE BEITRETEN",
+      joinViaCodeTitle: "MIT CODE BEITRETEN",
+      roomCodePlaceholder: "CODE",
+      btnJoin: "BEITRETEN",
+      enterCodeError: "Code eingeben",
+      loadingWorld: "Welt wird geladen…",
+      fpsChatHint: "T öffnet den Chat",
+      fpsLightHint: "L schaltet Licht & Taschenlampe",
+      hintClick: "Irgendwo klicken",
+      medkitHold: "HALTEN",
+      deathDefeated: "BESIEGT",
+      deathDefeat: "NIEDERLAGE",
+      deathScoreFmt: "Punkte: {score}",
+      btnQuit: "BEENDEN",
+      btnRestart: "NEUSTART",
+      btnRespawn: "RESPAWN",
+      paused: "PAUSE",
+      btnResume: "WEITER",
+      pauseRestart: "NEUSTART",
+      pauseQuit: "BEENDEN",
+      nameModalTitle: "DEIN NAME",
+      namePlaceholder: "Spieler",
+      btnNameJoin: "BEITRETEN",
+      chatPlaceholder: "Nachricht…",
+      settingsTabAudio: "AUDIO",
+      settingsTabGraphics: "GRAFIK",
+      settingsTabLanguage: "SPRACHE",
+      settingsAudioH: "AUDIO",
+      settingsGraphicsH: "GRAFIK",
+      settingsLanguageH: "SPRACHE",
+      masterVol: "Gesamtlautstärke",
+      musicVol: "Musik",
+      sfxVol: "Effekte",
+      qualityHeader: "Qualität",
+      qualityPerfFidelity: "Leistung / Qualität",
+      qualityBlurb:
+        "Nur die Darstellung — Zombie-Synchronisation und Spielablauf bleiben gleich. Die Helligkeit ist auf allen Stufen ausgeglichen.",
+      textureDetail: "Texturen",
+      renderDistHeader: "Sichtweite",
+      renderDistBlurb:
+        "Danach versinkt die Welt im Nebel und Lichter werden schwächer. Das Gameplay bleibt gleich.",
+      on: "AN",
+      off: "AUS",
+      closeTitle: "Schließen",
+      ariaLowerQ: "Niedrigere Qualität",
+      ariaHigherQ: "Höhere Qualität",
+      ariaTexPrev: "Zurück",
+      ariaTexNext: "Weiter",
+      ariaDistShorter: "Kürzere Distanz",
+      ariaDistLonger: "Längere Distanz",
+      ariaLangPrev: "Vorherige Sprache",
+      ariaLangNext: "Nächste Sprache",
+      qualityTier0: "MINIMAL",
+      qualityTier1: "NORMAL",
+      qualityTier2: "HOCH",
+      qualityTier3: "MAXIMAL",
+      renderDist0: "KURZ",
+      renderDist1: "MITTEL",
+      renderDist2: "NORMAL",
+      renderDist3: "LANG",
+      renderDist4: "SEHR LANG",
+      hudRoom: "Raum:",
+      hudMoveLine: "WASD bewegen | Leertaste springen | R nachladen",
+      hudAimLine:
+        "Maus zielen | RMB Zoom | Waffen 1–4 | 5 Medikit (links 10 s halten)",
+      hudMapPrefix: "Karte:",
+      hudWeaponPrefix: "Waffe:",
+      hudBulletsPrefix: "Munition:",
+      hudRefilling: "Laden…",
+      hudHealthPrefix: "Leben:",
+      hudScorePrefix: "Punkte:",
+      hudMpSuffix: "(MP)",
+      mapCrossfire: "Crossfire (PvP)",
+      mapArena: "Zombie-Arena",
+      weapon0: "Pistole",
+      weapon1: "Sturmgewehr",
+      weapon2: "Schrotflinte",
+      weapon3: "MP",
+      weapon4: "Medikit",
+      bootBuild: "Welt wird gebaut…",
+      bootLoad: "Ressourcen laden…",
+      bootPrep: "Anzeige vorbereiten…",
+      lobbyArenaCoop: "ARENA-KOOP",
+      lobbyCrossfire: "CROSSFIRE (PvP)",
+      ariaLoading: "Lädt",
+      languagePickLabel: "Sprache",
+    };
+    
+    const KO = {
+      gameTitle: "Zone No Light",
+      creditsGame: "게임: Tintly555",
+      creditsMusic: "음악: JimmyQrg",
+      btnZombieArena: "좀비 아레나",
+      btnCrossfire: "교차 사격 (PvP)",
+      btnSettings: "설정",
+      zombieArenaTitle: "좀비 아레나",
+      btnSingleplayer: "싱글",
+      btnCoopMode: "협동",
+      btnBack: "← 뒤로",
+      lobbyMultiplayer: "멀티플레이",
+      btnQuickPlay: "빠른 플레이",
+      btnCreateRoom: "방 만들기",
+      btnJoinViaCode: "코드로 참가",
+      joinViaCodeTitle: "코드로 참가",
+      roomCodePlaceholder: "방 코드",
+      btnJoin: "참가",
+      enterCodeError: "코드를 입력하세요",
+      loadingWorld: "월드 로딩 중…",
+      fpsChatHint: "T 로 채팅",
+      fpsLightHint: "L 로 조명·손전등 전환",
+      hintClick: "아무 곳이나 클릭",
+      medkitHold: "길게 누르기",
+      deathDefeated: "격파됨",
+      deathDefeat: "패배",
+      deathScoreFmt: "점수: {score}",
+      btnQuit: "종료",
+      btnRestart: "다시 시작",
+      btnRespawn: "부활",
+      paused: "일시정지",
+      btnResume: "계속",
+      pauseRestart: "다시 시작",
+      pauseQuit: "종료",
+      nameModalTitle: "이름 입력",
+      namePlaceholder: "플레이어",
+      btnNameJoin: "참가",
+      chatPlaceholder: "메시지 입력…",
+      settingsTabAudio: "오디오",
+      settingsTabGraphics: "그래픽",
+      settingsTabLanguage: "언어",
+      settingsAudioH: "오디오",
+      settingsGraphicsH: "그래픽",
+      settingsLanguageH: "언어",
+      masterVol: "마스터 볼륨",
+      musicVol: "음악",
+      sfxVol: "효과음",
+      qualityHeader: "품질",
+      qualityPerfFidelity: "성능 / 화질",
+      qualityBlurb:
+        "그래픽 설정만 바뀝니다. 좀비 동기화와 플레이 규칙은 그대로입니다. 밝기는 모든 단계에서 맞춰 두었습니다.",
+      textureDetail: "텍스처",
+      renderDistHeader: "렌더 거리",
+      renderDistBlurb:
+        "이 거리 너머로는 안개에 가려지고 빛도 약해집니다. 게임플레이에는 영향 없습니다.",
+      on: "켜기",
+      off: "끄기",
+      closeTitle: "닫기",
+      ariaLowerQ: "품질 낮춤",
+      ariaHigherQ: "품질 높임",
+      ariaTexPrev: "이전",
+      ariaTexNext: "다음",
+      ariaDistShorter: "거리 짧게",
+      ariaDistLonger: "거리 길게",
+      ariaLangPrev: "이전 언어",
+      ariaLangNext: "다음 언어",
+      qualityTier0: "최저",
+      qualityTier1: "보통",
+      qualityTier2: "높음",
+      qualityTier3: "최고",
+      renderDist0: "짧음",
+      renderDist1: "중간",
+      renderDist2: "보통",
+      renderDist3: "길게",
+      renderDist4: "매우 길게",
+    };
+    
+    const IT = {
+      gameTitle: "Zone No Light",
+      creditsGame: "Gioco di Tintly555",
+      creditsMusic: "Musica di JimmyQrg",
+      btnZombieArena: "Arena zombie",
+      btnCrossfire: "Fuoco incrociato (PvP)",
+      btnSettings: "IMPOSTAZIONI",
+      zombieArenaTitle: "ARENA ZOMBIE",
+      btnSingleplayer: "GIOCATORE SINGOLO",
+      btnCoopMode: "COOPERATIVA",
+      btnBack: "← INDIETRO",
+      lobbyMultiplayer: "MULTIGIOCATORE",
+      btnQuickPlay: "PARTITA VELOCE",
+      btnCreateRoom: "CREA STANZA",
+      btnJoinViaCode: "ENTRA CON CODICE",
+      joinViaCodeTitle: "ENTRA CON CODICE",
+      roomCodePlaceholder: "CODICE",
+      btnJoin: "ENTRA",
+      enterCodeError: "Inserisci un codice",
+      loadingWorld: "Caricamento mondo…",
+      fpsChatHint: "T apre la chat",
+      fpsLightHint: "L accende luce e torcia",
+      hintClick: "Clicca ovunque",
+      medkitHold: "TIENI",
+      deathDefeated: "SCONFITTO",
+      deathDefeat: "SCONFITTA",
+      deathScoreFmt: "Punteggio: {score}",
+      btnQuit: "ESCI",
+      btnRestart: "RIAVVIA",
+      btnRespawn: "RINASCITA",
+      paused: "PAUSA",
+      btnResume: "CONTINUA",
+      pauseRestart: "RIAVVIA",
+      pauseQuit: "ESCI",
+      nameModalTitle: "IL TUO NOME",
+      namePlaceholder: "Giocatore",
+      btnNameJoin: "ENTRA",
+      chatPlaceholder: "Scrivi un messaggio…",
+      settingsTabAudio: "AUDIO",
+      settingsTabGraphics: "GRAFICA",
+      settingsTabLanguage: "LINGUA",
+      settingsAudioH: "AUDIO",
+      settingsGraphicsH: "GRAFICA",
+      settingsLanguageH: "LINGUA",
+      masterVol: "Volume principale",
+      musicVol: "Musica",
+      sfxVol: "Effetti",
+      qualityHeader: "Qualità",
+      qualityPerfFidelity: "prestazioni / fedeltà",
+      qualityBlurb:
+        "Solo la grafica — sincronizzazione degli zombie e gameplay invariati. Luminosità bilanciata su tutti i livelli.",
+      textureDetail: "Texture",
+      renderDistHeader: "Distanza di rendering",
+      renderDistBlurb:
+        "Oltre questa distanza il mondo si dissolve nella nebbia e le luci si attenuano. Non cambia il gameplay.",
+      on: "ON",
+      off: "OFF",
+      closeTitle: "Chiudi",
+      ariaLowerQ: "Qualità inferiore",
+      ariaHigherQ: "Qualità superiore",
+      ariaTexPrev: "Precedente",
+      ariaTexNext: "Successivo",
+      ariaDistShorter: "Distanza minore",
+      ariaDistLonger: "Distanza maggiore",
+      ariaLangPrev: "Lingua precedente",
+      ariaLangNext: "Lingua successiva",
+      qualityTier0: "MINIMO",
+      qualityTier1: "NORMALE",
+      qualityTier2: "ALTO",
+      qualityTier3: "MASSIMO",
+      renderDist0: "BREVE",
+      renderDist1: "MEDIA",
+      renderDist2: "NORMALE",
+      renderDist3: "LUNGA",
+      renderDist4: "MOLTO LUNGA",
+      hudRoom: "Stanza:",
+      hudMoveLine: "WASD muovi | Spazio salto | R ricarica",
+      hudAimLine:
+        "Mirino col mouse | tasto destro zoom | armi 1–4 | 5 kit medico (tieni sinistro 10 s)",
+      hudMapPrefix: "Mappa:",
+      hudWeaponPrefix: "Arma:",
+      hudBulletsPrefix: "Proiettili:",
+      hudRefilling: "Ricarica…",
+      hudHealthPrefix: "Salute:",
+      hudScorePrefix: "Punteggio:",
+      hudMpSuffix: "(MP)",
+      mapCrossfire: "fuoco incrociato (PvP)",
+      mapArena: "arena zombie",
+      weapon0: "Pistola",
+      weapon1: "Fucile d'assalto",
+      weapon2: "Fucile a pompa",
+      weapon3: "Mitraglietta",
+      weapon4: "Kit medico",
+      bootBuild: "Costruzione mondo…",
+      bootLoad: "Caricamento risorse…",
+      bootPrep: "Preparazione schermo…",
+      lobbyArenaCoop: "ARENA COOP",
+      lobbyCrossfire: "FUOCO INCROCIATO (PvP)",
+      ariaLoading: "Caricamento",
+      languagePickLabel: "Lingua",
+    };
+    
+    const NL = {
+      gameTitle: "Zone No Light",
+      creditsGame: "Spel van Tintly555",
+      creditsMusic: "Muziek van JimmyQrg",
+      btnZombieArena: "Zombie-arena",
+      btnCrossfire: "Kruisvuur (PvP)",
+      btnSettings: "INSTELLINGEN",
+      zombieArenaTitle: "ZOMBIE-ARENA",
+      btnSingleplayer: "ALLEEN SPELEN",
+      btnCoopMode: "CO-OP",
+      btnBack: "← TERUG",
+      lobbyMultiplayer: "MULTISPELLER",
+      btnQuickPlay: "SNEL SPELEN",
+      btnCreateRoom: "KAMER MAKEN",
+      btnJoinViaCode: "MEESPELEN MET CODE",
+      joinViaCodeTitle: "MEESPELEN MET CODE",
+      roomCodePlaceholder: "CODE",
+      btnJoin: "MEESPELEN",
+      enterCodeError: "Voer een code in",
+      loadingWorld: "Wereld laden…",
+      fpsChatHint: "T opent de chat",
+      fpsLightHint: "L schakelt lamp & zaklamp",
+      hintClick: "Klik ergens",
+      medkitHold: "INGEDRUKT HOUDEN",
+      deathDefeated: "VERSLAGEN",
+      deathDefeat: "NEDERLAAG",
+      deathScoreFmt: "Score: {score}",
+      btnQuit: "STOP",
+      btnRestart: "HERSTART",
+      btnRespawn: "RESPAWN",
+      paused: "PAUZE",
+      btnResume: "GA VERDER",
+      pauseRestart: "HERSTART",
+      pauseQuit: "STOP",
+      nameModalTitle: "JE NAAM",
+      namePlaceholder: "Speler",
+      btnNameJoin: "JOIN",
+      chatPlaceholder: "Bericht…",
+      settingsTabAudio: "AUDIO",
+      settingsTabGraphics: "BEELD",
+      settingsTabLanguage: "TAAL",
+      settingsAudioH: "AUDIO",
+      settingsGraphicsH: "BEELD",
+      settingsLanguageH: "TAAL",
+      masterVol: "Hoofdvolume",
+      musicVol: "Muziek",
+      sfxVol: "Effecten",
+      qualityHeader: "Kwaliteit",
+      qualityPerfFidelity: "prestatie / kwaliteit",
+      qualityBlurb:
+        "Alleen de weergave — zombiesynchronisatie en gameplay blijven gelijk. Helderheid is op elk niveau gelijk getrokken.",
+      textureDetail: "Texturen",
+      renderDistHeader: "Tekenafstand",
+      renderDistBlurb:
+        "Verder weg verdwijnt de wereld in de mist en worden lichten zwakker. Geen invloed op de gameplay.",
+      on: "AAN",
+      off: "UIT",
+      closeTitle: "Sluiten",
+      ariaLowerQ: "Lagere kwaliteit",
+      ariaHigherQ: "Hogere kwaliteit",
+      ariaTexPrev: "Vorige",
+      ariaTexNext: "Volgende",
+      ariaDistShorter: "Kortere afstand",
+      ariaDistLonger: "Langere afstand",
+      ariaLangPrev: "Vorige taal",
+      ariaLangNext: "Volgende taal",
+      qualityTier0: "MINIMAAL",
+      qualityTier1: "NORMAAL",
+      qualityTier2: "HOOG",
+      qualityTier3: "MAXIMAAL",
+      renderDist0: "KORT",
+      renderDist1: "MIDDEL",
+      renderDist2: "NORMAAL",
+      renderDist3: "LANG",
+      renderDist4: "ZEER LANG",
+      hudRoom: "Kamer:",
+      hudMoveLine: "WASD bewegen | Spatie springen | R herladen",
+      hudAimLine:
+        "Muis richten | rechts zoom | wapens 1–4 | 5 medkit (linkermuisknop 10 s ingedrukt)",
+      hudMapPrefix: "Kaart:",
+      hudWeaponPrefix: "Wapen:",
+      hudBulletsPrefix: "Kogels:",
+      hudRefilling: "Laden…",
+      hudHealthPrefix: "Leven:",
+      hudScorePrefix: "Score:",
+      hudMpSuffix: "(MP)",
+      mapCrossfire: "kruisvuur (PvP)",
+      mapArena: "zombie-arena",
+      weapon0: "Pistool",
+      weapon1: "Aanvalsgeweer",
+      weapon2: "Jachtgeweer",
+      weapon3: "Machinepistool",
+      weapon4: "Medkit",
+      bootBuild: "Wereld bouwen…",
+      bootLoad: "Bronnen laden…",
+      bootPrep: "Scherm voorbereiden…",
+      lobbyArenaCoop: "ARENA CO-OP",
+      lobbyCrossfire: "KRUISVUUR (PvP)",
+      ariaLoading: "Laden",
+      languagePickLabel: "Taal",
+    };
+    
+    const PL = {
+      gameTitle: "Zone No Light",
+      creditsGame: "Gra: Tintly555",
+      creditsMusic: "Muzyka: JimmyQrg",
+      btnZombieArena: "Arena zombie",
+      btnCrossfire: "Crossfire (PvP)",
+      btnSettings: "USTAWIENIA",
+      zombieArenaTitle: "ARENA ZOMBIE",
+      btnSingleplayer: "POJEDYNCZY",
+      btnCoopMode: "KOOPERACJA",
+      btnBack: "← WSTECZ",
+      lobbyMultiplayer: "MULTIPLAYER",
+      btnQuickPlay: "SZYBKA GRA",
+      btnCreateRoom: "UTWÓRZ POKÓJ",
+      btnJoinViaCode: "DOŁĄCZ KODEM",
+      joinViaCodeTitle: "DOŁĄCZ KODEM",
+      roomCodePlaceholder: "KOD",
+      btnJoin: "DOŁĄCZ",
+      enterCodeError: "Wpisz kod",
+      loadingWorld: "Ładowanie świata…",
+      fpsChatHint: "T — czat",
+      fpsLightHint: "L — światło i latarka",
+      hintClick: "Kliknij gdziekolwiek",
+      medkitHold: "PRZYTRZYMAJ",
+      deathDefeated: "POLEGŁY",
+      deathDefeat: "PORAŻKA",
+      deathScoreFmt: "Wynik: {score}",
+      btnQuit: "WYJDŹ",
+      btnRestart: "RESTART",
+      btnRespawn: "ODRODZENIE",
+      paused: "PAUZA",
+      btnResume: "WZNÓW",
+      pauseRestart: "RESTART",
+      pauseQuit: "WYJDŹ",
+      nameModalTitle: "TWOJE IMIĘ",
+      namePlaceholder: "Gracz",
+      btnNameJoin: "DOŁĄCZ",
+      chatPlaceholder: "Wiadomość…",
+      settingsTabAudio: "AUDIO",
+      settingsTabGraphics: "GRAFIKA",
+      settingsTabLanguage: "JĘZYK",
+      settingsAudioH: "AUDIO",
+      settingsGraphicsH: "GRAFIKA",
+      settingsLanguageH: "JĘZYK",
+      masterVol: "Głośność główna",
+      musicVol: "Muzyka",
+      sfxVol: "Efekty",
+      qualityHeader: "Jakość",
+      qualityPerfFidelity: "wydajność / jakość",
+      qualityBlurb:
+        "Tylko grafika — synchron zombie i rozgrywka bez zmian. Jasność wyrównana.",
+      textureDetail: "Detale tekstur",
+      renderDistHeader: "Zasięg rysowania",
+      renderDistBlurb:
+        "Dalej świat ginie we mgle; światła słabną. Bez wpływu na rozgrywkę.",
+      on: "WŁ",
+      off: "WYŁ",
+      closeTitle: "Zamknij",
+      ariaLowerQ: "Niższa jakość",
+      ariaHigherQ: "Wyższa jakość",
+      ariaTexPrev: "Wstecz",
+      ariaTexNext: "Dalej",
+      ariaDistShorter: "Krótszy zasięg",
+      ariaDistLonger: "Dłuższy zasięg",
+      ariaLangPrev: "Poprzedni język",
+      ariaLangNext: "Następny język",
+      qualityTier0: "MINIMALNA",
+      qualityTier1: "NORMALNA",
+      qualityTier2: "WYSOKA",
+      qualityTier3: "MAKSYMALNA",
+      renderDist0: "KRÓTKI",
+      renderDist1: "ŚREDNI",
+      renderDist2: "NORMALNY",
+      renderDist3: "DŁUGI",
+      renderDist4: "BARDZO DŁUGI",
+      hudRoom: "Pokój:",
+      hudMoveLine: "WASD ruch | Spacja skok | R przeładowanie",
+      hudAimLine:
+        "Mysz celuj | PPM zoom | Broń 1–4 | 5 Apteczka (przytrzymaj LPM 10 s)",
+      hudMapPrefix: "Mapa:",
+      hudWeaponPrefix: "Broń:",
+      hudBulletsPrefix: "Amunicja:",
+      hudRefilling: "Ładowanie…",
+      hudHealthPrefix: "Zdrowie:",
+      hudScorePrefix: "Wynik:",
+      hudMpSuffix: "(MP)",
+      mapCrossfire: "crossfire (PvP)",
+      mapArena: "arena zombie",
+      weapon0: "Pistolet",
+      weapon1: "Karabin szturmowy",
+      weapon2: "Strzelba",
+      weapon3: "PM",
+      weapon4: "Apteczka",
+      bootBuild: "Budowanie świata…",
+      bootLoad: "Ładowanie zasobów…",
+      bootPrep: "Przygotowanie ekranu…",
+      lobbyArenaCoop: "ARENA COOP",
+      lobbyCrossfire: "CROSSFIRE (PvP)",
+      ariaLoading: "Ładowanie",
+      languagePickLabel: "Język",
+    };
+    
+    const TR = {
+      gameTitle: "Zone No Light",
+      creditsGame: "Oyun: Tintly555",
+      creditsMusic: "Müzik: JimmyQrg",
+      btnZombieArena: "Zombi Arenası",
+      btnCrossfire: "Çapraz ateş (PvP)",
+      btnSettings: "AYARLAR",
+      zombieArenaTitle: "ZOMBİ ARENASI",
+      btnSingleplayer: "TEK OYUNCU",
+      btnCoopMode: "İŞ BİRLİĞİ",
+      btnBack: "← GERİ",
+      lobbyMultiplayer: "ÇOK OYUNCULU",
+      btnQuickPlay: "HIZLI OYUN",
+      btnCreateRoom: "ODA OLUŞTUR",
+      btnJoinViaCode: "KODLA KATIL",
+      joinViaCodeTitle: "KODLA KATIL",
+      roomCodePlaceholder: "ODA KODU",
+      btnJoin: "KATIL",
+      enterCodeError: "Kod girin",
+      loadingWorld: "Dünya yükleniyor…",
+      fpsChatHint: "Sohbet için T",
+      fpsLightHint: "L ışık ve el feneri",
+      hintClick: "Herhangi bir yere tıklayın",
+      medkitHold: "BASILI TUT",
+      deathDefeated: "YENİLDİN",
+      deathDefeat: "YENİLGİ",
+      deathScoreFmt: "Skor: {score}",
+      btnQuit: "ÇIK",
+      btnRestart: "YENİDEN",
+      btnRespawn: "YENİDEN DOĞ",
+      paused: "DURAKLAT",
+      btnResume: "DEVAM",
+      pauseRestart: "YENİDEN",
+      pauseQuit: "ÇIK",
+      nameModalTitle: "İSMİNİZ",
+      namePlaceholder: "Oyuncu",
+      btnNameJoin: "KATIL",
+      chatPlaceholder: "Mesaj yazın…",
+      settingsTabAudio: "SES",
+      settingsTabGraphics: "GRAFİK",
+      settingsTabLanguage: "DİL",
+      settingsAudioH: "SES",
+      settingsGraphicsH: "GRAFİK",
+      settingsLanguageH: "DİL",
+      masterVol: "Ana ses",
+      musicVol: "Müzik",
+      sfxVol: "Efektler",
+      qualityHeader: "Kalite",
+      qualityPerfFidelity: "performans / kalite",
+      qualityBlurb:
+        "Sadece görüntü — zombi senkronu ve oynanış aynı. Parlaklık dengeli.",
+      textureDetail: "Doku detayı",
+      renderDistHeader: "Çizim mesafesi",
+      renderDistBlurb:
+        "Ötesi siste kaybolur; ışıklar solar. Oynanışı etkilemez.",
+      on: "AÇ",
+      off: "KAPA",
+      closeTitle: "Kapat",
+      ariaLowerQ: "Düşük kalite",
+      ariaHigherQ: "Yüksek kalite",
+      ariaTexPrev: "Önceki",
+      ariaTexNext: "Sonraki",
+      ariaDistShorter: "Daha kısa mesafe",
+      ariaDistLonger: "Daha uzun mesafe",
+      ariaLangPrev: "Önceki dil",
+      ariaLangNext: "Sonraki dil",
+      qualityTier0: "MİNİMUM",
+      qualityTier1: "NORMAL",
+      qualityTier2: "YÜKSEK",
+      qualityTier3: "MAKSİMUM",
+      renderDist0: "KISA",
+      renderDist1: "ORTA",
+      renderDist2: "NORMAL",
+      renderDist3: "UZUN",
+      renderDist4: "ÇOK UZUN",
+      hudRoom: "Oda:",
+      hudMoveLine: "WASD hareket | Boşluk zıpla | R şarjör",
+      hudAimLine:
+        "Fare nişan | sağ tık zoom | Silahlar 1–4 | 5 İlk yardım (M1 10 sn basılı)",
+      hudMapPrefix: "Harita:",
+      hudWeaponPrefix: "Silah:",
+      hudBulletsPrefix: "Mermi:",
+      hudRefilling: "Şarj…",
+      hudHealthPrefix: "Can:",
+      hudScorePrefix: "Skor:",
+      hudMpSuffix: "(ÇOK)",
+      mapCrossfire: "çapraz ateş (PvP)",
+      mapArena: "zombi arenası",
+      weapon0: "Tabanca",
+      weapon1: "Saldırı tüfeği",
+      weapon2: "Pompalı",
+      weapon3: "Makineli tabanca",
+      weapon4: "İlk yardım çantası",
+      bootBuild: "Dünya kuruluyor…",
+      bootLoad: "Varlıklar yükleniyor…",
+      bootPrep: "Ekran hazırlanıyor…",
+      lobbyArenaCoop: "ARENA İŞ BİRLİĞİ",
+      lobbyCrossfire: "ÇAPRAZ ATEŞ (PvP)",
+      ariaLoading: "Yükleniyor",
+      languagePickLabel: "Dil",
+    };
+    
+    function mergeKeys(base, extra) {
+      const out = { ...base };
+      for (const k of Object.keys(base)) {
+        if (extra[k] != null) out[k] = extra[k];
+      }
+      return out;
+    }
+    
+    const GAME_I18N = {
+      en: EN,
+      zh: mergeKeys(EN, ZH),
+      "zh-Hant": mergeKeys(EN, ZH_HANT),
+      es: mergeKeys(EN, ES),
+      hi: mergeKeys(EN, HI),
+      ar: mergeKeys(EN, AR),
+      fr: mergeKeys(EN, FR),
+      pt: mergeKeys(EN, PT),
+      ru: mergeKeys(EN, RU),
+      ja: mergeKeys(EN, JA),
+      de: mergeKeys(EN, DE),
+      ko: mergeKeys(EN, KO),
+      it: mergeKeys(EN, IT),
+      nl: mergeKeys(EN, NL),
+      pl: mergeKeys(EN, PL),
+      tr: mergeKeys(EN, TR),
+    };
+
+
     const app = document.getElementById("app");
     const hud = document.getElementById("hud");
     const fpsValueEl = document.getElementById("fpsValue");
@@ -1071,6 +2789,7 @@
     const medKitReticleEl = document.getElementById("medkitReticle");
     const medKitRingProgEl = document.getElementById("medkitRingProg");
     const hitmarkerEl = document.getElementById("hitmarker");
+    const combatFeedbackEl = document.getElementById("combatFeedback");
     const menuWallBackdropCanvas = document.getElementById("menuWallBackdrop");
     const menuEl = document.getElementById("menu");
     const menuMain = document.getElementById("menuMain");
@@ -1112,7 +2831,7 @@
     const btnMenuSettings = document.getElementById("btnMenuSettings");
     const settingsModal = document.getElementById("settingsModal");
     const settingsScroll = document.getElementById("settingsScroll");
-    const SETTINGS_SECTION_IDS = ["settingsSectionAudio", "settingsSectionGraphics"];
+    const SETTINGS_SECTION_IDS = ["settingsSectionAudio", "settingsSectionGraphics", "settingsSectionLanguage"];
     const btnCloseSettings = document.getElementById("btnCloseSettings");
     const rngMasterVol = document.getElementById("rngMasterVol");
     const rngMusicVol = document.getElementById("rngMusicVol");
@@ -1129,6 +2848,9 @@
     const btnRenderDistPrev = document.getElementById("btnRenderDistPrev");
     const btnRenderDistNext = document.getElementById("btnRenderDistNext");
     const renderDistanceLabel = document.getElementById("renderDistanceLabel");
+    const btnLangPrev = document.getElementById("btnLangPrev");
+    const btnLangNext = document.getElementById("btnLangNext");
+    const languageUiLabel = document.getElementById("languageUiLabel");
     const warFilmOverlay = document.getElementById("warFilmOverlay");
     const shadeOverlay = document.getElementById("shadeOverlay");
     const chatBox = document.getElementById("chatBox");
@@ -1139,7 +2861,6 @@
 
     const SETTINGS_STORAGE_KEY = "fpsGameSettingsV1";
     const QUALITY_LEVELS = ["potato", "regular", "high", "extreme"];
-    const QUALITY_LABELS = ["POTATO", "REGULAR", "HIGH", "EXTREME"];
     /** Scales fog far plane (and matching near) — lower = darkness closes in sooner. */
     const RENDER_DISTANCE_LEVELS = [
       { label: "SHORT", scale: 0.62 },
@@ -1156,6 +2877,7 @@
       qualityIndex: 0,
       texturesOn: true,
       renderDistanceIndex: 2,
+      language: "en",
     };
     let settingsModalOpen = false;
 
@@ -1176,6 +2898,8 @@
             RENDER_DISTANCE_LEVELS.length - 1
           );
         }
+        const allowedLang = new Set(LANGUAGE_OPTIONS.map((x) => x.code));
+        if (typeof o.language === "string" && allowedLang.has(o.language)) gameSettings.language = o.language;
       } catch (_) {}
     }
 
@@ -1186,6 +2910,70 @@
     }
 
     loadGameSettings();
+
+    function t(key) {
+      const lang = gameSettings.language || "en";
+      const pack = GAME_I18N[lang] || GAME_I18N.en;
+      const v = pack[key];
+      if (v != null && v !== "") return v;
+      return GAME_I18N.en[key] ?? key;
+    }
+
+    function showCombatFeedback(text, color, dur = 0.18) {
+      if (!combatFeedbackEl) return;
+      combatFeedbackEl.textContent = text;
+      combatFeedbackEl.style.color = color;
+      combatFeedbackEl.classList.add("show");
+      state.combatFeedbackTimer = Math.max(state.combatFeedbackTimer, dur);
+    }
+
+    function triggerHitFeedback(isKill = false) {
+      if (!hitmarkerEl) return;
+      state.hitmarkerTimer = isKill ? 0.16 : 0.09;
+      hitmarkerEl.classList.add("show");
+      hitmarkerEl.classList.toggle("critical", !!isKill);
+      showCombatFeedback(
+        isKill ? t("combatKill") : t("combatHit"),
+        isKill ? "rgba(255,88,88,0.98)" : "rgba(255,255,255,0.95)",
+        isKill ? 0.34 : 0.12
+      );
+    }
+
+    function languageIndexFromSettings() {
+      const code = gameSettings.language || "en";
+      const i = LANGUAGE_OPTIONS.findIndex((o) => o.code === code);
+      return i >= 0 ? i : 0;
+    }
+
+    function applyGameLanguage() {
+      const lang = gameSettings.language || "en";
+      document.documentElement.lang = lang;
+      document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+      try {
+        document.title = t("gameTitle");
+      } catch (_) {}
+
+      document.querySelectorAll("[data-i18n]").forEach((el) => {
+        const k = el.getAttribute("data-i18n");
+        if (k) el.textContent = t(k);
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+        const k = el.getAttribute("data-i18n-placeholder");
+        if (k && el instanceof HTMLInputElement) el.placeholder = t(k);
+      });
+      document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+        const k = el.getAttribute("data-i18n-title");
+        if (k) el.title = t(k);
+      });
+      document.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
+        const k = el.getAttribute("data-i18n-aria-label");
+        if (k) el.setAttribute("aria-label", t(k));
+      });
+
+      syncSettingsUI();
+      updateHud();
+      refreshOverlayTexts();
+    }
 
     /** Resolve static assets (walls, game-ui, menu.mp3). Declared before WebGL so menu BGM still loads if the renderer throws. */
     function pageDirFromLocation() {
@@ -1597,8 +3385,8 @@
 
     const FLASH_INNER_INTENSITY = 150;
     const FLASH_INNER_DISTANCE = 100;
-    const FLASH_INNER_ANGLE = Math.PI / 16;
-    const FLASH_INNER_PEN = 0.08;
+    const FLASH_INNER_ANGLE = Math.PI / 28;
+    const FLASH_INNER_PEN = 0.055;
 
     /**
      * Punctual lights only (Point / Spot). Hemisphere & directional lights have no decay in Three.js.
@@ -1633,9 +3421,15 @@
       L.intensity = L.userData.baseIntensity * lp.intensityScale;
       L.distance = L.userData.baseDistance * lp.rangeScale;
       L.decay = L.userData.baseDecay * lp.decayBoost;
+      if (L.isSpotLight && !lp.punctualShadows) {
+        L.castShadow = false;
+        L.userData._punctualShadowSetUp = false;
+      }
       if (L.isSpotLight && lp.punctualShadows && !L.userData._punctualShadowSetUp) {
         L.castShadow = true;
-        L.shadow.mapSize.set(512, 512);
+        const q = getQualityId();
+        const sm = q === "extreme" ? 1024 : q === "high" ? 768 : 512;
+        L.shadow.mapSize.set(sm, sm);
         L.shadow.bias = -0.0008;
         L.shadow.normalBias = 0.012;
         L.shadow.radius = lp.shadowRadius;
@@ -1645,6 +3439,11 @@
       if (L.castShadow && L.shadow) {
         L.shadow.radius = lp.shadowRadius;
         try { L.shadow.blurSamples = lp.shadowBlurSamples; } catch (_) {}
+        if (L.isSpotLight && L.userData._punctualShadowSetUp) {
+          const q = getQualityId();
+          const sm = q === "extreme" ? 1024 : q === "high" ? 768 : 512;
+          L.shadow.mapSize.set(sm, sm);
+        }
       }
     }
 
@@ -1898,6 +3697,9 @@
         enemy.group.visible = false;
         detachEyeLightFrom(enemy);
         state.score += 1;
+        triggerHitFeedback(true);
+      } else {
+        triggerHitFeedback(false);
       }
       updateHud();
     });
@@ -2038,7 +3840,8 @@
       canvas.height = 48;
       const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, 256, 48);
-      ctx.font = "bold 28px Audiowide, Arial";
+      ctx.font =
+        'bold 28px Audiowide, "Noto Sans SC", "Noto Sans TC", "Noto Sans JP", "Noto Sans KR", "Noto Sans Arabic", "Noto Sans Devanagari", "Noto Sans", sans-serif';
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillStyle = "#fff";
@@ -2064,7 +3867,8 @@
     function updateNameSprite(rp, name) {
       const ctx = rp.nameCtx;
       ctx.clearRect(0, 0, 256, 48);
-      ctx.font = "bold 28px Audiowide, Arial";
+      ctx.font =
+        'bold 28px Audiowide, "Noto Sans SC", "Noto Sans TC", "Noto Sans JP", "Noto Sans KR", "Noto Sans Arabic", "Noto Sans Devanagari", "Noto Sans", sans-serif';
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillStyle = "#fff";
@@ -2083,6 +3887,14 @@
 
     function makeThirdPersonGun(type) {
       const g = new THREE.Group();
+      if (useBasicShapeCharacters()) {
+        const m = new THREE.MeshLambertMaterial({ color: 0x2a3140 });
+        const z = type === 1 ? 0.72 : type === 2 ? 0.68 : type === 3 ? 0.58 : 0.42;
+        const y = type === 2 ? 0.12 : 0.1;
+        addMeshPart(g, new THREE.BoxGeometry(0.1, y, z), m, 0, 0, 0);
+        g.scale.set(0.9, 0.9, 0.9);
+        return g;
+      }
       const mDark = new THREE.MeshStandardMaterial({ color: 0x1a1f28, roughness: 0.6, metalness: 0.4 });
       const mMetal = new THREE.MeshStandardMaterial({ color: 0x3a4455, roughness: 0.5, metalness: 0.5 });
       const mLight = new THREE.MeshStandardMaterial({ color: 0x5a6575, roughness: 0.4, metalness: 0.6 });
@@ -2119,6 +3931,99 @@
 
     function createRemotePlayer(name) {
       const group = new THREE.Group();
+      if (useBasicShapeCharacters()) {
+        const mBody = new THREE.MeshLambertMaterial({ color: 0x3b5a3e });
+        const mHead = new THREE.MeshLambertMaterial({ color: 0xd4b896 });
+        const mLeg = new THREE.MeshLambertMaterial({ color: 0x2f3228 });
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.92, 0.3), mBody);
+        body.position.y = 1.06;
+        group.add(body);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), mHead);
+        head.position.y = 1.72;
+        group.add(head);
+        const rightArm = new THREE.Group();
+        const leftArm = new THREE.Group();
+        const armMesh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.62, 0.18), mBody);
+        armMesh.position.set(0, -0.28, 0);
+        rightArm.add(armMesh);
+        leftArm.add(armMesh.clone());
+        rightArm.position.set(0.44, 1.44, 0);
+        rightArm.rotation.x = -1.0;
+        leftArm.position.set(-0.44, 1.44, 0);
+        leftArm.rotation.x = -0.8;
+        group.add(rightArm, leftArm);
+        const makeBasicLeg = (px) => {
+          const lg = new THREE.Group();
+          const hi = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.78, 0.22), mLeg);
+          hi.position.set(0, -0.38, 0);
+          lg.add(hi);
+          lg.position.set(px, 0.62, 0);
+          return lg;
+        };
+        const legR = makeBasicLeg(0.16);
+        const legL = makeBasicLeg(-0.16);
+        group.add(legR, legL);
+        const gunModel = makeThirdPersonGun(1);
+        gunModel.position.set(0.08, -0.52, -0.12);
+        rightArm.add(gunModel);
+        const ns = makeNameSprite(name || "Player");
+        ns.sprite.position.set(0, 2.55, 0);
+        group.add(ns.sprite);
+        const flashTarget = new THREE.Object3D();
+        flashTarget.position.set(0, 0, 1);
+        const flashOuter = createPlayerSpotLight(
+          PLAYER_LIGHT_COLOR,
+          FLASH_OUTER_INTENSITY,
+          FLASH_OUTER_DISTANCE,
+          FLASH_OUTER_ANGLE,
+          FLASH_OUTER_PEN,
+          FLASHLIGHT_LIGHT_DECAY
+        );
+        const flashInner = createPlayerSpotLight(
+          PLAYER_LIGHT_COLOR,
+          FLASH_INNER_INTENSITY,
+          FLASH_INNER_DISTANCE,
+          FLASH_INNER_ANGLE,
+          FLASH_INNER_PEN,
+          FLASHLIGHT_LIGHT_DECAY
+        );
+        flashOuter.position.set(0, 0.16, 0.14);
+        flashInner.position.set(0, 0.16, 0.14);
+        const flashMount = new THREE.Group();
+        flashMount.position.set(0, 1.62, 0);
+        flashMount.add(flashOuter);
+        flashMount.add(flashInner);
+        flashMount.add(flashTarget);
+        flashOuter.target = flashTarget;
+        flashInner.target = flashTarget;
+        group.add(flashMount);
+        group.traverse((o) => {
+          if (o.isMesh) {
+            o.castShadow = shouldCharacterCastShadow();
+            o.receiveShadow = true;
+          }
+        });
+        group.visible = false;
+        return {
+          group,
+          x: 0,
+          y: 1.65,
+          z: 0,
+          yaw: 0,
+          name: name || "Player",
+          nameSprite: ns.sprite,
+          nameCanvas: ns.canvas,
+          nameCtx: ns.ctx,
+          nameTex: ns.tex,
+          rightArm,
+          leftArm,
+          rightLeg: legR,
+          leftLeg: legL,
+          walkPhase: 0,
+          gunModel,
+          currentWeapon: 1,
+        };
+      }
       const mCamo1 = new THREE.MeshStandardMaterial({ color: 0x3b5a3e, roughness: 0.85 });
       const mCamo2 = new THREE.MeshStandardMaterial({ color: 0x2d4a30, roughness: 0.85 });
       const mSkin = new THREE.MeshStandardMaterial({ color: 0xe0b890, roughness: 0.7 });
@@ -2272,7 +4177,12 @@
       flashInner.target = flashTarget;
       group.add(flashMount);
 
-      group.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      group.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = shouldCharacterCastShadow();
+          o.receiveShadow = true;
+        }
+      });
       group.visible = false;
       return { group, x: 0, y: 1.65, z: 0, yaw: 0, name: name || "Player",
                nameSprite: ns.sprite, nameCanvas: ns.canvas, nameCtx: ns.ctx, nameTex: ns.tex,
@@ -2397,6 +4307,40 @@
       return QUALITY_LEVELS[gameSettings.qualityIndex] || "regular";
     }
 
+    /** Regular + high: chunky primitives + diffuse surfaces (extreme keeps full detail). */
+    function useBasicShapeCharacters() {
+      const q = getQualityId();
+      return q === "regular" || q === "high";
+    }
+
+    function shouldCharacterCastShadow() {
+      return getQualityId() !== "potato";
+    }
+
+    /** Zombies + remote player bodies: soft moon shadows when quality > potato (see moon.shadow.intensity). */
+    function refreshCharacterShadowCasters() {
+      const cs = shouldCharacterCastShadow();
+      for (let i = 0; i < state.enemies.length; i++) {
+        const e = state.enemies[i];
+        if (!e || !e.group) continue;
+        e.group.traverse((o) => {
+          if (o.isMesh) {
+            o.castShadow = cs;
+            o.receiveShadow = true;
+          }
+        });
+      }
+      for (const rp of remotePlayers.values()) {
+        if (!rp || !rp.group) continue;
+        rp.group.traverse((o) => {
+          if (o.isMesh) {
+            o.castShadow = cs;
+            o.receiveShadow = true;
+          }
+        });
+      }
+    }
+
     function getQualityFogBase() {
       const q = getQualityId();
       if (q === "potato") return { near: 14, far: 58 };
@@ -2413,10 +4357,12 @@
      *   values let high/extreme tiers behave more like physical lights with smooth long-distance attenuation.
      * - decayBoost: how aggressively intensity drops with distance. Lower = closer to inverse-square reality;
      *   slightly higher decay on potato keeps perf cost down.
-     * - shadowRadius: PCF blur radius for soft shadow penumbra (only used for soft shadow types).
-     * - shadowBlurSamples: how many taps for the percentage-closer filter (PCFSoftShadowMap).
+     * - shadowRadius: PCF blur radius for soft moon shadow penumbra (directional shadow).
+     * - shadowBlurSamples: PCF tap count for directional shadow filtering (when supported).
      * - moonIntensityMul / hemiIntensityMul: multipliers applied on top of the legacy values.
-     * - punctualShadows: true = sconce / area lamps cast shadows (PCF) for a near-photoreal look.
+     * - punctualShadows: if true, maze sconce SpotLights cast their own shadow maps. Even a modest arena has
+     *   far too many sconces for stable WebGL — enabling this tends to blank the framebuffer or stall the GPU.
+     *   Keep false; moon (DirectionalLight) still casts the main world shadow.
      * - mazeLightBudget: how many of the maze's per-chunk lights stay visible to the GPU at once.
      */
     function getQualityLightProfile() {
@@ -2436,41 +4382,41 @@
       }
       if (q === "regular") {
         return {
-          intensityScale: 1.18,
-          rangeScale: 1.45,
-          decayBoost: 0.92,
-          shadowRadius: 2.5,
-          shadowBlurSamples: 8,
-          moonIntensityMul: 1.05,
-          hemiIntensityMul: 1.1,
+          intensityScale: 1.26,
+          rangeScale: 1.78,
+          decayBoost: 0.86,
+          shadowRadius: 3.8,
+          shadowBlurSamples: 12,
+          moonIntensityMul: 1.1,
+          hemiIntensityMul: 1.16,
           punctualShadows: false,
-          mazeLightBudget: 36,
+          mazeLightBudget: 40,
         };
       }
       if (q === "high") {
         return {
-          intensityScale: 1.32,
-          rangeScale: 1.75,
-          decayBoost: 0.84,
-          shadowRadius: 4.5,
-          shadowBlurSamples: 16,
-          moonIntensityMul: 1.1,
-          hemiIntensityMul: 1.18,
-          punctualShadows: true,
-          mazeLightBudget: 48,
+          intensityScale: 1.4,
+          rangeScale: 2.12,
+          decayBoost: 0.76,
+          shadowRadius: 5.5,
+          shadowBlurSamples: 20,
+          moonIntensityMul: 1.16,
+          hemiIntensityMul: 1.24,
+          punctualShadows: false,
+          mazeLightBudget: 52,
         };
       }
       // extreme
       return {
-        intensityScale: 1.48,
-        rangeScale: 2.05,
-        decayBoost: 0.78,
-        shadowRadius: 7,
-        shadowBlurSamples: 24,
-        moonIntensityMul: 1.18,
-        hemiIntensityMul: 1.28,
-        punctualShadows: true,
-        mazeLightBudget: 64,
+        intensityScale: 1.58,
+        rangeScale: 2.48,
+        decayBoost: 0.68,
+        shadowRadius: 8.5,
+        shadowBlurSamples: 28,
+        moonIntensityMul: 1.24,
+        hemiIntensityMul: 1.36,
+        punctualShadows: false,
+        mazeLightBudget: 72,
       };
     }
 
@@ -2486,50 +4432,66 @@
           envMapIntensity: 0,
           parallax: 0,
           extremeDisplacement: 0,
+          wallMicroDisplacement: 0,
           wallSegments: 1,
           floorPuddles: false,
           puddleReflectorTex: 0,
+          clearcoat: 0,
+          clearcoatRoughness: 0.5,
+          ior: 1.5,
         };
       }
       if (q === "regular") {
         return {
-          surface: "standard",
-          normalScale: 0.55,
-          roughness: 0.95,
-          metalness: 0.02,
-          envMapIntensity: 0.5,
+          surface: "lambert",
+          normalScale: 0,
+          roughness: 1,
+          metalness: 0,
+          envMapIntensity: 0,
           parallax: 0,
           extremeDisplacement: 0,
+          wallMicroDisplacement: 0,
           wallSegments: 1,
           floorPuddles: false,
           puddleReflectorTex: 0,
+          clearcoat: 0,
+          clearcoatRoughness: 0.5,
+          ior: 1.5,
         };
       }
       if (q === "high") {
         return {
-          surface: "standard",
-          normalScale: 0.95,
-          roughness: 0.88,
-          metalness: 0.04,
-          envMapIntensity: 0.8,
-          parallax: 0.012,
+          surface: "lambert",
+          normalScale: 0,
+          roughness: 1,
+          metalness: 0,
+          envMapIntensity: 0,
+          parallax: 0,
           extremeDisplacement: 0,
-          wallSegments: 4,
-          floorPuddles: true,
-          puddleReflectorTex: 384,
+          wallMicroDisplacement: 0,
+          wallSegments: 1,
+          floorPuddles: false,
+          puddleReflectorTex: 0,
+          clearcoat: 0,
+          clearcoatRoughness: 0.5,
+          ior: 1.5,
         };
       }
       return {
-        surface: "standard",
-        normalScale: 1.4,
-        roughness: 0.78,
-        metalness: 0.06,
-        envMapIntensity: 1.0,
+        surface: "physical",
+        normalScale: 1.72,
+        roughness: 0.74,
+        metalness: 0.065,
+        envMapIntensity: 1.05,
         parallax: 0.022,
-        extremeDisplacement: 0.16,
-        wallSegments: 12,
+        extremeDisplacement: 0.29,
+        wallMicroDisplacement: 0,
+        wallSegments: 14,
         floorPuddles: true,
-        puddleReflectorTex: 640,
+        puddleReflectorTex: 768,
+        clearcoat: 0.14,
+        clearcoatRoughness: 0.34,
+        ior: 1.56,
       };
     }
 
@@ -2573,19 +4535,20 @@
         toneExposure = 1;
       } else if (q === "regular") {
         shadowSz = 512;
-        shadowType = THREE.PCFSoftShadowMap;
+        /** PCFSoftShadowMap is deprecated in r182+; PCFShadowMap + moon.shadow.radius gives soft penumbra. */
+        shadowType = THREE.PCFShadowMap;
         toneMapping = THREE.ACESFilmicToneMapping;
-        toneExposure = 1;
+        toneExposure = 1.24;
       } else if (q === "high") {
         shadowSz = 1024;
-        shadowType = THREE.PCFSoftShadowMap;
+        shadowType = THREE.PCFShadowMap;
         toneMapping = THREE.ACESFilmicToneMapping;
-        toneExposure = 1.05;
+        toneExposure = 1.3;
       } else if (q === "extreme") {
         shadowSz = 1536;
-        shadowType = THREE.PCFSoftShadowMap;
+        shadowType = THREE.PCFShadowMap;
         toneMapping = THREE.ACESFilmicToneMapping;
-        toneExposure = 1.1;
+        toneExposure = 1.36;
       }
 
       const lp = getQualityLightProfile();
@@ -2602,6 +4565,9 @@
       moon.intensity = MOON_BASE_INTENSITY * lp.moonIntensityMul;
       hemi.intensity = HEMI_BASE_INTENSITY * lp.hemiIntensityMul;
       MAX_MAZE_LIGHTS_ACTIVE = lp.mazeLightBudget;
+      if (moon.shadow) {
+        moon.shadow.intensity = q === "potato" ? 1 : THREE.MathUtils.clamp(0.52 + (gameSettings.qualityIndex - 1) * 0.07, 0.48, 0.72);
+      }
 
       applySceneFogAndCameraFar();
       retuneEnvironmentLights();
@@ -2626,6 +4592,7 @@
       syncGameRendererSize();
       applyWallTexture();
       applyPuddlesForQuality();
+      refreshCharacterShadowCasters();
       compileSceneShaders();
     }
 
@@ -2658,7 +4625,6 @@
       }
     }
 
-    applyGraphicsQuality();
     requestAnimationFrame(() => {
       syncGameRendererSize();
       requestAnimationFrame(() => syncGameRendererSize());
@@ -2926,7 +4892,7 @@
         normalCv.height = h;
         const nctx = normalCv.getContext("2d");
         const nimg = nctx.createImageData(w, h);
-        const nstrength = 4.5;
+        const nstrength = 5.85;
         const sample = (x, y) => lum[((y + h) % h) * w + ((x + w) % w)];
         for (let y = 0; y < h; y++) {
           for (let x = 0; x < w; x++) {
@@ -2960,8 +4926,8 @@
         const rctx = roughCv.getContext("2d");
         const rimg = rctx.createImageData(w, h);
         for (let p = 0; p < lum.length; p++) {
-          const k = lum[p];
-          const v = THREE.MathUtils.clamp(0.96 - (k - 0.5) * 0.32, 0.55, 0.99) * 255 | 0;
+          const h = Math.pow(THREE.MathUtils.clamp(lum[p], 0, 1), 0.78);
+          const v = THREE.MathUtils.clamp(0.96 - (h - 0.5) * 0.38, 0.52, 0.99) * 255 | 0;
           const i4 = p * 4;
           rimg.data[i4    ] = v;
           rimg.data[i4 + 1] = v;
@@ -2977,7 +4943,9 @@
         const dctx = dispCv.getContext("2d");
         const dimg = dctx.createImageData(w, h);
         for (let p = 0; p < lum.length; p++) {
-          const v = THREE.MathUtils.clamp(lum[p], 0, 1) * 255 | 0;
+          const h = lum[p];
+          const shaped = Math.pow(h, 0.72);
+          const v = THREE.MathUtils.clamp(shaped, 0, 1) * 255 | 0;
           const i4 = p * 4;
           dimg.data[i4    ] = v;
           dimg.data[i4 + 1] = v;
@@ -3051,15 +5019,16 @@
 
     const _texturedMeshes = [];
     /** World meters per full texture repeat on wall boxes (higher = larger pattern, thin faces use ≥1 repeat). */
-    const WALL_TEXTURE_METERS_PER_REPEAT = 5;
+    /** Slightly larger world repeat so brick tiling is less “wallpaper” on long faces. */
+    const WALL_TEXTURE_METERS_PER_REPEAT = 5.45;
     /** Floor / ceiling planes (crossfire + maze chunks): same world-space texture scale. */
-    const FLOOR_CEILING_METERS_PER_REPEAT = 5;
+    const FLOOR_CEILING_METERS_PER_REPEAT = 5.45;
 
     /**
      * Build a single wall-surface material for the given repeat & tint at the current quality.
-     * Potato uses Lambert (diffuse-only, cheapest path); regular/high/extreme use MeshStandardMaterial with
-     * progressively stronger normal / roughness / displacement contribution — that's what makes the bricks read
-     * with real surface depth instead of a printed-on photo.
+     * Potato uses Lambert (diffuse-only, cheapest path). Regular+ use MeshPhysicalMaterial: normal + roughness maps,
+     * optional micro- or full displacement on tessellated boxes, and a thin clearcoat so mortar reads wet and
+     * grazing reflections break up the “flat wallpaper” look.
      */
     function makeWallMaterial(repeatX, repeatY, color) {
       const tint = color || fallbackWallColor;
@@ -3074,11 +5043,17 @@
         }
         return new THREE.MeshLambertMaterial({ color: tint });
       }
-      const mat = new THREE.MeshStandardMaterial({
+      const dispScale = Math.max(sp.extremeDisplacement || 0, sp.wallMicroDisplacement || 0);
+      const mat = new THREE.MeshPhysicalMaterial({
         map: _cloneTexWithRepeat(wallTexture, repeatX, repeatY),
         color: tint,
         roughness: sp.roughness,
         metalness: sp.metalness,
+        clearcoat: sp.clearcoat != null ? sp.clearcoat : 0,
+        clearcoatRoughness: sp.clearcoatRoughness != null ? sp.clearcoatRoughness : 0.45,
+        ior: sp.ior != null ? sp.ior : 1.5,
+        specularIntensity: 0.35,
+        envMapIntensity: sp.envMapIntensity,
       });
       if (wallNormalTex && sp.normalScale > 0) {
         mat.normalMap = _cloneTexWithRepeat(wallNormalTex, repeatX, repeatY);
@@ -3087,23 +5062,24 @@
       if (wallRoughnessTex) {
         mat.roughnessMap = _cloneTexWithRepeat(wallRoughnessTex, repeatX, repeatY);
       }
-      if (wallDisplacementTex && sp.extremeDisplacement > 0) {
+      if (wallDisplacementTex && dispScale > 0) {
         mat.displacementMap = _cloneTexWithRepeat(wallDisplacementTex, repeatX, repeatY);
-        mat.displacementScale = sp.extremeDisplacement;
-        mat.displacementBias = -sp.extremeDisplacement * 0.5;
+        mat.displacementScale = dispScale;
+        mat.displacementBias = -dispScale * 0.5;
       }
-      mat.envMapIntensity = sp.envMapIntensity;
       return mat;
     }
 
     /**
      * Rebuild the materials of every tracked wall / floor / ceiling mesh from scratch.
      * We swap the whole material so that potato↔regular↔high↔extreme transitions can move between Lambert /
-     * Standard / displaced-Standard. Cheap because materials are flyweights and meshes share repeats.
+     * Physical / displaced-Physical. Tessellation follows combined micro + extreme displacement scales.
      */
     function rebuildAllWallMaterials() {
       if (!wallTexture) return;
       const sp = getQualitySurfaceProfile();
+      const dispScale = Math.max(sp.extremeDisplacement || 0, sp.wallMicroDisplacement || 0);
+      const targetSeg = dispScale > 0 ? Math.max(1, sp.wallSegments | 0) : 0;
       for (const entry of _texturedMeshes) {
         const { mesh, rx, ry, tint, faceRepeats } = entry;
         if (faceRepeats && Array.isArray(mesh.material)) {
@@ -3118,22 +5094,28 @@
           mesh.material = makeWallMaterial(rx || 1, ry || 1, tint);
           try { old.dispose(); } catch (_) {}
         }
-        // Extreme: subdivide the wall geometry on demand so displacementMap actually moves vertices.
-        if (sp.extremeDisplacement > 0 && entry.boxDims && !entry._displacedSegments) {
-          try {
-            mesh.geometry.dispose();
-            mesh.geometry = new THREE.BoxGeometry(
-              entry.boxDims.w, entry.boxDims.h, entry.boxDims.d,
-              sp.wallSegments, sp.wallSegments, sp.wallSegments
-            );
-            entry._displacedSegments = sp.wallSegments;
-          } catch (_) {}
-        } else if (sp.extremeDisplacement === 0 && entry.boxDims && entry._displacedSegments) {
-          try {
-            mesh.geometry.dispose();
-            mesh.geometry = new THREE.BoxGeometry(entry.boxDims.w, entry.boxDims.h, entry.boxDims.d, 1, 1, 1);
-            entry._displacedSegments = 0;
-          } catch (_) {}
+        if (entry.boxDims) {
+          const curSeg = entry._displacedSegments | 0;
+          if (dispScale > 0 && targetSeg !== curSeg) {
+            try {
+              mesh.geometry.dispose();
+              mesh.geometry = new THREE.BoxGeometry(
+                entry.boxDims.w,
+                entry.boxDims.h,
+                entry.boxDims.d,
+                targetSeg,
+                targetSeg,
+                targetSeg
+              );
+              entry._displacedSegments = targetSeg;
+            } catch (_) {}
+          } else if (dispScale === 0 && curSeg > 0) {
+            try {
+              mesh.geometry.dispose();
+              mesh.geometry = new THREE.BoxGeometry(entry.boxDims.w, entry.boxDims.h, entry.boxDims.d, 1, 1, 1);
+              entry._displacedSegments = 0;
+            } catch (_) {}
+          }
         }
       }
     }
@@ -3156,9 +5138,41 @@
      */
     const PUDDLE_DARK_COLOR = 0x0e1014;
     const chunkPuddles = new Map();
+    /** Arena / crossfire shared floor — extra reflectors outside maze chunks (High / Extreme). */
+    const staticFloorPuddles = [];
 
-    function _puddleSeedRng(cx, cz, salt) {
-      return mazeHashSeed(cx, cz, 0x90123456 ^ (salt | 0));
+    function disposeStaticFloorPuddles() {
+      for (const r of staticFloorPuddles) {
+        scene.remove(r);
+        try { if (r.dispose) r.dispose(); } catch (_) {}
+        try { if (r.geometry && r.geometry.dispose) r.geometry.dispose(); } catch (_) {}
+      }
+      staticFloorPuddles.length = 0;
+    }
+
+    function buildStaticFloorPuddles() {
+      const q = getQualityId();
+      if (q !== "high" && q !== "extreme") return;
+      const sp = getQualitySurfaceProfile();
+      if (!sp.floorPuddles) return;
+      let seed = 0x2f4a6d51;
+      const rng = () => {
+        seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+        return (seed >>> 0) / 0xffffffff;
+      };
+      const count = q === "extreme" ? 14 : 8;
+      for (let i = 0; i < count * 6 && staticFloorPuddles.length < count; i++) {
+        const x = (rng() * 2 - 1) * 118;
+        const z = (rng() * 2 - 1) * 118;
+        if (Math.hypot(x, z) < 14) continue;
+        try {
+          if (typeof enemyCollidesWall === "function" && enemyCollidesWall(x, z, 1.4)) continue;
+        } catch (_) {}
+        const sx = 0.72 + rng() * 1.25;
+        const sz = 0.72 + rng() * 1.25;
+        const r = _placePuddleAt(x, z, sx, sz, "__staticFloor__");
+        if (r) staticFloorPuddles.push(r);
+      }
     }
 
     function _placePuddleAt(px, pz, sizeR, sizeC, chunkKey) {
@@ -3188,11 +5202,15 @@
       return reflector;
     }
 
+    function _puddleSeedRng(cx, cz, salt) {
+      return mazeHashSeed(cx, cz, 0x90123456 ^ (salt | 0));
+    }
+
     /** Pick 0–3 puddle anchors from the chunk grid (avoid exterior portal cells; favor open intersections). */
     function _planChunkPuddles(cx, cz, vert, horiz, w, h) {
       const rng = _puddleSeedRng(cx, cz, 0x77);
       const positions = [];
-      const want = 1 + ((rng() * 3) | 0); // 1..3
+      const want = 2 + ((rng() * 4) | 0); // 2..5 — more standing water on high / extreme
       for (let attempt = 0; attempt < 32 && positions.length < want; attempt++) {
         const gx = 1 + ((rng() * (w - 2)) | 0);
         const gy = 1 + ((rng() * (h - 2)) | 0);
@@ -3236,6 +5254,7 @@
       for (const [key] of chunkPuddles) {
         disposeChunkPuddles(key);
       }
+      disposeStaticFloorPuddles();
       const sp = getQualitySurfaceProfile();
       if (!sp.floorPuddles) return;
       for (const [key, ch] of mazeChunks) {
@@ -3244,6 +5263,7 @@
         const arr = buildChunkPuddles(cx, cz, vert, horiz, w, h, key);
         if (arr.length) chunkPuddles.set(key, arr);
       }
+      buildStaticFloorPuddles();
     };
 
     const floorMat = makeWallMaterial(
@@ -3320,9 +5340,9 @@
         rep(w, h),
       ];
       const materials = faceRepeats.map((fr) => makeWallMaterial(fr.rx, fr.ry, color));
-      // Subdivide on extreme tier so displacementMap actually pushes vertices.
-      const sp = getQualitySurfaceProfile();
-      const seg = sp.extremeDisplacement > 0 ? sp.wallSegments : 1;
+      const sp0 = getQualitySurfaceProfile();
+      const disp0 = Math.max(sp0.extremeDisplacement || 0, sp0.wallMicroDisplacement || 0);
+      const seg = disp0 > 0 ? Math.max(1, sp0.wallSegments | 0) : 1;
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d, seg, seg, seg), materials);
       mesh.position.set(x, y, z);
       mesh.castShadow = true;
@@ -3642,6 +5662,21 @@
       const outerR = cw * 0.44;
       const diffR = cw * 0.37;
 
+      if (useBasicShapeCharacters()) {
+        const panel = new THREE.Mesh(
+          new THREE.CylinderGeometry(diffR, diffR * 0.96, 0.07, 10, 1),
+          new THREE.MeshLambertMaterial({
+            color: 0xf2ebe2,
+            emissive: 0xffe8d8,
+            emissiveIntensity: 0.85,
+          })
+        );
+        panel.position.y = -0.09;
+        g.add(panel);
+        g.position.set(px, ceilingY - 0.015, pz);
+        return g;
+      }
+
       const housingMat = new THREE.MeshStandardMaterial({
         color: 0x343b48,
         metalness: 0.78,
@@ -3801,7 +5836,7 @@
           const L = createPhysicalPointLight(
             0xffecd0,
             108 * MAZE_LIGHT_INTENSITY_SCALE,
-            MAZE_CHUNK_WORLD * 0.62
+            MAZE_CHUNK_WORLD * 0.86
           );
           L.position.set(px, MAZE_CEILING_LIGHT_Y, pz);
           L.castShadow = false;
@@ -3862,7 +5897,7 @@
           const spot = createPhysicalSpotLight(
             0xffe4c8,
             220 * MAZE_LIGHT_INTENSITY_SCALE,
-            56,
+            82,
             Math.PI / 4.2,
             0.52
           );
@@ -3876,7 +5911,7 @@
           const sconceFill = createPhysicalPointLight(
             0xffe2c4,
             28 * MAZE_LIGHT_INTENSITY_SCALE,
-            11
+            22
           );
           sconceFill.position.set(lx, 2.12, lz);
           sconceFill.castShadow = false;
@@ -3888,7 +5923,7 @@
           const fill = createPhysicalPointLight(
             0xfff0e4,
             200 * MAZE_LIGHT_INTENSITY_SCALE,
-            MAZE_CHUNK_WORLD * 0.88
+            MAZE_CHUNK_WORLD * 1.12
           );
           fill.position.set(px, ceilingY - 0.14, pz);
           fill.castShadow = false;
@@ -3899,7 +5934,7 @@
           const wideDown = createPhysicalSpotLight(
             0xffebd8,
             320 * MAZE_LIGHT_INTENSITY_SCALE,
-            MAZE_CHUNK_WORLD * 0.95,
+            MAZE_CHUNK_WORLD * 1.18,
             Math.PI / 2.05,
             0.5
           );
@@ -4279,6 +6314,7 @@
       reloading: false,
       reloadEnd: 0,
       hitmarkerTimer: 0,
+      combatFeedbackTimer: 0,
       walkPhase: 0,
       smoothHeadBob: 0,
       weaponBobX: 0,
@@ -4292,6 +6328,13 @@
       medKitDefillPhase: 0,
       medKitDefillStart: 0,
     };
+
+    applyGraphicsQuality();
+    refreshCharacterShadowCasters();
+    requestAnimationFrame(() => {
+      syncGameRendererSize();
+      requestAnimationFrame(() => syncGameRendererSize());
+    });
 
     const weapons = [
       {
@@ -4406,23 +6449,29 @@
 
     function updateHud() {
       const w = weapon();
-      const roomLine = (MULTIPLAYER && ROOM_CODE) ? `<b style="color:#4fd1ff;">Room: ${ROOM_CODE}</b><br>` : "";
+      const wName = t(`weapon${state.weaponIndex}`);
+      const roomLine =
+        MULTIPLAYER && ROOM_CODE
+          ? `<b style="color:#4fd1ff;">${t("hudRoom")} ${ROOM_CODE}</b><br>`
+          : "";
       const mapLabel =
         CURRENT_MAP === "crossfire"
-          ? "crossfire (PVP)"
+          ? t("mapCrossfire")
           : CURRENT_MAP === "arena"
-            ? "zombie arena"
+            ? t("mapArena")
             : CURRENT_MAP;
+      const mpSuffix = MULTIPLAYER ? ` ${t("hudMpSuffix")}` : "";
+      const reloadParen = state.reloading ? ` (${t("hudRefilling")})` : "";
       hud.innerHTML = `
         ${roomLine}
-        Abandoned Orphanage<br>
-        WASD move | Space jump | R reload<br>
-        Mouse aim | RMB zoom | Weapons: 1 2 3 4 | <b>5</b> Med Kit (hold M1 to heal 10s)<br>
-        Map: ${mapLabel}${MULTIPLAYER ? " (MP)" : ""}<br>
-        Weapon: ${w.name}<br>
-        ${state.weaponIndex === 4 ? "" : `Bullets: ${w.ammo} / ${w.magSize}${state.reloading ? "（Refilling...）" : ""}<br>`}
-        Health: ${Math.max(0, Math.floor(player.health))} / ${player.maxHealth}<br>
-        Score: ${state.score}
+        ${t("gameTitle")}<br>
+        ${t("hudMoveLine")}<br>
+        ${t("hudAimLine")}<br>
+        ${t("hudMapPrefix")} ${mapLabel}${mpSuffix}<br>
+        ${t("hudWeaponPrefix")} ${wName}<br>
+        ${state.weaponIndex === 4 ? "" : `${t("hudBulletsPrefix")} ${w.ammo} / ${w.magSize}${reloadParen}<br>`}
+        ${t("hudHealthPrefix")} ${Math.max(0, Math.floor(player.health))} / ${player.maxHealth}<br>
+        ${t("hudScorePrefix")} ${state.score}
       `;
     }
     updateHud();
@@ -4496,6 +6545,168 @@
         hp = 180; speed = 1.05; attackDamage = 14; attackCooldown = 0.70;
       }
 
+      if (useBasicShapeCharacters()) {
+        const lam = (c) => new THREE.MeshLambertMaterial({ color: c });
+        const matShirtB = lam(shirtColor);
+        const matSkinB = lam(skinColor);
+        const matPantsB = lam(pantsColor);
+        const eyeColorVec = new THREE.Color(eyeColor);
+
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.88, 0.34), matShirtB);
+        body.position.y = 1.02;
+        torsoRoot.add(body);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.42, 0.4), matSkinB);
+        head.position.y = 1.78;
+        torsoRoot.add(head);
+        if (type === "tank") {
+          body.scale.set(1.1, 1.08, 1.12);
+          head.scale.set(1.08, 1.08, 1.08);
+        }
+
+        leftArmRoot.position.set(-0.46, 1.48, 0);
+        rightArmRoot.position.set(0.46, 1.48, 0);
+        const armGeo = new THREE.BoxGeometry(0.2, 0.66, 0.2);
+        const armL = new THREE.Mesh(armGeo, matShirtB);
+        armL.position.set(0, -0.3, 0);
+        leftArmRoot.add(armL);
+        rightArmRoot.add(armL.clone());
+
+        leftLegRoot.position.set(-0.2, 0.62, 0);
+        rightLegRoot.position.set(0.2, 0.62, 0);
+        const legGeo = new THREE.BoxGeometry(0.24, 0.8, 0.24);
+        const legLm = new THREE.Mesh(legGeo, matPantsB);
+        legLm.position.set(0, -0.42, 0);
+        leftLegRoot.add(legLm);
+        rightLegRoot.add(legLm.clone());
+
+        root.add(torsoRoot, leftArmRoot, rightArmRoot, leftLegRoot, rightLegRoot);
+
+        const pupilMat = new THREE.MeshBasicMaterial({
+          color: eyeColorVec.clone().multiplyScalar(1.55),
+          toneMapped: false,
+        });
+        const pg = new THREE.SphereGeometry(0.048, 6, 4);
+        const eyeL = new THREE.Mesh(pg, pupilMat);
+        eyeL.position.set(-0.11, 1.78, 0.21);
+        const eyeR = new THREE.Mesh(pg, pupilMat);
+        eyeR.position.set(0.11, 1.78, 0.21);
+        torsoRoot.add(eyeL, eyeR);
+
+        const coronaMat = new THREE.MeshBasicMaterial({
+          color: eyeColorVec.clone().multiplyScalar(0.85),
+          transparent: true,
+          opacity: 0,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          toneMapped: false,
+        });
+        const coronaL = new THREE.Mesh(new THREE.SphereGeometry(0.02, 4, 2), coronaMat);
+        coronaL.position.copy(eyeL.position);
+        const coronaR = new THREE.Mesh(new THREE.SphereGeometry(0.02, 4, 2), coronaMat);
+        coronaR.position.copy(eyeR.position);
+        torsoRoot.add(coronaL, coronaR);
+
+        const specMat = new THREE.MeshPhysicalMaterial({
+          color: 0x111111,
+          visible: false,
+          transparent: true,
+          opacity: 0,
+          roughness: 1,
+          metalness: 0,
+          clearcoat: 0,
+          emissiveIntensity: 0,
+        });
+
+        const _zombieEyeRefs = {
+          eyeColor: eyeColorVec.clone(),
+          pupilMat,
+          coronaMat,
+          specMat,
+          coronaL,
+          coronaR,
+          baseCoronaOpacity: 0,
+          light: null,
+          wantLight: false,
+        };
+
+        root.position.set(x, 0, z);
+        const fy0 = Math.random() * Math.PI * 2;
+        const _zCast = shouldCharacterCastShadow();
+        root.traverse((o) => {
+          if (o.isMesh) {
+            o.castShadow = _zCast;
+            o.receiveShadow = true;
+          }
+        });
+        scene.add(root);
+
+        const hpCanvas = document.createElement("canvas");
+        hpCanvas.width = 128;
+        hpCanvas.height = 24;
+        const hpCtx = hpCanvas.getContext("2d");
+        const hpTexture = new THREE.CanvasTexture(hpCanvas);
+        const hpSprite = new THREE.Sprite(
+          new THREE.SpriteMaterial({
+            map: hpTexture,
+            transparent: true,
+            depthTest: true,
+            depthWrite: false,
+          })
+        );
+        hpSprite.scale.set(1.7, 0.32, 1);
+        hpSprite.position.set(0, 2.75, 0);
+        root.add(hpSprite);
+        hpSprite.raycast = () => {};
+
+        return {
+          type,
+          group: root,
+          torsoRoot,
+          leftArmRoot,
+          rightArmRoot,
+          leftLegRoot,
+          rightLegRoot,
+          hpCanvas,
+          hpCtx,
+          hpTexture,
+          hpSprite,
+          alive: true,
+          hp,
+          maxHp: hp,
+          attackCooldownTimer: 0,
+          attackCooldown,
+          attackDamage,
+          ranged,
+          rangeDistance,
+          respawnTimer: 0,
+          spawn: new THREE.Vector3(x, 0, z),
+          walkTime: Math.random() * 10,
+          moving: false,
+          attackPhase: 0,
+          speed,
+          aware: false,
+          hiddenTimer: 0,
+          facingYaw: fy0,
+          visYaw: fy0,
+          armLV: -0.2,
+          armRV: -0.2,
+          legLV: 0,
+          legRV: 0,
+          torsoBobYV: 0,
+          torsoXV: 0,
+          torsoZV: 0,
+          torsoPitchV: 0,
+          targetId: null,
+          retargetTimer: 0,
+          moveYaw: 0,
+          rangedLosAcquireTimer: 0,
+          wanderPath: null,
+          wanderPathIdx: 0,
+          wanderCooldown: wanderScheduleNextDelay(),
+          eyeRefs: _zombieEyeRefs,
+        };
+      }
+
       const matSkin = new THREE.MeshStandardMaterial({ color: skinColor, roughness: 0.95, metalness: 0 });
       const matSkinD = new THREE.MeshStandardMaterial({ color: skinDark, roughness: 0.95, metalness: 0 });
       const matShirt = new THREE.MeshStandardMaterial({ color: shirtColor, roughness: 0.96, metalness: 0 });
@@ -4553,29 +6764,25 @@
       jawBone.position.set(0, -0.24, 0.02); headGroup.add(jawBone);
 
       /**
-       * Realistic glowing eyes.
+       * Realistic glowing eyes (all quality tiers).
        *
-       *  - Deep socket: dark recessed box inside the skull (sells the depth so the bright pupil reads as 3D).
-       *  - Inner pupil: small sphere, MeshBasicMaterial at full color — unaffected by lighting (looks like an LED).
-       *  - Outer corona: larger transparent additive sphere over the pupil — fakes a soft bloom halo even without
-       *    post-processing, so the glow blends with the surrounding ambient light at distance.
-       *  - Specular cap: tiny shiny sphere with a touch of metalness so the reflection of the room moves across
-       *    the eye when the player walks past (the wet "alive" look).
-       *
-       * The actual coloured point light is created on demand by the eye-light scheduler in `updateEnemies` so we
-       * don't blow the WebGL forward-shading uniform light limit when many zombies exist; only the closest few
-       * zombies project real light at any time.
+       *  - Deep socket for depth.
+       *  - Core pupil: bright MeshBasic (LED core).
+       *  - Corona: additive halo with higher tessellation for smoother falloff.
+       *  - Wet spec layer: MeshPhysicalMaterial with clearcoat + mild iridescence so room lights sweep across
+       *    the surface like a biological lens — reads much more “alive” than a flat emissive dot.
+       *  - Point lights are scheduled separately (see attachEyeLightTo) with inverse-square decay.
        */
       const eyeColorVec = new THREE.Color(eyeColor);
 
-      const eyeSocketMat = new THREE.MeshStandardMaterial({ color: 0x07080a, roughness: 1, metalness: 0 });
+      const eyeSocketMat = new THREE.MeshStandardMaterial({ color: 0x030406, roughness: 1, metalness: 0 });
       const sockL = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.11, 0.06), eyeSocketMat);
       sockL.position.set(-0.10, 0.06, 0.18); headGroup.add(sockL);
       const sockR = sockL.clone(); sockR.position.x = 0.10; headGroup.add(sockR);
 
-      const pupilGeo = new THREE.SphereGeometry(0.046, 10, 8);
+      const pupilGeo = new THREE.SphereGeometry(0.044, 18, 14);
       const pupilMat = new THREE.MeshBasicMaterial({
-        color: eyeColorVec.clone().multiplyScalar(1.45),
+        color: eyeColorVec.clone().multiplyScalar(1.62),
         toneMapped: false,
       });
       const eyeL = new THREE.Mesh(pupilGeo, pupilMat);
@@ -4585,11 +6792,11 @@
       eyeR.position.set(0.10, 0.06, 0.22);
       headGroup.add(eyeR);
 
-      const coronaGeo = new THREE.SphereGeometry(0.085, 10, 8);
+      const coronaGeo = new THREE.SphereGeometry(0.088, 16, 12);
       const coronaMat = new THREE.MeshBasicMaterial({
-        color: eyeColorVec.clone().multiplyScalar(0.85),
+        color: eyeColorVec.clone().multiplyScalar(0.92),
         transparent: true,
-        opacity: 0.42,
+        opacity: 0.48,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         toneMapped: false,
@@ -4603,18 +6810,25 @@
       coronaR.renderOrder = 2;
       headGroup.add(coronaR);
 
-      const specMat = new THREE.MeshStandardMaterial({
-        color: eyeColorVec.clone().lerp(new THREE.Color(0xffffff), 0.55),
-        emissive: eyeColorVec.clone().multiplyScalar(0.4),
-        emissiveIntensity: 1,
-        roughness: 0.18,
-        metalness: 0.55,
+      const specMat = new THREE.MeshPhysicalMaterial({
+        color: eyeColorVec.clone().lerp(new THREE.Color(0xffffff), 0.42),
+        emissive: eyeColorVec.clone().multiplyScalar(0.55),
+        emissiveIntensity: 0.85,
+        roughness: 0.11,
+        metalness: 0.35,
+        clearcoat: 0.92,
+        clearcoatRoughness: 0.08,
+        ior: 1.62,
+        iridescence: 0.35,
+        iridescenceIOR: 1.3,
+        iridescenceThicknessRange: [120, 320],
+        specularIntensity: 1,
       });
-      const specL = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 6), specMat);
-      specL.position.set(-0.10, 0.07, 0.255);
+      const specL = new THREE.Mesh(new THREE.SphereGeometry(0.021, 10, 8), specMat);
+      specL.position.set(-0.10, 0.068, 0.258);
       headGroup.add(specL);
-      const specR = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 6), specMat);
-      specR.position.set(0.10, 0.07, 0.255);
+      const specR = new THREE.Mesh(new THREE.SphereGeometry(0.021, 10, 8), specMat);
+      specR.position.set(0.10, 0.068, 0.258);
       headGroup.add(specR);
 
       const _zombieEyeRefs = {
@@ -4624,8 +6838,7 @@
         specMat,
         coronaL,
         coronaR,
-        baseCoronaOpacity: 0.42,
-        // Real point light is created later (see attachEyeLightTo) only when this zombie is close enough to matter.
+        baseCoronaOpacity: 0.48,
         light: null,
         wantLight: false,
       };
@@ -4727,7 +6940,13 @@
       root.add(torsoRoot, leftArmRoot, rightArmRoot, leftLegRoot, rightLegRoot);
       const fy0 = Math.random() * Math.PI * 2;
       root.position.set(x, 0, z);
-      root.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      const _zCast = shouldCharacterCastShadow();
+      root.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = _zCast;
+          o.receiveShadow = true;
+        }
+      });
 
       scene.add(root);
 
@@ -4791,6 +7010,9 @@
         retargetTimer: 0,
         moveYaw: 0,
         rangedLosAcquireTimer: 0,
+        wanderPath: null,
+        wanderPathIdx: 0,
+        wanderCooldown: wanderScheduleNextDelay(),
         eyeRefs: _zombieEyeRefs,
       };
     }
@@ -4970,8 +7192,6 @@
         drop.userData.life = 0.26;
         bloodGroup.add(drop);
       }
-      state.hitmarkerTimer = 0.08;
-      hitmarkerEl.classList.add("show");
     }
 
     function updateBlood(dt) {
@@ -5433,6 +7653,30 @@
       if (!state.locked && !paused && player.health > 0) renderer.domElement.requestPointerLock();
     });
 
+    /** Hint says "click anywhere"; taps that miss the canvas (or pass through pointer-events:none HUD) still capture. */
+    document.addEventListener(
+      "pointerdown",
+      (e) => {
+        if (!gameWorldReady || paused || player.health <= 0) return;
+        if (menuEl.style.display !== "none") return;
+        if (chatOpen || settingsModalOpen) return;
+        if (state.locked) return;
+        const t = e.target;
+        if (!(t instanceof Node)) return;
+        if (gameBootOverlay && gameBootOverlay.style.display === "flex" && gameBootOverlay.contains(t)) return;
+        if (pauseOverlay && pauseOverlay.style.display === "flex" && pauseOverlay.contains(t)) return;
+        if (settingsModal && settingsModal.style.display === "flex" && settingsModal.contains(t)) return;
+        if (nameModal && nameModal.style.display !== "none" && nameModal.contains(t)) return;
+        if (deathOverlay && deathOverlay.style.display === "block" && deathOverlay.contains(t)) {
+          if (deathOverlay.style.pointerEvents === "auto") return;
+        }
+        try {
+          renderer.domElement.requestPointerLock();
+        } catch (_) {}
+      },
+      { passive: true }
+    );
+
     document.addEventListener("pointerlockchange", () => {
       state.locked = document.pointerLockElement === renderer.domElement;
       if (!state.locked) {
@@ -5747,8 +7991,7 @@
           createBlood(bp);
           createBulletTrail(muzzleStart.clone(), bp.clone(), w.color);
           emitShootNetwork(muzzleStart, bp, w.color, "blood");
-          state.hitmarkerTimer = 0.08;
-          hitmarkerEl.classList.add("show");
+          triggerHitFeedback(false);
 
           const coopArena = MULTIPLAYER && ARENA_COOP && CURRENT_MAP === "arena";
           if (coopArena && !ZOMBIE_AUTHORITY) {
@@ -5766,6 +8009,8 @@
               bestEnemy.group.visible = false;
               detachEyeLightFrom(bestEnemy);
               state.score += 1;
+              triggerHitFeedback(true);
+              createSparks(bp.clone(), 0xff5555);
             }
           }
         } else if (closestDist === rpDist && bestRpId && bestRpHit) {
@@ -5773,8 +8018,7 @@
           createBlood(bp);
           createBulletTrail(muzzleStart.clone(), bp.clone(), w.color);
           emitShootNetwork(muzzleStart, bp, w.color, "blood");
-          state.hitmarkerTimer = 0.08;
-          hitmarkerEl.classList.add("show");
+          triggerHitFeedback(false);
           const dmg = w.damageBody;
           socket.emit("hit", { target: bestRpId, damage: dmg, x: player.position.x, z: player.position.z });
         } else if (wallHit) {
@@ -6078,14 +8322,15 @@
       deathFade.style.background = "rgba(0,0,0,0)";
       deathUI.style.display = "none";
 
-      btnDeathQuit.textContent = "QUIT";
-      btnDeathRestart.textContent = MULTIPLAYER ? "RESPAWN" : "RESTART";
+      btnDeathQuit.textContent = t("btnQuit");
+      btnDeathRestart.textContent = MULTIPLAYER ? t("btnRespawn") : t("btnRestart");
+      btnDeathSettings.textContent = t("btnSettings");
       btnDeathSettings.style.display = "";
 
       if (CURRENT_MAP === "crossfire") {
         deathUI.style.display = "flex";
         deathUI.style.opacity = "0.25";
-        deathTitle.textContent = "DEFEATED";
+        deathTitle.textContent = t("deathDefeated");
         deathTitle.style.color = "#e53e3e";
         deathScore.textContent = "";
         btnDeathRestart.style.display = "";
@@ -6093,8 +8338,8 @@
         deathUI.addEventListener("mouseenter", () => { deathUI.style.opacity = "1"; });
         deathUI.addEventListener("mouseleave", () => { deathUI.style.opacity = "0.25"; });
       } else {
-        deathScore.textContent = `Score: ${state.score}`;
-        deathTitle.textContent = "DEFEAT";
+        deathScore.textContent = t("deathScoreFmt").replace("{score}", String(state.score));
+        deathTitle.textContent = t("deathDefeat");
         deathTitle.style.color = "#e53e3e";
         btnDeathRestart.style.display = "";
         deathOverlay.style.pointerEvents = "none";
@@ -6104,15 +8349,15 @@
     function updateDeathAnim(dt) {
       if (player.health > 0 || CURRENT_MAP === "crossfire") return;
       deathAnimTime += dt;
-      const t = Math.min(deathAnimTime / DEATH_ANIM_DURATION, 1);
-      const fadeOpacity = t * 0.5;
+      const deathPhase = Math.min(deathAnimTime / DEATH_ANIM_DURATION, 1);
+      const fadeOpacity = deathPhase * 0.5;
       deathFade.style.background = `rgba(0,0,0,${fadeOpacity})`;
 
       if (killerEnemy) {
         player.yaw += (deathCamYaw - player.yaw) * Math.min(1, dt * 4);
         player.pitch += (deathCamPitch - player.pitch) * Math.min(1, dt * 4);
       }
-      const zoomFov = deathBaseFov - t * 20;
+      const zoomFov = deathBaseFov - deathPhase * 20;
       camera.fov = Math.max(30, zoomFov);
       camera.updateProjectionMatrix();
 
@@ -6120,7 +8365,7 @@
       camera.rotation.y = player.yaw;
       camera.rotation.x = player.pitch;
 
-      if (t >= 1 && deathUI.style.display === "none") {
+      if (deathPhase >= 1 && deathUI.style.display === "none") {
         deathUI.style.display = "flex";
         deathOverlay.style.pointerEvents = "auto";
       }
@@ -6132,7 +8377,7 @@
       deathUI.style.display = "none";
       deathFade.style.background = "rgba(0,0,0,0)";
       deathOverlay.style.pointerEvents = "none";
-      btnDeathRestart.textContent = "RESTART";
+      btnDeathRestart.textContent = t("btnRestart");
       killerEnemy = null;
       weaponRoot.visible = true;
       refreshLocalPlayerLightsForCurrentState();
@@ -6214,6 +8459,27 @@
       setActiveSettingsTab(chosen);
     }
 
+    function refreshOverlayTexts() {
+      const pauseTitleEl = document.getElementById("pauseTitle");
+      if (pauseTitleEl) pauseTitleEl.textContent = t("paused");
+      btnResume.textContent = t("btnResume");
+      btnPauseSettings.textContent = t("btnSettings");
+      btnPauseRestart.textContent = t("pauseRestart");
+      btnPauseQuit.textContent = t("pauseQuit");
+      btnDeathSettings.textContent = t("btnSettings");
+      btnDeathQuit.textContent = t("btnQuit");
+      btnDeathRestart.textContent = MULTIPLAYER ? t("btnRespawn") : t("btnRestart");
+      if (deathOverlay.style.display === "block" && deathUI.style.display === "flex") {
+        if (CURRENT_MAP === "crossfire") {
+          deathTitle.textContent = t("deathDefeated");
+          deathScore.textContent = "";
+        } else {
+          deathTitle.textContent = t("deathDefeat");
+          deathScore.textContent = t("deathScoreFmt").replace("{score}", String(state.score));
+        }
+      }
+    }
+
     function syncSettingsUI() {
       rngMasterVol.value = String(Math.round(gameSettings.masterVolume * 100));
       rngMusicVol.value = String(Math.round(gameSettings.musicVolume * 100));
@@ -6221,14 +8487,15 @@
       lblMasterVol.textContent = `${rngMasterVol.value}%`;
       lblMusicVol.textContent = `${rngMusicVol.value}%`;
       lblSfxVol.textContent = `${rngSfxVol.value}%`;
-      qualityLabel.textContent = QUALITY_LABELS[gameSettings.qualityIndex] || "REGULAR";
-      textureLabel.textContent = gameSettings.texturesOn ? "ON" : "OFF";
+      qualityLabel.textContent = t(`qualityTier${gameSettings.qualityIndex}`);
+      textureLabel.textContent = gameSettings.texturesOn ? t("on") : t("off");
       const rdi = THREE.MathUtils.clamp(
         gameSettings.renderDistanceIndex | 0,
         0,
         RENDER_DISTANCE_LEVELS.length - 1
       );
-      renderDistanceLabel.textContent = RENDER_DISTANCE_LEVELS[rdi].label;
+      renderDistanceLabel.textContent = t(`renderDist${rdi}`);
+      if (languageUiLabel) languageUiLabel.textContent = LANGUAGE_OPTIONS[languageIndexFromSettings()].native;
     }
 
     function openSettingsModal() {
@@ -6377,6 +8644,107 @@
       return { x: fx, z: fz };
     }
 
+    /** Idle roam: BFS path to a random cell at medium graph distance (nav grid cells). */
+    const WANDER_CELL_DIST_MIN = 6;
+    const WANDER_CELL_DIST_MAX = 20;
+    const WANDER_BFS_STEP_CAP = 90000;
+    const WANDER_WAYPOINT_REACH = 1.35;
+
+    function pushNavNeighbors8(idx, out) {
+      const cr = (idx / navCols) | 0;
+      const cc = idx % navCols;
+      for (let dr = -1; dr <= 1; dr++) {
+        const nr = cr + dr;
+        if (nr < 0 || nr >= navRows) continue;
+        for (let dc = -1; dc <= 1; dc++) {
+          if (dr === 0 && dc === 0) continue;
+          const nc = cc + dc;
+          if (nc < 0 || nc >= navCols) continue;
+          const nIdx = nr * navCols + nc;
+          if (navGrid[nIdx]) continue;
+          if (dr !== 0 && dc !== 0) {
+            if (navGrid[cr * navCols + nc] || navGrid[nr * navCols + cc]) continue;
+          }
+          out.push(nIdx);
+        }
+      }
+    }
+
+    /**
+     * @returns {Array<{x:number,z:number}>|null} world waypoints (cell centers), excluding start cell
+     */
+    function buildRandomWanderPath(ex, ez) {
+      if (!navGrid || navCols < 2 || navRows < 2) return null;
+      const c0 = Math.min(navCols - 1, Math.max(0, ((ex - navMinX) / NAV_CELL) | 0));
+      const r0 = Math.min(navRows - 1, Math.max(0, ((ez - navMinZ) / NAV_CELL) | 0));
+      const startIdx = r0 * navCols + c0;
+      if (navGrid[startIdx]) return null;
+
+      const total = navCols * navRows;
+      const dist = new Uint16Array(total).fill(65535);
+      const parent = new Int32Array(total).fill(-1);
+      dist[startIdx] = 0;
+      const queue = [startIdx];
+      let head = 0;
+      let bfsSteps = 0;
+      while (head < queue.length && bfsSteps < WANDER_BFS_STEP_CAP) {
+        bfsSteps++;
+        const idx = queue[head++];
+        const nd = dist[idx] + 1;
+        const neigh = [];
+        pushNavNeighbors8(idx, neigh);
+        for (let i = 0; i < neigh.length; i++) {
+          const nIdx = neigh[i];
+          if (nd < dist[nIdx]) {
+            dist[nIdx] = nd;
+            parent[nIdx] = idx;
+            queue.push(nIdx);
+          }
+        }
+      }
+
+      const candidates = [];
+      for (let i = 0; i < total; i++) {
+        if (navGrid[i]) continue;
+        const d = dist[i];
+        if (d >= WANDER_CELL_DIST_MIN && d <= WANDER_CELL_DIST_MAX) candidates.push(i);
+      }
+      if (!candidates.length) {
+        for (let i = 0; i < total; i++) {
+          if (navGrid[i]) continue;
+          const d = dist[i];
+          if (d >= 4 && d <= 40) candidates.push(i);
+        }
+      }
+      if (!candidates.length) return null;
+
+      const goalIdx = candidates[(Math.random() * candidates.length) | 0];
+      const chain = [];
+      let cur = goalIdx;
+      let guard = 0;
+      while (cur >= 0 && cur !== startIdx && guard++ < 512) {
+        chain.push(cur);
+        cur = parent[cur];
+      }
+      if (!chain.length) return null;
+      chain.reverse();
+      const path = [];
+      for (let i = 0; i < chain.length; i++) {
+        const gi = chain[i];
+        const gr = (gi / navCols) | 0;
+        const gc = gi % navCols;
+        path.push({
+          x: navMinX + (gc + 0.5) * NAV_CELL,
+          z: navMinZ + (gr + 0.5) * NAV_CELL,
+        });
+      }
+      return path;
+    }
+
+    function wanderScheduleNextDelay() {
+      return 1 + Math.random() * 14;
+    }
+
     // ── Zombie vision / awareness (throttled, 360° FOV) ──
     const LOSE_RATIO = 0.10;
     const LOSE_TIME = 15.0;
@@ -6474,6 +8842,8 @@
         if (ratio > 0) {
           enemy.aware = true;
           enemy.hiddenTimer = 0;
+          enemy.wanderPath = null;
+          enemy.wanderPathIdx = 0;
         }
       } else {
         if (ratio < LOSE_RATIO) {
@@ -6482,6 +8852,7 @@
             enemy.aware = false;
             enemy.hiddenTimer = 0;
             enemy.targetId = null;
+            enemy.wanderCooldown = wanderScheduleNextDelay();
           }
         } else {
           enemy.hiddenTimer = 0;
@@ -6518,18 +8889,17 @@
      *
      *  - Corona pulses: a low-amplitude breathing curve so eyes feel "alive"; the pulse rate ties to whether
      *    the zombie is currently aware of a target (faster + brighter when hostile).
-     *  - Eye lights: real `THREE.PointLight`s but only attached to the closest few zombies to camera (and only
-     *    on regular+ tiers) so we never blow the WebGL forward shading uniform light limit.  This actually
-     *    casts coloured light onto nearby walls / floors — that's what gives the eyes their cinematic glow.
+     *  - Eye lights: real `THREE.PointLight`s with inverse-square falloff (decay 2) on the closest zombies per
+     *    tier so nearby geometry picks up coloured bounce; capped so WebGL light limits stay safe.
      */
-    const MAX_ACTIVE_EYE_LIGHTS_BY_TIER = { potato: 0, regular: 4, high: 8, extreme: 14 };
+    const MAX_ACTIVE_EYE_LIGHTS_BY_TIER = { potato: 2, regular: 8, high: 13, extreme: 20 };
     const _eyeTmp = new THREE.Vector3();
 
     function _eyeBaseLightConfig(type) {
-      if (type === "fast")   return { intensity: 1.6, distance: 4.5, decay: 1.6 };
-      if (type === "gunner") return { intensity: 1.4, distance: 4.0, decay: 1.7 };
-      if (type === "tank")   return { intensity: 2.4, distance: 6.5, decay: 1.4 };
-      return { intensity: 1.7, distance: 4.8, decay: 1.6 };
+      if (type === "fast")   return { intensity: 2.85, distance: 7.4, decay: 2.0 };
+      if (type === "gunner") return { intensity: 2.55, distance: 6.5, decay: 2.0 };
+      if (type === "tank")   return { intensity: 3.65, distance: 9.8, decay: 2.0 };
+      return { intensity: 3.0, distance: 7.2, decay: 2.0 };
     }
 
     function attachEyeLightTo(enemy) {
@@ -6557,7 +8927,7 @@
       const tier = getQualityId();
       const lp = getQualityLightProfile();
       const cap = MAX_ACTIVE_EYE_LIGHTS_BY_TIER[tier] || 0;
-      // Cap reached or tier is potato → strip every light immediately so the next frame's scheduler sees a clean state.
+      // Cap 0 = no runtime eye lights (reserved); otherwise re-tune attached lights.
       if (cap === 0) {
         for (const e of state.enemies) detachEyeLightFrom(e);
         return;
@@ -6588,8 +8958,13 @@
         const op = THREE.MathUtils.clamp(er.baseCoronaOpacity * (0.65 + 0.55 * pulse * aware), 0, 0.95);
         if (er.coronaMat) er.coronaMat.opacity = op;
         if (er.pupilMat) {
-          const k = 1.0 + 0.45 * pulse * aware;
-          er.pupilMat.color.copy(er.eyeColor).multiplyScalar(1.45 * k);
+          const k = 1.0 + 0.52 * pulse * aware;
+          er.pupilMat.color.copy(er.eyeColor).multiplyScalar(1.58 * k);
+        }
+        if (er.specMat) {
+          const sk = 0.55 + 1.05 * pulse * aware;
+          er.specMat.emissiveIntensity = THREE.MathUtils.clamp(sk, 0.35, 2.2);
+          er.specMat.clearcoat = THREE.MathUtils.clamp(0.78 + 0.2 * pulse * aware, 0.5, 1);
         }
         if (cap > 0) {
           _eyeTmp.copy(e.group.position).sub(camera.position);
@@ -6662,6 +9037,9 @@
             enemy.targetId = null;
             enemy.retargetTimer = 0;
             enemy.rangedLosAcquireTimer = 0;
+            enemy.wanderPath = null;
+            enemy.wanderPathIdx = 0;
+            enemy.wanderCooldown = wanderScheduleNextDelay();
             enemy.facingYaw = Math.random() * Math.PI * 2;
             enemy.visYaw = enemy.facingYaw;
             enemy.armLV = -0.2;
@@ -6673,6 +9051,11 @@
           continue;
         }
 
+        if (enemy.aware) {
+          enemy.wanderPath = null;
+          enemy.wanderPathIdx = 0;
+        }
+
         const target = getEnemyTarget(enemy);
         const dx = target.x - enemy.group.position.x;
         const dz = target.z - enemy.group.position.z;
@@ -6680,6 +9063,15 @@
 
         if ((visFrameCounter + ei) % 8 === 0) {
           updateAwareness(enemy, dt * 8);
+        }
+        if (!enemy.aware && enemy.wanderPath && enemy.wanderPath.length) {
+          const tgtSpot = getEnemyTarget(enemy);
+          if (computeVisibility(enemy.group.position.x, enemy.group.position.z, tgtSpot.x, tgtSpot.z) > 0) {
+            enemy.aware = true;
+            enemy.hiddenTimer = 0;
+            enemy.wanderPath = null;
+            enemy.wanderPathIdx = 0;
+          }
         }
 
         enemy.retargetTimer += dt;
@@ -6826,9 +9218,65 @@
             }
           }
         } else {
-          enemy.moving = false;
-          enemy.facingYaw += dt * 0.3;
           enemy.rangedLosAcquireTimer = 0;
+          enemy.wanderCooldown -= dt;
+          if (enemy.wanderPath && enemy.wanderPathIdx < enemy.wanderPath.length) {
+            const wp = enemy.wanderPath[enemy.wanderPathIdx];
+            const wx = wp.x - enemy.group.position.x;
+            const wz = wp.z - enemy.group.position.z;
+            const wdist = Math.sqrt(wx * wx + wz * wz);
+            if (wdist < WANDER_WAYPOINT_REACH) {
+              enemy.wanderPathIdx++;
+              if (enemy.wanderPathIdx >= enemy.wanderPath.length) {
+                enemy.wanderPath = null;
+                enemy.wanderPathIdx = 0;
+                enemy.wanderCooldown = wanderScheduleNextDelay();
+              }
+            }
+            if (enemy.wanderPath && enemy.wanderPathIdx < enemy.wanderPath.length) {
+              const wp2 = enemy.wanderPath[enemy.wanderPathIdx];
+              const wx2 = wp2.x - enemy.group.position.x;
+              const wz2 = wp2.z - enemy.group.position.z;
+              const wdist2 = Math.sqrt(wx2 * wx2 + wz2 * wz2);
+              if (wdist2 > 0.05) {
+                enemy.facingYaw = Math.atan2(wx2, wz2);
+                const step = enemy.speed * dt * 0.88;
+                const inv = 1 / wdist2;
+                let sx = wx2 * inv * step;
+                let sz = wz2 * inv * step;
+                const nx = enemy.group.position.x + sx;
+                const nz = enemy.group.position.z + sz;
+                if (!enemyCollidesWall(nx, nz)) {
+                  enemy.group.position.x = nx;
+                  enemy.group.position.z = nz;
+                } else if (!enemyCollidesWall(nx, enemy.group.position.z)) {
+                  enemy.group.position.x = nx;
+                } else if (!enemyCollidesWall(enemy.group.position.x, nz)) {
+                  enemy.group.position.z = nz;
+                }
+                enemy.moveYaw = enemy.facingYaw;
+                enemy.walkTime += dt * (enemy.type === "fast" ? 12 : 8);
+                enemy.moving = true;
+              } else {
+                enemy.moving = false;
+              }
+            } else {
+              enemy.moving = false;
+            }
+          } else if (enemy.wanderCooldown <= 0) {
+            const path = buildRandomWanderPath(enemy.group.position.x, enemy.group.position.z);
+            if (path && path.length) {
+              enemy.wanderPath = path;
+              enemy.wanderPathIdx = 0;
+            } else {
+              enemy.wanderCooldown = 2 + Math.random() * 4;
+            }
+            enemy.moving = false;
+            enemy.facingYaw += dt * 0.28;
+          } else {
+            enemy.moving = false;
+            enemy.facingYaw += dt * 0.3;
+          }
         }
 
         enemy.visYaw = dampAngle(enemy.visYaw, enemy.facingYaw, dt, 14);
@@ -6921,6 +9369,13 @@
         state.hitmarkerTimer -= dt;
       } else {
         hitmarkerEl.classList.remove("show");
+        hitmarkerEl.classList.remove("critical");
+      }
+
+      if (state.combatFeedbackTimer > 0) {
+        state.combatFeedbackTimer -= dt;
+      } else if (combatFeedbackEl) {
+        combatFeedbackEl.classList.remove("show");
       }
     }
 
@@ -7123,7 +9578,7 @@
       gameWorldReady = false;
       gameBootOverlay.style.display = "flex";
       gameBootOverlay.setAttribute("aria-busy", "true");
-      gameBootLabel.textContent = "Building world…";
+      gameBootLabel.textContent = t("bootBuild");
       weaponRoot.visible = false;
       setLocalPlayerLights(false);
 
@@ -7228,7 +9683,7 @@
       }
 
       try {
-        gameBootLabel.textContent = "Loading assets…";
+        gameBootLabel.textContent = t("bootLoad");
         await preloadCriticalGameAssets();
       } catch (err) {
         console.warn("[boot] asset preload", err);
@@ -7243,7 +9698,7 @@
       compileSceneShaders();
 
       weaponRoot.visible = true;
-      gameBootLabel.textContent = "Preparing display…";
+      gameBootLabel.textContent = t("bootPrep");
       /** Force a fresh layout + size sync before flipping gameWorldReady so the first rendered frame already fills the screen. */
       await waitForRenderableViewport();
       syncGameRendererSize();
@@ -7304,9 +9759,15 @@
       document.getElementById(id).style.display = "flex";
     }
 
-    function showLobby(mode, title) {
+    function showLobby(mode) {
       pendingLobbyMode = mode;
-      lobbyTitle.textContent = title;
+      const titleKey =
+        mode === "arena-coop"
+          ? "lobbyArenaCoop"
+          : mode === "crossfire"
+            ? "lobbyCrossfire"
+            : "lobbyMultiplayer";
+      lobbyTitle.textContent = t(titleKey);
       showMenuPanel("menuLobby");
     }
 
@@ -7326,10 +9787,10 @@
 
     btnArena.addEventListener("click", () => showMenuPanel("menuArenaMode"));
     btnArenaSingle.addEventListener("click", () => startGame("arena", false));
-    btnArenaCoop.addEventListener("click", () => showLobby("arena-coop", "ARENA CO-OP"));
+    btnArenaCoop.addEventListener("click", () => showLobby("arena-coop"));
     btnArenaBack.addEventListener("click", () => showMenuPanel("menuMain"));
 
-    btnCrossfire.addEventListener("click", () => showLobby("crossfire", "CROSSFIRE (PVP)"));
+    btnCrossfire.addEventListener("click", () => showLobby("crossfire"));
 
     btnQuickplay.addEventListener("click", () => {
       socket.emit("quickplay", pendingLobbyMode, (res) => {
@@ -7355,7 +9816,7 @@
 
     btnCodeJoin.addEventListener("click", () => {
       const code = codeInput.value.trim().toUpperCase();
-      if (!code) { codeError.textContent = "Enter a code"; return; }
+      if (!code) { codeError.textContent = t("enterCodeError"); return; }
       socket.emit("joinByCode", { code, mode: pendingLobbyMode }, (res) => {
         if (res.error) { codeError.textContent = res.error; return; }
         const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
@@ -7374,7 +9835,7 @@
     });
 
     btnNameOk.addEventListener("click", () => {
-      playerName = nameInput.value.trim().slice(0, 16) || "Player";
+      playerName = nameInput.value.trim().slice(0, 16) || t("namePlaceholder");
       nameModal.style.display = "none";
       const map = nameModal._pendingMap || "crossfire";
       const coopArena = map === "arena" && pendingLobbyMode === "arena-coop";
@@ -7469,7 +9930,17 @@
     btnRenderDistPrev.addEventListener("click", () => cycleRenderDistance(-1));
     btnRenderDistNext.addEventListener("click", () => cycleRenderDistance(1));
 
-    syncSettingsUI();
+    function cycleLanguage(delta) {
+      const n = LANGUAGE_OPTIONS.length;
+      const idx = (languageIndexFromSettings() + delta + n) % n;
+      gameSettings.language = LANGUAGE_OPTIONS[idx].code;
+      saveGameSettings();
+      applyGameLanguage();
+    }
+    btnLangPrev.addEventListener("click", () => cycleLanguage(-1));
+    btnLangNext.addEventListener("click", () => cycleLanguage(1));
+
+    applyGameLanguage();
 
     window.addEventListener("resize", () => {
       syncGameRendererSize();

@@ -23,7 +23,9 @@
           /** `/game` and `/game/` are routes for game.html; static files stay at site root (/walls.png), not under /game/. */
           function isBareGameRoute(path) {
             var segs = String(path || "").replace(/\/+$/, "").split("/").filter(Boolean);
-            return segs.length === 1 && segs[0].toLowerCase() === "game";
+            if (segs.length !== 1) return false;
+            var s = segs[0].toLowerCase();
+            return s === "game" || s === "game-self-hosted" || s === "game-self-hosted.html";
           }
           /**
            * Some hosts/proxies put game.html under .../html/ while assets remain one level up; treat that path as if it
@@ -938,7 +940,7 @@
       <p data-i18n="creditsGame">Game by Tintly555</p>
       <p data-i18n="creditsMusic">Music by JimmyQrg</p>
       <button type="button" id="btnArena" data-i18n="btnZombieArena">Zombie Arena</button>
-      <button type="button" id="btnCrossfire" data-i18n="btnCrossfire">Crossfire (PVP)</button>
+      <button type="button" id="btnCrossfire" data-i18n="btnCrossfirePickMap">Crossfire (PVP — select map)</button>
       <button type="button" id="btnMenuSettings" data-i18n="btnSettings">SETTINGS</button>
     </div>
     <div id="menuArenaMode" style="display:none;flex-direction:column;align-items:center;gap:10px;">
@@ -947,8 +949,16 @@
       <button type="button" id="btnArenaCoop" data-i18n="btnCoopMode">CO-OP MODE</button>
       <button type="button" id="btnArenaBack" data-i18n="btnBack">← BACK</button>
     </div>
+    <div id="menuPvpMaps" style="display:none;flex-direction:column;align-items:center;gap:10px;">
+      <h2 style="font-family:var(--game-font-ui);font-size:24px;margin:0 0 10px 0;letter-spacing:2px;" data-i18n="pvpMapTitle">CROSSFIRE — MAP</h2>
+      <p style="font-family:var(--game-font-ui);font-size:12px;opacity:0.78;margin:0 0 8px 0;max-width:300px;text-align:center;line-height:1.45;" data-i18n="pvpMapDesc">Choose the PVP layout, then use Quick Play / Create / Join.</p>
+      <button type="button" id="btnPvpMapClassic" data-i18n="pvpMapClassic">CLASSIC (ORIGINAL)</button>
+      <button type="button" id="btnPvpMapGrid" data-i18n="pvpMapGrid">GRID KILLHOUSE</button>
+      <button type="button" id="btnPvpMapBack" data-i18n="pvpMapBack">← BACK</button>
+    </div>
     <div id="menuLobby" style="display:none;flex-direction:column;align-items:center;gap:10px;">
       <h2 id="lobbyTitle" style="font-family:var(--game-font-ui);font-size:24px;margin:0 0 10px 0;letter-spacing:2px;">MULTIPLAYER</h2>
+      <p id="lobbyError" style="font-family:var(--game-font-ui);color:#e53e3e;font-size:13px;margin:0 0 6px 0;min-height:20px;text-align:center;max-width:300px;line-height:1.35;"></p>
       <button type="button" id="btnQuickplay" data-i18n="btnQuickPlay">QUICK PLAY</button>
       <button type="button" id="btnCreateRoom" data-i18n="btnCreateRoom">CREATE A ROOM</button>
       <button type="button" id="btnJoinCode" data-i18n="btnJoinViaCode">JOIN VIA CODE</button>
@@ -1239,6 +1249,17 @@
       bootPrep: "Preparing display…",
       lobbyArenaCoop: "ARENA CO-OP",
       lobbyCrossfire: "CROSSFIRE (PVP)",
+      lobbyPickModeFirst: "Choose CO-OP or a PVP map first.",
+      mpNoServerAck: "No response from server.",
+      mpMissingRoomId: "Could not join — missing room id from server.",
+      pvpMapTitle: "CROSSFIRE — MAP",
+      pvpMapDesc: "Choose the PVP layout, then use Quick Play / Create / Join.",
+      pvpMapClassic: "CLASSIC (ORIGINAL)",
+      pvpMapGrid: "GRID KILLHOUSE",
+      pvpMapBack: "← BACK",
+      btnCrossfirePickMap: "Crossfire (PVP — select map)",
+      mapCrossfireClassic: "crossfire PVP — classic map",
+      mapCrossfireGrid: "crossfire PVP — bright duel map",
       ariaLoading: "Loading",
       languagePickLabel: "Language",
     };
@@ -2797,6 +2818,10 @@
     const menuLobby = document.getElementById("menuLobby");
     const lobbyTitle = document.getElementById("lobbyTitle");
     const menuJoinCode = document.getElementById("menuJoinCode");
+    const menuPvpMaps = document.getElementById("menuPvpMaps");
+    const btnPvpMapClassic = document.getElementById("btnPvpMapClassic");
+    const btnPvpMapGrid = document.getElementById("btnPvpMapGrid");
+    const btnPvpMapBack = document.getElementById("btnPvpMapBack");
     const gameBootOverlay = document.getElementById("gameBootOverlay");
     const gameBootLabel = document.getElementById("gameBootLabel");
     const codeInput = document.getElementById("codeInput");
@@ -2973,6 +2998,20 @@
       syncSettingsUI();
       updateHud();
       refreshOverlayTexts();
+      try {
+        if (typeof pendingLobbyMode === "string" && menuLobby && menuLobby.style.display !== "none" && lobbyTitle) {
+          if (pendingLobbyMode === "arena-coop") {
+            lobbyTitle.textContent = t("lobbyArenaCoop");
+          } else if (pendingLobbyMode === "crossfire") {
+            const grid = typeof PENDING_PVP_MAP === "string" && PENDING_PVP_MAP === "crossfire_grid";
+            lobbyTitle.textContent = grid
+              ? `${t("lobbyCrossfire")} — ${t("pvpMapGrid")}`
+              : `${t("lobbyCrossfire")} — ${t("pvpMapClassic")}`;
+          } else {
+            lobbyTitle.textContent = t("lobbyMultiplayer");
+          }
+        }
+      } catch (_) {}
     }
 
     /** Resolve static assets (walls, game-ui, menu.mp3). Declared before WebGL so menu BGM still loads if the renderer throws. */
@@ -2987,7 +3026,8 @@
         const u = new URL(page);
         const p = u.pathname || "/";
         const segs0 = p.replace(/\/+$/, "").split("/").filter(Boolean);
-        const bareGame = segs0.length === 1 && segs0[0].toLowerCase() === "game";
+        const bareGame =
+          s0 === "game" || s0 === "game-self-hosted" || s0 === "game-self-hosted.html";
         if (!p || p === "/") {
           return u.origin + "/";
         }
@@ -3327,6 +3367,11 @@
     });
 
     let CURRENT_MAP = "arena";
+    /** Set from PVP map picker; used when `pendingLobbyMode === "crossfire"`. */
+    let PENDING_PVP_MAP = "crossfire";
+    function isPvpCrossfireMap(m) {
+      return m === "crossfire" || m === "crossfire_grid";
+    }
     let MULTIPLAYER = false;
     /** True only for Zombie Arena played via ARENA CO-OP lobby (no damage vs other players). */
     let ARENA_COOP = false;
@@ -4495,6 +4540,14 @@
       };
     }
 
+    function getCurrentMapFogColor() {
+      return CURRENT_MAP === "crossfire_grid" ? 0x8ea6c6 : 0x070504;
+    }
+
+    function getCurrentMapBackgroundColor() {
+      return CURRENT_MAP === "crossfire_grid" ? 0xa9c3e6 : 0x070504;
+    }
+
     /** Distance fog + camera far: darkness and light fade beyond render distance (scaled by preset). */
     function applySceneFogAndCameraFar() {
       if (!scene.fog || !scene.fog.isFog) return;
@@ -4509,7 +4562,8 @@
       const near = THREE.MathUtils.clamp(base.near * scale * 0.97, 4, Math.max(8, far - 12));
       scene.fog.near = near;
       scene.fog.far = far;
-      scene.fog.color.set(0x070504);
+      scene.fog.color.set(getCurrentMapFogColor());
+      scene.background.set(getCurrentMapBackgroundColor());
 
       camera.far = THREE.MathUtils.clamp(far + 32, 52, 260);
       camera.updateProjectionMatrix();
@@ -6090,8 +6144,18 @@
       flowPlayerR = -1;
     }
 
+    const pvpMapLights = [];
+    function clearPvpMapLights() {
+      while (pvpMapLights.length) {
+        const L = pvpMapLights.pop();
+        scene.remove(L);
+        if (L.target) scene.remove(L.target);
+      }
+    }
+
     function clearMap() {
       clearAllMazeChunks();
+      clearPvpMapLights();
       while (wallMeshes.length) {
         const mesh = wallMeshes.pop();
         scene.remove(mesh);
@@ -6166,6 +6230,7 @@
     }
 
     function buildMapCrossfire() {
+      clearPvpMapLights();
       const H = 4.5;
 
       addWallBox(90, H, 1.0, 0, H / 2, -45);
@@ -6186,9 +6251,59 @@
       addWindowWallX( 28,-28, 14, H, 1.0, 4, 1.2, 3.0);
     }
 
+    /** PVP alt layout: perimeter + cover posts + fill lights (open-roof duel). */
+    function buildMapCrossfireGrid() {
+      clearPvpMapLights();
+      const H = 4.5;
+      const thick = 1.0;
+      const trim = 0x70798a;
+
+      const half = 30;
+      addWallBox(half * 2, H, thick, 0, H / 2, -half);
+      addWallBox(half * 2, H, thick, 0, H / 2, half);
+      addWallBox(thick, H, half * 2, -half, H / 2, 0);
+      addWallBox(thick, H, half * 2, half, H / 2, 0);
+
+      function pillar(px, pz, s = 2.4) {
+        const coverH = 1.65;
+        addWallBox(s, coverH, s, px, coverH / 2, pz, trim);
+      }
+
+      const posts = [
+        [-22, -22], [22, -22], [-22, 22], [22, 22],
+        [-16, 0], [16, 0], [0, -16], [0, 16],
+        [-10, 10], [10, -10], [-6, -18], [6, 18],
+        [-2, 0], [2, 0],
+      ];
+      for (const [px, pz] of posts) pillar(px, pz);
+
+      const lightPos = [
+        [-20, -20], [0, -20], [20, -20],
+        [-20, 0], [0, 0], [20, 0],
+        [-20, 20], [0, 20], [20, 20],
+      ];
+      for (const [lx, lz] of lightPos) {
+        const L = createPhysicalPointLight(0xfff4e2, 88 * Math.PI, 34, 2.4);
+        L.position.set(lx, H - 0.5, lz);
+        L.castShadow = false;
+        scene.add(L);
+        pvpMapLights.push(L);
+      }
+      const hemiFill = new THREE.HemisphereLight(0xdfe9ff, 0x3f3426, 1.05 * Math.PI);
+      scene.add(hemiFill);
+      pvpMapLights.push(hemiFill);
+      const sunFill = new THREE.DirectionalLight(0xfff0dc, 0.84 * Math.PI);
+      sunFill.position.set(14, 30, 10);
+      sunFill.castShadow = false;
+      scene.add(sunFill);
+      pvpMapLights.push(sunFill);
+      ceiling.visible = false;
+    }
+
     const MAP_BUILDERS = {
       arena: buildMapArena,
-      crossfire: buildMapCrossfire
+      crossfire: buildMapCrossfire,
+      crossfire_grid: buildMapCrossfireGrid,
     };
 
     const ZOMBIE_COUNT = 32;
@@ -6259,7 +6374,7 @@
         return { x, z, usedDist: 0 };
       }
 
-      const S = CURRENT_MAP === "crossfire" ? 43 : 40;
+      const S = isPvpCrossfireMap(CURRENT_MAP) ? 43 : 40;
       const players = getAllPlayerPositions();
       let dist = minDist;
       for (let attempt = 0; attempt < 60; attempt++) {
@@ -6455,11 +6570,13 @@
           ? `<b style="color:#4fd1ff;">${t("hudRoom")} ${ROOM_CODE}</b><br>`
           : "";
       const mapLabel =
-        CURRENT_MAP === "crossfire"
-          ? t("mapCrossfire")
-          : CURRENT_MAP === "arena"
-            ? t("mapArena")
-            : CURRENT_MAP;
+        CURRENT_MAP === "arena"
+          ? t("mapArena")
+          : CURRENT_MAP === "crossfire_grid"
+            ? t("mapCrossfireGrid")
+            : isPvpCrossfireMap(CURRENT_MAP)
+              ? t("mapCrossfireClassic")
+              : CURRENT_MAP;
       const mpSuffix = MULTIPLAYER ? ` ${t("hudMpSuffix")}` : "";
       const reloadParen = state.reloading ? ` (${t("hudRefilling")})` : "";
       hud.innerHTML = `
@@ -7363,6 +7480,10 @@
         setLocalPlayerLights(false);
         return;
       }
+      if (CURRENT_MAP === "crossfire_grid") {
+        setLocalPlayerLights(false);
+        return;
+      }
       if (player.health <= 0) {
         setLocalPlayerLights(false);
         return;
@@ -7579,6 +7700,12 @@
         !chatOpen &&
         !settingsModalOpen
       ) {
+        if (CURRENT_MAP === "crossfire_grid") {
+          playerLightsPreference = false;
+          refreshLocalPlayerLightsForCurrentState();
+          e.preventDefault();
+          return;
+        }
         playerLightsPreference = !playerLightsPreference;
         refreshLocalPlayerLightsForCurrentState();
         playFlashlightToggleSound();
@@ -7721,10 +7848,11 @@
     /* ==== PART 2 STARTS HERE ==== */
     function rebuildMapAndEnemies() {
       clearMap();
-      if (CURRENT_MAP === "crossfire") {
-        player.position.set(0, 1.65, 34);
+      if (isPvpCrossfireMap(CURRENT_MAP)) {
+        player.position.set(0, 1.65, CURRENT_MAP === "crossfire_grid" ? 22 : 34);
         floor.visible = true;
-        ceiling.visible = true;
+        ceiling.visible = CURRENT_MAP !== "crossfire_grid";
+        if (CURRENT_MAP === "crossfire_grid") playerLightsPreference = false;
       } else {
         floor.visible = false;
         ceiling.visible = false;
@@ -8291,7 +8419,8 @@
           z: player.position.z,
           yaw: player.yaw,
           name: playerName,
-          weapon: state.weaponIndex
+          weapon: state.weaponIndex,
+          reloading: state.reloading,
         });
       }
     }
@@ -8310,7 +8439,7 @@
       }
       document.body.classList.add("show-cursor");
 
-      if (CURRENT_MAP !== "crossfire" && killerEnemy) {
+      if (!isPvpCrossfireMap(CURRENT_MAP) && killerEnemy) {
         const ex = killerEnemy.group.position.x;
         const ez = killerEnemy.group.position.z;
         deathCamYaw = Math.atan2(ex - player.position.x, ez - player.position.z);
@@ -8327,7 +8456,7 @@
       btnDeathSettings.textContent = t("btnSettings");
       btnDeathSettings.style.display = "";
 
-      if (CURRENT_MAP === "crossfire") {
+      if (isPvpCrossfireMap(CURRENT_MAP)) {
         deathUI.style.display = "flex";
         deathUI.style.opacity = "0.25";
         deathTitle.textContent = t("deathDefeated");
@@ -8347,7 +8476,7 @@
     }
 
     function updateDeathAnim(dt) {
-      if (player.health > 0 || CURRENT_MAP === "crossfire") return;
+      if (player.health > 0 || isPvpCrossfireMap(CURRENT_MAP)) return;
       deathAnimTime += dt;
       const deathPhase = Math.min(deathAnimTime / DEATH_ANIM_DURATION, 1);
       const fadeOpacity = deathPhase * 0.5;
@@ -8425,7 +8554,7 @@
       keys.space = false;
       keys.shift = false;
       pauseOverlay.style.display = "flex";
-      btnPauseRestart.style.display = (CURRENT_MAP !== "crossfire") ? "" : "none";
+      btnPauseRestart.style.display = isPvpCrossfireMap(CURRENT_MAP) ? "none" : "";
       crosshairEl.classList.add("hidden");
     }
 
@@ -8470,7 +8599,7 @@
       btnDeathQuit.textContent = t("btnQuit");
       btnDeathRestart.textContent = MULTIPLAYER ? t("btnRespawn") : t("btnRestart");
       if (deathOverlay.style.display === "block" && deathUI.style.display === "flex") {
-        if (CURRENT_MAP === "crossfire") {
+        if (isPvpCrossfireMap(CURRENT_MAP)) {
           deathTitle.textContent = t("deathDefeated");
           deathScore.textContent = "";
         } else {
@@ -8530,7 +8659,7 @@
         );
         return;
       }
-      const S = CURRENT_MAP === "crossfire" ? 45 : 42;
+      const S = isPvpCrossfireMap(CURRENT_MAP) ? 45 : 42;
       navMinX = -S;
       navMinZ = -S;
       navCols = Math.ceil((S * 2) / NAV_CELL);
@@ -9489,7 +9618,7 @@
         cullMazeLightsNearCamera();
       }
 
-      if (CURRENT_MAP === "crossfire" && MULTIPLAYER && player.health <= 0) {
+      if (isPvpCrossfireMap(CURRENT_MAP) && MULTIPLAYER && player.health <= 0) {
         const first = remotePlayers.values().next().value;
         if (first) {
           const sx = first.visX ?? first.x;
@@ -9616,10 +9745,11 @@
         queueMicrotask(() => emitJoinRoomWithAck());
       }
 
-      if (CURRENT_MAP === "crossfire") {
-        player.position.set(0, 1.65, 34);
+      if (isPvpCrossfireMap(CURRENT_MAP)) {
+        player.position.set(0, 1.65, CURRENT_MAP === "crossfire_grid" ? 22 : 34);
         floor.visible = true;
-        ceiling.visible = true;
+        ceiling.visible = CURRENT_MAP !== "crossfire_grid";
+        if (CURRENT_MAP === "crossfire_grid") playerLightsPreference = false;
       } else {
         floor.visible = false;
         ceiling.visible = false;
@@ -9721,6 +9851,7 @@
       MULTIPLAYER = false;
       ROOM_CODE = "";
       activeRoomId = "";
+      PENDING_PVP_MAP = "crossfire";
       ARENA_COOP = false;
       ZOMBIE_AUTHORITY = false;
       ZOMBIE_HOST_KNOWN = true;
@@ -9755,8 +9886,93 @@
     }
 
     function showMenuPanel(id) {
-      for (const p of [menuMain, menuArenaMode, menuLobby, menuJoinCode]) p.style.display = "none";
+      for (const p of [menuMain, menuArenaMode, menuPvpMaps, menuLobby, menuJoinCode]) p.style.display = "none";
       document.getElementById(id).style.display = "flex";
+    }
+
+    function showLobbyErr(msg) {
+      const el = document.getElementById("lobbyError");
+      if (el) el.textContent = msg || "";
+      if (msg && codeError) codeError.textContent = msg;
+    }
+
+    /**
+     * Relay servers differ: some send roomKey, others only `code` / `room`, or nest under `data`.
+     */
+    function normalizeMatchAck(res) {
+      if (!res || typeof res !== "object") {
+        return { error: t("mpNoServerAck") };
+      }
+      if (res.error != null && res.error !== false && res.error !== "") {
+        return { error: String(res.error) };
+      }
+      if (res.ok === false) {
+        return { error: String(res.message || res.reason || "Request rejected.") };
+      }
+      const inner = res.data && typeof res.data === "object" ? res.data : res;
+      if (inner.ok === false) {
+        return { error: String(inner.message || inner.reason || "Request rejected.") };
+      }
+      if (inner.success === false || res.success === false) {
+        return { error: String(inner.message || res.message || "Matchmaking failed.") };
+      }
+
+      let roomKey = "";
+      const keyCandidates = [
+        inner.roomKey,
+        res.roomKey,
+        inner.sessionId,
+        res.sessionId,
+        inner.matchId,
+        res.matchId,
+        inner.roomId,
+        res.roomId,
+      ];
+      for (let i = 0; i < keyCandidates.length; i++) {
+        const v = keyCandidates[i];
+        if (typeof v === "string" && v.trim()) {
+          roomKey = v.trim();
+          break;
+        }
+      }
+
+      let shortCode = "";
+      const codeCandidates = [
+        inner.code,
+        res.code,
+        inner.roomCode,
+        res.roomCode,
+        inner.joinCode,
+        res.joinCode,
+        inner.shortCode,
+        res.shortCode,
+      ];
+      for (let i = 0; i < codeCandidates.length; i++) {
+        const v = codeCandidates[i];
+        if (typeof v === "string" && v.trim()) {
+          shortCode = v.trim();
+          break;
+        }
+      }
+
+      const roomStr = typeof inner.room === "string" ? inner.room : typeof res.room === "string" ? res.room : "";
+      if (!roomKey && roomStr.includes(":")) {
+        roomKey = roomStr.trim();
+      }
+      if (!roomKey && shortCode && pendingLobbyMode) {
+        roomKey = `${pendingLobbyMode}:${shortCode}`;
+      }
+      if (!roomKey && shortCode) {
+        roomKey = shortCode;
+      }
+
+      let roomCode = shortCode || (roomKey.includes(":") ? roomKey.split(":").pop() : roomKey);
+      if (!roomKey) {
+        return {
+          error: t("mpMissingRoomId"),
+        };
+      }
+      return { roomKey, roomCode: roomCode || roomKey };
     }
 
     function showLobby(mode) {
@@ -9767,7 +9983,16 @@
           : mode === "crossfire"
             ? "lobbyCrossfire"
             : "lobbyMultiplayer";
-      lobbyTitle.textContent = t(titleKey);
+      if (mode === "crossfire") {
+        const grid = PENDING_PVP_MAP === "crossfire_grid";
+        lobbyTitle.textContent = grid
+          ? `${t("lobbyCrossfire")} — ${t("pvpMapGrid")}`
+          : `${t("lobbyCrossfire")} — ${t("pvpMapClassic")}`;
+      } else {
+        lobbyTitle.textContent = t(titleKey);
+      }
+      const lobbyErr = document.getElementById("lobbyError");
+      if (lobbyErr) lobbyErr.textContent = "";
       showMenuPanel("menuLobby");
     }
 
@@ -9778,6 +10003,10 @@
       } else {
         activeRoomId = (roomOpts && roomOpts.roomKey) || "";
         ROOM_CODE = (roomOpts && roomOpts.roomCode) || "";
+      }
+      if (!activeRoomId) {
+        showLobbyErr(t("mpMissingRoomId"));
+        return;
       }
       nameModal.style.display = "flex";
       nameInput.value = "";
@@ -9790,26 +10019,64 @@
     btnArenaCoop.addEventListener("click", () => showLobby("arena-coop"));
     btnArenaBack.addEventListener("click", () => showMenuPanel("menuMain"));
 
-    btnCrossfire.addEventListener("click", () => showLobby("crossfire"));
+    btnCrossfire.addEventListener("click", () => showMenuPanel("menuPvpMaps"));
+
+    btnPvpMapClassic.addEventListener("click", () => {
+      PENDING_PVP_MAP = "crossfire";
+      showLobby("crossfire");
+    });
+    btnPvpMapGrid.addEventListener("click", () => {
+      PENDING_PVP_MAP = "crossfire_grid";
+      showLobby("crossfire");
+    });
+    btnPvpMapBack.addEventListener("click", () => showMenuPanel("menuMain"));
 
     btnQuickplay.addEventListener("click", () => {
+      if (!pendingLobbyMode) {
+        showLobbyErr(t("lobbyPickModeFirst"));
+        return;
+      }
+      showLobbyErr("");
       socket.emit("quickplay", pendingLobbyMode, (res) => {
-        if (res.error) { codeError.textContent = res.error; return; }
-        const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
-        beginMultiplayerGame(map, { roomKey: res.roomKey, roomCode: res.room });
+        if (!res) {
+          showLobbyErr(t("mpNoServerAck"));
+          return;
+        }
+        const norm = normalizeMatchAck(res);
+        if (norm.error) {
+          showLobbyErr(norm.error);
+          return;
+        }
+        const map = pendingLobbyMode === "crossfire" ? PENDING_PVP_MAP : "arena";
+        beginMultiplayerGame(map, { roomKey: norm.roomKey, roomCode: norm.roomCode });
       });
     });
 
     btnCreateRoom.addEventListener("click", () => {
+      if (!pendingLobbyMode) {
+        showLobbyErr(t("lobbyPickModeFirst"));
+        return;
+      }
+      showLobbyErr("");
       socket.emit("createRoom", pendingLobbyMode, (res) => {
-        if (res.error) { codeError.textContent = res.error; return; }
-        const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
-        beginMultiplayerGame(map, { roomKey: res.roomKey, roomCode: res.code });
+        if (!res) {
+          showLobbyErr(t("mpNoServerAck"));
+          return;
+        }
+        const norm = normalizeMatchAck(res);
+        if (norm.error) {
+          showLobbyErr(norm.error);
+          return;
+        }
+        const map = pendingLobbyMode === "crossfire" ? PENDING_PVP_MAP : "arena";
+        beginMultiplayerGame(map, { roomKey: norm.roomKey, roomCode: norm.roomCode });
       });
     });
 
     btnJoinCode.addEventListener("click", () => {
       codeError.textContent = "";
+      const lobbyErr = document.getElementById("lobbyError");
+      if (lobbyErr) lobbyErr.textContent = "";
       codeInput.value = "";
       showMenuPanel("menuJoinCode");
     });
@@ -9817,10 +10084,18 @@
     btnCodeJoin.addEventListener("click", () => {
       const code = codeInput.value.trim().toUpperCase();
       if (!code) { codeError.textContent = t("enterCodeError"); return; }
+      if (!pendingLobbyMode) {
+        codeError.textContent = t("lobbyPickModeFirst");
+        return;
+      }
       socket.emit("joinByCode", { code, mode: pendingLobbyMode }, (res) => {
-        if (res.error) { codeError.textContent = res.error; return; }
-        const map = pendingLobbyMode === "crossfire" ? "crossfire" : "arena";
-        beginMultiplayerGame(map, { roomKey: res.roomKey, roomCode: code });
+        const norm = normalizeMatchAck(res);
+        if (norm.error) {
+          codeError.textContent = norm.error;
+          return;
+        }
+        const map = pendingLobbyMode === "crossfire" ? PENDING_PVP_MAP : "arena";
+        beginMultiplayerGame(map, { roomKey: norm.roomKey, roomCode: norm.roomCode || code });
       });
     });
 
@@ -9830,7 +10105,7 @@
 
     btnCodeBack.addEventListener("click", () => showMenuPanel("menuLobby"));
     btnLobbyBack.addEventListener("click", () => {
-      if (pendingLobbyMode === "crossfire") showMenuPanel("menuMain");
+      if (pendingLobbyMode === "crossfire") showMenuPanel("menuPvpMaps");
       else showMenuPanel("menuArenaMode");
     });
 
