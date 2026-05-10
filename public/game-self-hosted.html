@@ -3,7 +3,9 @@
   Same game as game.html, tuned for the GitHub Pages layout: repo …/games/fps (e.g.
   https://github.com/tintly555/tintly555.github.io/tree/main/games/fps — live https://tintly555.github.io/games/fps/).
   game-static-prefix is /games/fps so deployedPublicRoot() resolves walls.png, game-ui/, menu.mp3 beside index.html.
-  Default empty game-multiplayer-origin = Socket.IO on this origin (unless you set the meta).
+  GitHub Pages is static only — there is no Socket.IO at tintly555.github.io. game-multiplayer-origin defaults to the
+  chat relay (chat.jimmyqrg.com) so WebSockets hit /socket.io on a real server. For a self-hosted relay on the same host,
+  set game-multiplayer-origin to "" or your API origin.
   Crossfire = PVP; Arena = PVE / co-op vs zombies.
 -->
 <html lang="en">
@@ -101,8 +103,8 @@
   <title>Zone No Light</title>
   <!-- Only the script-injected <base> above should set the document base (folder of this HTML).
        A second fixed base (e.g. chat origin) breaks relative game-ui/ + walls.png when the page is not at site root or when assets live beside this file. -->
-  <!-- Multiplayer only: Socket.IO API origin — not a CDN for walls/game-ui. Empty = same origin (typical for this file). -->
-  <meta name="game-multiplayer-origin" content="" />
+  <!-- Socket.IO relay host only (not for walls/game-ui). Empty = same origin — breaks on GitHub Pages (no /socket.io). -->
+  <meta name="game-multiplayer-origin" content="https://chat.jimmyqrg.com" />
   <!-- Optional absolute base for walls.png + game-ui/ (empty = use origin + game-static-prefix + computeAssetBaseDir fallbacks). -->
   <meta name="game-asset-base" content="" />
   <!-- GitHub Pages: site serves repo `public/` at /games/fps/ — must match that path or asset URLs 404. -->
@@ -3032,11 +3034,11 @@
       state.combatFeedbackTimer = Math.max(state.combatFeedbackTimer, dur);
     }
 
-    function triggerHitFeedback(isKill = false) {
+    function triggerHitFeedback(isKill = false, headshot = false) {
       if (!hitmarkerEl) return;
       state.hitmarkerTimer = isKill ? 0.16 : 0.09;
       hitmarkerEl.classList.add("show");
-      hitmarkerEl.classList.toggle("critical", !!isKill);
+      hitmarkerEl.classList.toggle("critical", !!isKill || !!headshot);
       showCombatFeedback(
         isKill ? t("combatKill") : t("combatHit"),
         isKill ? "rgba(255,88,88,0.98)" : "rgba(255,255,255,0.95)",
@@ -3735,14 +3737,29 @@
       if (rawWeapon !== undefined && rawWeapon !== null) {
         const w = ((Number(rawWeapon) | 0) % 5 + 5) % 5;
         if (w !== rp.currentWeapon) {
-        rp.rightArm.remove(rp.gunModel);
+          if (rp.gunModel) {
+            const par = rp.gunModel.parent;
+            if (par) par.remove(rp.gunModel);
+          }
           rp.gunModel = makeThirdPersonGun(w);
-          rp.gunModel.position.set(
-            w === 4 ? 0.1 : 0.15,
-            w === 4 ? -0.55 : -0.42,
-            w === 4 ? -0.1 : -0.28
-          );
-        rp.rightArm.add(rp.gunModel);
+          if (rp.rightHandGrip) {
+            applyThirdPersonGunToGrip(rp.gunModel, w);
+            rp.rightHandGrip.add(rp.gunModel);
+            try {
+              const gloveMat =
+                rp.gloveMat ||
+                rp.gunModel.children[0]?.material ||
+                new THREE.MeshStandardMaterial({ color: 0x3a3528, roughness: 0.9 });
+              rp.supportSocket = attachRemoteSupportHand(rp.gunModel, w, gloveMat);
+            } catch (_) {}
+          } else {
+            rp.gunModel.position.set(
+              w === 4 ? 0.1 : 0.15,
+              w === 4 ? -0.55 : -0.42,
+              w === 4 ? -0.1 : -0.28
+            );
+            rp.rightArm.add(rp.gunModel);
+          }
           rp.currentWeapon = w;
         }
       }
@@ -4113,6 +4130,61 @@
       return g;
     }
 
+    /**
+     * Third-person view-model: parent is a grip at the hand. Character faces +Z; gun barrel extends forward (+Z).
+     */
+    function applyThirdPersonGunToGrip(gunModel, weaponType) {
+      const t = weaponType | 0;
+      gunModel.rotation.order = "YXZ";
+      gunModel.rotation.set(0.11, -0.07, 0.05);
+      if (t === 0) {
+        gunModel.position.set(0.05, 0, 0.11);
+        gunModel.scale.set(1, 1, 1);
+      } else if (t === 1) {
+        gunModel.position.set(0.035, -0.025, 0.19);
+        gunModel.scale.set(1.06, 1.06, 1.06);
+      } else if (t === 2) {
+        gunModel.position.set(0.03, -0.035, 0.2);
+        gunModel.scale.set(1.03, 1.03, 1.03);
+      } else if (t === 4) {
+        gunModel.position.set(0.06, -0.02, 0.12);
+        gunModel.scale.set(0.92, 0.92, 0.92);
+      } else {
+        gunModel.position.set(0.04, -0.02, 0.17);
+        gunModel.scale.set(1, 1, 1);
+      }
+    }
+
+    const REMOTE_SUPPORT_SOCKET_LOCAL = [
+      { x: 0.052, y: -0.018, z: 0.085 },
+      { x: 0.048, y: -0.032, z: 0.112 },
+      { x: 0.062, y: -0.04, z: 0.098 },
+      { x: 0.042, y: -0.028, z: 0.104 },
+    ];
+
+    function attachRemoteSupportHand(gunModel, weaponType, gloveMat) {
+      const wt = weaponType | 0;
+      if (wt === 4) return null;
+      const wi = THREE.MathUtils.clamp(wt, 0, 3);
+      const sockPos = REMOTE_SUPPORT_SOCKET_LOCAL[wi] || REMOTE_SUPPORT_SOCKET_LOCAL[1];
+      const socket = new THREE.Group();
+      socket.name = "remoteSupportSocket";
+      socket.position.set(sockPos.x, sockPos.y, sockPos.z);
+      socket.rotation.order = "YXZ";
+      socket.rotation.x = wi === 2 ? 0.26 : 0.18;
+      socket.rotation.y = -0.05;
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.11, 0.12), gloveMat);
+      pad.castShadow = shouldCharacterCastShadow();
+      pad.receiveShadow = true;
+      socket.add(pad);
+      const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.04, 0.06), gloveMat);
+      thumb.position.set(-0.05, -0.03, 0.05);
+      thumb.castShadow = shouldCharacterCastShadow();
+      socket.add(thumb);
+      gunModel.add(socket);
+      return socket;
+    }
+
     function createRemotePlayer(name) {
       const group = new THREE.Group();
       if (useBasicShapeCharacters()) {
@@ -4323,9 +4395,16 @@
       const legL = makePlayerLeg(-0.15);
       group.add(legR, legL);
 
+      const rightHandGrip = new THREE.Group();
+      rightHandGrip.position.set(0, -0.72, 0.125);
+      rightHandGrip.rotation.order = "YXZ";
+      rightHandGrip.rotation.x = 0.12;
+      rightArm.add(rightHandGrip);
+
       const gunModel = makeThirdPersonGun(1);
-      gunModel.position.set(0.08, -0.68, -0.18);
-      rightArm.add(gunModel);
+      applyThirdPersonGunToGrip(gunModel, 1);
+      rightHandGrip.add(gunModel);
+      const supportSocket = attachRemoteSupportHand(gunModel, 1, mGlove);
 
       const ns = makeNameSprite(name || "Player");
       ns.sprite.position.set(0, 2.55, 0);
@@ -4368,10 +4447,28 @@
         }
       });
       group.visible = false;
-      return { group, x: 0, y: 1.65, z: 0, yaw: 0, name: name || "Player",
-               nameSprite: ns.sprite, nameCanvas: ns.canvas, nameCtx: ns.ctx, nameTex: ns.tex,
-               rightArm, leftArm, rightLeg: legR, leftLeg: legL, walkPhase: 0,
-               gunModel, currentWeapon: 1 };
+      return {
+        group,
+        x: 0,
+        y: 1.65,
+        z: 0,
+        yaw: 0,
+        name: name || "Player",
+        nameSprite: ns.sprite,
+        nameCanvas: ns.canvas,
+        nameCtx: ns.ctx,
+        nameTex: ns.tex,
+        rightArm,
+        leftArm,
+        rightHandGrip,
+        rightLeg: legR,
+        leftLeg: legL,
+        walkPhase: 0,
+        gunModel,
+        supportSocket,
+        gloveMat: mGlove,
+        currentWeapon: 1,
+      };
     }
 
     function getSafeViewportSize() {
@@ -4491,10 +4588,9 @@
       return QUALITY_LEVELS[gameSettings.qualityIndex] || "regular";
     }
 
-    /** Regular + high: chunky primitives + diffuse surfaces (extreme keeps full detail). */
+    /** Only the lowest tier uses simplified bodies/guns; all other presets use full detail. */
     function useBasicShapeCharacters() {
-      const q = getQualityId();
-      return q === "regular" || q === "high";
+      return getQualityId() === "potato";
     }
 
     function shouldCharacterCastShadow() {
@@ -8510,9 +8606,9 @@
       return null;
     }
 
-    /** Hit volumes are fixed in zombie root space so torso sway does not move hitboxes. */
-    function enemyHitAlongRay(raycaster, enemy) {
-      _invEnemyMat.copy(enemy.group.matrixWorld).invert();
+    /** Same head/body/leg spheres as zombies — used for PvP ray hits on remote players too. */
+    function humanoidHitAlongRay(raycaster, rootGroup) {
+      _invEnemyMat.copy(rootGroup.matrixWorld).invert();
       _ehLo.copy(raycaster.ray.origin).applyMatrix4(_invEnemyMat);
       _ehLd.copy(raycaster.ray.direction).transformDirection(_invEnemyMat).normalize();
       const volumes = [
@@ -8532,6 +8628,11 @@
       }
       if (bestT === Infinity || zone === null) return null;
       return { t: bestT, zone };
+    }
+
+    /** Hit volumes are fixed in zombie root space so torso sway does not move hitboxes. */
+    function enemyHitAlongRay(raycaster, enemy) {
+      return humanoidHitAlongRay(raycaster, enemy.group);
     }
 
     function applyDamage(enemy, zone, w) {
@@ -8611,16 +8712,17 @@
         }
 
         let bestRpId = null;
-        let bestRpHit = null;
+        let bestRpHitT = Infinity;
+        let bestRpZone = "body";
         if (MULTIPLAYER && !ARENA_COOP) {
           for (const [rpId, rp] of remotePlayers) {
             if (!rp.group.visible) continue;
-            const hits = ray.intersectObject(rp.group, true);
-            if (hits.length > 0) {
-              if (!bestRpHit || hits[0].distance < bestRpHit.distance) {
-                bestRpId = rpId;
-                bestRpHit = hits[0];
-              }
+            rp.group.updateMatrixWorld(true);
+            const rh = humanoidHitAlongRay(ray, rp.group);
+            if (rh && rh.t < bestRpHitT) {
+              bestRpId = rpId;
+              bestRpHitT = rh.t;
+              bestRpZone = rh.zone;
             }
           }
         }
@@ -8629,7 +8731,7 @@
         const wallHit = wallHits.length > 0 ? wallHits[0] : null;
 
         const enemyDist = bestEnemy ? bestEnemyHitT : Infinity;
-        const rpDist = bestRpHit ? bestRpHit.distance : Infinity;
+        const rpDist = bestRpId != null ? bestRpHitT : Infinity;
         const wallDist = wallHit ? wallHit.distance : Infinity;
         const closestDist = Math.min(enemyDist, rpDist, wallDist);
 
@@ -8660,14 +8762,22 @@
               createSparks(bp.clone(), 0xff5555);
             }
           }
-        } else if (closestDist === rpDist && bestRpId && bestRpHit) {
-          const bp = bestRpHit.point.clone();
+        } else if (closestDist === rpDist && bestRpId != null && bestRpHitT < Infinity) {
+          const bp = _ehHitWorld.copy(ray.ray.origin).addScaledVector(ray.ray.direction, bestRpHitT);
           createBlood(bp);
           createBulletTrail(muzzleStart.clone(), bp.clone(), w.color);
           emitShootNetwork(muzzleStart, bp, w.color, "blood");
-          triggerHitFeedback(false);
-          const dmg = w.damageBody;
-          socket.emit("hit", { target: bestRpId, damage: dmg, x: player.position.x, z: player.position.z });
+          let dmg = w.damageBody;
+          if (bestRpZone === "head") dmg = w.damageHead;
+          else if (bestRpZone === "leg") dmg = w.damageLegs;
+          triggerHitFeedback(false, bestRpZone === "head");
+          socket.emit("hit", {
+            target: bestRpId,
+            damage: dmg,
+            x: player.position.x,
+            z: player.position.z,
+            hitKind: "bullet",
+          });
         } else if (wallHit) {
           const wp = wallHit.point.clone();
           const normal = wallHit.face.normal.clone().transformDirection(wallHit.object.matrixWorld);
