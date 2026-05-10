@@ -147,6 +147,11 @@
           "--game-ui-settings-bg",
           'url("' + new URL("game-ui/game-ui-settings-panel-bg.png", R).href + '")'
         );
+        try {
+          var curMouse = new URL("mouse.png", R).href;
+          el.style.setProperty("--game-cursor-default", 'url("' + curMouse + '") 0 0, auto');
+          el.style.setProperty("--game-cursor-action", 'url("' + curMouse + '") 0 0, pointer');
+        } catch (eCur) {}
       } catch (e1) {}
     })();
   </script>
@@ -173,9 +178,11 @@
       --game-ui-menu-bg: none;
       --game-ui-btn-texture: none;
       --game-ui-settings-bg: none;
-      /** Menu / UI overlays: arrow cursor PNG (64×42), hotspot at tip */
-      --game-ui-menu-pointer: url("game-ui/game-ui-menu-pointer.png") 6 4, default;
-      --game-ui-menu-pointer-action: url("game-ui/game-ui-menu-pointer.png") 6 4, pointer;
+      /** Custom mouse.png; hotspot top-left tip. Head script sets absolute URLs from deploy root. */
+      --game-cursor-default: url("mouse.png") 0 0, auto;
+      --game-cursor-action: url("mouse.png") 0 0, pointer;
+      --game-ui-menu-pointer: var(--game-cursor-default);
+      --game-ui-menu-pointer-action: var(--game-cursor-action);
       /**
        * UI font stack: Audiowide for Latin display; browser picks Noto Sans SC/TC/JP/KR/Arabic/Devanagari for glyphs
        * Audiowide lacks — keeps the cold tech look close to the game art (cyan edges, dark metal UI).
@@ -208,9 +215,9 @@
       cursor: none;
     }
 
-    /* Restore OS cursor when pointer lock is released (death screen, menu). */
+    /* Restore visible cursor when pointer lock is released (death screen, pause). */
     body.show-cursor #app {
-      cursor: default;
+      cursor: var(--game-cursor-default);
     }
 
     .hud {
@@ -523,7 +530,7 @@
       font-family: var(--game-font-ui);
       font-size: 16px;
       border-radius: 8px;
-      cursor: pointer;
+      cursor: var(--game-cursor-action);
       text-transform: uppercase;
       letter-spacing: 2px;
       border: 2px solid rgba(255, 255, 255, 0.3);
@@ -622,7 +629,7 @@
       letter-spacing: 1px;
       border-radius: 8px;
       border: 1px solid transparent;
-      cursor: pointer;
+      cursor: var(--game-cursor-action);
       background: rgba(255,255,255,0.04);
       color: rgba(230,238,255,0.85);
       transition: background 0.15s, border-color 0.15s;
@@ -689,7 +696,7 @@
       width: 44px;
       height: 38px;
       font-size: 18px;
-      cursor: pointer;
+      cursor: var(--game-cursor-action);
       border-radius: 8px;
       border: 1px solid rgba(255,255,255,0.2);
       background: rgba(0,0,0,0.35);
@@ -717,7 +724,7 @@
       border: 1px solid rgba(255,255,255,0.25);
       background: rgba(0,0,0,0.45);
       color: #fff;
-      cursor: pointer;
+      cursor: var(--game-cursor-action);
       font-size: 22px;
       line-height: 1;
       z-index: 5;
@@ -4356,10 +4363,12 @@
      *   values let high/extreme tiers behave more like physical lights with smooth long-distance attenuation.
      * - decayBoost: how aggressively intensity drops with distance. Lower = closer to inverse-square reality;
      *   slightly higher decay on potato keeps perf cost down.
-     * - shadowRadius: PCF blur radius for soft shadow penumbra (only used for soft shadow types).
-     * - shadowBlurSamples: how many taps for the percentage-closer filter (PCFSoftShadowMap).
+     * - shadowRadius: PCF blur radius for soft moon shadow penumbra (directional shadow).
+     * - shadowBlurSamples: PCF tap count for directional shadow filtering (when supported).
      * - moonIntensityMul / hemiIntensityMul: multipliers applied on top of the legacy values.
-     * - punctualShadows: true = sconce / area lamps cast shadows (PCF) for a near-photoreal look.
+     * - punctualShadows: if true, maze sconce SpotLights cast their own shadow maps. Even a modest arena has
+     *   far too many sconces for stable WebGL — enabling this tends to blank the framebuffer or stall the GPU.
+     *   Keep false; moon (DirectionalLight) still casts the main world shadow.
      * - mazeLightBudget: how many of the maze's per-chunk lights stay visible to the GPU at once.
      */
     function getQualityLightProfile() {
@@ -4386,7 +4395,7 @@
           shadowBlurSamples: 12,
           moonIntensityMul: 1.1,
           hemiIntensityMul: 1.16,
-          punctualShadows: true,
+          punctualShadows: false,
           mazeLightBudget: 40,
         };
       }
@@ -4399,7 +4408,7 @@
           shadowBlurSamples: 20,
           moonIntensityMul: 1.16,
           hemiIntensityMul: 1.24,
-          punctualShadows: true,
+          punctualShadows: false,
           mazeLightBudget: 52,
         };
       }
@@ -4412,7 +4421,7 @@
         shadowBlurSamples: 28,
         moonIntensityMul: 1.24,
         hemiIntensityMul: 1.36,
-        punctualShadows: true,
+        punctualShadows: false,
         mazeLightBudget: 72,
       };
     }
@@ -4532,19 +4541,20 @@
         toneExposure = 1;
       } else if (q === "regular") {
         shadowSz = 512;
-        shadowType = THREE.PCFSoftShadowMap;
+        /** PCFSoftShadowMap is deprecated in r182+; PCFShadowMap + moon.shadow.radius gives soft penumbra. */
+        shadowType = THREE.PCFShadowMap;
         toneMapping = THREE.ACESFilmicToneMapping;
-        toneExposure = 1;
+        toneExposure = 1.24;
       } else if (q === "high") {
         shadowSz = 1024;
-        shadowType = THREE.PCFSoftShadowMap;
+        shadowType = THREE.PCFShadowMap;
         toneMapping = THREE.ACESFilmicToneMapping;
-        toneExposure = 1.05;
+        toneExposure = 1.3;
       } else if (q === "extreme") {
         shadowSz = 1536;
-        shadowType = THREE.PCFSoftShadowMap;
+        shadowType = THREE.PCFShadowMap;
         toneMapping = THREE.ACESFilmicToneMapping;
-        toneExposure = 1.1;
+        toneExposure = 1.36;
       }
 
       const lp = getQualityLightProfile();
