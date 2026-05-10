@@ -2972,7 +2972,7 @@
 
     function applyGameLanguage() {
       const lang = gameSettings.language || "en";
-      document.documentElement.lang = lang;
+      document.documentElement.lang = lang.split("-")[0];
       document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
       try {
         document.title = t("gameTitle");
@@ -3026,6 +3026,7 @@
         const u = new URL(page);
         const p = u.pathname || "/";
         const segs0 = p.replace(/\/+$/, "").split("/").filter(Boolean);
+        const s0 = segs0.length === 1 ? segs0[0].toLowerCase() : "";
         const bareGame =
           s0 === "game" || s0 === "game-self-hosted" || s0 === "game-self-hosted.html";
         if (!p || p === "/") {
@@ -9719,6 +9720,7 @@
       hitDirContainer.innerHTML = "";
       hitIndicators.length = 0;
       CURRENT_MAP = mapName;
+      applySceneFogAndCameraFar();
       if (multiplayer !== undefined) {
         MULTIPLAYER = multiplayer;
         if (!multiplayer) ARENA_COOP = false;
