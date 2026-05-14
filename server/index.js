@@ -1478,8 +1478,13 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   }
   // AI moderator: skip when the recipient is the helper bot (the helper has
   // its own safety layer in the system prompt) so user→Venory chats don't
-  // pay double latency. All other DMs are moderated.
-  if (otherId !== HELPER_USER_ID) {
+  // pay double latency. Also skip if both sender and recipient are admins —
+  // admins messaging each other should not have AI filtering applied.
+  const otherUser = db.prepare('SELECT is_allowed FROM users WHERE id = ?').get(otherId);
+  const senderIsAdmin = !!user.is_allowed;
+  const recipientIsAdmin = !!otherUser?.is_allowed;
+  const adminDm = senderIsAdmin && recipientIsAdmin;
+  if (otherId !== HELPER_USER_ID && !adminDm) {
     const userCaption = typeof content === 'string' ? content : '';
     const modResult = await moderateMessage({
       userId: user.id,
@@ -2280,8 +2285,14 @@ io.on('connection', (socket) => {
       }
       // AI moderator. We skip when chatting with the helper bot — Venory has
       // its own safety layer in the helper system prompt and adding another
-      // round-trip there just slows the bot down.
-      if (otherId !== HELPER_USER_ID) {
+      // round-trip there just slows the bot down. Also skip if both sender and
+      // recipient are admins — admins messaging each other should not have AI
+      // filtering applied.
+      const otherForMod = db.prepare('SELECT is_allowed FROM users WHERE id = ?').get(otherId);
+      const senderIsAdmin = !!socket.user?.is_allowed;
+      const recipientIsAdmin = !!otherForMod?.is_allowed;
+      const adminDm = senderIsAdmin && recipientIsAdmin;
+      if (otherId !== HELPER_USER_ID && !adminDm) {
         const modResult = await moderateMessage({
           userId: socket.userId,
           senderName: socket.user?.display_name || socket.user?.username || '',
