@@ -5,6 +5,7 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json ./
 COPY scripts ./scripts
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
 RUN npm install --omit=dev
 
 FROM base AS runner
