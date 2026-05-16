@@ -5622,7 +5622,7 @@ function markdownToHtml(md) {
       if (!text) return text;
       let out = text;
       // Run the generic domain+path matcher first so a URL like
-      // "github.com/jimmyqrg.github.io" is captured as ONE link. If the
+      // "github.com/indiamonda.github.io" is captured as ONE link. If the
       // github.io-specific rule ran first it would split it into two.
       out = applyToPlainParts(out, t => t.replace(/(?<![\/">])(www\.[^\s<>"']+)/g, (_, u) => mkLink(u)));
       out = applyToPlainParts(out, t => t.replace(/(?<![\/"':@\w.-])((?:[a-zA-Z0-9][-a-zA-Z0-9_]*\.)+[a-zA-Z0-9][-a-zA-Z0-9_]*(?::\d+)?(?:\/[^\s<>"']*)?)/g, (_, url) => {
@@ -5865,7 +5865,7 @@ function showWordleModal() {
   overlay.innerHTML = `
     <div class="wordle-modal">
       <button type="button" class="wordle-modal-close" aria-label="Close"><span class="icon" aria-hidden="true">${ICON_CLOSE}</span></button>
-      <iframe src="https://jimmyqrg.github.io/wordle" title="Wordle" class="wordle-iframe"></iframe>
+      <iframe src="https://indiamonda.github.io/wordle" title="Wordle" class="wordle-iframe"></iframe>
     </div>
   `;
   const close = () => overlay.remove();
@@ -6976,7 +6976,7 @@ function bindMain() {
       if (roomType === 'group' && state.commandMode && text.startsWith('/')) {
         const cmd = text.split(/\s/)[0].toLowerCase();
         if (cmd === '/games') {
-          window.open('https://jimmyqrg.github.io/page');
+          window.open('https://indiamonda.github.io/page');
           input.value = '';
           resizeComposerInput();
           return;
