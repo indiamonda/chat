@@ -85,6 +85,15 @@ const EMAIL_VERIFY_BYPASS_DOMAINS = [
   'student.sfx.vic.edu.au',
   'cross.edu.pl',
   'lompocschools.org',
+  'acsd.org.com',
+  'lwsd.org',
+  'go.tahomasd.us',
+  'student.vic.sfx.edu.au',
+  'ahschools.us',
+  'stratfordschools.net',
+  'acsd.org',
+  'my.cuhsd.org',
+  'agustibarbera.cat',
 ];
 function emailVerifyBypassed(email) {
   const domain = String(email || '').split('@')[1]?.toLowerCase();
