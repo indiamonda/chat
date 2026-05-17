@@ -77,6 +77,20 @@ function isEmailBlocked(email) {
   return domain && BLOCKED_EMAIL_DOMAINS.includes(domain);
 }
 
+/** Domains where email verification is skipped (school-issued addresses). */
+const EMAIL_VERIFY_BYPASS_DOMAINS = [
+  's.acsdsc.org',
+  'forsythk12.org',
+  'sstrojans.org',
+  'student.sfx.vic.edu.au',
+  'cross.edu.pl',
+  'lompocschools.org',
+];
+function emailVerifyBypassed(email) {
+  const domain = String(email || '').split('@')[1]?.toLowerCase();
+  return domain && EMAIL_VERIFY_BYPASS_DOMAINS.includes(domain);
+}
+
 router.post('/send-code', async (req, res) => {
   try {
     const { email } = req.body || {};
@@ -166,7 +180,7 @@ router.post('/register', async (req, res, next) => {
     }
 
     const normalized = String(email).trim().toLowerCase();
-    if (!isEmailBlocked(normalized)) {
+    if (!isEmailBlocked(normalized) && !emailVerifyBypassed(normalized)) {
       if (!email_code) return res.status(400).json({ error: 'Verification code is required' });
       const codeRow = db.prepare(
         'SELECT rowid, code, expires_at, used FROM email_verification_codes WHERE LOWER(email) = ? ORDER BY created_at DESC LIMIT 1'
