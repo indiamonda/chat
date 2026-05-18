@@ -162,4 +162,20 @@ router.patch('/password', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+router.patch('/me', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const { memory_message_length } = body;
+  if (memory_message_length !== undefined) {
+    const num = parseInt(memory_message_length, 10);
+    if (isNaN(num) || num < 1 || num > 100) {
+      return res.status(400).json({ error: 'memory_message_length must be between 1 and 100' });
+    }
+    db.prepare('UPDATE users SET memory_message_length = ? WHERE id = ?').run(num, user.id);
+  }
+  const updated = db.prepare('SELECT id, username, display_name, avatar_url, memory_message_length FROM users WHERE id = ?').get(user.id);
+  res.json({ user: updated });
+});
+
 export default router;

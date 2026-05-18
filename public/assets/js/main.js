@@ -7042,6 +7042,21 @@ function bindMain() {
       const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;
 
+      if (roomType === 'dm' && text.toLowerCase().startsWith('/memorymessagelength')) {
+        const numStr = text.split(/\s+/)[1];
+        const num = parseInt(numStr, 10);
+        if (isNaN(num) || num < 1 || num > 100) {
+          showToast('Usage: /memorymessagelength <1-100>');
+        } else {
+          apiPatch(`/api/users/me`, { memory_message_length: num }).then(() => {
+            showToast(`Memory message length set to ${num}`);
+            input.value = '';
+            resizeComposerInput();
+          }).catch((err) => showToast(err.message || 'Failed to save setting'));
+        }
+        return;
+      }
+
       if (roomType === 'group' && state.commandMode && text.startsWith('/')) {
         const cmd = text.split(/\s/)[0].toLowerCase();
         if (cmd === '/games') {

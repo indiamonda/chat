@@ -520,7 +520,7 @@ function helperSystemPrompt(roomType) {
   ].join('\n');
 }
 
-function buildHelperContext(triggerMsg, roomType, roomId) {
+function buildHelperContext(triggerMsg, roomType, roomId, maxMessages = 14) {
   // NOTE: messages.deleted_by_admin is `INTEGER NOT NULL DEFAULT 0` so
   // `IS NULL` was effectively `WHERE FALSE` and the helper bot was getting
   // an empty context for both DMs and group chat. Use `= 0` like everywhere
@@ -534,8 +534,8 @@ function buildHelperContext(triggerMsg, roomType, roomId) {
     FROM messages m LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = ? AND m.room_id = ?
       AND m.recalled_at IS NULL AND m.deleted_by_admin = 0
-    ORDER BY m.created_at DESC LIMIT 14
-  `).all(roomType, roomId);
+    ORDER BY m.created_at DESC LIMIT ?
+  `).all(roomType, roomId, maxMessages);
 
   const helperRecent = db.prepare(`
     SELECT m.content, m.sender_id, m.msg_type, m.created_at, u.username, u.display_name
@@ -737,9 +737,16 @@ async function executeServerTools(text) {
   return results;
 }
 
-async function helperReply(triggerMsgId, content, roomType, roomId) {
+async function helperReply(triggerMsgId, content, roomType, roomId, userId) {
   try {
-    const messages = buildHelperContext(content, roomType, roomId);
+    let maxMessages = 14;
+    if (roomType === 'dm' && userId) {
+      const userRow = db.prepare('SELECT memory_message_length FROM users WHERE id = ?').get(userId);
+      if (userRow && userRow.memory_message_length && userRow.memory_message_length > 0) {
+        maxMessages = Math.max(1, Math.min(100, userRow.memory_message_length));
+      }
+    }
+    const messages = buildHelperContext(content, roomType, roomId, maxMessages);
     const headers = { 'Content-Type': 'application/json' };
     if (process.env.DEEPSEEK_KEY) {
       headers['Authorization'] = `Bearer ${process.env.DEEPSEEK_KEY}`;
@@ -1539,7 +1546,7 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   const msg = { ...row, likes: 0, reactions: [], edit_history: null };
   io.to(`dm:${req.params.convId}`).emit('message', msg);
   if (otherId === HELPER_USER_ID && user.id !== HELPER_USER_ID) {
-    helperReply(id, finalContent, 'dm', req.params.convId);
+    helperReply(id, finalContent, 'dm', req.params.convId, user.id);
   }
   res.status(201).json({ message: msg });
 });
@@ -2325,7 +2332,7 @@ io.on('connection', (socket) => {
       io.to(`dm:${roomId}`).emit('message', msg);
       setTyping(socket.userId, presenceRoomKeyForRoom('dm', roomId), false);
       if (otherId === HELPER_USER_ID && socket.userId !== HELPER_USER_ID) {
-        helperReply(id, content, 'dm', roomId);
+        helperReply(id, content, 'dm', roomId, socket.userId);
       }
       return ack?.({ message: msg });
     }
@@ -2373,7 +2380,7 @@ io.on('connection', (socket) => {
     io.to(`group:${GROUP_ID}`).emit('message', msg);
     setTyping(socket.userId, presenceRoomKeyForRoom(roomType, roomId), false);
     if (socket.userId !== HELPER_USER_ID && HELPER_RE.test(content || '')) {
-      helperReply(id, content, roomType, roomId);
+      helperReply(id, content, roomType, roomId, socket.userId);
     }
     ack?.({ message: msg });
   });
