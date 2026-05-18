@@ -3489,6 +3489,48 @@ select:focus {
   margin: 14px 0;
 }
 
+.doc-markdown .md-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75rem 0;
+  font-size: 0.95em;
+}
+
+.doc-markdown .md-table th,
+.doc-markdown .md-table td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.doc-markdown .md-table th {
+  background: var(--bg-main);
+  font-weight: 600;
+}
+
+.doc-markdown .md-table tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.message-content .md-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5rem 0;
+  font-size: 0.9em;
+}
+
+.message-content .md-table th,
+.message-content .md-table td {
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+}
+
+.message-content .md-table th {
+  background: var(--bg-hover);
+  font-weight: 600;
+}
+
 /* Settings */
 .settings-page {
   max-width: 560px;
