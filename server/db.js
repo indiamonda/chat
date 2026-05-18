@@ -479,6 +479,7 @@ try {
 try { db.exec('ALTER TABLE users ADD COLUMN account_key TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN account_frozen INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
 try { db.exec('CREATE INDEX IF NOT EXISTS idx_users_account_key ON users(account_key)'); } catch (_) {}
+try { db.exec('ALTER TABLE users ADD COLUMN memory_message_length INTEGER'); } catch (_) {}
 
 // Generic short-lived 6-digit codes used for: account-key reveal, recovery
 // email verification, and any other email-second-factor flow. The `purpose`
