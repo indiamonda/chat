@@ -5576,6 +5576,7 @@ function markdownToHtml(md) {
   let blockLang = '';
   let listItems = [];
   let listOrdered = false;
+  let listStartNum = 1;
   let blockquoteLines = [];
 
   const copySvg = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
@@ -5593,8 +5594,10 @@ function markdownToHtml(md) {
   function flushList() {
     if (listItems.length) {
       const tag = listOrdered ? 'ol' : 'ul';
-      out.push(`<${tag}><li>${listItems.join(`</li><li>`)}</li></${tag}>`);
+      const startAttr = listOrdered && listStartNum > 1 ? ` start="${listStartNum}"` : '';
+      out.push(`<${tag}${startAttr}><li>${listItems.join(`</li><li>`)}</li></${tag}>`);
       listItems = [];
+      listStartNum = 1;
     }
   }
   function flushBlockquote() {
@@ -5693,6 +5696,55 @@ function markdownToHtml(md) {
     return parts.join('');
   }
 
+  function flushTable() {
+    if (!tableRows.length) return;
+    const headerRow = tableRows[0];
+    const sepRow = tableRows.length > 1 ? tableRows[1] : '';
+    const tbody = tableRows.slice(2);
+
+    // Parse header cells
+    const headers = parseTableCells(headerRow).map(c => `<th>${c.trim()}</th>`).join('');
+
+    // Parse separator to determine alignment
+    let alignAttrs = '';
+    if (sepRow) {
+      const cells = parseTableCells(sepRow);
+      alignAttrs = cells.map(c => {
+        const t = c.trim();
+        if (t.startsWith(':') && t.endsWith(':')) return ' align="center"';
+        if (t.endsWith(':')) return ' align="right"';
+        return ' align="left"';
+      }).join('');
+    }
+
+    // Parse body rows
+    const rowsHtml = tbody.map(row => {
+      const cells = parseTableCells(row).map(c => `<td${alignAttrs}>${c.trim()}</td>`).join('');
+      return `<tr>${cells}</tr>`;
+    }).join('');
+
+    out.push(`<table class="md-table"><thead><tr>${headers}</tr></thead><tbody>${rowsHtml}</tbody></table>`);
+    tableRows = [];
+  }
+
+  function parseTableCells(row) {
+    // Split on |, trimming surrounding whitespace
+    return row.split('|').map(c => c.trim()).filter(c => c !== '');
+  }
+
+  function isTableRow(line) {
+    const cells = line.split('|').map(c => c.trim()).filter(c => c !== '');
+    if (cells.length < 2) return false;
+    // Second row (separator) must contain only -, :, and spaces
+    if (tableRows.length === 1) {
+      const sep = cells.join('');
+      return /^[-\s:]+$/.test(sep);
+    }
+    return true;
+  }
+
+  let tableRows = [];
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trimEnd();
@@ -5717,20 +5769,36 @@ function markdownToHtml(md) {
     const blockquoteMatch = trimmed.match(/^>\s?(.*)$/);
     if (blockquoteMatch) {
       flushList();
+      flushTable();
       blockquoteLines.push(blockquoteMatch[1]);
       continue;
+    }
+    // Table detection: a line with | separated cells
+    const tableCells = trimmed.split('|').map(c => c.trim()).filter(c => c !== '');
+    const isTable = tableCells.length >= 2 && tableCells.every(c => !/^[-:]+$/.test(c) || /^[:\-]+$/.test(c.trim()));
+    const isSepRow = tableCells.length >= 2 && /^[:\|\-\s]+$/.test(tableCells.join(''));
+    if (tableCells.length >= 2 && (tableRows.length === 0 || isSepRow || /^[^\|]+$/.test(trimmed))) {
+      flushList();
+      flushBlockquote();
+      tableRows.push(trimmed);
+      continue;
+    }
+    if (tableRows.length > 0 && !isTable) {
+      flushTable();
     }
     const olMatch = trimmed.match(/^(\d+)\.\s+(.+)$/);
     const ulMatch = trimmed.match(/^[-*]\s+(.+)$/);
     if (olMatch) {
       if (listItems.length && !listOrdered) flushList();
       listOrdered = true;
+      listStartNum = parseInt(olMatch[1], 10);
       listItems.push(inlineMarkdown(olMatch[2]));
       continue;
     }
     if (ulMatch) {
       if (listItems.length && listOrdered) flushList();
       listOrdered = false;
+      listStartNum = 1;
       listItems.push(inlineMarkdown(ulMatch[1]));
       continue;
     }
@@ -5761,6 +5829,7 @@ function markdownToHtml(md) {
   flushBlock();
   flushList();
   flushBlockquote();
+  flushTable();
   return out.join('\n');
 }
 
