@@ -5,7 +5,11 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json ./
 COPY scripts ./scripts
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv make g++ supervisor && rm -rf /var/lib/apt/lists/*
+RUN python3 -m venv /app/.schoology-venv
+COPY schoology-requirements.txt ./
+RUN /app/.schoology-venv/bin/pip install --no-cache-dir -r schoology-requirements.txt
+COPY schoology/ ./schoology/
 RUN npm install --omit=dev
 
 FROM base AS runner
@@ -17,9 +21,10 @@ COPY . .
 # Socket.IO browser bundle for game.html (/socket.io.min.js); file may be untracked in git
 RUN cp -f node_modules/socket.io/client-dist/socket.io.min.js public/socket.io.min.js
 RUN mkdir -p /data && chown -R nodejs:nodejs /data
+COPY supervisord.conf /etc/supervisor/conf.d/schoology.conf
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 USER nodejs
-EXPOSE 8080
+EXPOSE 8080 8081
 ENV DATA_DIR=/data
-# Only run init-db when the database file doesn't exist (e.g. first deploy or new volume).
-# This prevents overwriting an existing DB and resetting passwords to the default placeholder.
-CMD ["sh", "-c", "[ -f ${DATA_DIR}/chat.db ] || node server/scripts/init-db.js; exec node server/index.js"]
+CMD ["/docker-entrypoint.sh"]

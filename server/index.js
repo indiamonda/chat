@@ -1,4 +1,6 @@
 import { createServer } from 'http';
+import { Readable } from 'stream';
+import { parse as urlParse } from 'url';
 import { readFileSync, existsSync, readdirSync, rmSync as fsRm } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -852,6 +854,59 @@ app.use((req, res, next) => {
   }
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
+});
+
+// Schoology proxy - forward /schoology/* requests to the Flask app on port 8081
+function proxyRequest(req, res, targetPort, basePath) {
+  const parsedUrl = urlParse(req.url, true);
+  const targetPath = basePath + (parsedUrl.pathname || '');
+
+  const options = {
+    hostname: '127.0.0.1',
+    port: targetPort,
+    path: targetPath + (parsedUrl.search || ''),
+    method: req.method,
+    headers: {
+      ...req.headers,
+      'host': undefined,
+      'connection': 'keep-alive'
+    }
+  };
+
+  const proxyReq = http.request(options, (proxyRes) => {
+    if (proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
+      res.writeHead(proxyRes.statusCode, { 'Location': proxyRes.headers.location });
+      res.end();
+      return;
+    }
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res);
+  });
+
+  proxyReq.on('error', (err) => {
+    console.error('Proxy error:', err);
+    if (!res.headersSent) {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Proxy error' }));
+    }
+  });
+
+  // Write body if present (after express.json() parsed it)
+  if (req.body != null) {
+    proxyReq.write(JSON.stringify(req.body));
+  }
+  proxyReq.end();
+}
+
+// Add Schoology proxy routes BEFORE static file handlers
+app.use('/schoology/api', (req, res) => {
+  req.url = req.url.replace(/^\/schoology\/api/, '');
+  proxyRequest(req, res, 8081, '/api');
+});
+
+app.use('/schoology', (req, res) => {
+  req.url = req.url.replace(/^\/schoology/, '');
+  proxyRequest(req, res, 8081, '');
 });
 
 // Serve assets and uploads before session so static requests never trigger session/DB errors or 500
