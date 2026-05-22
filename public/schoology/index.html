@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Didact+Gothic&family=Oxygen+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" defer></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -43,10 +43,14 @@
     .landing-hero {
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
       color: white;
-      padding: 60px 40px;
-      text-align: center;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
       position: relative;
       overflow: hidden;
+      padding: 40px;
     }
 
     .landing-hero::before {
@@ -63,23 +67,6 @@
     @keyframes pulse {
       0%, 100% { transform: scale(1); opacity: 0.5; }
       50% { transform: scale(1.1); opacity: 0.8; }
-    }
-
-    .landing-hero h1 {
-      font-size: 3rem;
-      font-weight: 400;
-      margin-bottom: 16px;
-      position: relative;
-      z-index: 1;
-      color: #7dd3fc;
-    }
-
-    .landing-hero .tagline {
-      font-size: 1.2rem;
-      opacity: 0.9;
-      margin-bottom: 40px;
-      position: relative;
-      z-index: 1;
     }
 
     .hero-shapes {
@@ -130,9 +117,47 @@
       50% { transform: translateY(-20px) rotate(5deg); }
     }
 
-    .hero-content {
+    /* Typewriter text animation */
+    .typewriter-container {
       position: relative;
       z-index: 1;
+      text-align: center;
+      margin-bottom: 120px;
+    }
+
+    .typewriter-text {
+      font-size: 3.5rem;
+      font-weight: 400;
+      letter-spacing: 2px;
+      text-shadow: 0 0 20px rgba(125, 211, 252, 0.5), 0 0 40px rgba(125, 211, 252, 0.3);
+      min-height: 4rem;
+      display: inline-flex;
+      align-items: center;
+      white-space: pre;
+    }
+
+    .typewriter-text .blue { color: #60a5fa; display: inline; margin: 0 6px; }
+    .typewriter-text .white { color: #ffffff; display: inline; }
+
+    .typewriter-cursor {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      margin-left: 8px;
+      vertical-align: middle;
+      background: #ffffff;
+      box-shadow: 0 0 8px #ffffff, 0 0 16px #ffffff;
+    }
+
+    .typewriter-hint {
+      margin-top: 16px;
+      font-size: 1rem;
+      opacity: 0.6;
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      width: 100%;
     }
 
     .features-grid {
@@ -142,6 +167,8 @@
       max-width: 1000px;
       margin: 0 auto;
       padding: 0 20px;
+      position: relative;
+      z-index: 1;
     }
 
     .feature-card {
@@ -160,8 +187,13 @@
     }
 
     .feature-icon {
-      font-size: 2rem;
-      margin-bottom: 12px;
+      font-size: 1.2rem;
+      margin-bottom: 10px;
+    }
+
+    .feature-icon svg {
+      width: 24px;
+      height: 24px;
     }
 
     .feature-card h3 {
@@ -178,7 +210,8 @@
 
     .login-section {
       background: var(--surface);
-      padding: 60px 40px;
+      padding: 80px 40px;
+      text-align: center;
     }
 
     .login-container {
@@ -186,17 +219,17 @@
       margin: 0 auto;
     }
 
-    .login-container h2 {
-      font-size: 1.8rem;
+    .login-container .main-title {
+      font-size: 2.5rem;
       font-weight: 400;
-      text-align: center;
       margin-bottom: 8px;
+      color: var(--text);
     }
 
-    .login-subtitle {
-      text-align: center;
+    .login-container .main-subtitle {
+      font-size: 1.1rem;
       color: var(--text-secondary);
-      margin-bottom: 32px;
+      margin-bottom: 40px;
     }
 
     .login-form {
@@ -317,7 +350,7 @@
       display: block;
     }
 
-    .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+    .container { max-width: 900px; margin: 0 auto; padding: 40px; }
 
     header { margin-bottom: 40px; }
 
@@ -327,10 +360,11 @@
 
     .section {
       background: var(--surface);
-      border-radius: 12px;
+      border-radius: 0;
       padding: 24px;
       margin-bottom: 20px;
-      border: 1px solid var(--border);
+      border: none;
+      border-bottom: 1px solid var(--border);
     }
 
     .section-title {
@@ -401,7 +435,8 @@
     .ai-container {
       display: flex;
       flex-direction: column;
-      height: 500px;
+      flex: 1;
+      min-height: 500px;
     }
 
     .chat-messages {
@@ -419,7 +454,7 @@
     .chat-message {
       padding: 14px 18px;
       border-radius: 18px;
-      max-width: 88%;
+      width: 100%;
       line-height: 1.6;
       font-size: 0.95rem;
     }
@@ -429,6 +464,7 @@
       color: white;
       align-self: flex-end;
       border-bottom-right-radius: 4px;
+      max-width: 100%;
     }
 
     .chat-message.assistant {
@@ -436,6 +472,7 @@
       color: var(--text);
       align-self: flex-start;
       border-bottom-left-radius: 4px;
+      max-width: 100%;
     }
 
     .chat-message.error {
@@ -537,6 +574,19 @@
     .notification.info { background: var(--primary); }
     @keyframes slideUp { from { transform: translateX(-50%) translateY(20px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
 
+    /* Error display */
+    .error-display { text-align: center; padding: 40px 20px; }
+    .error-icon { font-size: 3rem; margin-bottom: 16px; }
+    .error-title { font-size: 1.3rem; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+    .error-message { color: var(--text-secondary); margin-bottom: 8px; }
+    .error-hint { font-size: 0.85rem; color: var(--text-secondary); padding: 12px 16px; background: var(--bg); border-radius: 8px; margin-top: 16px; }
+    .error-actions { display: flex; gap: 12px; justify-content: center; margin-top: 20px; }
+    .error-btn { padding: 12px 24px; border-radius: 10px; font-size: 0.95rem; font-family: 'Didact Gothic', sans-serif; cursor: pointer; transition: all 0.2s; }
+    .error-btn.primary { background: var(--primary); color: white; border: none; }
+    .error-btn.primary:hover { background: #005bb5; }
+    .error-btn.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .error-btn.secondary:hover { border-color: var(--primary); }
+
     @media (max-width: 600px) {
       .landing-hero { padding: 40px 20px; }
       .landing-hero h1 { font-size: 2rem; }
@@ -544,6 +594,9 @@
       .login-section { padding: 40px 20px; }
       .container { padding: 20px 16px; }
       .nav-tab { padding: 10px 14px; font-size: 0.85rem; }
+      .typewriter-text { font-size: 1.5rem; }
+      .typewriter-cursor { height: 1.5rem; }
+      .typewriter-hint { font-size: 0.9rem; }
     }
   </style>
 </head>
@@ -556,49 +609,89 @@
         <div class="hero-shape"></div>
         <div class="hero-shape"></div>
       </div>
-      <div class="hero-content">
-        <h1>Schoology Help</h1>
-        <p class="tagline">Your intelligent study companion for PAUSD Schoology</p>
+      <div class="typewriter-container">
+        <div class="typewriter-text" id="typewriterText"><span class="white"></span><span class="blue"></span><span class="white"></span><span class="typewriter-cursor"></span></div>
+      </div>
+      <p class="typewriter-hint">Your intelligent study companion for PAUSD Schoology</p>
 
-        <div class="features-grid">
-          <div class="feature-card">
-            <div class="feature-icon">📊</div>
-            <h3>Real-time Grades</h3>
-            <p>Track your academic progress with detailed category breakdowns and trends.</p>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 3v18h18"/>
+              <path d="M18 17V9"/>
+              <path d="M13 17V5"/>
+              <path d="M8 17v-3"/>
+            </svg>
           </div>
-          <div class="feature-card">
-            <div class="feature-icon">🤖</div>
-            <h3>AI Study Assistant</h3>
-            <p>Get instant help with assignments, explanations, and personalized study plans.</p>
+          <h3>Real-time Grades</h3>
+          <p>Track your academic progress with detailed category breakdowns and trends.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="4" width="18" height="16" rx="2"/>
+              <circle cx="9" cy="10" r="1.5"/>
+              <circle cx="15" cy="10" r="1.5"/>
+              <path d="M9 15h6"/>
+              <path d="M12 4V2"/>
+            </svg>
           </div>
-          <div class="feature-card">
-            <div class="feature-icon">📅</div>
-            <h3>Assignment Tracking</h3>
-            <p>Never miss a deadline with smart due date tracking and reminders.</p>
+          <h3>AI Study Assistant</h3>
+          <p>Get instant help with assignments, explanations, and personalized study plans.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+              <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/>
+            </svg>
           </div>
-          <div class="feature-card">
-            <div class="feature-icon">🔍</div>
-            <h3>Smart Search</h3>
-            <p>Search the web and Wikipedia directly through your AI assistant.</p>
+          <h3>Assignment Tracking</h3>
+          <p>Never miss a deadline with smart due date tracking and reminders.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <path d="M21 21l-4.35-4.35"/>
+            </svg>
           </div>
-          <div class="feature-card">
-            <div class="feature-icon">📷</div>
-            <h3>Image Analysis</h3>
-            <p>Upload images of worksheets or notes and get AI-powered text extraction.</p>
+          <h3>Smart Search</h3>
+          <p>Search the web and Wikipedia directly through your AI assistant.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+              <path d="M12 18h.01"/>
+              <path d="M9 6l3-3 3 3"/>
+            </svg>
           </div>
-          <div class="feature-card">
-            <div class="feature-icon">📚</div>
-            <h3>Course Overview</h3>
-            <p>View all your courses, teachers, and schedules in one organized dashboard.</p>
+          <h3>Image Analysis</h3>
+          <p>Upload images of worksheets or notes and get AI-powered text extraction.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              <path d="M8 7h8M8 11h6M8 15h4"/>
+            </svg>
           </div>
+          <h3>Course Overview</h3>
+          <p>View all your courses, teachers, and schedules in one organized dashboard.</p>
         </div>
       </div>
     </div>
 
     <div class="login-section">
       <div class="login-container">
-        <h2>Sign in to Schoology</h2>
-        <p class="login-subtitle">Enter your PAUSD credentials to access your dashboard</p>
+        <h2 class="main-title">Schoology Help</h2>
+        <p class="main-subtitle">Sign in to access your academic dashboard</p>
 
         <div id="loginError" class="login-error">Invalid credentials</div>
 
@@ -617,7 +710,7 @@
     </div>
 
     <div class="footer">
-      <p>Built with Claude Code · Powered by DeepSeek AI</p>
+      <p>Powered by Deepseek AI · Github · Schoology MCP · JimmyQrg</p>
     </div>
   </div>
 
@@ -647,8 +740,7 @@
         <div class="nav-tab" data-tab="grades">Grades</div>
         <div class="nav-tab" data-tab="assignments">Assignments</div>
         <div class="nav-tab" data-tab="activity">Activity</div>
-        <div class="nav-tab" data-tab="settings">Settings</div>
-      </div>
+              </div>
 
       <!-- AI Tab (Default) -->
       <div class="tab-content active" id="tab-ai">
@@ -661,7 +753,7 @@
             <div class="chat-messages" id="chatMessages">
               <div class="chat-message assistant">
                 <div class="markdown-content">
-                  <p>👋 Welcome to your AI Study Assistant! I have access to your grades, assignments, and recent posts from Schoology.</p>
+                  <p>👋 Welcome! I'm your AI study assistant. I have access to your grades, assignments, and recent posts from Schoology.</p>
                   <p>You can ask me to:</p>
                   <ul>
                     <li>Explain concepts from your classes</li>
@@ -669,7 +761,6 @@
                     <li>Summarize recent posts from teachers</li>
                     <li>Create study plans based on your grades</li>
                   </ul>
-                  <p>I support markdown, LaTeX math ($\sqrt{x}$ or $$\\frac{a}{b}$$), code blocks, and more!</p>
                 </div>
               </div>
             </div>
@@ -679,7 +770,12 @@
 
             <div class="chat-input-area">
               <div class="chat-input-row">
-                <input type="text" id="chatInput" placeholder="Ask anything about your courses, grades, or assignments..." onkeydown="handleChatKeydown(event)">
+                <input type="text" id="chatInput" placeholder="Ask anything about your courses, grades, or assignments..." onkeydown="handleChatKeydown(event)" ${state.isGenerating ? 'disabled style="opacity: 0.6;"' : ''}>
+                <button id="sendBtn" onclick="sendChatMessage()" style="padding: 12px 16px; background: var(--primary); color: white; border: none; border-radius: 24px; cursor: pointer;">
+                  <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                    <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
+                  </svg>
+                </button>
                 <div class="emoji-btn">
                   <svg onclick="toggleEmojiPicker()" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" style="cursor: pointer;">
                     <circle cx="12" cy="12" r="10"/>
@@ -754,35 +850,7 @@
         </div>
       </div>
 
-      <!-- Settings Tab -->
-      <div class="tab-content" id="tab-settings">
-        <div class="section">
-          <div class="section-title">Settings</div>
-          <div style="max-width: 600px;">
-            <div style="margin-bottom: 24px;">
-              <label style="display: block; margin-bottom: 8px; font-weight: 500;">DeepSeek AI Proxy Worker URL</label>
-              <input type="text" id="workerUrlInput" placeholder="https://your-worker.workers.dev"
-                     style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit;">
-              <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
-                Get your Worker URL by deploying the DeepSeek proxy worker to Cloudflare Workers
-              </div>
-            </div>
-            <div style="margin-bottom: 24px;">
-              <label style="display: block; margin-bottom: 8px; font-weight: 500;">API URL (Alternative)</label>
-              <input type="text" id="apiUrlInput" placeholder="http://localhost:8080"
-                     style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit;">
-              <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
-                Or enter a direct API URL if you have one
-              </div>
-            </div>
-            <button onclick="saveSettings()" style="padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-family: inherit;">
-              Save Settings
-            </button>
-            <div id="settingsSaved" style="display: none; margin-top: 12px; color: var(--success);">Settings saved!</div>
           </div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <script>
@@ -796,7 +864,8 @@
       assignments: [],
       posts: [],
       chatHistory: [],
-      uploadedFiles: []
+      uploadedFiles: [],
+      isGenerating: false
     };
 
     // Demo data
@@ -826,16 +895,25 @@
       ]
     };
 
-    // Configure marked
-    marked.setOptions({ breaks: true, gfm: true, headerIds: false, mangle: false });
-    const renderer = new marked.Renderer();
-    renderer.code = function(code, language) {
-      return `<div class="code-block"><button class="copy-btn" onclick="copyCode(this, \`${escapeForJS(code)}\`)">Copy</button><pre><code>${escapeHtml(code)}</code></pre></div>`;
-    };
-    renderer.codespan = function(code) { return `<code>${escapeHtml(code)}</code>`; };
-    marked.use({ renderer });
+    // Configure marked when DOM is ready
+    function initMarked() {
+      if (typeof marked === 'undefined') {
+        setTimeout(initMarked, 100);
+        return;
+      }
+      marked.setOptions({ breaks: true, gfm: true, headerIds: false, mangle: false });
+      const renderer = new marked.Renderer();
+      renderer.code = function(code, language) {
+        return `<div class="code-block"><button class="copy-btn" onclick="copyCode(this, \`${escapeForJS(code)}\`)">Copy</button><pre><code>${escapeHtml(code)}</code></pre></div>`;
+      };
+      renderer.codespan = function(code) { return `<code>${escapeHtml(code)}</code>`; };
+      marked.use({ renderer });
+    }
+    initMarked();
+    document.addEventListener('DOMContentLoaded', initMarked);
 
     function renderMarkdown(text) {
+      if (typeof marked === 'undefined') return escapeHtml(text);
       text = text.replace(/\$\$([\s\S]*?)\$\$/g, (m, math) => {
         try { return katex.renderToString(math, { displayMode: true, throwOnError: false }); } catch (e) { return `<pre>${escapeHtml(math)}</pre>`; }
       });
@@ -922,24 +1000,7 @@
       hideApp();
     }
 
-    function saveSettings() {
-      const workerUrl = document.getElementById('workerUrlInput').value.trim();
-      const apiUrl = document.getElementById('apiUrlInput').value.trim();
-      if (workerUrl) localStorage.setItem('schoology-ai-worker-url', workerUrl);
-      if (apiUrl) localStorage.setItem('schoology-api-url', apiUrl);
-      document.getElementById('settingsSaved').style.display = 'block';
-      setTimeout(() => {
-        document.getElementById('settingsSaved').style.display = 'none';
-      }, 3000);
-    }
-
-    function loadSettings() {
-      const workerUrl = localStorage.getItem('schoology-ai-worker-url');
-      const apiUrl = localStorage.getItem('schoology-api-url');
-      if (workerUrl) document.getElementById('workerUrlInput').value = workerUrl;
-      if (apiUrl) document.getElementById('apiUrlInput').value = apiUrl;
-    }
-
+    
     function loadDemoData() {
       state.grades = demoData.grades;
       state.assignments = demoData.assignments;
@@ -975,71 +1036,196 @@
       renderActivityList();
     }
 
-    // Fetch real data from MCP server
+    // Fetch real data from API server
     async function fetchRealData() {
-      const workerUrl = localStorage.getItem('schoology-ai-worker-url');
       // Default to jchat.fly.dev/schoology as the API server
-      const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
+      const apiUrl = 'https://jchat.fly.dev/schoology';
 
-      // Use the configured API server for data
-      const dataUrl = workerUrl || apiUrl;
+      // Build auth headers if we have credentials
+      const authHeaders = {};
+      if (state.schoologyUsername && state.schoologyPassword) {
+        authHeaders['Authorization'] = 'Basic ' + btoa(state.schoologyUsername + ':' + state.schoologyPassword);
+      }
 
       try {
-        // Try to fetch from Flask API server
-        const gradesRes = await fetch(`${dataUrl}/api/grades`);
-        const coursesRes = await fetch(`${dataUrl}/api/courses`);
-        const assignmentsRes = await fetch(`${dataUrl}/api/assignments`);
-        const postsRes = await fetch(`${dataUrl}/api/posts`);
+        // Try to fetch from API server
+        const gradesRes = await fetch(`${apiUrl}/api/grades`, { headers: authHeaders });
+        const coursesRes = await fetch(`${apiUrl}/api/courses`, { headers: authHeaders });
+        const assignmentsRes = await fetch(`${apiUrl}/api/assignments`, { headers: authHeaders });
+        const postsRes = await fetch(`${apiUrl}/api/posts`, { headers: authHeaders });
 
-        if (gradesRes.ok && coursesRes.ok && assignmentsRes.ok && postsRes.ok) {
-          state.grades = await gradesRes.json();
-          state.courses = await coursesRes.json();
-          state.assignments = await assignmentsRes.json();
-          state.posts = await postsRes.json();
-        } else {
-          throw new Error('Failed to fetch some data');
+        // Check if responses are OK
+        if (!gradesRes.ok || !coursesRes.ok || !assignmentsRes.ok || !postsRes.ok) {
+          throw new Error(`API returned status: ${gradesRes.status}`);
         }
 
+        // Get response text
+        const gradesText = await gradesRes.text();
+        const coursesText = await coursesRes.text();
+        const assignmentsText = await assignmentsRes.text();
+        const postsText = await postsRes.text();
+
+        // If response starts with '<', it's HTML not JSON - server error
+        if (gradesText.trim().startsWith('<') || coursesText.trim().startsWith('<') ||
+            assignmentsText.trim().startsWith('<') || postsText.trim().startsWith('<')) {
+          throw new Error('Server returned HTML instead of JSON - server may not be configured for Schoology MCP');
+        }
+
+        // Parse JSON responses
+        let gradesData = JSON.parse(gradesText);
+        let coursesData = JSON.parse(coursesText);
+        let assignmentsData = JSON.parse(assignmentsText);
+        let postsData = JSON.parse(postsText);
+
+        // Check if we got mock data (from server running without MCP connected)
+        // Real MCP returns arrays directly, mock returns objects with _mock flag
+        if (gradesData._mock === true) {
+          // MCP not connected - show error, don't fall back to demo
+          showDetailedError({
+            type: 'mcp_not_connected',
+            title: 'Schoology MCP Not Connected',
+            message: 'The server is running but the Schoology MCP is not connected. Real-time data is unavailable.',
+            hint: 'Contact the administrator to set up the Schoology MCP connection.'
+          });
+          return;
+        }
+
+        // Real MCP data - use directly
+        state.grades = gradesData;
+        state.courses = coursesData;
+        state.assignments = assignmentsData;
+        state.posts = postsData;
+
+        // Successfully got real data
+        state.demoMode = false;
+        updateStatus(true);
+
+        // Re-render sections with real data
+        renderGradesOverview();
+        renderAssignmentsOverview();
+        renderGradesList();
+        renderAssignmentsList();
+        renderActivityList();
+
       } catch (e) {
-        state.connectionError = `Failed to connect to API server: ${e.message}. Please ensure server.py is running.`;
-        renderConnectionError();
+        // Connection or parse error - show detailed error instead of falling back to demo
+        console.error('Data fetch failed:', e.message);
+        let errorType = 'connection_error';
+        let errorTitle = 'Connection Failed';
+        let errorMessage = e.message;
+        let errorHint = '';
+
+        if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError') || e.message.includes('network')) {
+          errorType = 'network_error';
+          errorTitle = 'Network Error';
+          errorMessage = 'Could not connect to the API server.';
+          errorHint = 'Check your internet connection or try again later.';
+        } else if (e.message.includes('JSON') || e.message.includes('parse')) {
+          errorType = 'invalid_response';
+          errorTitle = 'Invalid Server Response';
+          errorMessage = 'The server returned an invalid response.';
+          errorHint = 'The server may be misconfigured. Contact the administrator.';
+        } else if (e.message.includes('HTML')) {
+          errorType = 'server_error';
+          errorTitle = 'Server Error';
+          errorMessage = 'The server returned an error page instead of data.';
+          errorHint = 'The Schoology MCP may not be properly configured on the server.';
+        } else if (e.message.includes('status: 5') || e.message.includes('status: 4')) {
+          errorType = 'http_error';
+          errorTitle = 'Server Error (' + e.message + ')';
+          errorMessage = 'The API server returned an error status code.';
+          errorHint = 'The server encountered an error. Contact the administrator.';
+        }
+
+        showDetailedError({
+          type: errorType,
+          title: errorTitle,
+          message: errorMessage,
+          hint: errorHint
+        });
       }
     }
 
-    function renderConnectionError() {
-      const overviewGrades = document.getElementById('gradesOverview');
-      const overviewAssignments = document.getElementById('assignmentsOverview');
+    function updateStatus(connected) {
+      const statusDot = document.getElementById('statusDot');
+      const statusText = document.getElementById('statusText');
+      if (connected) {
+        statusDot.style.background = 'var(--success)';
+        statusText.textContent = 'Connected';
+      } else {
+        statusDot.style.background = 'var(--error)';
+        statusText.textContent = 'Demo Mode';
+        state.demoMode = true;
+        loadDemoData();
+        renderGradesOverview();
+        renderAssignmentsOverview();
+        renderGradesList();
+        renderAssignmentsList();
+        renderActivityList();
+      }
+    }
 
+    function showDetailedError(error) {
+      // Clear all list containers and show error
+      const containers = ['gradesOverview', 'assignmentsOverview', 'gradesList', 'assignmentsList', 'activityList'];
+      containers.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '';
+      });
+
+      // Show error in gradesOverview as the primary error display
+      const overviewGrades = document.getElementById('gradesOverview');
       if (overviewGrades) {
+        const icon = error.type === 'mcp_not_connected' ? '⚙️' :
+                     error.type === 'network_error' ? '📡' :
+                     error.type === 'invalid_response' ? '⚠️' :
+                     error.type === 'server_error' ? '🔧' : '❌';
         overviewGrades.innerHTML = `
-          <div style="padding: 40px 20px; text-align: center; background: rgba(255,59,48,0.1); border-radius: 12px; border: 1px solid var(--error);">
-            <div style="font-size: 2rem; margin-bottom: 12px;">⚠️</div>
-            <div style="color: var(--error); font-weight: 500; margin-bottom: 8px;">Connection Error</div>
-            <div style="color: var(--text-secondary); font-size: 0.9rem;">${state.connectionError || 'Failed to connect to MCP server'}</div>
-            <div style="margin-top: 16px; font-size: 0.85rem; color: var(--text-secondary);">
-              To fix this:<br>
-              1. Start the MCP server: <code>python server.py</code><br>
-              2. Configure DeepSeek Worker URL in Settings<br>
-              3. Or use Demo Mode to preview the interface
+          <div class="error-display">
+            <div class="error-icon">${icon}</div>
+            <div class="error-title">${escapeHtml(error.title)}</div>
+            <div class="error-message">${escapeHtml(error.message)}</div>
+            <div class="error-hint">💡 ${escapeHtml(error.hint)}</div>
+            <div class="error-actions">
+              <button class="error-btn primary" onclick="retryFetch()">Try Again</button>
+              <button class="error-btn secondary" onclick="enterDemoMode()">Use Demo Mode</button>
             </div>
           </div>
         `;
       }
 
-      if (overviewAssignments) {
-        overviewAssignments.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data available - connection error</div>';
-      }
+      // Update status
+      document.getElementById('statusText').textContent = error.type.replace(/_/g, ' ');
+      document.getElementById('statusDot').style.background = 'var(--error)';
 
-      // Also update other sections
-      const gradesList = document.getElementById('gradesList');
-      const assignmentsList = document.getElementById('assignmentsList');
-      const activityList = document.getElementById('activityList');
-
-      if (gradesList) gradesList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data - connection error</div>';
-      if (assignmentsList) assignmentsList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data - connection error</div>';
-      if (activityList) activityList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data - connection error</div>';
+      state.error = error;
     }
 
+    function retryFetch() {
+      delete state.error;
+      document.getElementById('statusDot').style.background = 'var(--warning)';
+      document.getElementById('statusText').textContent = 'Connecting...';
+      fetchRealData();
+    }
+
+    function showConnectionError() {
+      const overviewGrades = document.getElementById('gradesOverview');
+      if (overviewGrades) {
+        overviewGrades.innerHTML = '<div style="padding: 40px 20px; text-align: center; background: rgba(255,59,48,0.1); border-radius: 12px; border: 1px solid var(--error);"><div style="font-size: 2rem; margin-bottom: 12px;">⚠️</div><div style="color: var(--error); font-weight: 500; margin-bottom: 8px;">Connection Error</div><div style="color: var(--text-secondary); font-size: 0.9rem; max-width: 400px; margin: 0 auto;">Failed to connect to API server</div></div>';
+      }
+      const overviewAssignments = document.getElementById('assignmentsOverview');
+      if (overviewAssignments) {
+        overviewAssignments.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data available - API not connected</div>';
+      }
+      const gradesList = document.getElementById('gradesList');
+      if (gradesList) gradesList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data - API not connected</div>';
+      const assignmentsList = document.getElementById('assignmentsList');
+      if (assignmentsList) assignmentsList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data - API not connected</div>';
+      const activityList = document.getElementById('activityList');
+      if (activityList) activityList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data - API not connected</div>';
+    }
+
+    
     function hideApp() {
       document.getElementById('landingPage').style.display = 'block';
       document.getElementById('appContainer').classList.remove('visible');
@@ -1167,10 +1353,39 @@
     }
 
     // AI Chat
+    function setStopButton() {
+      const sendBtn = document.getElementById('sendBtn');
+      if (sendBtn) {
+        sendBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+        sendBtn.onclick = stopGeneration;
+        sendBtn.style.background = 'var(--error)';
+      }
+    }
+
+    function setSendButton() {
+      const sendBtn = document.getElementById('sendBtn');
+      if (sendBtn) {
+        sendBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>';
+        sendBtn.onclick = sendChatMessage;
+        sendBtn.style.background = 'var(--primary)';
+      }
+    }
+
+    function stopGeneration() {
+      state.isGenerating = false;
+      hideTypingIndicator();
+      setSendButton();
+    }
+
     async function sendChatMessage() {
+      if (state.isGenerating) return;
+
       const input = document.getElementById('chatInput');
       const message = input.value.trim();
       if (!message && !state.uploadedFiles.length) return;
+
+      state.isGenerating = true;
+      setStopButton();
 
       const workerUrl = localStorage.getItem('schoology-ai-worker-url');
 
@@ -1186,8 +1401,6 @@
       if (state.chatHistory.length > 15) {
         const summaryIndex = Math.floor(state.chatHistory.length / 2);
         const oldMessages = state.chatHistory.slice(0, summaryIndex);
-        const summaryPrompt = `Summarize this conversation concisely in 2-3 sentences:\n` +
-          oldMessages.map(m => `${m.role}: ${m.content}`).join('\n');
         state.chatHistory = [
           { role: 'system', content: `Previous conversation summary: ${generateSummary(oldMessages)}` }
         ].concat(state.chatHistory.slice(summaryIndex));
@@ -1198,30 +1411,46 @@
 
       showTypingIndicator();
 
+      // Default AI API endpoint
+      const apiUrl = 'https://deepseek-proxy.ikunbeautiful.workers.dev';
+
       try {
-        if (workerUrl) {
-          const response = await fetch(`${workerUrl}/v1/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage), max_tokens: 4096, temperature: 0.7 })
-          });
-          hideTypingIndicator();
-          if (!response.ok) throw new Error(await response.text());
-          const data = await response.json();
-          const reply = data.choices?.[0]?.message?.content || 'No response received.';
-          addChatMessage('assistant', reply);
-          state.chatHistory.push({ role: 'assistant', content: reply });
-          handleAICommands(reply);
-        } else {
-          hideTypingIndicator();
-          const demoResponse = generateDemoResponse(message);
-          addChatMessage('assistant', demoResponse);
-          state.chatHistory.push({ role: 'assistant', content: demoResponse });
+        // Try API first, fall back to demo if not configured
+        const endpoint = workerUrl || apiUrl;
+        const response = await fetch(`${endpoint}/v1/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage), max_tokens: 4096, temperature: 0.7 })
+        });
+
+        if (!response.ok) {
+          throw new Error(`API returned status ${response.status}`);
         }
+
+        const responseText = await response.text();
+
+        // Check if we got HTML instead of JSON (API not properly configured)
+        if (responseText.trim().startsWith('<')) {
+          throw new Error('API returned HTML instead of JSON');
+        }
+
+        const data = JSON.parse(responseText);
+        const reply = data.choices?.[0]?.message?.content || 'No response received.';
+
+        hideTypingIndicator();
+        addChatMessage('assistant', reply);
+        state.chatHistory.push({ role: 'assistant', content: reply });
+        handleAICommands(reply);
+
       } catch (e) {
+        // API failed - show error
+        console.log('API error:', e.message);
         hideTypingIndicator();
         addChatMessage('error', `Error: ${e.message}`);
       }
+
+      state.isGenerating = false;
+      setSendButton();
     }
 
     function generateSummary(messages) {
@@ -1305,55 +1534,6 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       }
     }
 
-    function addChatMessage(type, content) {
-      const container = document.getElementById('chatMessages');
-      const div = document.createElement('div');
-      div.className = `chat-message ${type}`;
-      if (type === 'assistant') {
-        // For assistant messages, use typewriter animation
-        div.innerHTML = `<div class="markdown-content"></div>`;
-        container.appendChild(div);
-        typewriterEffect(div.querySelector('.markdown-content'), content);
-      } else {
-        div.textContent = content;
-        container.appendChild(div);
-      }
-      container.scrollTop = container.scrollHeight;
-    }
-
-    // Typewriter effect for AI responses
-    function typewriterEffect(element, content, speed = 25) {
-      const container = document.getElementById('chatMessages');
-      const rendered = renderMarkdown(content);
-      element.innerHTML = '';
-
-      // Get plain text for animation
-      let text = content
-        .replace(/```[\s\S]*?```/g, (m) => '```code```')
-        .replace(/`[^`]*`/g, (m) => m.replace(/`/g, ''))
-        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-        .replace(/[#*_~]/g, '')
-        .replace(/\n+/g, ' ')
-        .trim();
-
-      let index = 0;
-
-      function tick() {
-        if (index < text.length) {
-          // Show partial markdown (faster than rendering HTML each time)
-          element.innerHTML = renderMarkdown(text.substring(0, index + 1));
-          index++;
-          container.scrollTop = container.scrollHeight;
-          setTimeout(tick, speed);
-        } else {
-          element.innerHTML = rendered;
-          container.scrollTop = container.scrollHeight;
-        }
-      }
-
-      tick();
-    }
-
     function showTypingIndicator() {
       const container = document.getElementById('chatMessages');
       const indicator = document.createElement('div');
@@ -1369,7 +1549,32 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       if (indicator) indicator.remove();
     }
 
+    function showAIResponse(element, content) {
+      element.innerHTML = renderMarkdown(content);
+    }
+
+    function addChatMessage(type, content) {
+      const container = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = `chat-message ${type}`;
+      if (type === 'assistant') {
+        div.innerHTML = `<div class="markdown-content"></div>`;
+        container.appendChild(div);
+        showAIResponse(div.querySelector('.markdown-content'), content);
+      } else {
+        div.textContent = content;
+        container.appendChild(div);
+      }
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function resetSendButton() {
+      state.isGenerating = false;
+      setSendButton();
+    }
+
     function handleChatKeydown(e) {
+      if (state.isGenerating) return;
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
     }
 
@@ -1510,7 +1715,106 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
 
     // Init
     checkSession();
-    loadSettings();
+
+    // Typewriter animation
+    const typewriterPhrases = [
+      { before: "Keep on ", blue: "track", after: " with your grades" },
+      { before: "No more ", blue: "overdues", after: " with smart alerts" },
+      { before: "Your ", blue: "AI", after: " study companion" },
+      { before: "Ace your ", blue: "exams", after: " with ease" },
+      { before: "Stay ", blue: "organized", after: " all semester" },
+      { before: "Master ", blue: "any", after: " subject" }
+    ];
+
+    let phraseIndex = 0;
+    let charIndex = 0;
+    let isDeleting = false;
+    let typeSpeed = 80;
+
+    function updateTypewriter() {
+      const container = document.getElementById('typewriterText');
+      const cursor = container.querySelector('.typewriter-cursor');
+      const phrase = typewriterPhrases[phraseIndex];
+      const whiteSpans = container.querySelectorAll('.white');
+      const blueSpan = container.querySelector('.blue');
+
+      if (!isDeleting) {
+        // Typing forward
+        const fullText = phrase.before + phrase.blue + phrase.after;
+        if (charIndex < fullText.length) {
+          // Determine which part we're in
+          if (charIndex < phrase.before.length) {
+            whiteSpans[0].textContent = phrase.before.substring(0, charIndex + 1);
+            whiteSpans[1].textContent = '';
+            blueSpan.textContent = '';
+            cursor.style.color = '#ffffff';
+            cursor.style.background = '#ffffff';
+            cursor.style.boxShadow = '0 0 8px #ffffff, 0 0 16px #ffffff';
+          } else if (charIndex < phrase.before.length + phrase.blue.length) {
+            whiteSpans[0].textContent = phrase.before;
+            whiteSpans[1].textContent = '';
+            blueSpan.textContent = phrase.blue.substring(0, charIndex - phrase.before.length + 1);
+            cursor.style.color = '#60a5fa';
+            cursor.style.background = '#60a5fa';
+            cursor.style.boxShadow = '0 0 8px #60a5fa, 0 0 16px #60a5fa';
+          } else {
+            whiteSpans[0].textContent = phrase.before;
+            blueSpan.textContent = phrase.blue;
+            whiteSpans[1].textContent = phrase.after.substring(0, charIndex - phrase.before.length - phrase.blue.length + 1);
+            cursor.style.color = '#ffffff';
+            cursor.style.background = '#ffffff';
+            cursor.style.boxShadow = '0 0 8px #ffffff, 0 0 16px #ffffff';
+          }
+          charIndex++;
+          typeSpeed = 80;
+        } else {
+          // Pause at end of phrase
+          typeSpeed = 1000;
+          isDeleting = true;
+        }
+      } else {
+        // Deleting
+        const fullText = phrase.before + phrase.blue + phrase.after;
+        if (charIndex > 0) {
+          const newText = fullText.substring(0, charIndex - 1);
+          // Determine which part we're in
+          if (newText.length < phrase.before.length) {
+            whiteSpans[0].textContent = newText;
+            whiteSpans[1].textContent = '';
+            blueSpan.textContent = '';
+            cursor.style.color = '#ffffff';
+            cursor.style.background = '#ffffff';
+            cursor.style.boxShadow = '0 0 8px #ffffff, 0 0 16px #ffffff';
+          } else if (newText.length < phrase.before.length + phrase.blue.length) {
+            whiteSpans[0].textContent = phrase.before;
+            whiteSpans[1].textContent = '';
+            blueSpan.textContent = newText.substring(phrase.before.length);
+            cursor.style.color = '#60a5fa';
+            cursor.style.background = '#60a5fa';
+            cursor.style.boxShadow = '0 0 8px #60a5fa, 0 0 16px #60a5fa';
+          } else {
+            whiteSpans[0].textContent = phrase.before;
+            blueSpan.textContent = phrase.blue;
+            whiteSpans[1].textContent = newText.substring(phrase.before.length + phrase.blue.length);
+            cursor.style.color = '#ffffff';
+            cursor.style.background = '#ffffff';
+            cursor.style.boxShadow = '0 0 8px #ffffff, 0 0 16px #ffffff';
+          }
+          charIndex--;
+          typeSpeed = 40;
+        } else {
+          // Move to next phrase
+          isDeleting = false;
+          phraseIndex = (phraseIndex + 1) % typewriterPhrases.length;
+          typeSpeed = 500;
+        }
+      }
+
+      setTimeout(updateTypewriter, typeSpeed);
+    }
+
+    // Start typewriter when page loads
+    setTimeout(updateTypewriter, 1000);
 
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.emoji-btn')) {
