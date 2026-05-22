@@ -18,7 +18,8 @@ CORS(app)
 
 # Get the directory where this script is located
 SCRIPT_DIR = Path(__file__).parent
-MCP_DIR = SCRIPT_DIR.parent / 'schoology-mcp'
+# MCP is cloned at /workspaces/schoology-mcp (sibling to project's parent directory)
+MCP_DIR = SCRIPT_DIR.parent.parent / 'schoology-mcp'
 VENV_PYTHON = str(MCP_DIR / '.venv' / 'bin' / 'python')
 SERVER_PY = str(MCP_DIR / 'server.py')
 
@@ -116,7 +117,16 @@ def get_data_from_mcp_or_mock(tool_name):
         return data
 
     mock = get_mock_data()
-    return mock.get(tool_name.replace('get_', '').replace('_', ''), [])
+    # Normalize tool name: get_grades -> grades, get_upcoming_assignments -> assignments
+    key = tool_name.replace('get_', '').replace('_', '')
+    # Handle cases like get_upcoming_assignments -> upcomingassignments -> assignments
+    if key not in mock:
+        # Try to find a matching key
+        for mock_key in mock:
+            if key in mock_key or mock_key in key:
+                key = mock_key
+                break
+    return mock.get(key, [])
 
 
 @app.route('/')
@@ -238,4 +248,4 @@ if __name__ == '__main__':
     ╚═══════════════════════════════════════════════════════════╝
     """.format(mcp_path=MCP_DIR))
 
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    app.run(host='0.0.0.0', port=8081, debug=True)
