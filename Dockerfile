@@ -5,18 +5,17 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json ./
 COPY scripts ./scripts
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv make g++ git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv make g++ && rm -rf /var/lib/apt/lists/*
 RUN python3 -m venv /app/.schoology-venv
 COPY schoology-requirements.txt ./
 RUN /app/.schoology-venv/bin/pip install --no-cache-dir -r schoology-requirements.txt
 COPY schoology/ ./schoology/
 RUN npm install --omit=dev
 
-# Clone schoology-mcp for the Flask server
-RUN git clone https://github.com/dajun666/schoology-mcp.git /app/schoology-mcp && \
-    python3 -m venv /app/schoology-mcp/.venv && \
-    /app/schoology-mcp/.venv/bin/pip install --no-cache-dir -r /app/schoology-mcp/requirements.txt && \
-    rm -rf /app/schoology-mcp/.git
+# Copy schoology-mcp for the Flask server (already has .git removed)
+COPY schoology-mcp/ ./schoology-mcp/
+RUN python3 -m venv /app/schoology-mcp/.venv && \
+    /app/schoology-mcp/.venv/bin/pip install --no-cache-dir -r /app/schoology-mcp/requirements.txt
 
 FROM base AS runner
 ENV NODE_ENV=production
