@@ -5,7 +5,7 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json ./
 COPY scripts ./scripts
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv make g++ supervisor && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv make g++ && rm -rf /var/lib/apt/lists/*
 RUN python3 -m venv /app/.schoology-venv
 COPY schoology-requirements.txt ./
 RUN /app/.schoology-venv/bin/pip install --no-cache-dir -r schoology-requirements.txt
@@ -21,8 +21,7 @@ COPY . .
 # Socket.IO browser bundle for game.html (/socket.io.min.js); file may be untracked in git
 RUN cp -f node_modules/socket.io/client-dist/socket.io.min.js public/socket.io.min.js
 RUN mkdir -p /data && chown -R nodejs:nodejs /data
-COPY supervisord.conf /etc/supervisor/conf.d/schoology.conf
 USER nodejs
 EXPOSE 8080 8081
 ENV DATA_DIR=/data
-CMD ["sh", "-c", "[ -f ${DATA_DIR}/chat.db ] || node server/scripts/init-db.js; exec supervisord -c /etc/supervisor/conf.d/schoology.conf"]
+CMD ["sh", "-c", "[ -f ${DATA_DIR}/chat.db ] || node server/scripts/init-db.js; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 1 --chdir /app/schoology server:app & exec node server/index.js"]
