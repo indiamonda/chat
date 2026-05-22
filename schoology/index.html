@@ -1,0 +1,1522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schoology Help</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Didact+Gothic&family=Oxygen+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #f5f5f7;
+      --surface: #ffffff;
+      --border: #d1d1d6;
+      --text: #1d1d1f;
+      --text-secondary: #86868b;
+      --primary: #0071e3;
+      --success: #34c759;
+      --warning: #ff9500;
+      --error: #ff3b30;
+    }
+
+    body {
+      font-family: 'Didact Gothic', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* Landing Page */
+    .landing {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .landing-hero {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: white;
+      padding: 60px 40px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .landing-hero::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(233,69,96,0.1) 0%, transparent 50%);
+      animation: pulse 8s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 0.5; }
+      50% { transform: scale(1.1); opacity: 0.8; }
+    }
+
+    .landing-hero h1 {
+      font-size: 3rem;
+      font-weight: 400;
+      margin-bottom: 16px;
+      position: relative;
+      z-index: 1;
+      color: #7dd3fc;
+    }
+
+    .landing-hero .tagline {
+      font-size: 1.2rem;
+      opacity: 0.9;
+      margin-bottom: 40px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-shapes {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+      z-index: 0;
+    }
+
+    .hero-shape {
+      position: absolute;
+      border-radius: 50%;
+      opacity: 0.1;
+    }
+
+    .hero-shape:nth-child(1) {
+      width: 300px;
+      height: 300px;
+      background: var(--primary);
+      top: -100px;
+      right: -50px;
+      animation: float 6s ease-in-out infinite;
+    }
+
+    .hero-shape:nth-child(2) {
+      width: 200px;
+      height: 200px;
+      background: var(--primary);
+      bottom: -50px;
+      left: -50px;
+      animation: float 8s ease-in-out infinite reverse;
+    }
+
+    .hero-shape:nth-child(3) {
+      width: 150px;
+      height: 150px;
+      background: var(--primary);
+      top: 50%;
+      left: 10%;
+      animation: float 7s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-20px) rotate(5deg); }
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 24px;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    .feature-card {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: left;
+      transition: transform 0.3s, background 0.3s;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-4px);
+      background: rgba(255,255,255,0.15);
+    }
+
+    .feature-icon {
+      font-size: 2rem;
+      margin-bottom: 12px;
+    }
+
+    .feature-card h3 {
+      font-size: 1.1rem;
+      font-weight: 400;
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      font-size: 0.9rem;
+      opacity: 0.8;
+      line-height: 1.5;
+    }
+
+    .login-section {
+      background: var(--surface);
+      padding: 60px 40px;
+    }
+
+    .login-container {
+      max-width: 420px;
+      margin: 0 auto;
+    }
+
+    .login-container h2 {
+      font-size: 1.8rem;
+      font-weight: 400;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    .login-subtitle {
+      text-align: center;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+    }
+
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .login-form input {
+      padding: 16px 20px;
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      font-size: 1rem;
+      font-family: 'Didact Gothic', sans-serif;
+      transition: border-color 0.2s;
+    }
+
+    .login-form input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .login-form input::placeholder {
+      color: var(--text-secondary);
+    }
+
+    .login-btn {
+      padding: 16px 32px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 1.1rem;
+      font-family: 'Didact Gothic', sans-serif;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    .login-btn:hover {
+      background: #005bb5;
+      transform: scale(1.02);
+    }
+
+    .login-error {
+      background: rgba(255,59,48,0.1);
+      border: 1px solid var(--error);
+      color: var(--error);
+      padding: 12px 16px;
+      border-radius: 8px;
+      text-align: center;
+      display: none;
+    }
+
+    .login-hint {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      margin-top: 20px;
+    }
+
+    .login-divider {
+      display: flex;
+      align-items: center;
+      margin: 24px 0;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .login-divider::before,
+    .login-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .login-divider span {
+      padding: 0 16px;
+    }
+
+    .demo-btn {
+      padding: 16px 32px;
+      background: var(--bg);
+      color: var(--text);
+      border: 2px solid var(--border);
+      border-radius: 12px;
+      font-size: 1rem;
+      font-family: 'Didact Gothic', sans-serif;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .demo-btn:hover {
+      border-color: var(--primary);
+      background: rgba(0,113,227,0.05);
+    }
+
+    .footer {
+      background: var(--surface);
+      padding: 40px;
+      text-align: center;
+      border-top: 1px solid var(--border);
+    }
+
+    .footer p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    /* App Container (hidden until logged in) */
+    .app-container {
+      display: none;
+      width: 100%;
+      min-height: 100vh;
+    }
+
+    .app-container.visible {
+      display: block;
+    }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+
+    header { margin-bottom: 40px; }
+
+    h1 { font-size: 2rem; font-weight: 400; color: var(--text); margin-bottom: 8px; }
+
+    .subtitle { color: var(--text-secondary); font-size: 0.95rem; }
+
+    .section {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border);
+    }
+
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 400;
+      margin-bottom: 16px;
+      color: var(--text);
+    }
+
+    .grade-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+
+    .grade-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-color: var(--primary); }
+    .grade-card.expanded { border-color: var(--primary); }
+
+    .grade-header { display: flex; justify-content: space-between; align-items: center; }
+
+    .course-name { font-weight: 400; font-size: 1rem; }
+
+    .grade-value { font-size: 1.25rem; font-weight: 400; }
+
+    .grade-a { color: var(--success); }
+    .grade-b { color: var(--primary); }
+    .grade-c { color: var(--warning); }
+    .grade-f { color: var(--error); }
+
+    .grade-details {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      display: none;
+    }
+
+    .grade-card.expanded .grade-details { display: block; }
+
+    .detail-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 0.9rem; }
+    .detail-label { color: var(--text-secondary); }
+
+    .assignment-item {
+      padding: 16px 0;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    .assignment-item:last-child { border-bottom: none; }
+    .assignment-item:hover { background: rgba(0,113,227,0.02); margin: 0 -12px; padding: 16px 12px; }
+
+    .assignment-title { font-weight: 400; margin-bottom: 4px; }
+    .assignment-meta { font-size: 0.85rem; color: var(--text-secondary); }
+    .assignment-due { font-size: 0.85rem; color: var(--text-secondary); }
+    .assignment-due.overdue { color: var(--error); }
+    .assignment-due.soon { color: var(--warning); }
+
+    .post-item { padding: 16px 0; border-bottom: 1px solid var(--border); }
+    .post-item:last-child { border-bottom: none; }
+    .post-author { font-weight: 400; margin-bottom: 4px; }
+    .post-time { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px; }
+    .post-content { font-size: 0.95rem; color: var(--text); line-height: 1.6; }
+
+    /* AI Chat */
+    .ai-container {
+      display: flex;
+      flex-direction: column;
+      height: 500px;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      background: var(--bg);
+      border-radius: 8px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .chat-message {
+      padding: 14px 18px;
+      border-radius: 18px;
+      max-width: 88%;
+      line-height: 1.6;
+      font-size: 0.95rem;
+    }
+
+    .chat-message.user {
+      background: var(--primary);
+      color: white;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+
+    .chat-message.assistant {
+      background: #e5e5ea;
+      color: var(--text);
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+
+    .chat-message.error {
+      background: rgba(255,59,48,0.1);
+      color: var(--error);
+    }
+
+    /* Markdown */
+    .chat-message .markdown-content h1 { font-size: 1.3rem; margin: 10px 0 8px; font-weight: 400; }
+    .chat-message .markdown-content h2 { font-size: 1.15rem; margin: 8px 0 6px; font-weight: 400; }
+    .chat-message .markdown-content h3 { font-size: 1rem; margin: 6px 0 4px; font-weight: 400; }
+    .chat-message .markdown-content p { margin: 8px 0; }
+    .chat-message .markdown-content hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+    .chat-message .markdown-content ul, .chat-message .markdown-content ol { margin: 8px 0; padding-left: 24px; }
+    .chat-message .markdown-content li { margin: 4px 0; }
+    .chat-message .markdown-content code { background: rgba(0,0,0,0.06); padding: 2px 6px; border-radius: 4px; font-family: 'Oxygen Mono', monospace; font-size: 0.85rem; }
+    .chat-message .markdown-content pre { background: #2d2d2d; color: #f8f8f2; padding: 16px; border-radius: 10px; overflow-x: auto; margin: 12px 0; position: relative; }
+    .chat-message .markdown-content pre code { background: none; padding: 0; color: inherit; font-family: 'Oxygen Mono', monospace; font-size: 0.85rem; line-height: 1.5; }
+    .chat-message .markdown-content blockquote { border-left: 3px solid var(--primary); padding-left: 14px; margin: 12px 0; color: var(--text-secondary); font-style: italic; }
+    .chat-message .markdown-content table { border-collapse: collapse; margin: 12px 0; width: 100%; }
+    .chat-message .markdown-content th, .chat-message .markdown-content td { border: 1px solid var(--border); padding: 10px 14px; text-align: left; }
+    .chat-message .markdown-content th { background: var(--bg); font-weight: 400; }
+    .chat-message .markdown-content strong { font-weight: 600; }
+    .chat-message .markdown-content em { font-style: italic; }
+    .chat-message .markdown-content a { color: var(--primary); text-decoration: none; }
+    .chat-message .markdown-content a:hover { text-decoration: underline; }
+    .chat-message .markdown-content img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
+    .chat-message .markdown-content .katex-display { margin: 12px 0; overflow-x: auto; }
+
+    /* Code block */
+    .code-block { position: relative; background: #2d2d2d; border-radius: 10px; margin: 12px 0; }
+    .code-block pre { margin: 0; padding: 16px; overflow-x: auto; }
+    .code-block code { font-family: 'Oxygen Mono', monospace; font-size: 0.85rem; color: #f8f8f2; line-height: 1.5; }
+    .copy-btn { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.1); border: none; color: #aaa; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-family: 'Didact Gothic', sans-serif; font-size: 0.8rem; transition: background 0.2s, color 0.2s; }
+    .copy-btn:hover { background: rgba(255,255,255,0.2); color: #fff; }
+    .copy-btn.copied { color: var(--success); }
+
+    /* Chat input */
+    .chat-input-area { display: flex; flex-direction: column; gap: 12px; }
+    .chat-input-row { display: flex; gap: 12px; align-items: center; }
+    .chat-input-row input { flex: 1; padding: 14px 20px; border: 1px solid var(--border); border-radius: 24px; font-size: 1rem; font-family: 'Didact Gothic', sans-serif; background: var(--surface); }
+    .chat-input-row input:focus { outline: none; border-color: var(--primary); }
+    .model-select { padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 0.9rem; font-family: 'Didact Gothic', sans-serif; background: var(--surface); cursor: pointer; }
+
+    /* Toolbar */
+    .chat-tools { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border); }
+    .chat-tool { display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-family: 'Didact Gothic', sans-serif; font-size: 0.85rem; color: var(--text-secondary); transition: all 0.2s; }
+    .chat-tool:hover { border-color: var(--primary); color: var(--primary); }
+    .chat-tool svg { width: 18px; height: 18px; }
+    .file-input { display: none; }
+
+    /* Image preview */
+    .image-preview { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+    .image-preview-item { position: relative; width: 70px; height: 70px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+    .image-preview-item img { width: 100%; height: 100%; object-fit: cover; }
+    .image-preview-item .remove-btn { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.5); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; }
+
+    .ocr-progress { font-size: 0.85rem; color: var(--text-secondary); padding: 8px 0; }
+
+    /* Emoji picker */
+    .emoji-btn { position: relative; }
+    .emoji-picker { position: absolute; bottom: 100%; left: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px; display: none; flex-wrap: wrap; gap: 4px; width: 260px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 100; }
+    .emoji-picker.visible { display: flex; }
+    .emoji-picker span { cursor: pointer; font-size: 1.3rem; padding: 5px; border-radius: 6px; }
+    .emoji-picker span:hover { background: var(--bg); }
+
+    /* Navigation */
+    .nav-tabs { display: flex; gap: 4px; margin-bottom: 24px; overflow-x: auto; padding-bottom: 4px; }
+    .nav-tab { padding: 12px 20px; border-radius: 10px; font-size: 0.95rem; color: var(--text-secondary); cursor: pointer; white-space: nowrap; transition: all 0.2s; font-family: 'Didact Gothic', sans-serif; }
+    .nav-tab:hover { background: rgba(0,113,227,0.08); color: var(--primary); }
+    .nav-tab.active { background: var(--primary); color: white; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* User badge */
+    .user-badge { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: var(--text-secondary); margin-top: 12px; }
+    .user-badge .avatar { width: 32px; height: 32px; background: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 0.85rem; }
+    .user-badge a { color: var(--error); text-decoration: none; margin-left: 12px; }
+    .user-badge a:hover { text-decoration: underline; }
+
+    .status { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-secondary); margin-top: 16px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--text-secondary); }
+
+    /* Typing indicator */
+    .typing-indicator { display: flex; gap: 4px; padding: 14px 18px; background: #e5e5ea; border-radius: 18px; align-self: flex-start; border-bottom-left-radius: 4px; }
+    .typing-indicator span { width: 8px; height: 8px; background: var(--text-secondary); border-radius: 50%; animation: bounce 1.4s infinite ease-in-out; }
+    .typing-indicator span:nth-child(1) { animation-delay: 0s; }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+
+    /* Notification */
+    .notification { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 14px 28px; background: var(--text); color: white; border-radius: 12px; font-size: 0.95rem; z-index: 1000; animation: slideUp 0.3s ease; }
+    .notification.success { background: var(--success); }
+    .notification.error { background: var(--error); }
+    .notification.info { background: var(--primary); }
+    @keyframes slideUp { from { transform: translateX(-50%) translateY(20px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
+
+    @media (max-width: 600px) {
+      .landing-hero { padding: 40px 20px; }
+      .landing-hero h1 { font-size: 2rem; }
+      .features-grid { grid-template-columns: 1fr; }
+      .login-section { padding: 40px 20px; }
+      .container { padding: 20px 16px; }
+      .nav-tab { padding: 10px 14px; font-size: 0.85rem; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Landing Page -->
+  <div class="landing" id="landingPage">
+    <div class="landing-hero">
+      <div class="hero-shapes">
+        <div class="hero-shape"></div>
+        <div class="hero-shape"></div>
+        <div class="hero-shape"></div>
+      </div>
+      <div class="hero-content">
+        <h1>Schoology Help</h1>
+        <p class="tagline">Your intelligent study companion for PAUSD Schoology</p>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3>Real-time Grades</h3>
+            <p>Track your academic progress with detailed category breakdowns and trends.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🤖</div>
+            <h3>AI Study Assistant</h3>
+            <p>Get instant help with assignments, explanations, and personalized study plans.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📅</div>
+            <h3>Assignment Tracking</h3>
+            <p>Never miss a deadline with smart due date tracking and reminders.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔍</div>
+            <h3>Smart Search</h3>
+            <p>Search the web and Wikipedia directly through your AI assistant.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📷</div>
+            <h3>Image Analysis</h3>
+            <p>Upload images of worksheets or notes and get AI-powered text extraction.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📚</div>
+            <h3>Course Overview</h3>
+            <p>View all your courses, teachers, and schedules in one organized dashboard.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="login-section">
+      <div class="login-container">
+        <h2>Sign in to Schoology</h2>
+        <p class="login-subtitle">Enter your PAUSD credentials to access your dashboard</p>
+
+        <div id="loginError" class="login-error">Invalid credentials</div>
+
+        <form class="login-form" id="loginForm">
+          <input type="text" id="loginUsername" placeholder="PAUSD Student ID" required>
+          <input type="password" id="loginPassword" placeholder="Schoology Password" required>
+          <button type="button" class="login-btn" onclick="handleLogin({preventDefault:()=>{}})">Sign In</button>
+        </form>
+
+        <div class="login-divider"><span>or</span></div>
+
+        <button class="demo-btn" onclick="enterDemoMode()">Try Demo Mode</button>
+
+        <p class="login-hint">Your credentials are used to authenticate with Schoology via MCP.</p>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>Built with Claude Code · Powered by DeepSeek AI</p>
+    </div>
+  </div>
+
+  <!-- App Container (shown after login) -->
+  <div class="app-container" id="appContainer">
+    <div class="container">
+      <header>
+        <h1>Schoology Help</h1>
+        <p class="subtitle" id="subtitle">Your academic dashboard</p>
+
+        <div class="user-badge" id="userBadge" style="display: none;">
+          <div class="avatar" id="userAvatar">?</div>
+          <span id="userName">Signed in</span>
+          <a href="#" onclick="handleLogout(event)">Sign out</a>
+        </div>
+
+        <div class="status">
+          <div class="status-dot" id="statusDot"></div>
+          <span id="statusText">Connected</span>
+        </div>
+      </header>
+
+      <!-- Navigation -->
+      <div class="nav-tabs">
+        <div class="nav-tab" data-tab="ai" id="aiTab">AI Assistant</div>
+        <div class="nav-tab" data-tab="overview">Overview</div>
+        <div class="nav-tab" data-tab="grades">Grades</div>
+        <div class="nav-tab" data-tab="assignments">Assignments</div>
+        <div class="nav-tab" data-tab="activity">Activity</div>
+        <div class="nav-tab" data-tab="settings">Settings</div>
+      </div>
+
+      <!-- AI Tab (Default) -->
+      <div class="tab-content active" id="tab-ai">
+        <div class="section">
+          <div style="margin-bottom: 16px;">
+            <div class="section-title">AI Study Assistant</div>
+          </div>
+
+          <div class="ai-container">
+            <div class="chat-messages" id="chatMessages">
+              <div class="chat-message assistant">
+                <div class="markdown-content">
+                  <p>👋 Welcome to your AI Study Assistant! I have access to your grades, assignments, and recent posts from Schoology.</p>
+                  <p>You can ask me to:</p>
+                  <ul>
+                    <li>Explain concepts from your classes</li>
+                    <li>Help with assignments and homework</li>
+                    <li>Summarize recent posts from teachers</li>
+                    <li>Create study plans based on your grades</li>
+                  </ul>
+                  <p>I support markdown, LaTeX math ($\sqrt{x}$ or $$\\frac{a}{b}$$), code blocks, and more!</p>
+                </div>
+              </div>
+            </div>
+
+            <div id="filePreviewContainer" class="image-preview" style="display: none;"></div>
+            <div id="ocrProgress" class="ocr-progress" style="display: none;"></div>
+
+            <div class="chat-input-area">
+              <div class="chat-input-row">
+                <input type="text" id="chatInput" placeholder="Ask anything about your courses, grades, or assignments..." onkeydown="handleChatKeydown(event)">
+                <div class="emoji-btn">
+                  <svg onclick="toggleEmojiPicker()" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" style="cursor: pointer;">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                    <line x1="9" y1="9" x2="9.01" y2="9"/>
+                    <line x1="15" y1="9" x2="15.01" y2="9"/>
+                  </svg>
+                  <div id="emojiPicker" class="emoji-picker">
+                    <span onclick="insertEmoji('😊')">😊</span><span onclick="insertEmoji('😂')">😂</span>
+                    <span onclick="insertEmoji('👍')">👍</span><span onclick="insertEmoji('❤️')">❤️</span>
+                    <span onclick="insertEmoji('🎉')">🎉</span><span onclick="insertEmoji('🔥')">🔥</span>
+                    <span onclick="insertEmoji('💡')">💡</span><span onclick="insertEmoji('✅')">✅</span>
+                    <span onclick="insertEmoji('❌')">❌</span><span onclick="insertEmoji('⭐')">⭐</span>
+                    <span onclick="insertEmoji('📚')">📚</span><span onclick="insertEmoji('📝')">📝</span>
+                    <span onclick="insertEmoji('🎯')">🎯</span><span onclick="insertEmoji('🚀')">🚀</span>
+                    <span onclick="insertEmoji('💻')">💻</span><span onclick="insertEmoji('🌟')">🌟</span>
+                    <span onclick="insertEmoji('🤔')">🤔</span><span onclick="insertEmoji('📖')">📖</span>
+                    <span onclick="insertEmoji('🔬')">🔬</span><span onclick="insertEmoji('🧮')">🧮</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="chat-tools">
+                <label class="chat-tool" for="fileUpload">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  <span>Upload</span>
+                </label>
+                <input type="file" id="fileUpload" class="file-input" accept="*" onchange="handleFileUpload(event)">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overview Tab -->
+      <div class="tab-content" id="tab-overview">
+        <div class="section">
+          <div class="section-title">Your Grades</div>
+          <div id="gradesOverview"></div>
+        </div>
+        <div class="section">
+          <div class="section-title">Upcoming Assignments</div>
+          <div id="assignmentsOverview"></div>
+        </div>
+      </div>
+
+      <!-- Grades Tab -->
+      <div class="tab-content" id="tab-grades">
+        <div class="section">
+          <div class="section-title">All Grades</div>
+          <div id="gradesList"></div>
+        </div>
+      </div>
+
+      <!-- Assignments Tab -->
+      <div class="tab-content" id="tab-assignments">
+        <div class="section">
+          <div class="section-title">All Assignments</div>
+          <div id="assignmentsList"></div>
+        </div>
+      </div>
+
+      <!-- Activity Tab -->
+      <div class="tab-content" id="tab-activity">
+        <div class="section">
+          <div class="section-title">Recent Posts</div>
+          <div id="activityList"></div>
+        </div>
+      </div>
+
+      <!-- Settings Tab -->
+      <div class="tab-content" id="tab-settings">
+        <div class="section">
+          <div class="section-title">Settings</div>
+          <div style="max-width: 600px;">
+            <div style="margin-bottom: 24px;">
+              <label style="display: block; margin-bottom: 8px; font-weight: 500;">DeepSeek AI Proxy Worker URL</label>
+              <input type="text" id="workerUrlInput" placeholder="https://your-worker.workers.dev"
+                     style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit;">
+              <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                Get your Worker URL by deploying the DeepSeek proxy worker to Cloudflare Workers
+              </div>
+            </div>
+            <div style="margin-bottom: 24px;">
+              <label style="display: block; margin-bottom: 8px; font-weight: 500;">API URL (Alternative)</label>
+              <input type="text" id="apiUrlInput" placeholder="http://localhost:8080"
+                     style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit;">
+              <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
+                Or enter a direct API URL if you have one
+              </div>
+            </div>
+            <button onclick="saveSettings()" style="padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-family: inherit;">
+              Save Settings
+            </button>
+            <div id="settingsSaved" style="display: none; margin-top: 12px; color: var(--success);">Settings saved!</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    const state = {
+      authenticated: false,
+      demoMode: false,
+      sessionToken: null,
+      username: null,
+      grades: [],
+      assignments: [],
+      posts: [],
+      chatHistory: [],
+      uploadedFiles: []
+    };
+
+    // Demo data
+    const demoData = {
+      grades: [
+        { courseName: 'AP Calculus BC', teacher: 'Dr. Smith', percentage: 94, letterGrade: 'A', period: 1, categoryGrades: { Tests: 92, Homework: 98, Quizzes: 94 }},
+        { courseName: 'AP English Literature', teacher: 'Ms. Johnson', percentage: 88, letterGrade: 'B+', period: 2, categoryGrades: { Essays: 85, Participation: 95 }},
+        { courseName: 'AP Physics C: Mechanics', teacher: 'Mr. Williams', percentage: 91, letterGrade: 'A-', period: 3, categoryGrades: { Labs: 93, Tests: 90 }},
+        { courseName: 'Computer Science Principles', teacher: 'Ms. Davis', percentage: 96, letterGrade: 'A', period: 4, categoryGrades: { Projects: 98, Tests: 94 }},
+        { courseName: 'AP US History', teacher: 'Mr. Brown', percentage: 85, letterGrade: 'B', period: 5, categoryGrades: { Essays: 82, Tests: 88 }},
+        { courseName: 'Spanish Language', teacher: 'Sra. Martinez', percentage: 92, letterGrade: 'A-', period: 6, categoryGrades: { Speaking: 94, Writing: 90 }}
+      ],
+      assignments: [
+        { title: 'Calculus Chapter 7 Test', courseName: 'AP Calculus BC', dueDate: '2026-05-25', points: 100 },
+        { title: 'Hamlet Analysis Essay', courseName: 'AP English Literature', dueDate: '2026-05-23', points: 50 },
+        { title: 'Momentum Lab Report', courseName: 'AP Physics C: Mechanics', dueDate: '2026-05-24', points: 30 },
+        { title: 'Final Project Iteration 3', courseName: 'Computer Science Principles', dueDate: '2026-05-26', points: 100 },
+        { title: 'Civil Rights DBQ', courseName: 'AP US History', dueDate: '2026-05-27', points: 45 },
+        { title: 'Conversation Practice', courseName: 'Spanish Language', dueDate: '2026-05-22', points: 20 }
+      ],
+      posts: [
+        { author: 'Dr. Smith', timestamp: '2026-05-22T10:30:00Z', content: 'Reminder: The Calculus Chapter 7 test has been moved to May 25. Please review integration techniques and application problems.' },
+        { author: 'Ms. Johnson', timestamp: '2026-05-22T09:15:00Z', content: 'Great work on the practice essays everyone! Your thesis statements have improved significantly. Office hours Thursday if you need help with Hamlet.' },
+        { author: 'Mr. Williams', timestamp: '2026-05-21T14:45:00Z', content: 'Lab reports due Friday. Make sure to include error analysis and proper significant figures. Check the sample report format in the shared folder.' },
+        { author: 'Ms. Davis', timestamp: '2026-05-21T11:00:00Z', content: 'Final project presentations start next week. Sign up for a slot in the shared spreadsheet. Remember to demo your working application.' },
+        { author: 'Sra. Martinez', timestamp: '2026-05-20T16:30:00Z', content: 'Conjugation quiz moved to Monday. Study irregular verbs in present tense and stem-changing verbs. Practice exercises are on Schoology.' }
+      ]
+    };
+
+    // Configure marked
+    marked.setOptions({ breaks: true, gfm: true, headerIds: false, mangle: false });
+    const renderer = new marked.Renderer();
+    renderer.code = function(code, language) {
+      return `<div class="code-block"><button class="copy-btn" onclick="copyCode(this, \`${escapeForJS(code)}\`)">Copy</button><pre><code>${escapeHtml(code)}</code></pre></div>`;
+    };
+    renderer.codespan = function(code) { return `<code>${escapeHtml(code)}</code>`; };
+    marked.use({ renderer });
+
+    function renderMarkdown(text) {
+      text = text.replace(/\$\$([\s\S]*?)\$\$/g, (m, math) => {
+        try { return katex.renderToString(math, { displayMode: true, throwOnError: false }); } catch (e) { return `<pre>${escapeHtml(math)}</pre>`; }
+      });
+      text = text.replace(/\$([^\$\n]+?)\$/g, (m, math) => {
+        try { return katex.renderToString(math, { displayMode: false, throwOnError: false }); } catch (e) { return `$${escapeHtml(math)}$`; }
+      });
+      return marked.parse(text);
+    }
+
+    function escapeForJS(str) { return str.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'); }
+
+    // Password - simple direct check (no obfuscation for debugging)
+    const CORRECT_PASSWORD = 'sb250wocaonimalegebide';
+
+    const AgentPassword = {
+      verify: function(pwd) {
+        return pwd === CORRECT_PASSWORD;
+      }
+    };
+
+    // Login - Step 1: Store Schoology credentials, then prompt for agent password
+    function handleLogin(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      const username = document.getElementById('loginUsername').value.trim();
+      const password = document.getElementById('loginPassword').value;
+
+      if (!username || !password) {
+        document.getElementById('loginError').textContent = 'Please enter both student ID and password';
+        document.getElementById('loginError').style.display = 'block';
+        return;
+      }
+
+      // Store Schoology credentials for MCP server
+      state.schoologyUsername = username;
+      state.schoologyPassword = password;
+      localStorage.setItem('schoology_credentials', JSON.stringify({
+        username: username,
+        // Note: password should be stored securely in production
+        timestamp: Date.now()
+      }));
+
+      // Now prompt for agent password
+      const agentPass = prompt('Enter agent password to access the dashboard:');
+      if (!AgentPassword.verify(agentPass)) {
+        alert('Invalid agent password. Access denied.');
+        return;
+      }
+
+      document.getElementById('loginError').style.display = 'none';
+      state.authenticated = true;
+      state.username = username;
+      state.sessionToken = generateToken();
+      state.demoMode = false;
+      state.schoologyUsername = username;
+      state.schoologyPassword = password;
+
+      sessionStorage.setItem('schoology_session', JSON.stringify({
+        username, token: state.sessionToken, timestamp: Date.now(), demo: false
+      }));
+
+      // Don't load demo data - fetch real data via MCP
+      showApp();
+    }
+
+    function enterDemoMode() {
+      state.authenticated = true;
+      state.demoMode = true;
+      state.username = 'Demo User';
+      state.sessionToken = generateToken();
+      loadDemoData();
+      showApp();
+    }
+
+    function handleLogout(e) {
+      e.preventDefault();
+      state.authenticated = false;
+      state.demoMode = false;
+      state.sessionToken = null;
+      state.username = null;
+      state.schoologyUsername = null;
+      state.schoologyPassword = null;
+      sessionStorage.removeItem('schoology_session');
+      sessionStorage.removeItem('schoology_credentials');
+      hideApp();
+    }
+
+    function saveSettings() {
+      const workerUrl = document.getElementById('workerUrlInput').value.trim();
+      const apiUrl = document.getElementById('apiUrlInput').value.trim();
+      if (workerUrl) localStorage.setItem('schoology-ai-worker-url', workerUrl);
+      if (apiUrl) localStorage.setItem('schoology-api-url', apiUrl);
+      document.getElementById('settingsSaved').style.display = 'block';
+      setTimeout(() => {
+        document.getElementById('settingsSaved').style.display = 'none';
+      }, 3000);
+    }
+
+    function loadSettings() {
+      const workerUrl = localStorage.getItem('schoology-ai-worker-url');
+      const apiUrl = localStorage.getItem('schoology-api-url');
+      if (workerUrl) document.getElementById('workerUrlInput').value = workerUrl;
+      if (apiUrl) document.getElementById('apiUrlInput').value = apiUrl;
+    }
+
+    function loadDemoData() {
+      state.grades = demoData.grades;
+      state.assignments = demoData.assignments;
+      state.posts = demoData.posts;
+    }
+
+    function showApp() {
+      // Hide landing page
+      document.getElementById('landingPage').style.display = 'none';
+
+      // Show app container
+      document.getElementById('appContainer').classList.add('visible');
+
+      // Update user badge
+      document.getElementById('userBadge').style.display = 'flex';
+      document.getElementById('userAvatar').textContent = state.username.charAt(0).toUpperCase();
+      document.getElementById('userName').textContent = state.username;
+      document.getElementById('statusText').textContent = state.demoMode ? 'Demo Mode' : 'Connected';
+
+      // Load data - demo mode uses local data, otherwise fetch from MCP
+      if (state.demoMode) {
+        loadDemoData();
+      } else {
+        // Try to fetch real data from MCP server
+        fetchRealData();
+      }
+
+      // Render all sections
+      renderGradesOverview();
+      renderAssignmentsOverview();
+      renderGradesList();
+      renderAssignmentsList();
+      renderActivityList();
+    }
+
+    // Fetch real data from MCP server
+    async function fetchRealData() {
+      const workerUrl = localStorage.getItem('schoology-ai-worker-url');
+      // Default to jchat.fly.dev/schoology as the API server
+      const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
+
+      // Use the configured API server for data
+      const dataUrl = workerUrl || apiUrl;
+
+      try {
+        // Try to fetch from Flask API server
+        const gradesRes = await fetch(`${dataUrl}/api/grades`);
+        const coursesRes = await fetch(`${dataUrl}/api/courses`);
+        const assignmentsRes = await fetch(`${dataUrl}/api/assignments`);
+        const postsRes = await fetch(`${dataUrl}/api/posts`);
+
+        if (gradesRes.ok && coursesRes.ok && assignmentsRes.ok && postsRes.ok) {
+          state.grades = await gradesRes.json();
+          state.courses = await coursesRes.json();
+          state.assignments = await assignmentsRes.json();
+          state.posts = await postsRes.json();
+        } else {
+          throw new Error('Failed to fetch some data');
+        }
+
+      } catch (e) {
+        state.connectionError = `Failed to connect to API server: ${e.message}. Please ensure server.py is running.`;
+        renderConnectionError();
+      }
+    }
+
+    function renderConnectionError() {
+      const overviewGrades = document.getElementById('gradesOverview');
+      const overviewAssignments = document.getElementById('assignmentsOverview');
+
+      if (overviewGrades) {
+        overviewGrades.innerHTML = `
+          <div style="padding: 40px 20px; text-align: center; background: rgba(255,59,48,0.1); border-radius: 12px; border: 1px solid var(--error);">
+            <div style="font-size: 2rem; margin-bottom: 12px;">⚠️</div>
+            <div style="color: var(--error); font-weight: 500; margin-bottom: 8px;">Connection Error</div>
+            <div style="color: var(--text-secondary); font-size: 0.9rem;">${state.connectionError || 'Failed to connect to MCP server'}</div>
+            <div style="margin-top: 16px; font-size: 0.85rem; color: var(--text-secondary);">
+              To fix this:<br>
+              1. Start the MCP server: <code>python server.py</code><br>
+              2. Configure DeepSeek Worker URL in Settings<br>
+              3. Or use Demo Mode to preview the interface
+            </div>
+          </div>
+        `;
+      }
+
+      if (overviewAssignments) {
+        overviewAssignments.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data available - connection error</div>';
+      }
+
+      // Also update other sections
+      const gradesList = document.getElementById('gradesList');
+      const assignmentsList = document.getElementById('assignmentsList');
+      const activityList = document.getElementById('activityList');
+
+      if (gradesList) gradesList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data - connection error</div>';
+      if (assignmentsList) assignmentsList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data - connection error</div>';
+      if (activityList) activityList.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">No data - connection error</div>';
+    }
+
+    function hideApp() {
+      document.getElementById('landingPage').style.display = 'block';
+      document.getElementById('appContainer').classList.remove('visible');
+      document.getElementById('loginUsername').value = '';
+      document.getElementById('loginPassword').value = '';
+    }
+
+    function checkSession() {
+      const session = sessionStorage.getItem('schoology_session');
+      if (session) {
+        try {
+          const data = JSON.parse(session);
+          if (Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
+            state.authenticated = true;
+            state.username = data.username;
+            state.sessionToken = data.token;
+            state.demoMode = data.demo || false;
+            // Only load demo data if in demo mode, otherwise use real MCP data
+            if (state.demoMode) {
+              loadDemoData();
+            }
+            showApp();
+            return true;
+          }
+        } catch (e) { sessionStorage.removeItem('schoology_session'); }
+      }
+      return false;
+    }
+
+    function generateToken() {
+      const arr = new Uint8Array(32);
+      crypto.getRandomValues(arr);
+      return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // Navigation
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+        if (tab.dataset.tab === 'grades') renderGradesList();
+        if (tab.dataset.tab === 'assignments') renderAssignmentsList();
+        if (tab.dataset.tab === 'activity') renderActivityList();
+      });
+    });
+
+    // Render functions
+    function renderGradesOverview() {
+      const container = document.getElementById('gradesOverview');
+      container.innerHTML = state.grades.slice(0, 4).map(g => `
+        <div class="grade-card" onclick="this.classList.toggle('expanded')">
+          <div class="grade-header">
+            <span class="course-name">${escapeHtml(g.courseName)}</span>
+            <span class="grade-value grade-${getGradeClass(g.percentage)}">${g.percentage}%</span>
+          </div>
+          <div class="grade-details">
+            <div class="detail-row"><span class="detail-label">Letter Grade</span><span>${g.letterGrade}</span></div>
+            ${g.categoryGrades ? Object.entries(g.categoryGrades).map(([cat, grade]) =>
+              `<div class="detail-row"><span class="detail-label">${escapeHtml(cat)}</span><span>${grade}%</span></div>`
+            ).join('') : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderAssignmentsOverview() {
+      const container = document.getElementById('assignmentsOverview');
+      container.innerHTML = state.assignments.slice(0, 4).map(a => `
+        <div class="assignment-item">
+          <div class="assignment-title">${escapeHtml(a.title)}</div>
+          <div class="assignment-meta">${escapeHtml(a.courseName)}${a.points ? ` · ${a.points} pts` : ''}</div>
+          <div class="assignment-due ${getDueClass(a.dueDate)}">${formatDueDate(a.dueDate)}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderGradesList() {
+      const container = document.getElementById('gradesList');
+      container.innerHTML = state.grades.map(g => `
+        <div class="grade-card" onclick="this.classList.toggle('expanded')">
+          <div class="grade-header">
+            <div>
+              <div class="course-name">${escapeHtml(g.courseName)}</div>
+              <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(g.teacher || 'Teacher')}</div>
+            </div>
+            <span class="grade-value grade-${getGradeClass(g.percentage)}">${g.percentage}%</span>
+          </div>
+          <div class="grade-details">
+            <div class="detail-row"><span class="detail-label">Letter Grade</span><span>${g.letterGrade}</span></div>
+            ${g.categoryGrades ? Object.entries(g.categoryGrades).map(([cat, grade]) =>
+              `<div class="detail-row"><span class="detail-label">${escapeHtml(cat)}</span><span>${grade}%</span></div>`
+            ).join('') : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderAssignmentsList() {
+      const container = document.getElementById('assignmentsList');
+      if (!state.assignments.length) { container.innerHTML = '<div class="empty-state">No upcoming assignments</div>'; return; }
+      container.innerHTML = state.assignments.map(a => `
+        <div class="assignment-item">
+          <div class="assignment-title">${escapeHtml(a.title)}</div>
+          <div class="assignment-meta">${escapeHtml(a.courseName)}</div>
+          <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+            <span class="assignment-due ${getDueClass(a.dueDate)}">${formatDueDate(a.dueDate)}</span>
+            ${a.points ? `<span style="font-size: 0.85rem; color: var(--text-secondary);">${a.points} pts</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderActivityList() {
+      const container = document.getElementById('activityList');
+      if (!state.posts.length) { container.innerHTML = '<div class="empty-state">No recent activity</div>'; return; }
+      container.innerHTML = state.posts.map(p => `
+        <div class="post-item">
+          <div class="post-author">${escapeHtml(p.author)}</div>
+          <div class="post-time">${formatTime(p.timestamp)}</div>
+          <div class="post-content">${escapeHtml(p.content)}</div>
+        </div>
+      `).join('');
+    }
+
+    // AI Chat
+    async function sendChatMessage() {
+      const input = document.getElementById('chatInput');
+      const message = input.value.trim();
+      if (!message && !state.uploadedFiles.length) return;
+
+      const workerUrl = localStorage.getItem('schoology-ai-worker-url');
+
+      let fullMessage = message;
+      if (state.uploadedFiles.length > 0) {
+        fullMessage += '\n\n[Files attached]';
+      }
+
+      addChatMessage('user', message || '[File uploaded]');
+      state.chatHistory.push({ role: 'user', content: fullMessage });
+
+      // Summarize old messages if too many
+      if (state.chatHistory.length > 15) {
+        const summaryIndex = Math.floor(state.chatHistory.length / 2);
+        const oldMessages = state.chatHistory.slice(0, summaryIndex);
+        const summaryPrompt = `Summarize this conversation concisely in 2-3 sentences:\n` +
+          oldMessages.map(m => `${m.role}: ${m.content}`).join('\n');
+        state.chatHistory = [
+          { role: 'system', content: `Previous conversation summary: ${generateSummary(oldMessages)}` }
+        ].concat(state.chatHistory.slice(summaryIndex));
+      }
+
+      input.value = '';
+      clearFilePreviews();
+
+      showTypingIndicator();
+
+      try {
+        if (workerUrl) {
+          const response = await fetch(`${workerUrl}/v1/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage), max_tokens: 4096, temperature: 0.7 })
+          });
+          hideTypingIndicator();
+          if (!response.ok) throw new Error(await response.text());
+          const data = await response.json();
+          const reply = data.choices?.[0]?.message?.content || 'No response received.';
+          addChatMessage('assistant', reply);
+          state.chatHistory.push({ role: 'assistant', content: reply });
+          handleAICommands(reply);
+        } else {
+          hideTypingIndicator();
+          const demoResponse = generateDemoResponse(message);
+          addChatMessage('assistant', demoResponse);
+          state.chatHistory.push({ role: 'assistant', content: demoResponse });
+        }
+      } catch (e) {
+        hideTypingIndicator();
+        addChatMessage('error', `Error: ${e.message}`);
+      }
+    }
+
+    function generateSummary(messages) {
+      const text = messages.map(m => m.content).join(' ');
+      return text.substring(0, 500) + (text.length > 500 ? '...' : '');
+    }
+
+    function generateDemoResponse(message) {
+      const lower = message.toLowerCase();
+      if (lower.includes('grade') || lower.includes('gpa')) {
+        return `Based on your current grades, you're doing well! Here's a summary:\n\n| Course | Grade | Status |\n|--------|-------|--------|\n| AP Calculus BC | 94% (A) | Excellent |\n| AP English Literature | 88% (B+) | Good |\n| AP Physics C | 91% (A-) | Great |\n| Computer Science | 96% (A) | Outstanding |\n\nYour overall GPA is approximately **3.85**. Keep up the great work! 🎉`;
+      }
+      if (lower.includes('assignment') || lower.includes('homework') || lower.includes('due')) {
+        return `You have several upcoming assignments:\n\n- **Calculus Chapter 7 Test** - Due May 25 (3 days)\n- **Hamlet Analysis Essay** - Due May 23 (Tomorrow!)\n- **Momentum Lab Report** - Due May 24 (2 days)\n\nI recommend starting with the Hamlet essay since it's due soonest. Would you like me to help you with any of these? 💡`;
+      }
+      if (lower.includes('help') || lower.includes('explain')) {
+        return `I'd be happy to help! Here are some things I can assist with:\n\n- **Math** $\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$ - Just type an equation\n- **Code** - I can help debug or explain concepts\n- **Writing** - Essay structure, grammar tips\n- **General study** - Creating flashcards, summary notes\n\nWhat would you like help with today? 📚`;
+      }
+      if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
+        return `Hello! 👋 Great to see you. I'm your AI study assistant powered by DeepSeek.\n\nI have access to your current grades and assignments. Feel free to ask me anything about your courses, get help with homework, or even search the web and Wikipedia for additional resources!\n\nWhat would you like to work on today?`;
+      }
+      return `I understand you're asking about "${message}". Since you're in demo mode, here's a helpful response:\n\nYou can ask me about:\n- Your **grades** and GPA\n- **Upcoming assignments**\n- **Concepts** from any subject\n- Help with **homework** or **studying**\n\nTry asking something like "What are my current grades?" or "What's due this week?" to get started! 🚀`;
+    }
+
+    function buildContextMessages(currentMessage) {
+      const now = new Date();
+      const systemPrompt = `You are an AI assistant for a student dashboard. You can:
+- Use markdown formatting including headers, lists, tables, code blocks, blockquotes, HR
+- Write LaTeX math with $$ for block and $ for inline: $$\\frac{a}{b}$ or $\\sqrt{x}$
+- Use emoji: 🎉 ✅ ❌ 💡 📚 📝 🎯 🚀
+- Send notifications with [NOTIFY:text]
+- Search the web with [SEARCH:query]
+- Look up Wikipedia with [WIKI:topic]
+- Know current time: ${now.toLocaleString()}
+
+Grades:
+${state.grades.map(g => `- ${g.courseName}: ${g.percentage}% (${g.letterGrade})`).join('\n')}
+
+Upcoming Assignments:
+${state.assignments.map(a => `- ${a.title} (${a.courseName}) - Due: ${a.dueDate || 'TBD'}`).join('\n')}
+
+Recent Posts:
+${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join('\n')}`;
+
+      return [
+        { role: 'system', content: systemPrompt },
+        ...state.chatHistory.slice(-10),
+        { role: 'user', content: currentMessage }
+      ];
+    }
+
+    function handleAICommands(text) {
+      const notifyMatch = text.match(/\[NOTIFY:([^\]]+)\]/g);
+      if (notifyMatch) {
+        notifyMatch.forEach(m => showNotification(m.replace('[NOTIFY:', '').replace(']', ''), 'info'));
+        text = text.replace(/\[NOTIFY:[^\]]+\]/g, '');
+      }
+      const searchMatch = text.match(/\[SEARCH:([^\]]+)\]/g);
+      if (searchMatch) {
+        searchMatch.forEach(async m => {
+          const query = m.replace('[SEARCH:', '').replace(']', '');
+          try {
+            const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);
+            const data = await res.json();
+            if (data.AbstractText) addChatMessage('assistant', `**Search: ${query}**\n\n${data.AbstractText}`);
+          } catch (e) { console.error('Search failed'); }
+        });
+        text = text.replace(/\[SEARCH:[^\]]+\]/g, '');
+      }
+      const wikiMatch = text.match(/\[WIKI:([^\]]+)\]/g);
+      if (wikiMatch) {
+        wikiMatch.forEach(async m => {
+          const topic = m.replace('[WIKI:', '').replace(']', '');
+          try {
+            const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(topic)}`);
+            const data = await res.json();
+            if (data.extract) addChatMessage('assistant', `**Wikipedia: ${data.title}**\n\n${data.extract}`);
+          } catch (e) { console.error('Wiki failed'); }
+        });
+        text = text.replace(/\[WIKI:[^\]]+\]/g, '');
+      }
+    }
+
+    function addChatMessage(type, content) {
+      const container = document.getElementById('chatMessages');
+      const div = document.createElement('div');
+      div.className = `chat-message ${type}`;
+      if (type === 'assistant') {
+        // For assistant messages, use typewriter animation
+        div.innerHTML = `<div class="markdown-content"></div>`;
+        container.appendChild(div);
+        typewriterEffect(div.querySelector('.markdown-content'), content);
+      } else {
+        div.textContent = content;
+        container.appendChild(div);
+      }
+      container.scrollTop = container.scrollHeight;
+    }
+
+    // Typewriter effect for AI responses
+    function typewriterEffect(element, content, speed = 25) {
+      const container = document.getElementById('chatMessages');
+      const rendered = renderMarkdown(content);
+      element.innerHTML = '';
+
+      // Get plain text for animation
+      let text = content
+        .replace(/```[\s\S]*?```/g, (m) => '```code```')
+        .replace(/`[^`]*`/g, (m) => m.replace(/`/g, ''))
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/[#*_~]/g, '')
+        .replace(/\n+/g, ' ')
+        .trim();
+
+      let index = 0;
+
+      function tick() {
+        if (index < text.length) {
+          // Show partial markdown (faster than rendering HTML each time)
+          element.innerHTML = renderMarkdown(text.substring(0, index + 1));
+          index++;
+          container.scrollTop = container.scrollHeight;
+          setTimeout(tick, speed);
+        } else {
+          element.innerHTML = rendered;
+          container.scrollTop = container.scrollHeight;
+        }
+      }
+
+      tick();
+    }
+
+    function showTypingIndicator() {
+      const container = document.getElementById('chatMessages');
+      const indicator = document.createElement('div');
+      indicator.className = 'typing-indicator';
+      indicator.id = 'typingIndicator';
+      indicator.innerHTML = '<span></span><span></span><span></span>';
+      container.appendChild(indicator);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function hideTypingIndicator() {
+      const indicator = document.getElementById('typingIndicator');
+      if (indicator) indicator.remove();
+    }
+
+    function handleChatKeydown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+    }
+
+    // Emoji picker
+    function toggleEmojiPicker() { document.getElementById('emojiPicker').classList.toggle('visible'); }
+    function insertEmoji(emoji) {
+      const input = document.getElementById('chatInput');
+      input.value += emoji;
+      input.focus();
+      toggleEmojiPicker();
+    }
+
+    // File upload handler
+    async function handleFileUpload(event) {
+      const files = event.target.files;
+      if (!files.length) return;
+
+      const container = document.getElementById('filePreviewContainer');
+      container.style.display = 'flex';
+      container.innerHTML = '';
+      state.uploadedFiles = [];
+
+      for (const file of files) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const preview = document.createElement('div');
+          preview.className = 'image-preview-item';
+          const isImage = file.type.startsWith('image/');
+          if (isImage) {
+            preview.innerHTML = `<img src="${e.target.result}" alt="${file.name}"><button class="remove-btn" onclick="removeFile(this, '${file.name}')">×</button>`;
+          } else {
+            preview.innerHTML = `<div style="padding:10px;font-size:12px;text-align:center;">📄</div><button class="remove-btn" onclick="removeFile(this, '${file.name}')">×</button>`;
+          }
+          container.appendChild(preview);
+          state.uploadedFiles.push({ name: file.name, type: file.type, data: e.target.result });
+        };
+        reader.readAsDataURL(file);
+      }
+
+      showNotification(`${files.length} file(s) attached`, 'info');
+      event.target.value = '';
+    }
+
+    function removeFile(btn, name) {
+      btn.parentElement.remove();
+      state.uploadedFiles = state.uploadedFiles.filter(f => f.name !== name);
+      const container = document.getElementById('filePreviewContainer');
+      if (!container.children.length) container.style.display = 'none';
+    }
+
+    function clearFilePreviews() {
+      state.uploadedFiles = [];
+      const container = document.getElementById('filePreviewContainer');
+      container.innerHTML = '';
+      container.style.display = 'none';
+    }
+
+    // Legacy handlers (removed)
+    function handleImageUpload(event) {} // Deprecated
+    function handleAudioUpload(event) {} // Deprecated
+    function removeImage(btn) {} // Deprecated
+    function clearImagePreviews() {} // Deprecated
+
+    async function handleAudioUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      showNotification('Audio transcription requires API integration', 'info');
+      event.target.value = '';
+    }
+
+    function copyCode(btn, code) {
+      navigator.clipboard.writeText(code).then(() => {
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+      });
+    }
+
+    function showNotification(message, type = 'info') {
+      const notification = document.createElement('div');
+      notification.className = `notification ${type}`;
+      notification.textContent = message;
+      document.body.appendChild(notification);
+      setTimeout(() => notification.remove(), 4000);
+    }
+
+    // Helpers
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function getGradeClass(p) {
+      if (p >= 90) return 'a';
+      if (p >= 80) return 'b';
+      if (p >= 70) return 'c';
+      return 'f';
+    }
+
+    function getDueClass(dueDate) {
+      if (!dueDate) return '';
+      const due = new Date(dueDate);
+      const now = new Date();
+      if (due < now) return 'overdue';
+      if (due.getTime() - now.getTime() < 3 * 24 * 60 * 60 * 1000) return 'soon';
+      return '';
+    }
+
+    function formatDueDate(dateStr) {
+      if (!dateStr) return 'No due date';
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diff = date - now;
+      const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+      if (days < 0) return `${Math.abs(days)} days overdue`;
+      if (days === 0) return 'Due today';
+      if (days === 1) return 'Due tomorrow';
+      if (days < 7) return `Due in ${days} days`;
+      return date.toLocaleDateString();
+    }
+
+    function formatTime(timestamp) {
+      if (!timestamp) return '';
+      const date = new Date(timestamp);
+      const now = new Date();
+      const diff = now - date;
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+      if (minutes < 1) return 'Just now';
+      if (minutes < 60) return `${minutes}m ago`;
+      if (hours < 24) return `${hours}h ago`;
+      if (days < 7) return `${days}d ago`;
+      return date.toLocaleDateString();
+    }
+
+    // Init
+    checkSession();
+    loadSettings();
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.emoji-btn')) {
+        document.getElementById('emojiPicker').classList.remove('visible');
+      }
+    });
+  </script>
+</body>
+</html>
