@@ -22,9 +22,7 @@ COPY . .
 RUN cp -f node_modules/socket.io/client-dist/socket.io.min.js public/socket.io.min.js
 RUN mkdir -p /data && chown -R nodejs:nodejs /data
 COPY supervisord.conf /etc/supervisor/conf.d/schoology.conf
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
 USER nodejs
 EXPOSE 8080 8081
 ENV DATA_DIR=/data
-CMD ["/docker-entrypoint.sh"]
+CMD ["sh", "-c", "[ -f ${DATA_DIR}/chat.db ] || node server/scripts/init-db.js; exec supervisord -c /etc/supervisor/conf.d/schoology.conf"]
