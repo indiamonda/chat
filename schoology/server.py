@@ -4,10 +4,10 @@ Schoology MCP Frontend Server
 Bridges the web dashboard to the Schoology MCP server
 """
 
+import asyncio
+import json
 import os
 import sys
-import json
-import subprocess
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
@@ -18,8 +18,7 @@ CORS(app)
 
 # Get the directory where this script is located
 SCRIPT_DIR = Path(__file__).parent
-# MCP is cloned at /workspaces/schoology-mcp (sibling to project's parent directory)
-MCP_DIR = SCRIPT_DIR.parent.parent / 'schoology-mcp'
+MCP_DIR = SCRIPT_DIR.parent / 'schoology-mcp'
 VENV_PYTHON = str(MCP_DIR / '.venv' / 'bin' / 'python')
 SERVER_PY = str(MCP_DIR / 'server.py')
 
@@ -31,27 +30,24 @@ cache = {
     'posts': None,
     'last_updated': None
 }
-cache_lock = None
+
+
+async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None):
+    """Call a tool on the Schoology MCP server via stdio."""
+    from mcp.client import ClientSession
+    from mcp.stdio_client import stdio_client
+
+    async with stdio_client([VENV_PYTHON, SERVER_PY]) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool(tool_name, arguments or {})
+            return result
+
 
 def call_mcp_tool(tool_name, arguments=None):
-    """
-    Call a tool on the Schoology MCP server.
-    """
+    """Synchronous wrapper for calling MCP tools."""
     try:
-        # Try to use the MCP server if available
-        result = subprocess.run(
-            ['claude', 'mcp', 'call', 'schoology', '--tool', tool_name],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            cwd=str(MCP_DIR)
-        )
-
-        if result.returncode == 0:
-            return json.loads(result.stdout)
-        else:
-            # MCP server not available, return None
-            return None
+        return asyncio.run(call_mcp_tool_async(tool_name, arguments))
     except Exception as e:
         print(f"MCP call failed: {e}")
         return None
@@ -114,18 +110,27 @@ def get_data_from_mcp_or_mock(tool_name):
     """Try MCP first, fall back to mock data."""
     data = call_mcp_tool(tool_name)
     if data is not None:
+        # MCP returns dicts with keys like "courses", "assignments", "posts"
+        if isinstance(data, dict):
+            if 'courses' in data:
+                return data['courses']
+            if 'assignments' in data:
+                return data['assignments']
+            if 'posts' in data:
+                return data['posts']
+            if 'grades' in data and 'courses' in data['grades']:
+                return data['grades']['courses']
         return data
 
     mock = get_mock_data()
-    # Normalize tool name: get_grades -> grades, get_upcoming_assignments -> assignments
-    key = tool_name.replace('get_', '').replace('_', '')
-    # Handle cases like get_upcoming_assignments -> upcomingassignments -> assignments
-    if key not in mock:
-        # Try to find a matching key
-        for mock_key in mock:
-            if key in mock_key or mock_key in key:
-                key = mock_key
-                break
+    # Map tool names to mock keys: get_upcoming_assignments -> assignments
+    key_map = {
+        'get_grades': 'grades',
+        'get_courses': 'courses',
+        'get_upcoming_assignments': 'assignments',
+        'get_recent_posts': 'posts'
+    }
+    key = key_map.get(tool_name, tool_name.replace('get_', '').replace('_', ''))
     return mock.get(key, [])
 
 
