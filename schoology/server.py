@@ -131,7 +131,10 @@ def get_data_from_mcp_or_mock(tool_name):
         'get_recent_posts': 'posts'
     }
     key = key_map.get(tool_name, tool_name.replace('get_', '').replace('_', ''))
-    return mock.get(key, [])
+    mock_data = mock.get(key, [])
+
+    # Return mock data with _mock flag so frontend knows MCP is not connected
+    return {'_mock': True, key: mock_data}
 
 
 @app.route('/')
