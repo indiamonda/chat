@@ -5,7 +5,7 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json ./
 COPY scripts ./scripts
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv make g++ && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv make g++ git && rm -rf /var/lib/apt/lists/*
 RUN python3 -m venv /app/.schoology-venv
 COPY schoology-requirements.txt ./
 RUN /app/.schoology-venv/bin/pip install --no-cache-dir -r schoology-requirements.txt
