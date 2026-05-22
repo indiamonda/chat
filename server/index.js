@@ -2,7 +2,7 @@ import { createServer } from 'http';
 import { Readable } from 'stream';
 import { parse as urlParse } from 'url';
 import { readFileSync, existsSync, readdirSync, rmSync as fsRm } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
 import { Server } from 'socket.io';
@@ -886,8 +886,15 @@ function proxyRequest(req, res, targetPort, basePath) {
   proxyReq.on('error', (err) => {
     console.error('Proxy error:', err);
     if (!res.headersSent) {
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Proxy error' }));
+      // Proxy failed, manually serve the static file
+      const staticPath = join(publicDir, 'schoology', parsedUrl.pathname === '/schoology' || parsedUrl.pathname === '/schoology/' ? 'index.html' : parsedUrl.pathname.replace(/^\/schoology\/?/, ''));
+      if (existsSync(staticPath)) {
+        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.type(extname(staticPath) || 'html').sendFile(staticPath);
+      } else {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Proxy error' }));
+      }
     }
   });
 
