@@ -47,7 +47,7 @@ async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, use
         password: Schoology password for setting runtime credentials
     """
     from mcp.client.session import ClientSession
-    from mcp.stdio_client import stdio_client
+    from mcp import stdio_client
     import os
     import sys
 
