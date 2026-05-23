@@ -32,28 +32,43 @@ _SUBMIT_SELECTOR = (
 )
 
 
-async def login(context: BrowserContext) -> None:
+async def login(context: BrowserContext, username: str | None = None, password: str | None = None) -> None:
     """Run the ClassLink -> Schoology login flow, populating `context` cookies.
 
     On success the context holds a valid pausd.schoology.com session. All pages
     opened by this function are closed before returning; the cookies persist in
     the context.
+
+    Args:
+        context: Playwright browser context
+        username: Student ID (8-digit). If None, uses config.USERNAME or runtime credentials.
+        password: Schoology password. If None, uses config.get_password() or runtime credentials.
     """
-    config.require_credentials()
+    # Resolve credentials: runtime override > config > error
+    if username is None:
+        runtime_user, runtime_pass = config.get_runtime_credentials()
+        username = runtime_user or config.USERNAME
+        password = runtime_pass or password or config.get_password()
+
+    if not username:
+        raise RuntimeError("SCHOOLOGY_USERNAME not set")
+    if not password:
+        raise RuntimeError("SCHOOLOGY_PASSWORD not set")
+
     portal = await context.new_page()
     schoology: Page | None = None
     try:
         log.info("Opening ClassLink portal: %s", config.CLASSLINK_URL)
         await portal.goto(config.CLASSLINK_URL, wait_until="domcontentloaded")
 
-        username = portal.locator(_USERNAME_SELECTOR).first
+        username_field = portal.locator(_USERNAME_SELECTOR).first
         try:
-            await username.wait_for(state="visible", timeout=8_000)
+            await username_field.wait_for(state="visible", timeout=8_000)
         except PlaywrightTimeout:
             # No login form -> the ClassLink session is still active.
             log.info("ClassLink session still active; skipping credential entry")
         else:
-            await _submit_credentials(portal, username)
+            await _submit_credentials(portal, username_field, username, password)
 
         schoology = await _launch_schoology_tile(context, portal)
         try:
@@ -76,19 +91,19 @@ async def login(context: BrowserContext) -> None:
                     pass
 
 
-async def _submit_credentials(page: Page, username: Locator) -> None:
+async def _submit_credentials(page: Page, username_field: Locator, username: str, password: str) -> None:
     """Fill and submit the ClassLink username/password form."""
-    await username.fill(config.USERNAME)
+    await username_field.fill(username)
 
     # Password is usually on the same page; some flows reveal it after "Next".
-    password = page.locator(_PASSWORD_SELECTOR).first
+    password_field = page.locator(_PASSWORD_SELECTOR).first
     try:
-        await password.wait_for(state="visible", timeout=3_000)
+        await password_field.wait_for(state="visible", timeout=3_000)
     except PlaywrightTimeout:
         log.info("Password field not visible yet; submitting username step")
         await page.locator(_SUBMIT_SELECTOR).first.click()
-        await password.wait_for(state="visible", timeout=15_000)
-    await password.fill(config.get_password())
+        await password_field.wait_for(state="visible", timeout=15_000)
+    await password_field.fill(password)
 
     log.info("Submitting ClassLink credentials")
     await page.locator(_SUBMIT_SELECTOR).first.click()

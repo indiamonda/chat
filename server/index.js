@@ -868,7 +868,6 @@ function proxyRequest(req, res, targetPort, basePath) {
     method: req.method,
     headers: {
       ...req.headers,
-      'host': undefined,
       'connection': 'keep-alive'
     }
   };
