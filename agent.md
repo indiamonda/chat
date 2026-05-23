@@ -89,7 +89,7 @@ flyctl deploy --build-only --push -a jchat --image-label deployment-7a1f3fc639a8
 5. **localStorage stores credentials** - frontend restores them on session restore
 
 ## User Preferences
-- "Don't write fallbacks, fix the thing properly"
+- "Don't write fallbacks, write show error messages and fix the thing properly"
 - "Use agent.md to store memory so nothing is lost"
 - "This app cannot suspend - it powers other applications"
 - Error messages should NOT say "contact administrator" - personal project
