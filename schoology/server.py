@@ -73,11 +73,29 @@ async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, use
 
 def call_mcp_tool(tool_name, username=None, password=None, arguments=None):
     """Synchronous wrapper for calling MCP tools."""
+    import sys
+    import traceback
     try:
         return asyncio.run(call_mcp_tool_async(tool_name, arguments, username, password))
     except Exception as e:
-        import sys
-        import traceback
+        print(f"MCP call failed: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        return None
+
+
+def call_mcp_tool_with_timeout(tool_name, username=None, password=None, timeout_seconds=60):
+    """Call MCP with timeout to prevent hanging."""
+    import sys
+    import traceback
+    try:
+        return asyncio.run(asyncio.wait_for(
+            call_mcp_tool_async(tool_name, arguments, username, password),
+            timeout=timeout_seconds
+        ))
+    except asyncio.TimeoutError:
+        print(f"MCP call timed out after {timeout_seconds}s for {tool_name}", file=sys.stderr)
+        return None
+    except Exception as e:
         print(f"MCP call failed: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         return None
