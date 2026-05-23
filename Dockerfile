@@ -39,4 +39,4 @@ RUN mkdir -p /data && chown -R nodejs:nodejs /data && \
 USER nodejs
 EXPOSE 8080 8081
 ENV DATA_DIR=/data
-CMD ["sh", "-c", "[ -f ${DATA_DIR}/chat.db ] || node server/scripts/init-db.js; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 1 --chdir /app/schoology server:app & exec node server/index.js"]
+CMD ["sh", "-c", "[ -f ${DATA_DIR}/chat.db ] || node server/scripts/init-db.js; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 1 --threads 4 --chdir /app/schoology server:app & exec node server/index.js"]

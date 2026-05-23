@@ -1087,7 +1087,7 @@
             type: 'mcp_not_connected',
             title: 'Schoology MCP Not Connected',
             message: 'The server is running but the Schoology MCP is not connected. Real-time data is unavailable.',
-            hint: 'Contact the administrator to set up the Schoology MCP connection.'
+            hint: 'Make sure you are logged in with your PAUSD credentials.'
           });
           return;
         }
@@ -1126,7 +1126,7 @@
           errorType = 'invalid_response';
           errorTitle = 'Invalid Server Response';
           errorMessage = 'The server returned an invalid response.';
-          errorHint = 'The server may be misconfigured. Contact the administrator.';
+          errorHint = 'This may be a temporary issue. Try refreshing the page.';
         } else if (e.message.includes('HTML')) {
           errorType = 'server_error';
           errorTitle = 'Server Error';
@@ -1136,7 +1136,7 @@
           errorType = 'http_error';
           errorTitle = 'Server Error (' + e.message + ')';
           errorMessage = 'The API server returned an error status code.';
-          errorHint = 'The server encountered an error. Contact the administrator.';
+          errorHint = 'Please try again or refresh the page.';
         }
 
         showDetailedError({
