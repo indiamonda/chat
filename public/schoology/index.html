@@ -1235,6 +1235,7 @@
 
     function checkSession() {
       const session = sessionStorage.getItem('schoology_session');
+      const storedCreds = localStorage.getItem('schoology_credentials');
       if (session) {
         try {
           const data = JSON.parse(session);
@@ -1243,6 +1244,14 @@
             state.username = data.username;
             state.sessionToken = data.token;
             state.demoMode = data.demo || false;
+            // Restore credentials from localStorage if available
+            if (storedCreds) {
+              try {
+                const creds = JSON.parse(storedCreds);
+                state.schoologyUsername = creds.username;
+                state.schoologyPassword = creds.password;
+              } catch (e) { /* ignore */ }
+            }
             // Only load demo data if in demo mode, otherwise use real MCP data
             if (state.demoMode) {
               loadDemoData();
