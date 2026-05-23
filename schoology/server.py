@@ -185,6 +185,15 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
     print(f"[DEBUG] get_data_from_mcp_or_mock called: tool={tool_name}, username={username}", file=sys.stderr)
     data = call_mcp_tool(tool_name, username=username, password=password)
     print(f"[DEBUG] MCP returned: {type(data).__name__} = {data!r:.200}" if data else f"[DEBUG] MCP returned None", file=sys.stderr)
+
+    # Check for error in CallToolResult
+    if data is not None and hasattr(data, 'content') and isinstance(data.content, list):
+        for item in data.content:
+            if hasattr(item, 'text') and 'Error executing tool' in item.text:
+                print(f"[DEBUG] MCP returned error: {item.text[:200]}", file=sys.stderr)
+                data = None
+                break
+
     if data is not None:
         # MCP returns dicts with keys like "courses", "assignments", "posts"
         if isinstance(data, dict):
@@ -200,8 +209,9 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
             if 'grades' in data and 'courses' in data['grades']:
                 print(f"[DEBUG] Returning grade courses with {len(data['grades']['courses'])} items", file=sys.stderr)
                 return data['grades']['courses']
-        print(f"[DEBUG] Returning raw data (no known key match)", file=sys.stderr)
-        return data
+        # Not a dict we recognize and not None - fall back to mock
+        print(f"[DEBUG] Returning raw data (not a recognized dict), falling back to mock", file=sys.stderr)
+        data = None
 
     print(f"[DEBUG] MCP failed, returning mock data for {tool_name}", file=sys.stderr)
     mock = get_mock_data()
