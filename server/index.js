@@ -866,6 +866,7 @@ function proxyRequest(req, res, targetPort, basePath) {
     port: targetPort,
     path: targetPath + (parsedUrl.search || ''),
     method: req.method,
+    timeout: 120000,
     headers: {
       ...req.headers,
       'connection': 'keep-alive'

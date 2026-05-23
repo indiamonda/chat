@@ -575,15 +575,15 @@
     @keyframes slideUp { from { transform: translateX(-50%) translateY(20px); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
 
     /* Error display */
-    .error-display { text-align: center; padding: 40px 20px; }
+    .error-display { text-align: center; padding: 40px 20px; background: #fee2e2; border: 2px solid #ef4444; border-radius: 12px; margin: 20px; }
     .error-icon { font-size: 3rem; margin-bottom: 16px; }
-    .error-title { font-size: 1.3rem; font-weight: 600; margin-bottom: 8px; color: var(--text); }
-    .error-message { color: var(--text-secondary); margin-bottom: 8px; }
-    .error-hint { font-size: 0.85rem; color: var(--text-secondary); padding: 12px 16px; background: var(--bg); border-radius: 8px; margin-top: 16px; }
+    .error-title { font-size: 1.3rem; font-weight: 600; margin-bottom: 8px; color: #991b1b; }
+    .error-message { color: #b91c1c; margin-bottom: 8px; font-weight: 500; }
+    .error-hint { display: none; }
     .error-actions { display: flex; gap: 12px; justify-content: center; margin-top: 20px; }
     .error-btn { padding: 12px 24px; border-radius: 10px; font-size: 0.95rem; font-family: 'Didact Gothic', sans-serif; cursor: pointer; transition: all 0.2s; }
-    .error-btn.primary { background: var(--primary); color: white; border: none; }
-    .error-btn.primary:hover { background: #005bb5; }
+    .error-btn.primary { background: #ef4444; color: white; border: none; }
+    .error-btn.primary:hover { background: #dc2626; }
     .error-btn.secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
     .error-btn.secondary:hover { border-color: var(--primary); }
 
