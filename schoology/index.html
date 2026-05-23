@@ -25,6 +25,14 @@
       --error: #ff3b30;
     }
 
+    [data-theme="dark"] {
+      --bg: #000000;
+      --surface: #1c1c1e;
+      --border: #38383a;
+      --text: #f5f5f7;
+      --text-secondary: #98989d;
+    }
+
     body {
       font-family: 'Didact Gothic', sans-serif;
       background: var(--bg);
@@ -317,20 +325,28 @@
       display: block;
     }
 
-    .container { max-width: 900px; margin: 0 auto; padding: 40px 20px; }
+    .container { max-width: 100%; margin: 0; padding: 0; }
 
-    header { margin-bottom: 40px; }
+    header { margin-bottom: 0; padding: 40px 40px 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
+    header.collapsed { padding: 20px 40px 16px; }
 
     h1 { font-size: 2rem; font-weight: 400; color: var(--text); margin-bottom: 8px; }
 
     .subtitle { color: var(--text-secondary); font-size: 0.95rem; }
 
-    .section {
-      background: var(--surface);
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
-      border: 1px solid var(--border);
+    .student-info { display: flex; align-items: center; gap: 24px; margin-top: 16px; flex-wrap: wrap; }
+    .student-info-item { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; color: var(--text-secondary); }
+    .student-info-item span { color: var(--text); font-weight: 500; }
+
+    .tab-content { display: none; padding: 32px 40px; }
+    .tab-content.active { display: block; }
+
+    .tab-content .section {
+      background: transparent;
+      border-radius: 0;
+      padding: 0;
+      margin-bottom: 32px;
+      border: none;
     }
 
     .section-title {
@@ -628,10 +644,9 @@
         <h1>Schoology Help</h1>
         <p class="subtitle" id="subtitle">Your academic dashboard</p>
 
-        <div class="user-badge" id="userBadge" style="display: none;">
-          <div class="avatar" id="userAvatar">?</div>
-          <span id="userName">Signed in</span>
-          <a href="#" onclick="handleLogout(event)">Sign out</a>
+        <div class="student-info" id="studentInfo" style="display: none;">
+          <div class="student-info-item">Name: <span id="studentName">—</span></div>
+          <div class="student-info-item">Grade: <span id="studentGrade">—</span></div>
         </div>
 
         <div class="status">
@@ -762,23 +777,35 @@
             <div style="margin-bottom: 24px;">
               <label style="display: block; margin-bottom: 8px; font-weight: 500;">DeepSeek AI Proxy Worker URL</label>
               <input type="text" id="workerUrlInput" placeholder="https://your-worker.workers.dev"
-                     style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit;">
+                     style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; background: var(--surface); color: var(--text);">
               <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
                 Get your Worker URL by deploying the DeepSeek proxy worker to Cloudflare Workers
               </div>
             </div>
-            <div style="margin-bottom: 24px;">
-              <label style="display: block; margin-bottom: 8px; font-weight: 500;">API URL (Alternative)</label>
-              <input type="text" id="apiUrlInput" placeholder="http://localhost:8080"
-                     style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit;">
-              <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
-                Or enter a direct API URL if you have one
-              </div>
-            </div>
-            <button onclick="saveSettings()" style="padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-family: inherit;">
+            <button onclick="saveSettings()" style="padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-family: inherit; margin-bottom: 24px;">
               Save Settings
             </button>
-            <div id="settingsSaved" style="display: none; margin-top: 12px; color: var(--success);">Settings saved!</div>
+            <div id="settingsSaved" style="display: none; margin-bottom: 16px; color: var(--success);">Settings saved!</div>
+
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border);">
+              <div>
+                <div style="font-weight: 500;">Dark Mode</div>
+                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 2px;">Switch between light and dark theme</div>
+              </div>
+              <label class="theme-toggle" style="position: relative; display: inline-block; width: 52px; height: 28px; cursor: pointer;">
+                <input type="checkbox" id="darkModeToggle" onchange="toggleDarkMode()" style="opacity: 0; width: 0; height: 0;">
+                <span style="position: absolute; inset: 0; background: var(--border); border-radius: 14px; transition: background 0.3s;"></span>
+                <span style="position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; background: white; border-radius: 50%; transition: transform 0.3s;" id="darkModeThumb"></span>
+              </label>
+            </div>
+
+            <div style="padding: 16px 0; border-bottom: 1px solid var(--border);">
+              <div style="font-weight: 500;">Account</div>
+              <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 2px; margin-bottom: 16px;">Signed in as <span id="settingsUsername">—</span></div>
+              <button onclick="handleLogout(event)" style="padding: 12px 24px; background: var(--error); color: white; border: none; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 0.95rem;">
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -855,6 +882,29 @@
         return pwd === CORRECT_PASSWORD;
       }
     };
+
+    // Dark mode
+    function initDarkMode() {
+      const saved = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const isDark = saved === 'dark' || (!saved && prefersDark);
+      applyDarkMode(isDark);
+      document.getElementById('darkModeToggle').checked = isDark;
+    }
+
+    function applyDarkMode(isDark) {
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+      const thumb = document.getElementById('darkModeThumb');
+      if (thumb) {
+        thumb.style.transform = isDark ? 'translateX(24px)' : 'translateX(0)';
+      }
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    }
+
+    function toggleDarkMode() {
+      const isDark = document.getElementById('darkModeToggle').checked;
+      applyDarkMode(isDark);
+    }
 
     // Login - Step 1: Store Schoology credentials, then prompt for agent password
     function handleLogin(e) {
@@ -947,17 +997,18 @@
     }
 
     function showApp() {
+      // Initialize dark mode
+      initDarkMode();
+
       // Hide landing page
       document.getElementById('landingPage').style.display = 'none';
 
       // Show app container
       document.getElementById('appContainer').classList.add('visible');
 
-      // Update user badge
-      document.getElementById('userBadge').style.display = 'flex';
-      document.getElementById('userAvatar').textContent = state.username.charAt(0).toUpperCase();
-      document.getElementById('userName').textContent = state.username;
+      // Update status
       document.getElementById('statusText').textContent = state.demoMode ? 'Demo Mode' : 'Connected';
+      document.getElementById('settingsUsername').textContent = state.username;
 
       // Load data - demo mode uses local data, otherwise fetch from MCP
       if (state.demoMode) {
@@ -977,25 +1028,51 @@
 
     // Fetch real data from MCP server
     async function fetchRealData() {
-      const workerUrl = localStorage.getItem('schoology-ai-worker-url');
-      // Default to jchat.fly.dev/schoology as the API server
+      // The Flask API server for data (not the AI worker URL)
       const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
 
-      // Use the configured API server for data
-      const dataUrl = workerUrl || apiUrl;
-
       try {
-        // Try to fetch from Flask API server
-        const gradesRes = await fetch(`${dataUrl}/api/grades`);
-        const coursesRes = await fetch(`${dataUrl}/api/courses`);
-        const assignmentsRes = await fetch(`${dataUrl}/api/assignments`);
-        const postsRes = await fetch(`${dataUrl}/api/posts`);
+        // Fetch from Flask API server with Basic Auth credentials
+        const credentials = JSON.parse(localStorage.getItem('schoology_credentials') || '{}');
+        const authHeader = credentials.username ? 'Basic ' + btoa(credentials.username + ':' + (credentials.password || '')) : '';
+
+        const headers = {};
+        if (authHeader !== 'Basic :') headers['Authorization'] = authHeader;
+
+        const gradesRes = await fetch(`${apiUrl}/api/grades`, { headers });
+        const coursesRes = await fetch(`${apiUrl}/api/courses`, { headers });
+        const assignmentsRes = await fetch(`${apiUrl}/api/assignments`, { headers });
+        const postsRes = await fetch(`${apiUrl}/api/posts`, { headers });
 
         if (gradesRes.ok && coursesRes.ok && assignmentsRes.ok && postsRes.ok) {
-          state.grades = await gradesRes.json();
-          state.courses = await coursesRes.json();
-          state.assignments = await assignmentsRes.json();
-          state.posts = await postsRes.json();
+          const gradesData = await gradesRes.json();
+          const coursesData = await coursesRes.json();
+          const assignmentsData = await assignmentsRes.json();
+          const postsData = await postsRes.json();
+
+          // Handle mock data flag from server
+          if (gradesData._mock) state.grades = gradesData.grades || [];
+          else if (Array.isArray(gradesData)) state.grades = gradesData;
+          else state.grades = gradesData.grades || gradesData.courses || [];
+
+          if (coursesData._mock) state.courses = coursesData.courses || [];
+          else if (Array.isArray(coursesData)) state.courses = coursesData;
+          else state.courses = coursesData.courses || [];
+
+          if (assignmentsData._mock) state.assignments = assignmentsData.assignments || [];
+          else if (Array.isArray(assignmentsData)) state.assignments = assignmentsData;
+          else state.assignments = assignmentsData.assignments || [];
+
+          if (postsData._mock) state.posts = postsData.posts || [];
+          else if (Array.isArray(postsData)) state.posts = postsData;
+          else state.posts = postsData.posts || [];
+
+          // Render with fetched data
+          renderGradesOverview();
+          renderAssignmentsOverview();
+          renderGradesList();
+          renderAssignmentsList();
+          renderActivityList();
         } else {
           throw new Error('Failed to fetch some data');
         }
@@ -1509,6 +1586,7 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
     }
 
     // Init
+    initDarkMode(); // Apply dark mode before anything renders
     checkSession();
     loadSettings();
 
