@@ -717,25 +717,21 @@
     // AI Chat
     function buildContextMessages(currentMessage) {
       const now = new Date();
-      const systemPrompt = `You are a helpful AI assistant. Answer the user's question directly without unnecessary greetings or introductions.
+      const systemPrompt = `CRITICAL RULES:
+1. NEVER say hello, hi, hey, greeting, introduction, "sure", "of course", or any greeting
+2. NEVER apologize or say "certainly" or "I'm happy to help"
+3. NEVER say "How can I help you today" or similar
+4. Answer the question DIRECTLY without preamble
+5. If the question is unclear, ask a clarifying question WITHOUT greeting
 
-You can:
-- Use markdown formatting including headers, lists, tables, code blocks, blockquotes
-- Write LaTeX math with $$ for block and $ for inline: $$\frac{a}{b}$$ or $\sqrt{x}$
-- Use emoji: 🎉 ✅ ❌ 💡 📚 📝 🎯 🚀
-- Send notifications with [NOTIFY:text]
-- Search the web with [SEARCH:query]
-- Look up Wikipedia with [WIKI:topic]
-- Current time: ${now.toLocaleString()}
+Current time: ${now.toLocaleString()}
 
-User grades (if available):
+Student Data:
 ${state.grades.length > 0 ? state.grades.map(g => `- ${g.courseName}: ${g.percentage}% (${g.letterGrade})`).join('\n') : '(no grades data)'}
 
-User assignments (if available):
 ${state.assignments.length > 0 ? state.assignments.map(a => `- ${a.title} (${a.courseName}) - Due: ${a.dueDate || 'TBD'}`).join('\n') : '(no assignments data)'}
 
-Recent posts (if available):
-${state.posts.length > 0 ? state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join('\n') : '(no posts data)'}`;
+${state.posts.length > 0 ? state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 80)}...`).join('\n') : '(no posts data)'}`;
 
       return [
         { role: 'system', content: systemPrompt },
