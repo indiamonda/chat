@@ -12,12 +12,10 @@ RUN /app/.schoology-venv/bin/pip install --no-cache-dir -r schoology-requirement
 COPY schoology/ ./schoology/
 RUN npm install --omit=dev
 
-ENV PLAYWRIGHT_BROWSERS_DIR=/app/schoology-mcp/.venv/browsers
 # Copy schoology-mcp for the Flask server (already has .git removed)
 COPY schoology-mcp/ ./schoology-mcp/
 RUN python3 -m venv /app/schoology-mcp/.venv && \
-    /app/schoology-mcp/.venv/bin/pip install --no-cache-dir -r /app/schoology-mcp/requirements.txt && \
-    PLAYWRIGHT_BROWSERS_DIR=/app/schoology-mcp/.venv/browsers /app/schoology-mcp/.venv/bin/playwright install chromium --with-deps
+    /app/schoology-mcp/.venv/bin/pip install --no-cache-dir -r /app/schoology-mcp/requirements.txt
 
 FROM base AS runner
 ENV NODE_ENV=production
@@ -31,14 +29,12 @@ COPY --from=deps /app/schoology-mcp/.venv /app/schoology-mcp/.venv
 COPY . .
 # Socket.IO browser bundle for game.html (/socket.io.min.js); file may be untracked in git
 RUN cp -f node_modules/socket.io/client-dist/socket.io.min.js public/socket.io.min.js
-RUN mkdir -p /data && chown -R nodejs:nodejs /data && \
-    if [ -d /root/.cache/ms-playwright ]; then \
-        cp -r /root/.cache/ms-playwright /app/schoology-mcp/.venv/browsers && \
-        chown -R nodejs:nodejs /app/schoology-mcp/.venv/browsers; \
-    fi
+RUN mkdir -p /data && chown -R nodejs:nodejs /data
 USER nodejs
 EXPOSE 8080 8081
 ENV DATA_DIR=/data
 ENV SCHOOLOGY_HEADLESS=true
 ENV SCHOOLOGY_KEEPALIVE=false
+ENV PLAYWRIGHT_BROWSERS_DIR=/app/schoology-mcp/.venv/browsers
+RUN /app/schoology-mcp/.venv/bin/playwright install chromium --with-deps
 CMD ["sh", "-c", "cd /app/schoology; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 2 --threads 8 server:app & node /app/server/index.js"]
