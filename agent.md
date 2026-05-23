@@ -1,93 +1,96 @@
-# Schoology MCP Per-Student Authentication Plan
+# Schoology MCP - Agent Working Notes
 
-## Problem
-- Students log in with their own PAUSD credentials via the frontend (github.com/indiamonda/schoologyhelp/)
+## Project Overview
+**App URL**: https://jchat.fly.dev/schoology/
+**Client Repo**: github.com/indiamonda/schoologyhelp (frontend that sends student credentials)
+**Stack**: Express proxy (port 8080) → Flask (port 8081) → MCP/Python/Playwright → Schoology
+
+## Problem Statement
+- Students log in with their own PAUSD credentials via the frontend
 - Frontend sends credentials as `Authorization: Basic <base64(username:password)>`
-- Proxy forwards these headers to Flask on port 8081
-- Flask ignores the credentials and calls MCP with global config credentials
-- MCP uses `config.USERNAME` and `config.get_password()` which are set globally at server start
-- Result: mock data always returned because MCP can't use per-student credentials
+- Proxy forwards to Flask on port 8081
+- Flask needs to pass per-student credentials to MCP subprocess
+- MCP uses Playwright to scrape real Schoology data
 
 ## Architecture
 ```
-Frontend → Express Proxy → Flask (schoology/server.py) → MCP (schoology-mcp/server.py) → Playwright → Schoology
+Frontend → Express Proxy (8080) → Flask (8081) → MCP server.py → Playwright → Schoology
 ```
 
-## Solution
-Modify the architecture to support per-student credentials:
+## Implementation Status (2026-05-23)
 
-### 1. Flask server.py changes
-- Decode Basic Auth header from incoming requests
-- Pass credentials to MCP via a temp .env file or environment variable injection
-- MCP needs to be called per-student with their credentials
-- Cache key should include student username (not just tool name)
+### ✅ Step 1-5 Complete: Per-Student Authentication
+- **schoology/server.py**: Decodes Basic Auth, passes credentials via env vars to MCP subprocess
+- **schoology-mcp/server.py**: Uses `_get_username_from_config()` to resolve username from env or config
+- **schoology-mcp/browser.py**: Per-student `BrowserContext` keyed by username, username-specific storage state files
+- **schoology-mcp/config.py**: Runtime credentials via `_runtime_credentials` dict
+- **schoology-mcp/auth.py**: `login()` accepts username/password parameters
 
-### 2. schoology-mcp/server.py changes
-- Accept `username` and `password` arguments in each tool call
-- Create per-student browser contexts (not shared global client)
-- Store sessions per-student (storage_state_{username}.json)
+### ✅ Step 6 Complete: Error Display Fix
+- Frontend shows red error box with exact error message instead of "Contact administrator"
+- Changed `.error-display` CSS to red background/border
 
-### 3. schoology-mcp/browser.py changes
-- Accept credentials in constructor or login method
-- Support multiple concurrent student sessions
-- Use username-specific storage state files
-
-### 4. schoology-mcp/config.py changes
-- Allow overriding USERNAME/password at runtime per-request
-
-## Files to Modify
-1. `/workspaces/chat/schoology/server.py` - Decode Basic Auth, pass to MCP
-2. `/workspaces/chat/schoology-mcp/server.py` - Accept credentials in tool calls
-3. `/workspaces/chat/schoology-mcp/browser.py` - Per-student sessions
-4. `/workspaces/chat/schoology-mcp/config.py` - Runtime credential override
-
-## Implementation Steps
-
-### Step 1: ✅ Modify schoology-mcp/config.py to support runtime credential override
-Added `_runtime_credentials` dict and `set_runtime_credentials()`, `get_runtime_credentials()`, `clear_runtime_credentials()` functions.
-
-### Step 2: ✅ Modify schoology-mcp/auth.py to accept runtime credentials
-- `login()` now accepts `username` and `password` parameters
-- `_submit_credentials()` accepts username/password as arguments instead of using config directly
-- Uses runtime credentials if available, falls back to config
-
-### Step 3: ✅ Modify schoology-mcp/browser.py for per-student sessions
-- `SchoologyClient` now manages per-student `BrowserContext`s keyed by username
-- `_storage_path()` returns username-specific storage state file path
-- `fetch()` now requires `username` parameter
-- Removed global keepalive loop (each student context is independent)
-
-### Step 4: ✅ Modify schoology-mcp/server.py to use runtime credentials
-- Added `_get_username_from_config()` to resolve username from runtime or config
-- All tool calls now pass username to `client.fetch()`
-- MCP tools read credentials from runtime via `config.get_runtime_credentials()`
-
-### Step 5: ✅ Modify schoology/server.py (Flask) to decode Basic Auth and pass credentials
-- Added `decode_auth_header()` to parse `Authorization: Basic <base64>` header
-- `call_mcp_tool_async()` passes credentials via environment variables to MCP subprocess
-- All API endpoints decode auth header and pass credentials to MCP
-- Cache is per-student (keyed by username in storage_state filename)
-- `/api/clear-session` and `/api/status` use per-student session files
+### ✅ Step 7 Complete: Debug Logging
+- Added extensive debug prints in `call_mcp_tool_async()` and `get_data_from_mcp_or_mock()`
+- Logs show MCP command path, initialization, and return values
 
 ## Current Issues
 
-### Issue 1: Playwright browser cache location
-- Playwright installs browsers to `/root/.cache/ms-playwright` (hardcoded default)
-- `PLAYWRIGHT_BROWSERS_DIR` env var is set during `playwright install` but Chromium uses hardcoded cache
-- Fix: Use `PLAYWRIGHT_BROWSERS_DIR` env var when launching Chromium in browser.py
-- Dockerfile copies from `/root/.cache/ms-playwright` to `/app/schoology-mcp/.venv/browsers` and chowns to nodejs
+### Issue: Flask/Gunicorn Not Starting (FIXED)
+**Symptom**: `ECONNREFUSED 127.0.0.1:8081` - Flask not listening
+**Root Cause**: IndentationError in server.py line 200 (duplicate code block)
+**Fix**: Removed duplicate `if isinstance(data, dict)` block that caused syntax error
 
-### Issue 2: No .env file in Docker container
-- schoology-mcp requires a `.env` file for configuration
-- `.env` is gitignored and not copied to Docker image
-- Solution: Pass all required config via environment variables (already done for credentials)
+### Issue: MCP Subprocess Hangs/Timeouts
+**Symptom**: 502 errors, MCP calls never return
+**Likely Causes**:
+1. Python venv path wrong: `/app/schoology-mcp/.venv/bin/python`
+2. First MCP call initializes browser (slow, ~30s)
+3. Single gunicorn worker blocking
 
-### Issue 3: MCP subprocess spawning
-- `call_mcp_tool_async()` spawns a new Python process for MCP each call
-- Environment variables SCHOOLOGY_USERNAME and SCHOOLOGY_PASSWORD are passed to subprocess
-- stdio_client is imported from `mcp.stdio_client` (MCP 1.27.1)
+**Current Fixes**:
+- Gunicorn with 2 workers, 8 threads
+- 120s timeout on proxy requests
+- `SCHOOLOGY_HEADLESS=true` and `SCHOOLOGY_KEEPALIVE=false` env vars set
 
-## Next Steps
-1. Deploy updated code with flyctl deploy
-2. Create `.env` file in schoology-mcp directory on the server OR pass all config via env vars
-3. Test with real student credentials
+## File Locations
+- **Flask server**: `/app/schoology/server.py`
+- **MCP server**: `/app/schoology-mcp/server.py`
+- **MCP config**: `/app/schoology-mcp/schoology_mcp/config.py`
+- **MCP browser**: `/app/schoology-mcp/schoology_mcp/browser.py`
+- **Express proxy**: `/app/server/index.js`
+- **Venv Python**: `/app/schoology-mcp/.venv/bin/python`
+
+## Dockerfile CMD (current)
+```dockerfile
+CMD ["sh", "-c", "cd /app/schoology; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 2 --threads 8 server:app & node /app/server/index.js"]
+```
+
+## Deploy Command
+```bash
+flyctl deploy --build-only --push -a jchat --image-label deployment-7a1f3fc639a82ccc25928f1803028654 --config fly.toml
+```
+
+## Debug Commands
+- Check logs: `flyctl logs -a jchat --tail 100`
+- SSH to machine: `flyctl ssh console -a jchat`
+
+## MCP Debug Log Prefixes
+- `[MCP DEBUG] VENV_PYTHON=` - shows Python path
+- `[MCP DEBUG] Starting MCP with cmd:` - shows command
+- `[MCP DEBUG] MCP session initialized` - session ready
+- `[MCP DEBUG] MCP tool X returned: Y` - tool result
+
+## Known Gotchas
+1. **No `exec`** in CMD - use `&` to run both gunicorn and node in foreground
+2. **Use `cd /app/schoology`** before gunicorn because gunicorn needs to find the module
+3. **MCP first call is slow** - Playwright browser launches on first use (~30s)
+4. **Credentials in env vars** - SCHOOLOGY_USERNAME and SCHOOLOGY_PASSWORD passed to subprocess
+5. **localStorage stores credentials** - frontend restores them on session restore
+
+## User Preferences
+- "Don't write fallbacks, fix the thing properly"
+- "Use agent.md to store memory so nothing is lost"
+- "This app cannot suspend - it powers other applications"
+- Error messages should NOT say "contact administrator" - personal project
+- Error display: red box with exact error message
