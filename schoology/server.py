@@ -51,6 +51,10 @@ async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, use
     import os
     import sys
 
+    print(f"[MCP DEBUG] VENV_PYTHON={VENV_PYTHON}", file=sys.stderr)
+    print(f"[MCP DEBUG] SERVER_PY={SERVER_PY}", file=sys.stderr)
+    print(f"[MCP DEBUG] username={username}, password={'***' if password else None}", file=sys.stderr)
+
     # Build env with credentials for the subprocess
     env = os.environ.copy()
     if username:
@@ -59,10 +63,16 @@ async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, use
         env['SCHOOLOGY_PASSWORD'] = password
 
     try:
-        async with stdio_client([VENV_PYTHON, SERVER_PY], env=env) as (read, write):
+        cmd = [VENV_PYTHON, SERVER_PY]
+        print(f"[MCP DEBUG] Starting MCP with cmd: {cmd}", file=sys.stderr)
+        async with stdio_client(cmd, env=env) as (read, write):
+            print(f"[MCP DEBUG] MCP stdio connected", file=sys.stderr)
             async with ClientSession(read, write) as session:
+                print(f"[MCP DEBUG] Initializing MCP session...", file=sys.stderr)
                 await session.initialize()
+                print(f"[MCP DEBUG] MCP session initialized", file=sys.stderr)
                 result = await session.call_tool(tool_name, arguments or {})
+                print(f"[MCP DEBUG] MCP tool {tool_name} returned: {type(result).__name__}", file=sys.stderr)
                 return result
     except Exception as e:
         print(f"MCP call failed: {e}", file=sys.stderr)
