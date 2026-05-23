@@ -35,6 +35,6 @@ EXPOSE 8080 8081
 ENV DATA_DIR=/data
 ENV SCHOOLOGY_HEADLESS=true
 ENV SCHOOLOGY_KEEPALIVE=false
-ENV PLAYWRIGHT_BROWSERS_DIR=/app/schoology-mcp/.venv/browsers
-RUN /app/schoology-mcp/.venv/bin/playwright install chromium --with-deps
+ENV PLAYWRIGHT_BROWSERS_DIR=/home/nodejs/.cache/ms-playwright
+RUN /app/schoology-mcp/.venv/bin/playwright install chromium
 CMD ["sh", "-c", "cd /app/schoology; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 2 --threads 8 server:app & node /app/server/index.js"]
