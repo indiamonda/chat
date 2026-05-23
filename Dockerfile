@@ -22,8 +22,10 @@ ENV NODE_ENV=production
 ENV PORT=8080
 RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs nodejs
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/.schoology-venv /app/.schoology-venv
-COPY --from=deps /app/schoology-mcp/.venv /app/schoology-mcp/.venv
+# Install python3 and recreate venvs in runner since venvs built in deps stage have broken symlinks
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv make g++ && rm -rf /var/lib/apt/lists/*
+RUN python3 -m venv /app/.schoology-venv && /app/.schoology-venv/bin/pip install --no-cache-dir -r /app/schoology-requirements.txt
+RUN python3 -m venv /app/schoology-mcp/.venv && /app/schoology-mcp/.venv/bin/pip install --no-cache-dir -r /app/schoology-mcp/requirements.txt
 COPY . .
 # Socket.IO browser bundle for game.html (/socket.io.min.js); file may be untracked in git
 RUN cp -f node_modules/socket.io/client-dist/socket.io.min.js public/socket.io.min.js
