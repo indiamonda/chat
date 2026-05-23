@@ -1,4 +1,4 @@
-import { createServer } from 'http';
+import http, { createServer } from 'http';
 import { Readable } from 'stream';
 import { parse as urlParse } from 'url';
 import { readFileSync, existsSync, readdirSync, rmSync as fsRm } from 'fs';
