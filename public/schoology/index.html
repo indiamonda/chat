@@ -747,10 +747,17 @@ ${state.posts.length > 0 ? state.posts.map(p => `- ${p.author}: ${p.content.subs
       }
     }
 
+    let abortController = null;
+
     async function sendChatMessage() {
       const input = document.getElementById('chatInput');
       const message = input.value.trim();
       if (!message || state.isGenerating) return;
+
+      // Cancel any in-flight request
+      if (abortController) abortController.abort();
+      abortController = new AbortController();
+
       input.value = '';
       state.isGenerating = true;
       addChatMessage('user', message);
@@ -760,13 +767,18 @@ ${state.posts.length > 0 ? state.posts.map(p => `- ${p.author}: ${p.content.subs
         const workerUrl = localStorage.getItem('schoology-ai-worker-url');
         const apiUrl = 'https://deepseek-proxy.ikunbeautiful.workers.dev';
         const endpoint = workerUrl || apiUrl;
+        const messages = buildContextMessages(message);
+        console.log('[AI Request]', messages.length, 'messages, last user message:', message);
         const response = await fetch(`${endpoint}/v1/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(message), max_tokens: 4096, temperature: 0.7 })
+          body: JSON.stringify({ model: 'deepseek-chat', messages: messages, max_tokens: 4096, temperature: 0.7 }),
+          signal: abortController.signal
         });
+        console.log('[AI Response status]', response.status);
         if (!response.ok) throw new Error(`API returned status ${response.status}`);
         const responseText = await response.text();
+        console.log('[AI Response text]', responseText.substring(0, 200));
         if (responseText.trim().startsWith('<')) throw new Error('API returned HTML instead of JSON');
         const data = JSON.parse(responseText);
         const reply = data.choices?.[0]?.message?.content || 'No response received.';
@@ -775,6 +787,8 @@ ${state.posts.length > 0 ? state.posts.map(p => `- ${p.author}: ${p.content.subs
         state.chatHistory.push({ role: 'assistant', content: reply });
       } catch (e) {
         hideTypingIndicator();
+        if (e.name === 'AbortError') return;
+        console.log('[AI Error]', e.message);
         addChatMessage('error', `Error: ${e.message}`);
       }
       state.isGenerating = false;
