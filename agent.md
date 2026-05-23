@@ -64,7 +64,30 @@ Added `_runtime_credentials` dict and `set_runtime_credentials()`, `get_runtime_
 
 ### Step 5: ✅ Modify schoology/server.py (Flask) to decode Basic Auth and pass credentials
 - Added `decode_auth_header()` to parse `Authorization: Basic <base64>` header
-- `call_mcp_tool_async()` now accepts username/password and sets runtime credentials
+- `call_mcp_tool_async()` passes credentials via environment variables to MCP subprocess
 - All API endpoints decode auth header and pass credentials to MCP
 - Cache is per-student (keyed by username in storage_state filename)
 - `/api/clear-session` and `/api/status` use per-student session files
+
+## Current Issues
+
+### Issue 1: Playwright browser cache location
+- Playwright installs browsers to `/root/.cache/ms-playwright` (hardcoded default)
+- `PLAYWRIGHT_BROWSERS_DIR` env var is set during `playwright install` but Chromium uses hardcoded cache
+- Fix: Use `PLAYWRIGHT_BROWSERS_DIR` env var when launching Chromium in browser.py
+- Dockerfile copies from `/root/.cache/ms-playwright` to `/app/schoology-mcp/.venv/browsers` and chowns to nodejs
+
+### Issue 2: No .env file in Docker container
+- schoology-mcp requires a `.env` file for configuration
+- `.env` is gitignored and not copied to Docker image
+- Solution: Pass all required config via environment variables (already done for credentials)
+
+### Issue 3: MCP subprocess spawning
+- `call_mcp_tool_async()` spawns a new Python process for MCP each call
+- Environment variables SCHOOLOGY_USERNAME and SCHOOLOGY_PASSWORD are passed to subprocess
+- stdio_client is imported from `mcp.stdio_client` (MCP 1.27.1)
+
+## Next Steps
+1. Deploy updated code with flyctl deploy
+2. Create `.env` file in schoology-mcp directory on the server OR pass all config via env vars
+3. Test with real student credentials

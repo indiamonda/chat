@@ -56,9 +56,14 @@ class SchoologyClient:
             return
         log.info("Launching Chromium (headless=%s)", config.HEADLESS)
         self._pw = await async_playwright().start()
+        env = {}
+        # Only set PLAYWRIGHT_BROWSERS_DIR if explicitly configured to non-default
+        if PLAYWRIGHT_BROWSERS_DIR != "/root/.cache/ms-playwright":
+            env["PLAYWRIGHT_BROWSERS_DIR"] = PLAYWRIGHT_BROWSERS_DIR
+            log.info("Browser launch env: %s", env)
         self._browser = await self._pw.chromium.launch(
             headless=config.HEADLESS,
-            env={"PLAYWRIGHT_BROWSERS_DIR": PLAYWRIGHT_BROWSERS_DIR}
+            env=env if env else None
         )
 
     def _storage_path(self, username: str) -> Path:

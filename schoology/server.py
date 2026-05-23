@@ -48,22 +48,27 @@ async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, use
     """
     from mcp.client.session import ClientSession
     from mcp.stdio_client import stdio_client
-    from schoology_mcp import config
+    import os
+    import sys
 
-    # Set runtime credentials if provided
-    if username or password:
-        config.set_runtime_credentials(username, password or '')
+    # Build env with credentials for the subprocess
+    env = os.environ.copy()
+    if username:
+        env['SCHOOLOGY_USERNAME'] = username
+    if password:
+        env['SCHOOLOGY_PASSWORD'] = password
 
     try:
-        async with stdio_client([VENV_PYTHON, SERVER_PY]) as (read, write):
+        async with stdio_client([VENV_PYTHON, SERVER_PY], env=env) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.call_tool(tool_name, arguments or {})
                 return result
-    finally:
-        # Clear runtime credentials after the call
-        if username or password:
-            config.clear_runtime_credentials()
+    except Exception as e:
+        print(f"MCP call failed: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        return None
 
 
 def call_mcp_tool(tool_name, username=None, password=None, arguments=None):
