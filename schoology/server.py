@@ -76,7 +76,10 @@ def call_mcp_tool(tool_name, username=None, password=None, arguments=None):
     try:
         return asyncio.run(call_mcp_tool_async(tool_name, arguments, username, password))
     except Exception as e:
-        print(f"MCP call failed: {e}")
+        import sys
+        import traceback
+        print(f"MCP call failed: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return None
 
 
