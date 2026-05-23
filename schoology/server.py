@@ -5,7 +5,7 @@ Bridges the web dashboard to the Schoology MCP server
 """
 
 import asyncio
-import json
+import base64
 import os
 import sys
 from pathlib import Path
@@ -22,32 +22,54 @@ MCP_DIR = SCRIPT_DIR.parent / 'schoology-mcp'
 VENV_PYTHON = str(MCP_DIR / '.venv' / 'bin' / 'python')
 SERVER_PY = str(MCP_DIR / 'server.py')
 
-# Cache for MCP responses
-cache = {
-    'grades': None,
-    'courses': None,
-    'assignments': None,
-    'posts': None,
-    'last_updated': None
-}
+
+def decode_auth_header():
+    """Decode Basic Auth header and return (username, password) or (None, None)."""
+    auth = request.headers.get('Authorization', '')
+    if not auth.startswith('Basic '):
+        return None, None
+    try:
+        encoded = auth[6:]  # Remove 'Basic ' prefix
+        decoded = base64.b64decode(encoded).decode('utf-8')
+        username, password = decoded.split(':', 1)
+        return username, password
+    except Exception:
+        return None, None
 
 
-async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None):
-    """Call a tool on the Schoology MCP server via stdio."""
-    from mcp.client import ClientSession
+async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, username: str = None, password: str = None):
+    """Call a tool on the Schoology MCP server via stdio.
+
+    Args:
+        tool_name: Name of the MCP tool to call
+        arguments: Additional arguments for the tool
+        username: Student ID for setting runtime credentials
+        password: Schoology password for setting runtime credentials
+    """
+    from mcp.client.session import ClientSession
     from mcp.stdio_client import stdio_client
+    from schoology_mcp import config
 
-    async with stdio_client([VENV_PYTHON, SERVER_PY]) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.call_tool(tool_name, arguments or {})
-            return result
+    # Set runtime credentials if provided
+    if username or password:
+        config.set_runtime_credentials(username, password or '')
+
+    try:
+        async with stdio_client([VENV_PYTHON, SERVER_PY]) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, arguments or {})
+                return result
+    finally:
+        # Clear runtime credentials after the call
+        if username or password:
+            config.clear_runtime_credentials()
 
 
-def call_mcp_tool(tool_name, arguments=None):
+def call_mcp_tool(tool_name, username=None, password=None, arguments=None):
     """Synchronous wrapper for calling MCP tools."""
     try:
-        return asyncio.run(call_mcp_tool_async(tool_name, arguments))
+        return asyncio.run(call_mcp_tool_async(tool_name, arguments, username, password))
     except Exception as e:
         print(f"MCP call failed: {e}")
         return None
@@ -106,9 +128,15 @@ def get_mock_data():
     }
 
 
-def get_data_from_mcp_or_mock(tool_name):
-    """Try MCP first, fall back to mock data."""
-    data = call_mcp_tool(tool_name)
+def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
+    """Try MCP first, fall back to mock data.
+
+    Args:
+        tool_name: Name of the MCP tool to call
+        username: Student ID for authentication
+        password: Schoology password for authentication
+    """
+    data = call_mcp_tool(tool_name, username=username, password=password)
     if data is not None:
         # MCP returns dicts with keys like "courses", "assignments", "posts"
         if isinstance(data, dict):
@@ -157,58 +185,47 @@ def health():
 @app.route('/api/grades')
 def get_grades():
     """Get current grades."""
-    global cache
-    if cache['grades'] is None:
-        cache['grades'] = get_data_from_mcp_or_mock('get_grades')
-        cache['last_updated'] = datetime.now().isoformat()
-    return jsonify(cache['grades'])
+    username, password = decode_auth_header()
+    data = get_data_from_mcp_or_mock('get_grades', username, password)
+    return jsonify(data)
 
 
 @app.route('/api/courses')
 def get_courses():
     """Get enrolled courses."""
-    global cache
-    if cache['courses'] is None:
-        cache['courses'] = get_data_from_mcp_or_mock('get_courses')
-        cache['last_updated'] = datetime.now().isoformat()
-    return jsonify(cache['courses'])
+    username, password = decode_auth_header()
+    data = get_data_from_mcp_or_mock('get_courses', username, password)
+    return jsonify(data)
 
 
 @app.route('/api/assignments')
 def get_assignments():
     """Get upcoming assignments."""
-    global cache
-    if cache['assignments'] is None:
-        cache['assignments'] = get_data_from_mcp_or_mock('get_upcoming_assignments')
-        cache['last_updated'] = datetime.now().isoformat()
-    return jsonify(cache['assignments'])
+    username, password = decode_auth_header()
+    data = get_data_from_mcp_or_mock('get_upcoming_assignments', username, password)
+    return jsonify(data)
 
 
 @app.route('/api/posts')
 def get_posts():
     """Get recent posts."""
-    global cache
-    if cache['posts'] is None:
-        cache['posts'] = get_data_from_mcp_or_mock('get_recent_posts')
-        cache['last_updated'] = datetime.now().isoformat()
-    return jsonify(cache['posts'])
+    username, password = decode_auth_header()
+    data = get_data_from_mcp_or_mock('get_recent_posts', username, password)
+    return jsonify(data)
 
 
 @app.route('/api/refresh', methods=['POST'])
 def refresh_data():
     """Force refresh all data."""
-    global cache
-    cache['grades'] = None
-    cache['courses'] = None
-    cache['assignments'] = None
-    cache['posts'] = None
+    # Note: Per-student sessions are managed by MCP; no global cache to clear
     return jsonify({'status': 'ok', 'last_updated': datetime.now().isoformat()})
 
 
 @app.route('/api/clear-session', methods=['POST'])
 def clear_session():
-    """Clear the Schoology session."""
-    storage_state = MCP_DIR / 'storage_state.json'
+    """Clear the Schoology session for the authenticated student."""
+    username, _ = decode_auth_header()
+    storage_state = MCP_DIR / f'storage_state_{username}.json' if username else MCP_DIR / 'storage_state.json'
     if storage_state.exists():
         storage_state.unlink()
     return jsonify({'status': 'ok'})
@@ -218,12 +235,13 @@ def clear_session():
 def get_status():
     """Get connection status."""
     mcp_installed = os.path.exists(VENV_PYTHON) and os.path.exists(SERVER_PY)
-    storage_state = MCP_DIR / 'storage_state.json'
+    username, _ = decode_auth_header()
+    storage_state = MCP_DIR / f'storage_state_{username}.json' if username else MCP_DIR / 'storage_state.json'
 
     return jsonify({
         'mcp_installed': mcp_installed,
         'session_exists': storage_state.exists(),
-        'last_updated': cache.get('last_updated')
+        'last_updated': None
     })
 
 
@@ -232,7 +250,8 @@ def setup_status():
     """Check what setup is needed."""
     venv_exists = (MCP_DIR / '.venv' / 'bin' / 'python').exists()
     env_exists = (MCP_DIR / '.env').exists()
-    storage_exists = (MCP_DIR / 'storage_state.json').exists()
+    username, _ = decode_auth_header()
+    storage_exists = (MCP_DIR / f'storage_state_{username}.json').exists() if username else (MCP_DIR / 'storage_state.json').exists()
 
     return jsonify({
         'needs_setup': not venv_exists,

@@ -68,7 +68,32 @@ def get_password() -> str | None:
     return _PASSWORD_ENV or _password_from_keyring()
 
 
-def require_credentials() -> None:
+# --- Runtime credential override for per-student sessions -----------------
+# Thread-local storage for credentials passed per-request to the MCP server.
+import threading
+_runtime_credentials: dict = {}
+
+
+def set_runtime_credentials(username: str, password: str) -> None:
+    """Set credentials for the current request (thread-local)."""
+    _runtime_credentials['username'] = username
+    _runtime_credentials['password'] = password
+
+
+def get_runtime_credentials() -> tuple[str | None, str | None]:
+    """Get runtime credentials if set, otherwise (None, None)."""
+    return (
+        _runtime_credentials.get('username'),
+        _runtime_credentials.get('password')
+    )
+
+
+def clear_runtime_credentials() -> None:
+    """Clear runtime credentials after request completes."""
+    _runtime_credentials.clear()
+
+
+def require_credentials():
     """Raise a clear, actionable error if credentials are not configured."""
     if not USERNAME:
         raise RuntimeError(

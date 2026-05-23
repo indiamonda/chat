@@ -31,6 +31,7 @@ def _assignment_path(url_or_id: str) -> str:
         f"Not a recognizable Schoology assignment URL/ID: {url_or_id!r}"
     )
 
+
 # MCP uses stdout for the protocol -- all logging MUST go to stderr.
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +53,12 @@ async def lifespan(_server):
 mcp = FastMCP("schoology", lifespan=lifespan)
 
 
+def _get_username_from_config() -> str:
+    """Resolve the username: runtime credentials first, then config.USERNAME."""
+    runtime_user, _ = config.get_runtime_credentials()
+    return runtime_user or config.USERNAME
+
+
 @mcp.tool()
 async def get_grades(detailed: bool = False) -> dict:
     """Get the student's current grades.
@@ -60,7 +67,10 @@ async def get_grades(detailed: bool = False) -> dict:
     Pass `detailed=True` to also include every grading period, category and
     individual assignment row (the full payload, often hundreds of rows).
     """
-    html = await client.fetch("/grades/grades", wait_selector="li.s-grades-course-item")
+    username = _get_username_from_config()
+    html = await client.fetch(
+        "/grades/grades", username, wait_selector="li.s-grades-course-item"
+    )
     courses = parsers.parse_grades(html, config.BASE_URL)
     if not detailed:
         courses = [
@@ -76,7 +86,10 @@ async def get_grades(detailed: bool = False) -> dict:
 @mcp.tool()
 async def get_courses() -> dict:
     """Get the list of courses the student is enrolled in."""
-    html = await client.fetch("/courses", wait_selector="li.course-item, div.course-card")
+    username = _get_username_from_config()
+    html = await client.fetch(
+        "/courses", username, wait_selector="li.course-item, div.course-card"
+    )
     return {
         "base_url": config.BASE_URL,
         "courses": parsers.parse_courses(html, config.BASE_URL),
@@ -95,7 +108,8 @@ async def get_upcoming_assignments(days: int = 14, include_info: bool = False) -
     default so the common case stays cheap; turn it on when the model needs
     to read what the assignment is actually asking for.
     """
-    html = await client.fetch("/home", extra_wait_ms=3_000)
+    username = _get_username_from_config()
+    html = await client.fetch("/home", username, extra_wait_ms=3_000)
     assignments = parsers.parse_upcoming_assignments(html, config.BASE_URL)
     if include_info:
         for a in assignments:
@@ -125,9 +139,10 @@ async def get_assignment_info(url_or_id: str) -> dict:
     numeric assignment id. Returns title, course, due date, description body
     (text + HTML) and any attached files.
     """
+    username = _get_username_from_config()
     path = _assignment_path(url_or_id)
     html = await client.fetch(
-        path, wait_selector=".info-body, #main h1, .page-title"
+        path, username, wait_selector=".info-body, #main h1, .page-title"
     )
     info = parsers.parse_assignment_info(html, config.BASE_URL)
     info["url"] = f"{config.BASE_URL}{path}"
@@ -137,7 +152,8 @@ async def get_assignment_info(url_or_id: str) -> dict:
 @mcp.tool()
 async def get_recent_posts(limit: int = 20) -> dict:
     """Get the latest posts/updates from the Schoology activity feed."""
-    html = await client.fetch("/home", extra_wait_ms=3_000)
+    username = _get_username_from_config()
+    html = await client.fetch("/home", username, extra_wait_ms=3_000)
     return {
         "base_url": config.BASE_URL,
         "posts": parsers.parse_recent_posts(html, config.BASE_URL, limit=limit),
