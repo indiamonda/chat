@@ -47,44 +47,42 @@ async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, use
         password: Schoology password for setting runtime credentials
     """
     from mcp.client.session import ClientSession
-    import asyncio
+    from mcp.client.stdio import StdioServerParameters
+    from mcp import stdio_client
     import sys
 
     print(f"[MCP DEBUG] VENV_PYTHON={VENV_PYTHON}", file=sys.stderr)
     print(f"[MCP DEBUG] SERVER_PY={SERVER_PY}", file=sys.stderr)
     print(f"[MCP DEBUG] username={username}, password={'***' if password else None}", file=sys.stderr)
 
-    # Build env with credentials for the subprocess
-    env = os.environ.copy()
-    if username:
-        env['SCHOOLOGY_USERNAME'] = username
-    if password:
-        env['SCHOOLOGY_PASSWORD'] = password
-
     try:
         cmd = [VENV_PYTHON, SERVER_PY]
         print(f"[MCP DEBUG] Starting MCP with cmd: {cmd}", file=sys.stderr)
 
-        # Use subprocess to pass env directly
-        process = await asyncio.create_subprocess_exec(
-            cmd[0], cmd[1],
-            env=env,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        read, write = process.stdin, process.stdout
+        # Build env with credentials for the subprocess
+        env = None
+        if username or password:
+            env = {**os.environ.copy()}
+            if username:
+                env['SCHOOLOGY_USERNAME'] = username
+            if password:
+                env['SCHOOLOGY_PASSWORD'] = password
 
-        print(f"[MCP DEBUG] MCP stdio connected", file=sys.stderr)
-        async with ClientSession(read, write) as session:
-            print(f"[MCP DEBUG] Initializing MCP session...", file=sys.stderr)
-            await session.initialize()
-            print(f"[MCP DEBUG] MCP session initialized", file=sys.stderr)
-            result = await session.call_tool(tool_name, arguments or {})
-            print(f"[MCP DEBUG] MCP tool {tool_name} returned: {type(result).__name__}", file=sys.stderr)
-            await session.close()
-            process.terminate()
-            return result
+        server_params = StdioServerParameters(
+            command=cmd[0],
+            args=[cmd[1]],
+            env=env
+        )
+
+        async with stdio_client(server_params) as (read, write):
+            print(f"[MCP DEBUG] MCP stdio connected", file=sys.stderr)
+            async with ClientSession(read, write) as session:
+                print(f"[MCP DEBUG] Initializing MCP session...", file=sys.stderr)
+                await session.initialize()
+                print(f"[MCP DEBUG] MCP session initialized", file=sys.stderr)
+                result = await session.call_tool(tool_name, arguments or {})
+                print(f"[MCP DEBUG] MCP tool {tool_name} returned: {type(result).__name__}", file=sys.stderr)
+                return result
     except Exception as e:
         print(f"MCP call failed: {e}", file=sys.stderr)
         import traceback
