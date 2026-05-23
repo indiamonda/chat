@@ -32,7 +32,10 @@ COPY . .
 # Socket.IO browser bundle for game.html (/socket.io.min.js); file may be untracked in git
 RUN cp -f node_modules/socket.io/client-dist/socket.io.min.js public/socket.io.min.js
 RUN mkdir -p /data && chown -R nodejs:nodejs /data && \
-    chown -R nodejs:nodejs /app/schoology-mcp/.venv/browsers
+    if [ -d /root/.cache/ms-playwright ]; then \
+        cp -r /root/.cache/ms-playwright /app/schoology-mcp/.venv/browsers && \
+        chown -R nodejs:nodejs /app/schoology-mcp/.venv/browsers; \
+    fi
 USER nodejs
 EXPOSE 8080 8081
 ENV DATA_DIR=/data
