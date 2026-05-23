@@ -196,19 +196,6 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
 
     print(f"[DEBUG] MCP failed, returning mock data for {tool_name}", file=sys.stderr)
     mock = get_mock_data()
-        # MCP returns dicts with keys like "courses", "assignments", "posts"
-        if isinstance(data, dict):
-            if 'courses' in data:
-                return data['courses']
-            if 'assignments' in data:
-                return data['assignments']
-            if 'posts' in data:
-                return data['posts']
-            if 'grades' in data and 'courses' in data['grades']:
-                return data['grades']['courses']
-        return data
-
-    mock = get_mock_data()
     # Map tool names to mock keys: get_upcoming_assignments -> assignments
     key_map = {
         'get_grades': 'grades',
