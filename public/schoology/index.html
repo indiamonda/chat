@@ -914,12 +914,14 @@
 
     function renderMarkdown(text) {
       if (typeof marked === 'undefined') return escapeHtml(text);
+      if (typeof katex !== 'undefined') {
       text = text.replace(/\$\$([\s\S]*?)\$\$/g, (m, math) => {
         try { return katex.renderToString(math, { displayMode: true, throwOnError: false }); } catch (e) { return `<pre>${escapeHtml(math)}</pre>`; }
       });
       text = text.replace(/\$([^\$\n]+?)\$/g, (m, math) => {
         try { return katex.renderToString(math, { displayMode: false, throwOnError: false }); } catch (e) { return `$${escapeHtml(math)}$`; }
       });
+      }
       return marked.parse(text);
     }
 

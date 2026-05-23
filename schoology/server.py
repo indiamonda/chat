@@ -144,8 +144,30 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
         username: Student ID for authentication
         password: Schoology password for authentication
     """
+    import sys
+    print(f"[DEBUG] get_data_from_mcp_or_mock called: tool={tool_name}, username={username}", file=sys.stderr)
     data = call_mcp_tool(tool_name, username=username, password=password)
+    print(f"[DEBUG] MCP returned: {type(data).__name__} = {data!r:.200}" if data else f"[DEBUG] MCP returned None", file=sys.stderr)
     if data is not None:
+        # MCP returns dicts with keys like "courses", "assignments", "posts"
+        if isinstance(data, dict):
+            if 'courses' in data:
+                print(f"[DEBUG] Returning courses array with {len(data.get('courses', []))} items", file=sys.stderr)
+                return data['courses']
+            if 'assignments' in data:
+                print(f"[DEBUG] Returning assignments array with {len(data.get('assignments', []))} items", file=sys.stderr)
+                return data['assignments']
+            if 'posts' in data:
+                print(f"[DEBUG] Returning posts array with {len(data.get('posts', []))} items", file=sys.stderr)
+                return data['posts']
+            if 'grades' in data and 'courses' in data['grades']:
+                print(f"[DEBUG] Returning grade courses with {len(data['grades']['courses'])} items", file=sys.stderr)
+                return data['grades']['courses']
+        print(f"[DEBUG] Returning raw data (no known key match)", file=sys.stderr)
+        return data
+
+    print(f"[DEBUG] MCP failed, returning mock data for {tool_name}", file=sys.stderr)
+    mock = get_mock_data()
         # MCP returns dicts with keys like "courses", "assignments", "posts"
         if isinstance(data, dict):
             if 'courses' in data:
