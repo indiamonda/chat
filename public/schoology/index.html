@@ -782,6 +782,7 @@ ${state.posts.length > 0 ? state.posts.map(p => `- ${p.author}: ${p.content.subs
         if (responseText.trim().startsWith('<')) throw new Error('API returned HTML instead of JSON');
         const data = JSON.parse(responseText);
         const reply = data.choices?.[0]?.message?.content || 'No response received.';
+        console.log('[AI Reply]', reply.substring(0, 300));
         hideTypingIndicator();
         addChatMessage('assistant', reply);
         state.chatHistory.push({ role: 'assistant', content: reply });
