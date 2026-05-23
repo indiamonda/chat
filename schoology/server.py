@@ -47,8 +47,7 @@ async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, use
         password: Schoology password for setting runtime credentials
     """
     from mcp.client.session import ClientSession
-    from mcp import stdio_client
-    import os
+    import asyncio
     import sys
 
     print(f"[MCP DEBUG] VENV_PYTHON={VENV_PYTHON}", file=sys.stderr)
@@ -65,15 +64,27 @@ async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, use
     try:
         cmd = [VENV_PYTHON, SERVER_PY]
         print(f"[MCP DEBUG] Starting MCP with cmd: {cmd}", file=sys.stderr)
-        async with stdio_client(cmd, env=env) as (read, write):
-            print(f"[MCP DEBUG] MCP stdio connected", file=sys.stderr)
-            async with ClientSession(read, write) as session:
-                print(f"[MCP DEBUG] Initializing MCP session...", file=sys.stderr)
-                await session.initialize()
-                print(f"[MCP DEBUG] MCP session initialized", file=sys.stderr)
-                result = await session.call_tool(tool_name, arguments or {})
-                print(f"[MCP DEBUG] MCP tool {tool_name} returned: {type(result).__name__}", file=sys.stderr)
-                return result
+
+        # Use subprocess to pass env directly
+        process = await asyncio.create_subprocess_exec(
+            cmd[0], cmd[1],
+            env=env,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        read, write = process.stdin, process.stdout
+
+        print(f"[MCP DEBUG] MCP stdio connected", file=sys.stderr)
+        async with ClientSession(read, write) as session:
+            print(f"[MCP DEBUG] Initializing MCP session...", file=sys.stderr)
+            await session.initialize()
+            print(f"[MCP DEBUG] MCP session initialized", file=sys.stderr)
+            result = await session.call_tool(tool_name, arguments or {})
+            print(f"[MCP DEBUG] MCP tool {tool_name} returned: {type(result).__name__}", file=sys.stderr)
+            await session.close()
+            process.terminate()
+            return result
     except Exception as e:
         print(f"MCP call failed: {e}", file=sys.stderr)
         import traceback
