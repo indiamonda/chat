@@ -1,6 +1,6 @@
 # Schoology MCP - Agent Working Notes
 **Last Updated**: 2026-05-24
-**App Version**: 2026-05-24.5
+**App Version**: 2026-05-24.6
 
 ## Project Overview
 **App URL**: https://jchat.fly.dev/schoology/
@@ -57,6 +57,13 @@ Frontend → Express Proxy (8080) → Flask (8081) → MCP server.py → Playwri
 ### ✅ Pre-configured DeepSeek Proxy URL (2026-05-24)
 - `loadSettings()` now pre-configures `https://deepseek-proxy.ikunbeautiful.workers.dev` if no custom URL is stored
 - No longer requires manual configuration in settings tab
+
+### ✅ Remove DeepSeek URL from Settings Tab (2026-05-24)
+- Removed the DeepSeek AI Proxy Worker URL input field from the Settings UI
+- URL is now hardcoded/pre-configured in `loadSettings()` - no user-facing configuration needed
+
+### ✅ Fix marked.js "str.replace is not a function" Error (2026-05-24)
+- Added `if (typeof text !== 'string') text = String(text || '')` guard in `renderMarkdown()` to ensure text is always a string before calling `.replace()`
 
 ### ✅ Playwright Browser Launch Fix (2026-05-24)
 - **Root Cause**: `--single-process` flag caused crashes in containerized environments; browser context was being closed unexpectedly
