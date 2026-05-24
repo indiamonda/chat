@@ -984,14 +984,12 @@
     }
 
     function loadSettings() {
-      // Pre-configured DeepSeek proxy worker URL
+      // Pre-configured DeepSeek proxy worker URL (no UI setting needed)
       const defaultWorkerUrl = 'https://deepseek-proxy.ikunbeautiful.workers.dev';
       const storedWorkerUrl = localStorage.getItem('schoology-ai-worker-url');
-      const workerUrl = storedWorkerUrl || defaultWorkerUrl;
-      localStorage.setItem('schoology-ai-worker-url', workerUrl);
-      document.getElementById('workerUrlInput').value = workerUrl;
-      const apiUrl = localStorage.getItem('schoology-api-url');
-      if (apiUrl) document.getElementById('apiUrlInput').value = apiUrl;
+      if (!storedWorkerUrl) {
+        localStorage.setItem('schoology-ai-worker-url', defaultWorkerUrl);
+      }
     }
 
     function loadDemoData() {
