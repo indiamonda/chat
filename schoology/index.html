@@ -1293,7 +1293,7 @@
           const response = await fetch(`${workerUrl}/v1/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage), max_tokens: 4096, temperature: 0.7 })
+            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage), max_tokens: 4096, temperature: 0.7, stream: false })
           });
           hideTypingIndicator();
           if (!response.ok) throw new Error(await response.text());
@@ -1302,11 +1302,15 @@
           addChatMessage('assistant', reply);
           state.chatHistory.push({ role: 'assistant', content: reply });
           handleAICommands(reply);
-        } else {
+        } else if (state.demoMode) {
           hideTypingIndicator();
           const demoResponse = generateDemoResponse(message);
           addChatMessage('assistant', demoResponse);
           state.chatHistory.push({ role: 'assistant', content: demoResponse });
+        } else {
+          hideTypingIndicator();
+          addChatMessage('error', 'AI Worker URL not configured. Please add your DeepSeek proxy worker URL in Settings.');
+          state.chatHistory.push({ role: 'assistant', content: '[Error: AI not configured]' });
         }
       } catch (e) {
         hideTypingIndicator();
