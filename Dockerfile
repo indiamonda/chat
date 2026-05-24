@@ -20,6 +20,7 @@ RUN python3 -m venv /app/schoology-mcp/.venv && \
 FROM base AS runner
 ENV NODE_ENV=production
 ENV PORT=8080
+ENV APP_VERSION=2026-05-24.1
 RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs nodejs
 # Install python3 BEFORE copying venvs so symlinks resolve correctly
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && rm -rf /var/lib/apt/lists/*
