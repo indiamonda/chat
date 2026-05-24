@@ -1,6 +1,6 @@
 # Schoology MCP - Agent Working Notes
 **Last Updated**: 2026-05-24
-**App Version**: 2026-05-24.1
+**App Version**: 2026-05-24.2
 
 ## Project Overview
 **App URL**: https://jchat.fly.dev/schoology/
@@ -31,10 +31,21 @@ Frontend → Express Proxy (8080) → Flask (8081) → MCP server.py → Playwri
 - Added `--surface` CSS variable for chat message backgrounds
 - `.chat-message.assistant` now uses `var(--surface)` instead of hardcoded `#e5e5ea`
 - Light and dark themes both define `--surface` appropriately
+- **Fixed**: `.chat-input-row input` now has `color: var(--text)` for visibility in both themes
+
+### ✅ AI Chat Improvements (2026-05-24)
+- Welcome message no longer shows LaTeX/markdown help line
+- Replaced typewriter animation with smooth fade-in effect
+- `typewriterEffect()` now renders markdown immediately then fades in
+
+### ✅ Emoji Picker (2026-05-24)
+- Emoji picker positioned above input button with viewport boundary detection
+- Flips right if would go off left edge, flips up if would go off bottom
+- `max-height: 300px` with scroll for small screens
 
 ### ✅ Playwright Browser Launch Fix (2026-05-24)
 - **Root Cause**: Missing `--no-sandbox` flag when running as non-root user (USER nodejs in Dockerfile)
-- **Fix**: Added `args=["--no-sandbox", "--disable-setuid-sandbox"]` to `browser.py` chromium.launch()
+- **Fix**: Added `args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-software-rasterizer", "--no-zygote", "--single-process"]` to `browser.py` chromium.launch()
 - **File**: `/workspaces/chat/schoology-mcp/schoology_mcp/browser.py` line 64
 
 ## File Locations
@@ -138,3 +149,13 @@ flyctl deploy -a jchat --image registry.fly.io/jchat:deployment-<TAG>
 - When no AI worker URL is configured (localStorage `schoology-ai-worker-url`), demo mode is used
 - Demo greeting is hardcoded and always the same
 - To enable real AI: Set a Cloudflare Worker URL with DeepSeek API in the settings
+
+## Chat App (/public/) Features
+
+### ✅ Emoji Picker in Chat Input (2026-05-24)
+- Added emoji button (😊) next to chat input in `game.html` and `game-self-hosted.html`
+- Emoji picker appears above input, showing 30 common emojis
+- Click emoji to insert at cursor position in input field
+- Viewport boundary detection: flips position if picker would go off screen
+- Closes when clicking outside
+- Input width reduced from 280px to 240px to accommodate emoji button
