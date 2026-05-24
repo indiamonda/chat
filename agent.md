@@ -1,6 +1,6 @@
 # Schoology MCP - Agent Working Notes
 **Last Updated**: 2026-05-24
-**App Version**: 2026-05-24.2
+**App Version**: 2026-05-24.3
 
 ## Project Overview
 **App URL**: https://jchat.fly.dev/schoology/
@@ -47,6 +47,12 @@ Frontend → Express Proxy (8080) → Flask (8081) → MCP server.py → Playwri
 - **Root Cause**: Missing `--no-sandbox` flag when running as non-root user (USER nodejs in Dockerfile)
 - **Fix**: Added `args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-software-rasterizer", "--no-zygote", "--single-process"]` to `browser.py` chromium.launch()
 - **File**: `/workspaces/chat/schoology-mcp/schoology_mcp/browser.py` line 64
+
+### ✅ AI Chat Fix (2026-05-24)
+- **Problem**: AI chat always returned same greeting regardless of user input
+- **Root Cause**: DeepSeek proxy worker returns SSE by default; code expected JSON
+- **Fix**: Added `stream: false` to API request body in `schoology/index.html`
+- **Also**: Added proper error message when AI Worker URL not configured instead of silently falling into demo mode
 
 ## File Locations
 - **Flask server**: `/app/schoology/server.py`
