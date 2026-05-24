@@ -1,6 +1,6 @@
 # Schoology MCP - Agent Working Notes
 **Last Updated**: 2026-05-24
-**App Version**: 2026-05-24.3
+**App Version**: 2026-05-24.4
 
 ## Project Overview
 **App URL**: https://jchat.fly.dev/schoology/
@@ -44,15 +44,20 @@ Frontend → Express Proxy (8080) → Flask (8081) → MCP server.py → Playwri
 - `max-height: 300px` with scroll for small screens
 
 ### ✅ Playwright Browser Launch Fix (2026-05-24)
-- **Root Cause**: Missing `--no-sandbox` flag when running as non-root user (USER nodejs in Dockerfile)
-- **Fix**: Added `args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-software-rasterizer", "--no-zygote", "--single-process"]` to `browser.py` chromium.launch()
-- **File**: `/workspaces/chat/schoology-mcp/schoology_mcp/browser.py` line 64
+- **Root Cause**: Missing `--no-sandbox` flag when running as non-root user (USER nodejs in Dockerfile). Also `--single-process` flag caused crashes in certain containerized environments.
+- **Fix**: Replaced `--single-process` with a set of Chromium stability flags in `browser.py` launch args.
+- **File**: `/workspaces/chat/schoology-mcp/schoology_mcp/browser.py` lines 64-85
 
 ### ✅ AI Chat Fix (2026-05-24)
 - **Problem**: AI chat always returned same greeting regardless of user input
 - **Root Cause**: DeepSeek proxy worker returns SSE by default; code expected JSON
 - **Fix**: Added `stream: false` to API request body in `schoology/index.html`
 - **Also**: Added proper error message when AI Worker URL not configured instead of silently falling into demo mode
+
+### ✅ Playwright Browser Launch Fix (2026-05-24)
+- **Root Cause**: `--single-process` flag caused crashes in containerized environments; browser context was being closed unexpectedly
+- **Fix**: Replaced `--single-process` with stability flags (`--disable-extensions`, `--disable-background-networking`, etc.) in `browser.py` chromium.launch()
+- **File**: `/workspaces/chat/schoology-mcp/schoology_mcp/browser.py` lines 64-85
 
 ## File Locations
 - **Flask server**: `/app/schoology/server.py`

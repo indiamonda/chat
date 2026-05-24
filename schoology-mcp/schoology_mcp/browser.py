@@ -70,7 +70,17 @@ class SchoologyClient:
                 "--disable-gpu",
                 "--disable-software-rasterizer",
                 "--no-zygote",
-                "--single-process",
+                "--disable-features=VizDisplayCompositor",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-default-apps",
+                "--disable-sync",
+                "--disable-translate",
+                "--metrics-recording-only",
+                "--mute-audio",
+                "--no-first-run",
+                "--safebrowsing-disable-auto-update",
             ],
             env=env if env else None
         )
