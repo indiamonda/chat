@@ -786,19 +786,6 @@
         <div class="section">
           <div class="section-title">Settings</div>
           <div style="max-width: 600px;">
-            <div style="margin-bottom: 24px;">
-              <label style="display: block; margin-bottom: 8px; font-weight: 500;">DeepSeek AI Proxy Worker URL</label>
-              <input type="text" id="workerUrlInput" placeholder="https://your-worker.workers.dev"
-                     style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; background: var(--surface); color: var(--text);">
-              <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px;">
-                Get your Worker URL by deploying the DeepSeek proxy worker to Cloudflare Workers
-              </div>
-            </div>
-            <button onclick="saveSettings()" style="padding: 12px 24px; background: var(--primary); color: white; border: none; border-radius: 8px; cursor: pointer; font-family: inherit; margin-bottom: 24px;">
-              Save Settings
-            </button>
-            <div id="settingsSaved" style="display: none; margin-bottom: 16px; color: var(--success);">Settings saved!</div>
-
             <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--border);">
               <div>
                 <div style="font-weight: 500;">Dark Mode</div>
@@ -875,6 +862,7 @@
     marked.use({ renderer });
 
     function renderMarkdown(text) {
+      if (typeof text !== 'string') text = String(text || '');
       text = text.replace(/\$\$([\s\S]*?)\$\$/g, (m, math) => {
         try { return katex.renderToString(math, { displayMode: true, throwOnError: false }); } catch (e) { return `<pre>${escapeHtml(math)}</pre>`; }
       });
