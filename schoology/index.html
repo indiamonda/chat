@@ -521,10 +521,15 @@
 
     /* Emoji picker */
     .emoji-btn { position: relative; }
-    .emoji-picker { position: absolute; bottom: 100%; left: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px; display: none; flex-wrap: wrap; gap: 4px; width: 260px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 100; }
+    .emoji-picker { position: absolute; bottom: 100%; left: 0; right: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px; display: none; flex-wrap: wrap; gap: 4px; width: 260px; max-height: 300px; overflow-y: auto; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 100; }
     .emoji-picker.visible { display: flex; }
     .emoji-picker span { cursor: pointer; font-size: 1.3rem; padding: 5px; border-radius: 6px; }
     .emoji-picker span:hover { background: var(--bg); }
+
+    /* Keep emoji picker within viewport */
+    @media (max-height: 500px) {
+      .emoji-picker { bottom: auto; top: 100%; max-height: 200px; }
+    }
 
     /* Navigation */
     .nav-tabs { display: flex; gap: 4px; margin-bottom: 24px; overflow-x: auto; padding-bottom: 4px; }
@@ -1441,7 +1446,28 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
     }
 
     // Emoji picker
-    function toggleEmojiPicker() { document.getElementById('emojiPicker').classList.toggle('visible'); }
+    function toggleEmojiPicker() {
+      const picker = document.getElementById('emojiPicker');
+      picker.classList.toggle('visible');
+      if (picker.classList.contains('visible')) {
+        const rect = picker.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        // If picker goes off right edge, reposition to left of trigger
+        if (rect.right > viewportWidth) {
+          picker.style.left = 'auto';
+          picker.style.right = '0';
+        } else {
+          picker.style.left = '0';
+          picker.style.right = 'auto';
+        }
+        // If picker goes off bottom edge, flip above
+        if (rect.bottom > viewportHeight) {
+          picker.style.bottom = 'auto';
+          picker.style.top = '100%';
+        }
+      }
+    }
     function insertEmoji(emoji) {
       const input = document.getElementById('chatInput');
       input.value += emoji;

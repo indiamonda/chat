@@ -1084,8 +1084,10 @@
   </div>
   <div id="chatBox" style="position:fixed;bottom:10px;left:10px;z-index:40;pointer-events:none;font-family:var(--game-font-ui);display:flex;flex-direction:column;justify-content:flex-end;">
     <div id="chatMessages" style="display:flex;flex-direction:column;gap:2px;margin-bottom:6px;overflow:hidden;"></div>
-    <div id="chatInputWrap" style="display:none;pointer-events:auto;">
-      <input id="chatInput" type="text" maxlength="200" data-i18n-placeholder="chatPlaceholder" placeholder="Type a message..." style="font-family:var(--game-font-ui);width:280px;padding:6px 10px;font-size:13px;border:1px solid rgba(79,209,255,0.5);border-radius:6px;background:rgba(13,17,27,0.8);color:#fff;outline:none;">
+    <div id="chatInputWrap" style="display:none;pointer-events:auto;align-items:center;">
+      <input id="chatInput" type="text" maxlength="200" data-i18n-placeholder="chatPlaceholder" placeholder="Type a message..." style="font-family:var(--game-font-ui);width:240px;padding:6px 10px;font-size:13px;border:1px solid rgba(79,209,255,0.5);border-radius:6px;background:rgba(13,17,27,0.8);color:#fff;outline:none;">
+      <button id="emojiBtn" type="button" style="background:none;border:none;color:rgba(79,209,255,0.8);cursor:pointer;font-size:18px;padding:4px 6px;line-height:1;">😊</button>
+      <div id="emojiPicker" style="display:none;position:absolute;bottom:40px;left:0;background:#1a2236;border:1px solid rgba(79,209,255,0.5);border-radius:8px;padding:8px;flex-wrap:wrap;gap:4px;width:220px;max-height:200px;overflow-y:auto;z-index:1000;box-shadow:0 4px 16px rgba(0,0,0,0.5);"></div>
     </div>
   </div>
   <div id="hitDirContainer" style="position:fixed;inset:0;z-index:35;pointer-events:none;display:flex;justify-content:center;align-items:center;"></div>
@@ -2960,7 +2962,43 @@
     const chatMessages = document.getElementById("chatMessages");
     const chatInputWrap = document.getElementById("chatInputWrap");
     const chatInput = document.getElementById("chatInput");
+    const emojiBtn = document.getElementById("emojiBtn");
+    const emojiPicker = document.getElementById("emojiPicker");
     const hitDirContainer = document.getElementById("hitDirContainer");
+
+    // Emoji picker setup
+    const EMOJIS = ["😊","😂","👍","❤️","🎉","🔥","💡","✅","❌","⭐","📚","📝","🎯","🚀","💻","🌟","🤔","📖","🔬","🧮","😎","🤩","😜","💪","🎊","🥳","😇","🤗","😎","🙌","👏"];
+    EMOJIS.forEach(emoji => {
+      const span = document.createElement("span");
+      span.textContent = emoji;
+      span.style.cssText = "cursor:pointer;font-size:18px;padding:3px;border-radius:4px;";
+      span.addEventListener("click", () => {
+        chatInput.value += emoji;
+        chatInput.focus();
+        emojiPicker.style.display = "none";
+      });
+      emojiPicker.appendChild(span);
+    });
+    emojiBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const picker = emojiPicker;
+      if (picker.style.display === "none") {
+        picker.style.display = "flex";
+        // Keep within viewport
+        const rect = picker.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        if (rect.right > vw) picker.style.left = "auto";
+        if (rect.bottom > vh) picker.style.bottom = "auto";
+      } else {
+        picker.style.display = "none";
+      }
+    });
+    document.addEventListener("click", (e) => {
+      if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
+        emojiPicker.style.display = "none";
+      }
+    });
 
     const SETTINGS_STORAGE_KEY = "fpsGameSettingsV1";
     const QUALITY_LEVELS = ["potato", "regular", "high", "extreme"];

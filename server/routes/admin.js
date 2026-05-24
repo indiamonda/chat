@@ -186,9 +186,9 @@ router.post('/delete-account-permanently', requireAuth, (req, res) => {
 
   try {
     if (delGroupMsgs) {
-      const affected = safeAll('SELECT id FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?', ['group', GROUP_ID, user_id]);
-      safeRun('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE room_type = ? AND room_id = ? AND sender_id = ?',
-        ['deleted', 'group', GROUP_ID, user_id]);
+      const affected = safeAll('SELECT id FROM messages WHERE room_type = ? AND sender_id = ?', ['group', user_id]);
+      safeRun('UPDATE messages SET deleted_by_admin = 1, content = NULL, msg_type = ? WHERE room_type = ? AND sender_id = ?',
+        ['deleted', 'group', user_id]);
       for (const a of affected) markUploadOrphan(a.id);
     }
 
