@@ -500,7 +500,7 @@
     /* Chat input */
     .chat-input-area { display: flex; flex-direction: column; gap: 12px; }
     .chat-input-row { display: flex; gap: 12px; align-items: center; }
-    .chat-input-row input { flex: 1; padding: 14px 20px; border: 1px solid var(--border); border-radius: 24px; font-size: 1rem; font-family: 'Didact Gothic', sans-serif; background: var(--surface); }
+    .chat-input-row input { flex: 1; padding: 14px 20px; border: 1px solid var(--border); border-radius: 24px; font-size: 1rem; font-family: 'Didact Gothic', sans-serif; background: var(--surface); color: var(--text); }
     .chat-input-row input:focus { outline: none; border-color: var(--primary); }
     .model-select { padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; font-size: 0.9rem; font-family: 'Didact Gothic', sans-serif; background: var(--surface); cursor: pointer; }
 
@@ -692,7 +692,6 @@
                     <li>Summarize recent posts from teachers</li>
                     <li>Create study plans based on your grades</li>
                   </ul>
-                  <p>I support markdown, LaTeX math ($\sqrt{x}$ or $$\\frac{a}{b}$$), code blocks, and more!</p>
                 </div>
               </div>
             </div>
@@ -931,7 +930,7 @@
       state.schoologyPassword = password;
       localStorage.setItem('schoology_credentials', JSON.stringify({
         username: username,
-        // Note: password should be stored securely in production
+        password: password,
         timestamp: Date.now()
       }));
 
@@ -1040,12 +1039,13 @@
       const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
 
       try {
-        // Fetch from Flask API server with Basic Auth credentials
+        // Get stored credentials - password is stored separately in state
         const credentials = JSON.parse(localStorage.getItem('schoology_credentials') || '{}');
-        const authHeader = credentials.username ? 'Basic ' + btoa(credentials.username + ':' + (credentials.password || '')) : '';
+        const storedPassword = state.schoologyPassword || credentials.password || '';
+        const authHeader = credentials.username ? 'Basic ' + btoa(credentials.username + ':' + storedPassword) : '';
 
         const headers = {};
-        if (authHeader !== 'Basic :') headers['Authorization'] = authHeader;
+        if (authHeader) headers['Authorization'] = authHeader;
 
         const gradesRes = await fetch(`${apiUrl}/api/grades`, { headers });
         const coursesRes = await fetch(`${apiUrl}/api/courses`, { headers });
@@ -1406,37 +1406,19 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       container.scrollTop = container.scrollHeight;
     }
 
-    // Typewriter effect for AI responses
-    function typewriterEffect(element, content, speed = 25) {
+    // Fade-in effect for AI responses
+    function typewriterEffect(element, content, speed = 20) {
       const container = document.getElementById('chatMessages');
       const rendered = renderMarkdown(content);
-      element.innerHTML = '';
+      element.innerHTML = rendered;
+      element.style.opacity = '0';
+      element.style.transition = 'opacity 0.3s ease-out';
 
-      // Get plain text for animation
-      let text = content
-        .replace(/```[\s\S]*?```/g, (m) => '```code```')
-        .replace(/`[^`]*`/g, (m) => m.replace(/`/g, ''))
-        .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-        .replace(/[#*_~]/g, '')
-        .replace(/\n+/g, ' ')
-        .trim();
+      // Trigger reflow
+      element.offsetHeight;
 
-      let index = 0;
-
-      function tick() {
-        if (index < text.length) {
-          // Show partial markdown (faster than rendering HTML each time)
-          element.innerHTML = renderMarkdown(text.substring(0, index + 1));
-          index++;
-          container.scrollTop = container.scrollHeight;
-          setTimeout(tick, speed);
-        } else {
-          element.innerHTML = rendered;
-          container.scrollTop = container.scrollHeight;
-        }
-      }
-
-      tick();
+      element.style.opacity = '1';
+      container.scrollTop = container.scrollHeight;
     }
 
     function showTypingIndicator() {
