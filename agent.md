@@ -1,6 +1,6 @@
 # Schoology MCP - Agent Working Notes
 **Last Updated**: 2026-05-24
-**App Version**: 2026-05-24.4
+**App Version**: 2026-05-24.5
 
 ## Project Overview
 **App URL**: https://jchat.fly.dev/schoology/
@@ -53,6 +53,10 @@ Frontend → Express Proxy (8080) → Flask (8081) → MCP server.py → Playwri
 - **Root Cause**: DeepSeek proxy worker returns SSE by default; code expected JSON
 - **Fix**: Added `stream: false` to API request body in `schoology/index.html`
 - **Also**: Added proper error message when AI Worker URL not configured instead of silently falling into demo mode
+
+### ✅ Pre-configured DeepSeek Proxy URL (2026-05-24)
+- `loadSettings()` now pre-configures `https://deepseek-proxy.ikunbeautiful.workers.dev` if no custom URL is stored
+- No longer requires manual configuration in settings tab
 
 ### ✅ Playwright Browser Launch Fix (2026-05-24)
 - **Root Cause**: `--single-process` flag caused crashes in containerized environments; browser context was being closed unexpectedly
