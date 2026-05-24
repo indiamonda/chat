@@ -63,6 +63,7 @@ class SchoologyClient:
             log.info("Browser launch env: %s", env)
         self._browser = await self._pw.chromium.launch(
             headless=config.HEADLESS,
+            args=["--no-sandbox", "--disable-setuid-sandbox"],
             env=env if env else None
         )
 
