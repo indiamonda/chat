@@ -1,6 +1,6 @@
 # Schoology MCP - Agent Working Notes
 **Last Updated**: 2026-05-24
-**App Version**: 2026-05-24.6
+**App Version**: 2026-05-24.7
 
 ## Project Overview
 **App URL**: https://jchat.fly.dev/schoology/
@@ -64,6 +64,10 @@ Frontend → Express Proxy (8080) → Flask (8081) → MCP server.py → Playwri
 
 ### ✅ Fix marked.js "str.replace is not a function" Error (2026-05-24)
 - Added `if (typeof text !== 'string') text = String(text || '')` guard in `renderMarkdown()` to ensure text is always a string before calling `.replace()`
+
+### ✅ Fix "Cannot set properties of null (setting 'value')" Error (2026-05-24)
+- Removed DeepSeek URL input from Settings tab DOM
+- Simplified `loadSettings()` to not reference removed DOM elements (`workerUrlInput`, `apiUrlInput`)
 
 ### ✅ Playwright Browser Launch Fix (2026-05-24)
 - **Root Cause**: `--single-process` flag caused crashes in containerized environments; browser context was being closed unexpectedly
