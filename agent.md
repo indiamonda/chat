@@ -1,6 +1,6 @@
 # Schoology MCP - Agent Working Notes
 **Last Updated**: 2026-05-24
-**App Version**: 2026-05-24.7
+**App Version**: 2026-05-24.8
 
 ## Project Overview
 **App URL**: https://jchat.fly.dev/schoology/
@@ -64,6 +64,11 @@ Frontend → Express Proxy (8080) → Flask (8081) → MCP server.py → Playwri
 
 ### ✅ Fix marked.js "str.replace is not a function" Error (2026-05-24)
 - Added `if (typeof text !== 'string') text = String(text || '')` guard in `renderMarkdown()` to ensure text is always a string before calling `.replace()`
+
+### ✅ Local Copies of CDN Dependencies (2026-05-24)
+- **marked.js**: Local copy at `schoology/assets/marked.min.js` (v15.0.12)
+- **KaTeX**: Local copies at `schoology/assets/katex.min.js` and `katex.min.css`
+- No longer rely on cdn.jsdelivr.net - fully self-contained
 
 ### ✅ Fix "Cannot set properties of null (setting 'value')" Error (2026-05-24)
 - Removed DeepSeek URL input from Settings tab DOM
