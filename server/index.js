@@ -906,28 +906,32 @@ function proxyRequest(req, res, targetPort, basePath) {
 }
 
 // Serve static files from schoology directory directly (before proxy)
-const SCHOOLOGY_PATH = '/app/schoology';
-app.use('/schoology/assets', express.static(SCHOOLOGY_PATH + '/assets', {
+const SCHOOLOGY_STATIC = join(__dirname, '../schoology');
+app.use('/schoology/assets', express.static(SCHOOLOGY_STATIC + '/assets', {
   setHeaders: (res) => {
     res.set('Cache-Control', 'public, max-age=86400');
   },
 }));
 
-app.use('/schoology/background.svg', express.static(SCHOOLOGY_PATH + '/background.svg', {
+app.use('/schoology/background.svg', express.static(SCHOOLOGY_STATIC + '/background.svg', {
   setHeaders: (res) => {
     res.set('Cache-Control', 'public, max-age=86400');
   },
 }));
 
-// Add Schoology proxy routes BEFORE static file handlers
+app.use('/schoology', (req, res) => {
+  const indexPath = join(SCHOOLOGY_STATIC, 'index.html');
+  if (existsSync(indexPath)) {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.type('html').sendFile(indexPath);
+  } else {
+    proxyRequest(req, res, 8081, '');
+  }
+});
+
 app.use('/schoology/api', (req, res) => {
   req.url = req.url.replace(/^\/schoology\/api/, '');
   proxyRequest(req, res, 8081, '/api');
-});
-
-app.use('/schoology', (req, res) => {
-  req.url = req.url.replace(/^\/schoology/, '');
-  proxyRequest(req, res, 8081, '');
 });
 
 // Serve assets and uploads before session so static requests never trigger session/DB errors or 500
