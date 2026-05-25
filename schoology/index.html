@@ -805,6 +805,14 @@
                 Sign Out
               </button>
             </div>
+
+            <div style="padding: 16px 0; border-bottom: 1px solid var(--border);">
+              <div style="font-weight: 500;">Data Management</div>
+              <div style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 2px; margin-bottom: 16px;">Clear all stored data including chat history</div>
+              <button onclick="clearAllData()" style="padding: 12px 24px; background: var(--warning); color: white; border: none; border-radius: 8px; cursor: pointer; font-family: inherit; font-size: 0.95rem;">
+                Clear All Data
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -862,14 +870,18 @@
     marked.use({ renderer });
 
     function renderMarkdown(text) {
-      if (typeof text !== 'string') text = String(text || '');
+      if (text == null) return '';
+      if (typeof text !== 'string') text = String(text);
+      if (!text) return '';
       text = text.replace(/\$\$([\s\S]*?)\$\$/g, (m, math) => {
         try { return katex.renderToString(math, { displayMode: true, throwOnError: false }); } catch (e) { return `<pre>${escapeHtml(math)}</pre>`; }
       });
       text = text.replace(/\$([^\$\n]+?)\$/g, (m, math) => {
         try { return katex.renderToString(math, { displayMode: false, throwOnError: false }); } catch (e) { return `$${escapeHtml(math)}$`; }
       });
-      return marked.parse(text);
+      const result = marked.parse(text);
+      if (typeof result !== 'string') return String(result);
+      return result;
     }
 
     function escapeForJS(str) { return str.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'); }
@@ -992,6 +1004,39 @@
       }
     }
 
+    function loadChatHistory() {
+      if (state.demoMode || !state.username) return;
+      const key = 'schoology_chat_history_' + state.username;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          state.chatHistory = JSON.parse(saved);
+        } catch (e) { state.chatHistory = []; }
+      }
+    }
+
+    function saveChatHistory() {
+      if (state.demoMode || !state.username) return;
+      const key = 'schoology_chat_history_' + state.username;
+      localStorage.setItem(key, JSON.stringify(state.chatHistory));
+    }
+
+    function clearAllData() {
+      if (!confirm('Clear all data including chat history? This cannot be undone.')) return;
+      // Clear all schoology localStorage keys for this user
+      const keys = Object.keys(localStorage).filter(k => k.startsWith('schoology_'));
+      keys.forEach(k => localStorage.removeItem(k));
+      // Reset state
+      state.grades = [];
+      state.assignments = [];
+      state.posts = [];
+      state.chatHistory = [];
+      state.uploadedFiles = [];
+      // Re-init
+      loadSettings();
+      location.reload();
+    }
+
     function loadDemoData() {
       state.grades = demoData.grades;
       state.assignments = demoData.assignments;
@@ -1017,6 +1062,7 @@
         loadDemoData();
       } else {
         // Try to fetch real data from MCP server
+        loadChatHistory();
         fetchRealData();
       }
 
@@ -1261,6 +1307,7 @@
 
       addChatMessage('user', message || '[File uploaded]');
       state.chatHistory.push({ role: 'user', content: fullMessage });
+      saveChatHistory();
 
       // Summarize old messages if too many
       if (state.chatHistory.length > 15) {
@@ -1291,12 +1338,14 @@
           const reply = data.choices?.[0]?.message?.content || 'No response received.';
           addChatMessage('assistant', reply);
           state.chatHistory.push({ role: 'assistant', content: reply });
+          saveChatHistory();
           handleAICommands(reply);
         } else if (state.demoMode) {
           hideTypingIndicator();
           const demoResponse = generateDemoResponse(message);
           addChatMessage('assistant', demoResponse);
           state.chatHistory.push({ role: 'assistant', content: demoResponse });
+          saveChatHistory();
         } else {
           hideTypingIndicator();
           addChatMessage('error', 'AI Worker URL not configured. Please add your DeepSeek proxy worker URL in Settings.');
