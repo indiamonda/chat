@@ -80,15 +80,16 @@
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      background-color: #000000;
+      background-image: url('background.svg');
+      background-size: 100% auto;
+      background-repeat: no-repeat;
+      background-position: top center;
       animation: fadeInApp 1s ease-out;
     }
 
     .landing-hero {
-      background-color: #1a1a2e;
-      background-image: url('background.svg');
-      background-size: 100% 100%;
-      background-repeat: no-repeat;
-      background-position: center center;
+      background-color: transparent;
       color: white;
       min-height: 100vh;
       width: 100%;
@@ -98,6 +99,7 @@
       align-items: center;
       position: relative;
       overflow: hidden;
+      z-index: 1;
     }
 
     .landing-hero::before {
@@ -115,14 +117,9 @@
       50% { transform: scale(1.1); opacity: 0.8; }
     }
 
+    /* Remove hero shapes - using SVG background instead */
     .hero-shapes {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      overflow: hidden;
-      z-index: 0;
+      display: none;
     }
 
     .hero-shape {
@@ -288,33 +285,40 @@
 
     /* Login section */
     .login-section {
-      background: var(--surface);
-      padding: 100px 40px;
+      background-color: transparent;
+      padding: 80px 40px;
       text-align: center;
+      position: relative;
+      z-index: 1;
     }
 
     .login-container {
       max-width: 440px;
       margin: 0 auto;
+      background: rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 40px;
     }
 
     .login-container h2 {
       font-size: 2.2rem;
       font-weight: 400;
       margin-bottom: 10px;
-      color: var(--text);
+      color: #ffffff;
     }
 
     .login-subtitle {
       font-size: 1rem;
-      color: var(--text-secondary);
+      color: rgba(255, 255, 255, 0.8);
       margin-bottom: 40px;
     }
 
     .login-error {
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid var(--error);
-      color: var(--error);
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid #ef4444;
+      color: #ef4444;
       padding: 14px 18px;
       border-radius: 12px;
       text-align: center;
@@ -336,12 +340,12 @@
 
     .login-form input {
       padding: 18px 22px;
-      border: 2px solid var(--border);
+      border: 2px solid rgba(255, 255, 255, 0.2);
       border-radius: 14px;
       font-size: 1rem;
       font-family: 'Didact Gothic', sans-serif;
-      background: var(--bg);
-      color: var(--text);
+      background: rgba(0, 0, 0, 0.4);
+      color: #ffffff;
       transition: all var(--transition-slow);
     }
 
@@ -352,7 +356,7 @@
     }
 
     .login-form input::placeholder {
-      color: var(--text-muted);
+      color: rgba(255, 255, 255, 0.5);
     }
 
     .login-btn {
@@ -381,7 +385,7 @@
       display: flex;
       align-items: center;
       margin: 28px 0;
-      color: var(--text-muted);
+      color: rgba(255, 255, 255, 0.5);
       font-size: 0.85rem;
     }
 
@@ -390,7 +394,7 @@
       content: '';
       flex: 1;
       height: 1px;
-      background: var(--border);
+      background: rgba(255, 255, 255, 0.2);
     }
 
     .login-divider span {
@@ -400,8 +404,8 @@
     .demo-btn {
       padding: 18px 36px;
       background: transparent;
-      color: var(--text);
-      border: 2px solid var(--border);
+      color: #ffffff;
+      border: 2px solid rgba(255, 255, 255, 0.3);
       border-radius: 14px;
       font-size: 1rem;
       font-family: 'Didact Gothic', sans-serif;
@@ -418,20 +422,21 @@
 
     .login-hint {
       text-align: center;
-      color: var(--text-muted);
+      color: rgba(255, 255, 255, 0.5);
       font-size: 0.85rem;
       margin-top: 24px;
     }
 
     .footer {
-      background: var(--surface);
+      background-color: transparent;
       padding: 40px;
       text-align: center;
-      border-top: 1px solid var(--border);
+      position: relative;
+      z-index: 1;
     }
 
     .footer p {
-      color: var(--text-muted);
+      color: rgba(255, 255, 255, 0.5);
       font-size: 0.9rem;
     }
 
