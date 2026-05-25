@@ -75,7 +75,362 @@
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--border-bright); }
 
-    /* ── App Container ── */
+    /* ── Landing Page ── */
+    .landing {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      animation: fadeInApp 1s ease-out;
+    }
+
+    .landing-hero {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%) !important;
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+      padding: 60px 40px 80px;
+    }
+
+    .landing-hero::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 50%);
+      animation: heroPulse 8s ease-in-out infinite;
+    }
+    @keyframes heroPulse {
+      0%, 100% { transform: scale(1); opacity: 0.5; }
+      50% { transform: scale(1.1); opacity: 0.8; }
+    }
+
+    .hero-shapes {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+      z-index: 0;
+    }
+
+    .hero-shape {
+      position: absolute;
+      border-radius: 50%;
+      opacity: 0.08;
+    }
+
+    .hero-shape:nth-child(1) {
+      width: 400px;
+      height: 400px;
+      background: var(--primary);
+      top: -150px;
+      right: -100px;
+      animation: shapeFloat 6s ease-in-out infinite;
+    }
+
+    .hero-shape:nth-child(2) {
+      width: 300px;
+      height: 300px;
+      background: var(--accent);
+      bottom: -80px;
+      left: -80px;
+      animation: shapeFloat 8s ease-in-out infinite reverse;
+    }
+
+    .hero-shape:nth-child(3) {
+      width: 200px;
+      height: 200px;
+      background: #60a5fa;
+      top: 40%;
+      left: 5%;
+      animation: shapeFloat 7s ease-in-out infinite;
+    }
+
+    @keyframes shapeFloat {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-30px) rotate(5deg); }
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      max-width: 800px;
+      animation: contentFadeIn 1.2s ease-out;
+    }
+    @keyframes contentFadeIn {
+      from { opacity: 0; transform: translateY(30px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Typewriter text animation */
+    .typewriter-container {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      margin-bottom: 120px;
+    }
+
+    .typewriter-text {
+      font-size: 2.5rem;
+      font-weight: 400;
+      letter-spacing: 2px;
+      text-shadow: 0 0 30px rgba(96, 165, 250, 0.6), 0 0 60px rgba(96, 165, 250, 0.4);
+      min-height: 3.5rem;
+      display: inline-flex;
+      align-items: center;
+      white-space: pre;
+    }
+
+    .typewriter-text .blue { color: #60a5fa; display: inline; margin: 0 8px; }
+    .typewriter-text .white { color: #ffffff; display: inline; }
+
+    .typewriter-cursor {
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      margin-left: 10px;
+      vertical-align: middle;
+      background: #ffffff;
+      box-shadow: 0 0 12px #ffffff, 0 0 24px #ffffff;
+      animation: cursorPulse 1s ease-in-out infinite;
+    }
+    @keyframes cursorPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .typewriter-hint {
+      font-size: 1.2rem;
+      opacity: 0.9;
+      margin-top: 20px;
+      margin-bottom: 100px;
+      transition: margin-top var(--transition-slower), margin-bottom var(--transition-slower);
+    }
+
+    /* Feature cards grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 28px;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 20px;
+      position: relative;
+      z-index: 1;
+      margin-top: 60px;
+      transition: margin-top var(--transition-slower);
+    }
+
+    .feature-card {
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      padding: 28px;
+      text-align: left;
+      transition: all var(--transition-slower);
+      animation: cardFloat 5s ease-in-out infinite;
+    }
+    .feature-card:nth-child(1) { animation-delay: 0s; }
+    .feature-card:nth-child(2) { animation-delay: 0.5s; }
+    .feature-card:nth-child(3) { animation-delay: 1s; }
+    .feature-card:nth-child(4) { animation-delay: 1.5s; }
+    .feature-card:nth-child(5) { animation-delay: 2s; }
+    .feature-card:nth-child(6) { animation-delay: 2.5s; }
+    @keyframes cardFloat {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    .feature-card:hover {
+      transform: translateY(-8px);
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(99, 102, 241, 0.5);
+      box-shadow: 0 20px 60px rgba(99, 102, 241, 0.2), 0 0 40px rgba(99, 102, 241, 0.1);
+      animation: none;
+    }
+
+    .feature-icon {
+      font-size: 1.4rem;
+      margin-bottom: 14px;
+      display: inline-block;
+      transition: transform var(--transition-slower);
+    }
+    .feature-card:hover .feature-icon { transform: scale(1.2) rotate(5deg); }
+
+    .feature-card h3 {
+      font-size: 1.15rem;
+      font-weight: 400;
+      margin-bottom: 10px;
+      color: white;
+    }
+
+    .feature-card p {
+      font-size: 0.92rem;
+      opacity: 0.8;
+      line-height: 1.6;
+    }
+
+    /* Login section */
+    .login-section {
+      background: var(--surface);
+      padding: 100px 40px;
+      text-align: center;
+    }
+
+    .login-container {
+      max-width: 440px;
+      margin: 0 auto;
+    }
+
+    .login-container h2 {
+      font-size: 2.2rem;
+      font-weight: 400;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+
+    .login-subtitle {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      margin-bottom: 40px;
+    }
+
+    .login-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--error);
+      color: var(--error);
+      padding: 14px 18px;
+      border-radius: 12px;
+      text-align: center;
+      display: none;
+      margin-bottom: 16px;
+      animation: shakeError 0.5s ease-out;
+    }
+    @keyframes shakeError {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-8px); }
+      40%, 80% { transform: translateX(8px); }
+    }
+
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .login-form input {
+      padding: 18px 22px;
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      font-size: 1rem;
+      font-family: 'Didact Gothic', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      transition: all var(--transition-slow);
+    }
+
+    .login-form input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px var(--primary-dim);
+    }
+
+    .login-form input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .login-btn {
+      padding: 18px 36px;
+      background: var(--ai-gradient);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 1.1rem;
+      font-family: 'Didact Gothic', sans-serif;
+      cursor: pointer;
+      transition: all var(--transition-slower);
+      box-shadow: 0 4px 20px var(--primary-dim);
+    }
+
+    .login-btn:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 8px 30px var(--primary-glow);
+    }
+
+    .login-btn:active {
+      transform: translateY(-1px) scale(0.98);
+    }
+
+    .login-divider {
+      display: flex;
+      align-items: center;
+      margin: 28px 0;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    .login-divider::before,
+    .login-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .login-divider span {
+      padding: 0 18px;
+    }
+
+    .demo-btn {
+      padding: 18px 36px;
+      background: transparent;
+      color: var(--text);
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      font-size: 1rem;
+      font-family: 'Didact Gothic', sans-serif;
+      cursor: pointer;
+      transition: all var(--transition-slower);
+    }
+
+    .demo-btn:hover {
+      border-color: var(--primary);
+      background: var(--primary-dim);
+      color: var(--primary);
+      transform: translateY(-2px);
+    }
+
+    .login-hint {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-top: 24px;
+    }
+
+    .footer {
+      background: var(--surface);
+      padding: 40px;
+      text-align: center;
+      border-top: 1px solid var(--border);
+    }
+
+    .footer p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* App Container (hidden until logged in) */
     .app-container {
       display: none;
       width: 100%;
@@ -866,8 +1221,13 @@
         <div class="hero-shape"></div>
       </div>
       <div class="hero-content">
-        <h1>Schoology Help</h1>
-        <p class="tagline">Your intelligent study companion for PAUSD Schoology</p>
+        <div class="typewriter-container">
+          <div class="typewriter-text" id="typewriterText">
+            <span class="white"></span><span class="blue"></span><span class="white"></span>
+            <span class="typewriter-cursor"></span>
+          </div>
+        </div>
+        <p class="typewriter-hint">Your intelligent study companion for PAUSD Schoology</p>
 
         <div class="features-grid">
           <div class="feature-card">
@@ -1928,6 +2288,88 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
     initDarkMode(); // Apply dark mode before anything renders
     checkSession();
     loadSettings();
+
+    // Typewriter animation
+    const typewriterPhrases = [
+      { before: "Keep on ", blue: "track", after: " with your grades" },
+      { before: "No more ", blue: "overdues", after: " with smart alerts" },
+      { before: "Your ", blue: "AI", after: " study companion" },
+      { before: "Ace your ", blue: "exams", after: " with ease" },
+      { before: "Stay ", blue: "organized", after: " all semester" },
+      { before: "Master ", blue: "any", after: " subject" }
+    ];
+
+    let phraseIndex = 0;
+    let charIndex = 0;
+    let isDeleting = false;
+    let typeSpeed = 80;
+
+    function updateTypewriter() {
+      const container = document.getElementById('typewriterText');
+      if (!container) return;
+      const cursor = container.querySelector('.typewriter-cursor');
+      const phrase = typewriterPhrases[phraseIndex];
+      const whiteSpans = container.querySelectorAll('.white');
+      const blueSpan = container.querySelector('.blue');
+
+      if (!isDeleting) {
+        const fullText = phrase.before + phrase.blue + phrase.after;
+        if (charIndex < fullText.length) {
+          if (charIndex < phrase.before.length) {
+            whiteSpans[0].textContent = phrase.before.substring(0, charIndex + 1);
+            whiteSpans[1].textContent = '';
+            blueSpan.textContent = '';
+            if (cursor) { cursor.style.color = '#ffffff'; cursor.style.background = '#ffffff'; cursor.style.boxShadow = '0 0 12px #ffffff, 0 0 24px #ffffff'; }
+          } else if (charIndex < phrase.before.length + phrase.blue.length) {
+            whiteSpans[0].textContent = phrase.before;
+            whiteSpans[1].textContent = '';
+            blueSpan.textContent = phrase.blue.substring(0, charIndex - phrase.before.length + 1);
+            if (cursor) { cursor.style.color = '#60a5fa'; cursor.style.background = '#60a5fa'; cursor.style.boxShadow = '0 0 12px #60a5fa, 0 0 24px #60a5fa'; }
+          } else {
+            whiteSpans[0].textContent = phrase.before;
+            blueSpan.textContent = phrase.blue;
+            whiteSpans[1].textContent = phrase.after.substring(0, charIndex - phrase.before.length - phrase.blue.length + 1);
+            if (cursor) { cursor.style.color = '#ffffff'; cursor.style.background = '#ffffff'; cursor.style.boxShadow = '0 0 12px #ffffff, 0 0 24px #ffffff'; }
+          }
+          charIndex++;
+          typeSpeed = 80;
+        } else {
+          typeSpeed = 1500;
+          isDeleting = true;
+        }
+      } else {
+        const fullText = phrase.before + phrase.blue + phrase.after;
+        if (charIndex > 0) {
+          const newText = fullText.substring(0, charIndex - 1);
+          if (newText.length < phrase.before.length) {
+            whiteSpans[0].textContent = newText;
+            whiteSpans[1].textContent = '';
+            blueSpan.textContent = '';
+            if (cursor) { cursor.style.color = '#ffffff'; cursor.style.background = '#ffffff'; cursor.style.boxShadow = '0 0 12px #ffffff, 0 0 24px #ffffff'; }
+          } else if (newText.length < phrase.before.length + phrase.blue.length) {
+            whiteSpans[0].textContent = phrase.before;
+            whiteSpans[1].textContent = '';
+            blueSpan.textContent = newText.substring(phrase.before.length);
+            if (cursor) { cursor.style.color = '#60a5fa'; cursor.style.background = '#60a5fa'; cursor.style.boxShadow = '0 0 12px #60a5fa, 0 0 24px #60a5fa'; }
+          } else {
+            whiteSpans[0].textContent = phrase.before;
+            blueSpan.textContent = phrase.blue;
+            whiteSpans[1].textContent = newText.substring(phrase.before.length + phrase.blue.length);
+            if (cursor) { cursor.style.color = '#ffffff'; cursor.style.background = '#ffffff'; cursor.style.boxShadow = '0 0 12px #ffffff, 0 0 24px #ffffff'; }
+          }
+          charIndex--;
+          typeSpeed = 40;
+        } else {
+          isDeleting = false;
+          phraseIndex = (phraseIndex + 1) % typewriterPhrases.length;
+          typeSpeed = 500;
+        }
+      }
+      setTimeout(updateTypewriter, typeSpeed);
+    }
+
+    // Start typewriter when page loads
+    setTimeout(updateTypewriter, 1000);
 
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.emoji-btn')) {
