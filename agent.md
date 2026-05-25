@@ -1,6 +1,6 @@
 # Schoology MCP - Agent Working Notes
-**Last Updated**: 2026-05-24
-**App Version**: 2026-05-25.11
+**Last Updated**: 2026-05-25
+**App Version**: 2026-05-25.12
 
 ## Project Overview
 **App URL**: https://jchat.fly.dev/schoology/
