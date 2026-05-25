@@ -906,13 +906,14 @@ function proxyRequest(req, res, targetPort, basePath) {
 }
 
 // Serve static files from schoology directory directly (before proxy)
-app.use('/schoology/assets', express.static('/app/schoology/assets', {
+const SCHOOLOGY_PATH = '/app/schoology';
+app.use('/schoology/assets', express.static(SCHOOLOGY_PATH + '/assets', {
   setHeaders: (res) => {
     res.set('Cache-Control', 'public, max-age=86400');
   },
 }));
 
-app.use('/schoology/background.svg', express.static('/app/schoology/background.svg', {
+app.use('/schoology/background.svg', express.static(SCHOOLOGY_PATH + '/background.svg', {
   setHeaders: (res) => {
     res.set('Cache-Control', 'public, max-age=86400');
   },

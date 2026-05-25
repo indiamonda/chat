@@ -84,19 +84,20 @@
     }
 
     .landing-hero {
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%) !important;
-      background-image: url('background.svg') !important;
-      background-size: cover !important;
-      background-position: center !important;
+      background-color: #1a1a2e;
+      background-image: url('background.svg');
+      background-size: 100% 100%;
+      background-repeat: no-repeat;
+      background-position: center center;
       color: white;
       min-height: 100vh;
+      width: 100%;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       position: relative;
       overflow: hidden;
-      padding: 60px 40px 80px;
     }
 
     .landing-hero::before {
@@ -167,6 +168,7 @@
       z-index: 1;
       text-align: center;
       max-width: 800px;
+      width: 100%;
       animation: contentFadeIn 1.2s ease-out;
     }
     @keyframes contentFadeIn {
