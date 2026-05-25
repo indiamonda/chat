@@ -905,6 +905,19 @@ function proxyRequest(req, res, targetPort, basePath) {
   proxyReq.end();
 }
 
+// Serve static files from schoology directory directly (before proxy)
+app.use('/schoology/assets', express.static(join(publicDir, 'schoology', 'assets'), {
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'public, max-age=86400');
+  },
+}));
+
+app.use('/schoology/background.svg', express.static(join(publicDir, 'schoology', 'background.svg'), {
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'public, max-age=86400');
+  },
+}));
+
 // Add Schoology proxy routes BEFORE static file handlers
 app.use('/schoology/api', (req, res) => {
   req.url = req.url.replace(/^\/schoology\/api/, '');
