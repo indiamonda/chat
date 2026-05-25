@@ -1531,8 +1531,7 @@
 
     // Password - simple direct check (no obfuscation for debugging)
     const CORRECT_PASSWORD = 'sb250wocaonimalegebide';
-
-    const AgentPassword = {
+    var AgentPassword = {
       verify: function(pwd) {
         return pwd === CORRECT_PASSWORD;
       }
