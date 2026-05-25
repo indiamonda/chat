@@ -1,6 +1,6 @@
 # Schoology MCP - Agent Working Notes
 **Last Updated**: 2026-05-24
-**App Version**: 2026-05-24.8
+**App Version**: 2026-05-24.9
 
 ## Project Overview
 **App URL**: https://jchat.fly.dev/schoology/
@@ -69,6 +69,23 @@ Frontend → Express Proxy (8080) → Flask (8081) → MCP server.py → Playwri
 - **marked.js**: Local copy at `schoology/assets/marked.min.js` (v15.0.12)
 - **KaTeX**: Local copies at `schoology/assets/katex.min.js` and `katex.min.css`
 - No longer rely on cdn.jsdelivr.net - fully self-contained
+
+### ✅ Chat History Persistence (2026-05-24)
+- Chat history now stored in localStorage per student ID: `schoology_chat_history_{username}`
+- `loadChatHistory()` called on app load for non-demo users
+- `saveChatHistory()` called after every user/assistant message
+- Demo mode does NOT persist chat history
+
+### ✅ Clear All Data Button (2026-05-24)
+- Added "Clear All Data" button in Settings tab
+- Clears all `schoology_*` localStorage keys, resets state, and reloads page
+- Requires user confirmation before clearing
+
+### ✅ Improved renderMarkdown() Safety (2026-05-24)
+- Added `if (text == null) return ''` guard at start
+- Added `if (!text) return ''` check
+- Added `if (typeof result !== 'string') return String(result)` after marked.parse()
+- Prevents "str.replace is not a function" error from marked.js when given non-string input
 
 ### ✅ Fix "Cannot set properties of null (setting 'value')" Error (2026-05-24)
 - Removed DeepSeek URL input from Settings tab DOM
