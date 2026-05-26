@@ -919,7 +919,27 @@ app.use('/schoology/background.svg', express.static(SCHOOLOGY_STATIC + '/backgro
   },
 }));
 
-app.use('/schoology', (req, res) => {
+app.get('/schoology/style.css', (req, res) => {
+  const filePath = join(SCHOOLOGY_STATIC, 'style.css');
+  if (existsSync(filePath)) {
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.type('css').sendFile(filePath);
+  } else {
+    res.status(404).send('Not found');
+  }
+});
+
+app.get('/schoology/background.svg', (req, res) => {
+  const filePath = join(SCHOOLOGY_STATIC, 'background.svg');
+  if (existsSync(filePath)) {
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.type('image/svg+xml').sendFile(filePath);
+  } else {
+    res.status(404).send('Not found');
+  }
+});
+
+app.get('/schoology/', (req, res) => {
   const indexPath = join(SCHOOLOGY_STATIC, 'index.html');
   if (existsSync(indexPath)) {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -928,6 +948,12 @@ app.use('/schoology', (req, res) => {
     proxyRequest(req, res, 8081, '');
   }
 });
+
+app.use('/schoology/assets', express.static(SCHOOLOGY_STATIC + '/assets', {
+  setHeaders: (res) => {
+    res.set('Cache-Control', 'public, max-age=86400');
+  },
+}));
 
 app.use('/schoology/api', (req, res) => {
   req.url = req.url.replace(/^\/schoology\/api/, '');
