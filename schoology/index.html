@@ -17,9 +17,7 @@
   <svg style="display:none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <filter id="liquid-glass" x="-20%" y="-20%" width="140%" height="140%">
-        <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>
-        <feDisplacementMap in="blur" in2="SourceGraphic" scale="12" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
-        <feComposite in="displaced" in2="SourceGraphic" operator="in"/>
+        <feDisplacementMap in="SourceGraphic" in2="SourceGraphic" scale="25" xChannelSelector="R" yChannelSelector="G"/>
       </filter>
     </defs>
   </svg>
