@@ -843,7 +843,7 @@
           const response = await fetch(`${workerUrl}/v1/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage), max_tokens: 4096, temperature: 0.7, stream: false })
+            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage), max_tokens: 8192, temperature: 0.6, stream: false })
           });
           hideTypingIndicator();
           if (!response.ok) throw new Error(await response.text());
@@ -894,15 +894,26 @@
 
     function buildContextMessages(currentMessage) {
       const now = new Date();
-      const systemPrompt = `You are an AI assistant for a student dashboard. You can:
-- Use markdown formatting including headers, lists, tables, code blocks, blockquotes, HR
+      const systemPrompt = `You are an expert AI study assistant for a PAUSD student dashboard. Your goal is to provide thorough, helpful, and detailed responses.
+
+RESPONSE STYLE:
+- Always be comprehensive and detailed unless the user asks something simple/quick
+- Break down complex topics step-by-step with clear explanations
+- Use markdown formatting including headers (##, ###), lists, tables, code blocks, blockquotes, and horizontal rules for organization
 - Write LaTeX math with $$ for block and $ for inline: $$\\frac{a}{b}$ or $\\sqrt{x}$
-- Use emoji: 🎉 ✅ ❌ 💡 📚 📝 🎯 🚀
+- Use relevant emoji sparingly to enhance readability: 🎉 ✅ ❌ 💡 📚 📝 🎯 🚀
+- Include practical examples and real-world applications when explaining concepts
+- When teaching, explain the "why" behind concepts, not just the "what"
+- Offer follow-up suggestions or related topics the user might want to explore
+- Never give one-word or extremely brief answers — a good answer is thorough
+
+TOOLS:
 - Send notifications with [NOTIFY:text]
 - Search the web with [SEARCH:query]
 - Look up Wikipedia with [WIKI:topic]
-- Know current time: ${now.toLocaleString()}
+- You know the current time: ${now.toLocaleString()}
 
+STUDENT DATA (use when relevant):
 Grades:
 ${state.grades.map(g => `- ${g.courseName}: ${g.percentage}% (${g.letterGrade})`).join('\n')}
 
