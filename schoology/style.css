@@ -924,6 +924,92 @@
     .chat-message .markdown-content code { background: rgba(0, 0, 0, 0.25); padding: 3px 8px; border-radius: 6px; font-family: 'Oxygen Mono', monospace; font-size: 0.85rem; }
     .chat-message .markdown-content pre { background: #1e1e2e; color: #cdd6f4; padding: 18px; border-radius: 12px; overflow-x: auto; margin: 12px 0; }
     .chat-message .markdown-content pre code { background: none; padding: 0; color: inherit; }
+
+    /* ── Code block ── */
+    .code-block {
+      background: #1e1e2e;
+      border-radius: 12px;
+      overflow: hidden;
+      margin: 12px 0;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: rgba(0, 0, 0, 0.3);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .code-lang {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      font-family: 'Oxygen Mono', monospace;
+      text-transform: lowercase;
+    }
+    .copy-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s ease;
+    }
+    .copy-btn:hover {
+      background: var(--primary-dim);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    .copy-btn.copied {
+      background: var(--success);
+      border-color: var(--success);
+      color: white;
+    }
+    .code-block pre {
+      padding: 18px;
+      margin: 0;
+      background: transparent;
+      border-radius: 0;
+      overflow-x: auto;
+    }
+    .code-block pre code {
+      background: none;
+      padding: 0;
+      color: #cdd6f4;
+      font-family: 'Oxygen Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+
+    /* Light theme code block */
+    body.light-theme .code-block {
+      background: #f5f5f5;
+      border-color: rgba(0, 0, 0, 0.1);
+    }
+    body.light-theme .code-header {
+      background: rgba(0, 0, 0, 0.05);
+      border-bottom-color: rgba(0, 0, 0, 0.1);
+    }
+    body.light-theme .code-lang {
+      color: var(--text-secondary);
+    }
+    body.light-theme .copy-btn {
+      border-color: rgba(0, 0, 0, 0.15);
+      color: var(--text-secondary);
+    }
+    body.light-theme .copy-btn:hover {
+      background: var(--primary-dim);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    body.light-theme .code-block pre code {
+      color: #333;
+    }
     .chat-message .markdown-content blockquote { border-left: 3px solid var(--primary); padding-left: 16px; margin: 12px 0; color: var(--text-secondary); font-style: italic; }
     .chat-message .markdown-content table { border-collapse: collapse; margin: 12px 0; width: 100%; }
     .chat-message .markdown-content th, .chat-message .markdown-content td { border: 1px solid var(--border); padding: 10px 14px; }
