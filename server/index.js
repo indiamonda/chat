@@ -1706,6 +1706,56 @@ const gameNsp = io.of('/game');
 const gameRooms = new Map();
 const QUICKPLAY_MAX = 8;
 
+// Global room registry for Zone No Light
+const globalRoomRegistry = new Map();
+const ROOM_MAX_PLAYERS = { crossfire: 2, 'arena-coop': 6, 'boss-coop': 4, 'training-coop': 4 };
+const ROOM_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
+function getAllActiveRooms() {
+  const now = Date.now();
+  const list = [];
+  for (const [roomKey, meta] of globalRoomRegistry) {
+    if (now - meta.updatedAt > ROOM_EXPIRY_MS) { globalRoomRegistry.delete(roomKey); continue; }
+    const max = ROOM_MAX_PLAYERS[meta.mode] || QUICKPLAY_MAX;
+    if (meta.playerCount >= max) continue;
+    list.push({
+      roomKey,
+      code: meta.code,
+      mode: meta.mode,
+      map: meta.map || null,
+      playerCount: meta.playerCount,
+      maxPlayers: max,
+      createdAt: meta.createdAt,
+    });
+  }
+  return list;
+}
+
+function registerRoom(roomKey, mode, code, hostId, map) {
+  globalRoomRegistry.set(roomKey, {
+    roomKey, mode, code, hostId, map: map || null,
+    playerCount: 1,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+}
+
+function updateRoomPlayerCount(roomKey, delta) {
+  const meta = globalRoomRegistry.get(roomKey);
+  if (!meta) return;
+  meta.playerCount = Math.max(0, meta.playerCount + delta);
+  meta.updatedAt = Date.now();
+  if (meta.playerCount <= 0) globalRoomRegistry.delete(roomKey);
+}
+
+function unregisterRoom(roomKey) {
+  globalRoomRegistry.delete(roomKey);
+}
+
+function broadcastRoomListUpdate() {
+  io.emit('roomListUpdate', getAllActiveRooms());
+}
+
 /** Last-known player names and positions (game namespace) for /tp etc. */
 const gamePlayerNames = new Map();
 const gamePlayerPositions = new Map();
@@ -1871,9 +1921,12 @@ function leaveCurrentRoom(socket, currentRoom) {
   const members = gameRooms.get(currentRoom);
   if (members) {
     members.delete(socket.id);
-    if (!members.size) gameRooms.delete(currentRoom);
-    else broadcastZombieHost(currentRoom);
+    if (!members.size) {
+      gameRooms.delete(currentRoom);
+      unregisterRoom(currentRoom);
+    } else broadcastZombieHost(currentRoom);
   }
+  updateRoomPlayerCount(currentRoom, -1);
   socket.to(currentRoom).emit('enemyLeft', { id: socket.id });
 }
 
@@ -1907,21 +1960,33 @@ gameNsp.on('connection', (socket) => {
     if (typeof cb !== 'function') return;
     if (typeof mode !== 'string') return cb({ error: 'bad mode' });
     leaveCurrentRoom(socket, currentRoom);
-    const prefix = `qp:${mode}:`;
-    let target = null;
-    for (const [key, members] of gameRooms) {
-      if (key.startsWith(prefix) && members.size < QUICKPLAY_MAX) { target = key; break; }
+    // First try to find an open room in global registry
+    const max = ROOM_MAX_PLAYERS[mode] || QUICKPLAY_MAX;
+    for (const [key, meta] of globalRoomRegistry) {
+      if (meta.mode === mode && meta.playerCount < max) {
+        currentRoom = key;
+        socket.join(currentRoom);
+        if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
+        gameRooms.get(currentRoom).add(socket.id);
+        updateRoomPlayerCount(currentRoom, 1);
+        cb({ room: meta.code, roomKey: currentRoom, count: meta.playerCount + 1 });
+        broadcastZombieHost(currentRoom);
+        return;
+      }
     }
-    if (!target) target = `${prefix}${generateRoomCode()}`;
-    currentRoom = target;
+    // No open room, create new one
+    const prefix = `qp:${mode}:`;
+    let code;
+    for (let i = 0; i < 50; i++) {
+      code = generateRoomCode();
+      if (!gameRooms.has(`${prefix}${code}`)) break;
+    }
+    currentRoom = `${prefix}${code}`;
     socket.join(currentRoom);
-    if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
-    gameRooms.get(currentRoom).add(socket.id);
-    cb({
-      room: currentRoom.replace(prefix, ''),
-      roomKey: currentRoom,
-      count: gameRooms.get(currentRoom).size,
-    });
+    gameRooms.set(currentRoom, new Set([socket.id]));
+    registerRoom(currentRoom, mode, code, socket.id);
+    cb({ room: code, roomKey: currentRoom, count: 1 });
+    broadcastRoomListUpdate();
     broadcastZombieHost(currentRoom);
   });
 
@@ -1937,7 +2002,9 @@ gameNsp.on('connection', (socket) => {
     currentRoom = `cr:${mode}:${code}`;
     socket.join(currentRoom);
     gameRooms.set(currentRoom, new Set([socket.id]));
+    registerRoom(currentRoom, mode, code, socket.id);
     cb({ code, roomKey: currentRoom });
+    broadcastRoomListUpdate();
     broadcastZombieHost(currentRoom);
   });
 
@@ -1948,14 +2015,27 @@ gameNsp.on('connection', (socket) => {
     const mode = '' + (data.mode || '');
     if (!code || code.length > 10) return cb({ error: 'invalid code' });
     leaveCurrentRoom(socket, currentRoom);
-    const key = `cr:${mode}:${code}`;
-    if (!gameRooms.has(key)) return cb({ error: 'Room not found' });
-    if (gameRooms.get(key).size >= QUICKPLAY_MAX) return cb({ error: 'Room is full' });
-    currentRoom = key;
+    // Mode-agnostic lookup: search all rooms with matching code
+    let foundKey = null;
+    for (const [key, meta] of globalRoomRegistry) {
+      if (meta.code === code) { foundKey = key; break; }
+    }
+    if (!foundKey) return cb({ error: 'Room not found' });
+    const meta = globalRoomRegistry.get(foundKey);
+    const max = ROOM_MAX_PLAYERS[meta.mode] || QUICKPLAY_MAX;
+    if (meta.playerCount >= max) return cb({ error: 'Room is full' });
+    currentRoom = foundKey;
     socket.join(currentRoom);
+    if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
     gameRooms.get(currentRoom).add(socket.id);
+    updateRoomPlayerCount(currentRoom, 1);
     cb({ ok: true, code, roomKey: currentRoom });
+    broadcastRoomListUpdate();
     broadcastZombieHost(currentRoom);
+  });
+
+  socket.on('getRooms', (cb) => {
+    if (typeof cb === 'function') cb(getAllActiveRooms());
   });
 
   socket.on('move', (data) => {
@@ -2069,8 +2149,10 @@ gameNsp.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     cleanupGamePlayerTracking(socket.id);
+    const roomToCleanup = currentRoom;
     leaveCurrentRoom(socket, currentRoom);
     currentRoom = null;
+    if (roomToCleanup) broadcastRoomListUpdate();
   });
 });
 
