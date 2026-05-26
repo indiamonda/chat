@@ -607,13 +607,37 @@
     .tab-content {
       display: none;
       padding: 32px 40px 40px;
-      animation: contentFadeIn 0.6s ease-out;
     }
     .tab-content.active { display: block; }
+    .tab-content.animate-in {
+      animation: contentFadeIn 0.5s ease-out;
+    }
     @keyframes contentFadeIn {
       from { opacity: 0; transform: translateY(16px); }
       to { opacity: 1; transform: translateY(0); }
     }
+
+    /* ── Loading skeleton for dashboard ── */
+    .skeleton-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .skeleton-line {
+      height: 16px;
+      background: linear-gradient(90deg, var(--surface-elevated) 25%, var(--surface-hover) 50%, var(--surface-elevated) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+    .skeleton-line:last-child { margin-bottom: 0; }
+    .skeleton-line.title { height: 24px; width: 60%; }
+    .skeleton-line.short { width: 40%; }
+    .skeleton-line.medium { width: 75%; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
     /* ── Section Cards ── */
     .section-card {
@@ -944,6 +968,9 @@
       border-top: 1px solid var(--border);
       margin-top: 12px;
     }
+    .file-input {
+      display: none;
+    }
     .chat-tool {
       display: flex;
       align-items: center;
@@ -1194,10 +1221,10 @@
     .skeleton {
       background: linear-gradient(90deg, var(--surface) 25%, var(--surface-elevated) 50%, var(--surface) 75%);
       background-size: 200% 100%;
-      animation: shimmer 1.5s infinite;
+      animation: skeletonShimmer 1.5s infinite;
       border-radius: 8px;
     }
-    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
     /* ── Responsive ── */
     @media (max-width: 768px) {

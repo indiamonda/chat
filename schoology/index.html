@@ -127,7 +127,7 @@
         <div class="nav-tab" data-tab="settings">Settings</div>
       </div>
 
-      <!-- AI Tab (Default) -->
+      <!-- AI Tab (Default, auto-selected on dashboard entry) -->
       <div class="tab-content active" id="tab-ai">
         <div class="section">
           <div style="margin-bottom: 16px;">
@@ -179,14 +179,14 @@
               </div>
 
               <div class="chat-tools">
-                <label class="chat-tool" for="fileUpload">
+                <div class="chat-tool" id="uploadBtn" onclick="document.getElementById('fileUpload').click()">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                     <polyline points="17 8 12 3 7 8"/>
                     <line x1="12" y1="3" x2="12" y2="15"/>
                   </svg>
                   <span>Upload</span>
-                </label>
+                </div>
                 <input type="file" id="fileUpload" class="file-input" accept="*" onchange="handleFileUpload(event)">
               </div>
             </div>
@@ -312,16 +312,19 @@
     // Configure marked
     marked.setOptions({ breaks: true, gfm: true, headerIds: false, mangle: false });
     const renderer = new marked.Renderer();
-    renderer.code = function(code, language) {
+    renderer.code = function({ text, lang }) {
+      const code = String(text || '');
+      const language = lang || '';
       return `<div class="code-block"><button class="copy-btn" onclick="copyCode(this, \`${escapeForJS(code)}\`)">Copy</button><pre><code>${escapeHtml(code)}</code></pre></div>`;
     };
-    renderer.codespan = function(code) { return `<code>${escapeHtml(code)}</code>`; };
+    renderer.codespan = function({ text }) { return `<code>${escapeHtml(String(text || ''))}</code>`; };
     marked.use({ renderer });
 
     function renderMarkdown(text) {
       if (text == null) return '';
-      if (typeof text !== 'string') text = String(text);
+      if (typeof text !== 'string') return String(text);
       if (!text) return '';
+      text = String(text);
       text = text.replace(/\$\$([\s\S]*?)\$\$/g, (m, math) => {
         try { return katex.renderToString(math, { displayMode: true, throwOnError: false }); } catch (e) { return `<pre>${escapeHtml(math)}</pre>`; }
       });
@@ -329,6 +332,7 @@
         try { return katex.renderToString(math, { displayMode: false, throwOnError: false }); } catch (e) { return `$${escapeHtml(math)}$`; }
       });
       const result = marked.parse(text);
+      if (result == null) return '';
       if (typeof result !== 'string') return String(result);
       return result;
     }
@@ -649,16 +653,27 @@
       return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
     }
 
+    // Track which tabs have been visited
+    const visitedTabs = new Set();
+
     // Navigation
     document.querySelectorAll('.nav-tab').forEach(tab => {
       tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        const isFirstVisit = !visitedTabs.has(tabName);
+        visitedTabs.add(tabName);
+
         document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
         tab.classList.add('active');
-        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
-        if (tab.dataset.tab === 'grades') renderGradesList();
-        if (tab.dataset.tab === 'assignments') renderAssignmentsList();
-        if (tab.dataset.tab === 'activity') renderActivityList();
+        const targetTab = document.getElementById('tab-' + tabName);
+        targetTab.classList.add('active');
+        if (isFirstVisit) {
+          targetTab.classList.add('animate-in');
+        }
+        if (tabName === 'grades') renderGradesList();
+        if (tabName === 'assignments') renderAssignmentsList();
+        if (tabName === 'activity') renderActivityList();
       });
     });
 
@@ -694,6 +709,20 @@
 
     function renderGradesList() {
       const container = document.getElementById('gradesList');
+      if (!state.grades || state.grades.length === 0) {
+        container.innerHTML = `
+          <div class="skeleton-card">
+            <div class="skeleton-line title"></div>
+            <div class="skeleton-line medium"></div>
+            <div class="skeleton-line short"></div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton-line title"></div>
+            <div class="skeleton-line medium"></div>
+            <div class="skeleton-line short"></div>
+          </div>`;
+        return;
+      }
       container.innerHTML = state.grades.map(g => `
         <div class="grade-card" onclick="this.classList.toggle('expanded')">
           <div class="grade-header">
@@ -715,7 +744,18 @@
 
     function renderAssignmentsList() {
       const container = document.getElementById('assignmentsList');
-      if (!state.assignments.length) { container.innerHTML = '<div class="empty-state">No upcoming assignments</div>'; return; }
+      if (!state.assignments || state.assignments.length === 0) {
+        container.innerHTML = `
+          <div class="skeleton-card">
+            <div class="skeleton-line title"></div>
+            <div class="skeleton-line medium"></div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton-line title"></div>
+            <div class="skeleton-line short"></div>
+          </div>`;
+        return;
+      }
       container.innerHTML = state.assignments.map(a => `
         <div class="assignment-item">
           <div class="assignment-title">${escapeHtml(a.title)}</div>
@@ -730,7 +770,18 @@
 
     function renderActivityList() {
       const container = document.getElementById('activityList');
-      if (!state.posts.length) { container.innerHTML = '<div class="empty-state">No recent activity</div>'; return; }
+      if (!state.posts || state.posts.length === 0) {
+        container.innerHTML = `
+          <div class="skeleton-card">
+            <div class="skeleton-line title"></div>
+            <div class="skeleton-line medium"></div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton-line title"></div>
+            <div class="skeleton-line short"></div>
+          </div>`;
+        return;
+      }
       container.innerHTML = state.posts.map(p => `
         <div class="post-item">
           <div class="post-author">${escapeHtml(p.author)}</div>
