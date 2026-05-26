@@ -1,17 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Schoology Help</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Didact+Gothic&family=Oxygen+Mono&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/schoology/assets/katex.min.css">
-  <script src="/schoology/assets/katex.min.js"></script>
-  <script src="/schoology/assets/marked.min.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
       --bg: #0a0a0f;
@@ -178,7 +165,8 @@
       position: relative;
       z-index: 1;
       text-align: center;
-      margin-bottom: 120px;
+      margin-top: 60px;
+      margin-bottom: 30px;
     }
 
     .typewriter-text {
@@ -229,7 +217,7 @@
     }
 
     .feature-card {
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.02);
       backdrop-filter: blur(16px);
       border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 20px;
