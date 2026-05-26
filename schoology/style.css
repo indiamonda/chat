@@ -225,6 +225,7 @@
       text-align: left;
       transition: all var(--transition-slower);
       animation: cardFloat 5s ease-in-out infinite;
+      filter: url(#liquid-glass);
     }
     .feature-card:nth-child(1) { animation-delay: 0s; }
     .feature-card:nth-child(2) { animation-delay: 0.5s; }
