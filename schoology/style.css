@@ -514,14 +514,16 @@
     .app-container {
       display: none;
       width: 100%;
-      min-height: 100vh;
+      height: 100vh;
       animation: fadeInApp 0.8s ease-out;
+      flex-direction: column;
     }
-    .app-container.visible { display: block; }
+    .app-container.visible { display: flex; }
     @keyframes fadeInApp { from { opacity: 0; } to { opacity: 1; } }
 
     /* ── Header ── */
     .dashboard-header {
+      flex-shrink: 0;
       padding: 28px 40px 24px;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
@@ -635,6 +637,7 @@
 
     /* ── Navigation ── */
     .nav-tabs-container {
+      flex-shrink: 0;
       padding: 16px 40px 0;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
@@ -690,8 +693,10 @@
     .tab-content {
       display: none;
       padding: 32px 40px 40px;
+      flex: 1;
+      overflow-y: auto;
     }
-    .tab-content.active { display: block; }
+    .tab-content.active { display: flex; flex-direction: column; }
     .tab-content.animate-in {
       animation: contentFadeIn 0.5s ease-out;
     }
@@ -705,11 +710,11 @@
       padding: 0;
       display: flex;
       flex-direction: column;
-      height: calc(100vh - 200px);
+      flex: 1;
+      overflow: hidden;
     }
     #tab-ai.active { display: flex; }
-    #tab-ai .section { flex: 1; display: flex; flex-direction: column; padding: 0; min-height: 0; }
-    #tab-ai .section-title { display: none; }
+    #tab-ai .section { flex: 1; display: flex; flex-direction: column; padding: 0; min-height: 0; overflow: hidden; }
     .ai-container {
       flex: 1;
       display: flex;
