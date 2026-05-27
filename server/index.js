@@ -1031,6 +1031,7 @@ app.use((req, res, next) => {
   }
 });
 
+app.use('/icons', express.static(join(publicDir, '../icons')));
 app.use(express.static(publicDir));
 
 /** Public config for client (e.g. reCAPTCHA site key). */
