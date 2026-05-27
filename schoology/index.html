@@ -149,24 +149,9 @@
     <div class="tab-content active" id="tab-ai">
       <div class="section">
         <div class="ai-container">
-          <div class="chat-messages" id="chatMessages">
-            <div class="chat-message assistant">
-              <div class="markdown-content">
-                <p>👋 Welcome to your AI Study Assistant! I have access to your grades, assignments, and recent posts from Schoology.</p>
-                <p>You can ask me to:</p>
-                <ul>
-                  <li>Explain concepts from your classes</li>
-                  <li>Help with assignments and homework</li>
-                  <li>Summarize recent posts from teachers</li>
-                  <li>Create study plans based on your grades</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
+          <div class="chat-messages" id="chatMessages"></div>
           <div id="filePreviewContainer" class="image-preview" style="display: none;"></div>
           <div id="ocrProgress" class="ocr-progress" style="display: none;"></div>
-
           <div class="chat-input-area">
             <div class="chat-input-row">
               <input type="text" id="chatInput" placeholder="Ask anything about your courses, grades, or assignments..." onkeydown="handleChatKeydown(event)">
@@ -191,7 +176,6 @@
                 </div>
               </div>
             </div>
-
             <div class="chat-tools">
               <div class="chat-tool" id="uploadBtn" onclick="document.getElementById('fileUpload').click()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
