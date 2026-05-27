@@ -781,14 +781,17 @@
     /* ── Tab Content ── */
     .tab-content {
       display: none;
-      padding: 32px 40px 40px;
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
+      padding: 0;
       background: var(--bg);
     }
-    .tab-content.active { display: flex; flex-direction: column; flex: 1; }
-    .tab-content.animate-in {
+    .tab-content.active { display: block; }
+    .tab-content .section {
+      background: var(--surface);
+      border-radius: 0;
+      padding: 24px 40px;
+      margin: 0;
+    }
+    .tab-content .section:first-child { padding-top: 32px; }
       animation: contentFadeIn 0.5s ease-out;
     }
     @keyframes contentFadeIn {
@@ -798,14 +801,13 @@
 
     /* ── AI Tab full-width chat ── */
     #tab-ai {
-      padding: 0;
-      display: flex;
+      display: none;
       flex-direction: column;
-      flex: 1;
-      overflow: hidden;
+      height: calc(100vh - 140px);
+      margin: 0;
     }
     #tab-ai.active { display: flex; }
-    #tab-ai .section { flex: 1; display: flex; flex-direction: column; padding: 0; min-height: 0; overflow: hidden; }
+    #tab-ai .section { flex: 1; display: flex; flex-direction: column; padding: 0; min-height: 0; overflow: hidden; border-radius: 0; }
     .ai-container {
       flex: 1;
       display: flex;
@@ -966,14 +968,12 @@
       margin-bottom: 20px;
     }
     .tab-content .section {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
       background: var(--surface);
-      border-radius: 20px;
-      padding: 24px;
-      margin-bottom: 20px;
+      border-radius: 0;
+      padding: 24px 40px;
+      margin: 0;
     }
+    .tab-content .section:first-child { padding-top: 32px; }
     .section-subtitle {
       font-size: 0.8rem;
       color: var(--text-muted);
