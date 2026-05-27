@@ -14,8 +14,9 @@ RUN npm install --omit=dev
 
 # Copy schoology-mcp for the Flask server (already has .git removed)
 COPY schoology-mcp/ ./schoology-mcp/
-RUN python3 -m venv /app/schoology-mcp/.venv --without-pip && \
-    /app/.schoology-venv/bin/pip install --no-cache-dir -r /app/schoology-mcp/requirements.txt
+RUN python3 -m venv /app/schoology-mcp/.venv && \
+    /app/schoology-mcp/.venv/bin/pip install --no-cache-dir -r /app/schoology-mcp/requirements.txt && \
+    ln -sf /app/.schoology-venv/bin/playwright /app/schoology-mcp/.venv/bin/playwright
 
 FROM base AS runner
 ENV NODE_ENV=production
@@ -34,8 +35,10 @@ RUN mkdir -p /data && chown -R nodejs:nodejs /data
 # Create playwright cache dir and install browsers before switching to nodejs user
 RUN mkdir -p /home/nodejs/.cache/ms-playwright && chown -R nodejs:nodejs /home/nodejs
 ENV PLAYWRIGHT_BROWSERS_DIR=/home/nodejs/.cache/ms-playwright
-RUN /app/schoology-mcp/.venv/bin/playwright install-deps chromium
-RUN /app/schoology-mcp/.venv/bin/playwright install chromium && cp -r /root/.cache/ms-playwright/* /home/nodejs/.cache/ms-playwright/ && chown -R nodejs:nodejs /home/nodejs/.cache/ms-playwright
+RUN /app/.schoology-venv/bin/playwright install-deps chromium && \
+    /app/.schoology-venv/bin/playwright install chromium && \
+    cp -r /root/.cache/ms-playwright/* /home/nodejs/.cache/ms-playwright/ && \
+    chown -R nodejs:nodejs /home/nodejs/.cache/ms-playwright
 USER nodejs
 EXPOSE 8080 8081
 ENV DATA_DIR=/data
