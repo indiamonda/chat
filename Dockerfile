@@ -34,6 +34,7 @@ RUN mkdir -p /data && chown -R nodejs:nodejs /data
 # Create playwright cache dir and install browsers before switching to nodejs user
 RUN mkdir -p /home/nodejs/.cache/ms-playwright && chown -R nodejs:nodejs /home/nodejs
 ENV PLAYWRIGHT_BROWSERS_DIR=/home/nodejs/.cache/ms-playwright
+RUN /app/schoology-mcp/.venv/bin/playwright install-deps chromium
 RUN /app/schoology-mcp/.venv/bin/playwright install chromium && cp -r /root/.cache/ms-playwright/* /home/nodejs/.cache/ms-playwright/ && chown -R nodejs:nodejs /home/nodejs/.cache/ms-playwright
 USER nodejs
 EXPOSE 8080 8081
