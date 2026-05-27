@@ -14,9 +14,7 @@ RUN npm install --omit=dev
 
 # Copy schoology-mcp for the Flask server (already has .git removed)
 COPY schoology-mcp/ ./schoology-mcp/
-RUN python3 -m venv /app/schoology-mcp/.venv && \
-    /app/schoology-mcp/.venv/bin/pip install --no-cache-dir -r /app/schoology-mcp/requirements.txt && \
-    ln -sf /app/.schoology-venv/bin/playwright /app/schoology-mcp/.venv/bin/playwright
+RUN /app/.schoology-venv/bin/pip install --no-cache-dir -r /app/schoology-mcp/requirements.txt
 
 FROM base AS runner
 ENV NODE_ENV=production
@@ -27,7 +25,6 @@ RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nod
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip && rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/.schoology-venv /app/.schoology-venv
-COPY --from=deps /app/schoology-mcp/.venv /app/schoology-mcp/.venv
 COPY . .
 # Socket.IO browser bundle for game.html (/socket.io.min.js); file may be untracked in git
 RUN cp -f node_modules/socket.io/client-dist/socket.io.min.js public/socket.io.min.js
