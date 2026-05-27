@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Schoology Help</title>
+  <link rel="icon" type="image/x-icon" href="/icons/favicon.ico">
+  <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Didact+Gothic&family=Oxygen+Mono&display=swap" rel="stylesheet">
@@ -111,13 +113,31 @@
     </div>
   </div>
 
+  <div id="appLoading" class="app-loading">
+    <div class="loading-content">
+      <div class="loading-spinner">
+        <div class="spinner-half left">
+          <img src="/icons/favicon.svg" class="spinner-icon">
+        </div>
+        <div class="spinner-half right">
+          <img src="/icons/favicon.svg" class="spinner-icon">
+        </div>
+      </div>
+      <div class="loading-percent" id="loadingPercent">0%</div>
+      <div class="loading-bar">
+        <div class="loading-bar-fill" id="loadingBarFill"></div>
+      </div>
+      <div class="loading-text" id="loadingText">Loading</div>
+    </div>
+  </div>
+
   <!-- App Container (shown after login) -->
   <div class="app-container" id="appContainer">
     <!-- Dashboard Header -->
     <header class="dashboard-header" id="dashboardHeader">
       <div class="header-top">
         <div class="header-brand">
-          <div class="ai-brain-icon">🧠</div>
+          <img src="/icons/logo.svg" alt="Logo" class="header-logo" onerror="this.style.display='none'">
           <div class="header-title-group">
             <h1>Schoology Help</h1>
             <p class="subtitle" id="subtitle">Your academic dashboard, connected</p>
@@ -521,24 +541,66 @@
       // Initialize dark mode
       initDarkMode();
 
-      // Hide landing page
+      // Hide landing page, show loading
       document.getElementById('landingPage').style.display = 'none';
+      document.getElementById('appLoading').classList.remove('hidden');
 
+      // Start loading animation
+      let progress = 0;
+      const loadingPercent = document.getElementById('loadingPercent');
+      const loadingBarFill = document.getElementById('loadingBarFill');
+      const loadingText = document.getElementById('loadingText');
+      const loadingDots = ['', '.', '..', '...'];
+      let dotIndex = 0;
+
+      function updateLoading(percent, text) {
+        progress = percent;
+        loadingPercent.textContent = Math.round(percent) + '%';
+        loadingBarFill.style.width = percent + '%';
+        if (text) loadingText.textContent = text;
+      }
+
+      const loadingInterval = setInterval(() => {
+        dotIndex = (dotIndex + 1) % 4;
+        loadingText.textContent = 'Loading' + loadingDots[dotIndex];
+      }, 400);
+
+      // Load data - demo mode uses local data, otherwise fetch from MCP
+      if (state.demoMode) {
+        loadDemoData();
+        updateLoading(100, 'Done');
+        clearInterval(loadingInterval);
+        document.getElementById('appLoading').classList.add('hidden');
+        finishShowApp();
+      } else {
+        updateLoading(10, 'Loading');
+        loadChatHistory();
+        updateLoading(30, 'Loading');
+        fetchRealData().then(() => {
+          updateLoading(100, 'Done');
+          clearInterval(loadingInterval);
+          setTimeout(() => {
+            document.getElementById('appLoading').classList.add('hidden');
+            finishShowApp();
+          }, 300);
+        }).catch(() => {
+          updateLoading(100, 'Done');
+          clearInterval(loadingInterval);
+          setTimeout(() => {
+            document.getElementById('appLoading').classList.add('hidden');
+            finishShowApp();
+          }, 300);
+        });
+      }
+    }
+
+    function finishShowApp() {
       // Show app container
       document.getElementById('appContainer').classList.add('visible');
 
       // Update status
       document.getElementById('connectionStatus').textContent = state.demoMode ? 'Demo Mode' : 'Connected';
       document.getElementById('settingsUsername').textContent = state.username;
-
-      // Load data - demo mode uses local data, otherwise fetch from MCP
-      if (state.demoMode) {
-        loadDemoData();
-      } else {
-        // Try to fetch real data from MCP server
-        loadChatHistory();
-        fetchRealData();
-      }
 
       // Render all sections
       renderGradesOverview();

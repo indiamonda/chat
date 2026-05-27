@@ -1,5 +1,89 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+    html, body {
+      min-height: 100%;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Didact Gothic', sans-serif;
+    }
+
+    /* ── Loading Screen ── */
+    .app-loading {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .app-loading.hidden { display: none; }
+    .loading-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+    }
+    .loading-spinner {
+      width: 80px;
+      height: 80px;
+      position: relative;
+    }
+    .spinner-half {
+      position: absolute;
+      width: 40px;
+      height: 80px;
+      overflow: hidden;
+      top: 0;
+    }
+    .spinner-half.left { left: 0; }
+    .spinner-half.right { right: 0; }
+    .spinner-icon {
+      width: 80px;
+      height: 80px;
+      position: absolute;
+    }
+    .spinner-half.left .spinner-icon {
+      left: 0;
+      animation: spinLeft 3s linear infinite;
+    }
+    .spinner-half.right .spinner-icon {
+      right: 0;
+      animation: spinRight 3s linear infinite;
+    }
+    @keyframes spinLeft {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes spinRight {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(-360deg); }
+    }
+    .loading-percent {
+      font-size: 2rem;
+      font-weight: 400;
+      color: var(--text);
+      font-family: 'Didact Gothic', sans-serif;
+    }
+    .loading-bar {
+      width: 200px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .loading-bar-fill {
+      height: 100%;
+      background: var(--ai-gradient);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .loading-text {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      font-family: 'Didact Gothic', sans-serif;
+    }
+
     :root {
       --bg: #0a0a0f;
       --surface: #12121a;
@@ -558,6 +642,12 @@
       display: flex;
       align-items: center;
       gap: 16px;
+    }
+
+    .header-logo {
+      width: 48px;
+      height: 48px;
+      object-fit: contain;
     }
 
     .ai-brain-icon {
