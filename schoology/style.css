@@ -1488,9 +1488,9 @@
     /* Danger button */
     .btn-danger {
       padding: 12px 24px;
-      background: rgba(239, 68, 68, 0.1);
-      color: var(--error);
-      border: 1px solid var(--error);
+      background: var(--surface-elevated);
+      color: var(--text);
+      border: 1px solid var(--border);
       border-radius: 12px;
       cursor: pointer;
       font-family: inherit;
@@ -1499,6 +1499,7 @@
     }
     .btn-danger:hover {
       background: var(--error);
+      border-color: var(--error);
       color: white;
       transform: translateY(-3px);
       box-shadow: 0 8px 30px var(--error-glow);
