@@ -1,11 +1,5 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    html, body {
-      min-height: 100%;
-      background-color: var(--bg);
-      color: var(--text);
-    }
-
     :root {
       --bg: #0a0a0f;
       --surface: #12121a;
