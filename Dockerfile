@@ -14,8 +14,8 @@ RUN npm install --omit=dev
 
 # Copy schoology-mcp for the Flask server (already has .git removed)
 COPY schoology-mcp/ ./schoology-mcp/
-RUN python3 -m venv /app/schoology-mcp/.venv && \
-    /app/schoology-mcp/.venv/bin/pip install --no-cache-dir -r /app/schoology-mcp/requirements.txt
+RUN python3 -m venv /app/schoology-mcp/.venv --without-pip && \
+    /app/.schoology-venv/bin/pip install --no-cache-dir -r /app/schoology-mcp/requirements.txt
 
 FROM base AS runner
 ENV NODE_ENV=production
