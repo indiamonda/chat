@@ -748,8 +748,8 @@
       content: '';
       position: absolute;
       bottom: -1px;
-      left: 0;
-      right: 0;
+      left: 6px;
+      right: 6px;
       height: 2px;
       background: var(--ai-gradient);
       transform: scaleX(0);
