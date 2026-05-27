@@ -102,7 +102,7 @@ Frontend → Express Proxy (8080) → Flask (8081) → MCP server.py → Playwri
 - **MCP config**: `/app/schoology-mcp/schoology_mcp/config.py`
 - **MCP browser**: `/app/schoology-mcp/schoology_mcp/browser.py`
 - **Express proxy**: `/app/server/index.js`
-- **Venv Python**: `/app/schoology-mcp/.venv/bin/python`
+- **Venv Python**: `/app/.schoology-venv/bin/python` (MCP uses the shared schoology-venv, NOT a separate schoology-mcp/.venv)
 
 ## Dockerfile CMD
 ```dockerfile
