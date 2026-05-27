@@ -599,7 +599,7 @@
     }
     .header-title-group .subtitle {
       font-size: 0.9rem;
-      color: var(--text-secondary);
+      color: var(--text);
       margin-top: 6px;
       letter-spacing: 0.05em;
       text-transform: uppercase;
