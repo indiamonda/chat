@@ -25,37 +25,27 @@
       gap: 24px;
     }
     .loading-spinner {
-      width: 80px;
-      height: 80px;
+      width: 100px;
+      height: 100px;
       position: relative;
     }
-    .spinner-half {
-      position: absolute;
-      width: 40px;
-      height: 80px;
-      overflow: hidden;
-      top: 0;
+    .spinner-svg {
+      width: 100px;
+      height: 100px;
     }
-    .spinner-half.left { left: 0; }
-    .spinner-half.right { right: 0; }
-    .spinner-icon {
-      width: 80px;
-      height: 80px;
-      position: absolute;
+    .spinner-rotate-cw {
+      animation: spinCW 4s linear infinite;
+      transform-origin: center;
     }
-    .spinner-half.left .spinner-icon {
-      left: 0;
-      animation: spinLeft 3s linear infinite;
+    .spinner-rotate-ccw {
+      animation: spinCCW 4s linear infinite;
+      transform-origin: center;
     }
-    .spinner-half.right .spinner-icon {
-      right: 0;
-      animation: spinRight 3s linear infinite;
-    }
-    @keyframes spinLeft {
+    @keyframes spinCW {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
-    @keyframes spinRight {
+    @keyframes spinCCW {
       from { transform: rotate(0deg); }
       to { transform: rotate(-360deg); }
     }
