@@ -650,7 +650,6 @@
     .nav-tabs {
       display: flex;
       gap: 6px;
-      overflow-x: auto;
       padding-bottom: 0;
     }
     .nav-tab {
@@ -1384,8 +1383,8 @@
     }
     .settings-row:last-child { border-bottom: none; }
     .settings-row:hover { padding: 16px 12px; margin: 0 -12px; background: var(--surface-elevated); border-radius: 12px; }
-    .settings-label { font-weight: 400; font-size: 1rem; }
-    .settings-label span { display: block; font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; font-weight: 300; }
+    .settings-label { font-weight: 400; font-size: 1rem; color: var(--text); }
+    .settings-label span { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; font-weight: 300; }
 
     /* Theme toggle */
     .theme-toggle-container { display: flex; align-items: center; gap: 12px; }
