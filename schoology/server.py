@@ -19,7 +19,7 @@ CORS(app)
 # Get the directory where this script is located
 SCRIPT_DIR = Path(__file__).parent
 MCP_DIR = SCRIPT_DIR.parent / 'schoology-mcp'
-VENV_PYTHON = str(MCP_DIR / '.venv' / 'bin' / 'python')
+VENV_PYTHON = str(MCP_DIR.parent / '.schoology-venv' / 'bin' / 'python')
 SERVER_PY = str(MCP_DIR / 'server.py')
 
 

@@ -925,7 +925,7 @@
           const response = await fetch(`${workerUrl}/v1/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage), max_tokens: 8192, temperature: 0.6, stream: false })
+            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage), max_tokens: 1024, temperature: 0.6, stream: false })
           });
           hideTypingIndicator();
           if (!response.ok) throw new Error(await response.text());
