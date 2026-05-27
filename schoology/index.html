@@ -531,7 +531,7 @@
       document.getElementById('appContainer').classList.add('visible');
 
       // Update status
-      document.getElementById('statusText').textContent = state.demoMode ? 'Demo Mode' : 'Connected';
+      document.getElementById('connectionStatus').textContent = state.demoMode ? 'Demo Mode' : 'Connected';
       document.getElementById('settingsUsername').textContent = state.username;
 
       // Load data - demo mode uses local data, otherwise fetch from MCP
