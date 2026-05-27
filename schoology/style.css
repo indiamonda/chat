@@ -776,7 +776,7 @@
     }
     .tab-content.active { display: block; }
     .tab-content .section {
-      background: var(--surface);
+      background: var(--bg);
       border-radius: 0;
       padding: 24px 40px;
       margin: 0;
@@ -952,7 +952,7 @@
       margin-bottom: 20px;
     }
     .tab-content .section {
-      background: var(--surface);
+      background: var(--bg);
       border-radius: 0;
       padding: 24px 40px;
       margin: 0;
