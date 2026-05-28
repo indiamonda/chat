@@ -546,59 +546,90 @@
     }
 
     function showApp() {
+      console.log('[DEBUG] showApp() START');
+      console.log('[DEBUG] state:', JSON.stringify({demoMode: state.demoMode, authenticated: state.authenticated}));
+
       // Initialize dark mode
-      initDarkMode();
+      try {
+        initDarkMode();
+        console.log('[DEBUG] initDarkMode done');
+      } catch (e) {
+        console.error('[DEBUG] initDarkMode error:', e);
+      }
 
       // Hide landing page, show loading
-      document.getElementById('landingPage').style.display = 'none';
-      document.getElementById('appLoading').classList.remove('hidden');
+      const landingPage = document.getElementById('landingPage');
+      const appLoading = document.getElementById('appLoading');
+      console.log('[DEBUG] landingPage:', !!landingPage, 'appLoading:', !!appLoading);
 
-      // Start loading animation
-      let progress = 0;
+      if (landingPage) landingPage.style.display = 'none';
+      if (appLoading) appLoading.classList.remove('hidden');
+
+      // Get loading elements
       const loadingPercent = document.getElementById('loadingPercent');
       const loadingBarFill = document.getElementById('loadingBarFill');
       const loadingText = document.getElementById('loadingText');
-      const loadingDots = ['', '.', '..', '...'];
-      let dotIndex = 0;
+
+      console.log('[DEBUG] elements:', {loadingPercent: !!loadingPercent, loadingBarFill: !!loadingBarFill, loadingText: !!loadingText});
+
+      // Immediately update to 10% to show loading started
+      if (loadingPercent) loadingPercent.textContent = '10%';
+      if (loadingBarFill) loadingBarFill.style.width = '10%';
+      if (loadingText) loadingText.textContent = 'Starting...';
+
+      console.log('[DEBUG] Initial state set. demoMode:', state.demoMode);
 
       function updateLoading(percent, text) {
-        progress = percent;
-        loadingPercent.textContent = Math.round(percent) + '%';
-        loadingBarFill.style.width = percent + '%';
-        if (text) loadingText.textContent = text;
+        console.log('[DEBUG] updateLoading:', percent, text);
+        if (loadingPercent) loadingPercent.textContent = Math.round(percent) + '%';
+        if (loadingBarFill) loadingBarFill.style.width = percent + '%';
+        if (loadingText && text) loadingText.textContent = text;
       }
 
-      const loadingInterval = setInterval(() => {
-        dotIndex = (dotIndex + 1) % 4;
-        loadingText.textContent = 'Loading' + loadingDots[dotIndex];
-      }, 400);
+      // Fallback: if we're still on loading screen after 30 seconds, force show app
+      setTimeout(() => {
+        const stillLoading = document.getElementById('appLoading');
+        if (stillLoading && !stillLoading.classList.contains('hidden')) {
+          console.error('[DEBUG] Loading timeout - forcing app to show');
+          stillLoading.classList.add('hidden');
+          finishShowApp();
+        }
+      }, 30000);
 
       // Load data - demo mode uses local data, otherwise fetch from MCP
       if (state.demoMode) {
+        console.log('[DEBUG] Loading demo data...');
         loadDemoData();
         updateLoading(100, 'Done');
-        clearInterval(loadingInterval);
-        document.getElementById('appLoading').classList.add('hidden');
+        if (appLoading) appLoading.classList.add('hidden');
         finishShowApp();
       } else {
-        updateLoading(10, 'Loading');
-        loadChatHistory();
-        updateLoading(30, 'Loading');
+        console.log('[DEBUG] Fetching real data...');
+        updateLoading(20, 'Loading');
+        try {
+          loadChatHistory();
+          console.log('[DEBUG] loadChatHistory done');
+        } catch (e) {
+          console.error('[DEBUG] loadChatHistory error:', e);
+        }
+        updateLoading(40, 'Loading');
+        console.log('[DEBUG] Calling fetchRealData...');
         fetchRealData().then(() => {
+          console.log('[DEBUG] fetchRealData resolved');
           updateLoading(100, 'Done');
-          clearInterval(loadingInterval);
           setTimeout(() => {
-            document.getElementById('appLoading').classList.add('hidden');
+            if (appLoading) appLoading.classList.add('hidden');
             finishShowApp();
           }, 300);
-        }).catch(() => {
+        }).catch((e) => {
+          console.error('[DEBUG] fetchRealData rejected:', e);
           updateLoading(100, 'Done');
-          clearInterval(loadingInterval);
           setTimeout(() => {
-            document.getElementById('appLoading').classList.add('hidden');
+            if (appLoading) appLoading.classList.add('hidden');
             finishShowApp();
           }, 300);
         });
+        console.log('[DEBUG] fetchRealData promise created');
       }
     }
 
@@ -620,30 +651,50 @@
 
     // Base64 encoding that handles Unicode characters
     function base64Encode(str) {
-      if (typeof btoa === 'function') {
+      // Chrome, Firefox, Safari, Edge all support this method natively
+      try {
         return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16))));
+      } catch (e) {
+        console.error('[DEBUG] base64Encode failed:', e);
+        // Fallback using TextEncoder
+        const encoder = new TextEncoder();
+        const data = encoder.encode(str);
+        const binString = Array.from(data, b => String.fromCharCode(b)).join('');
+        return btoa(binString);
       }
-      return btoa(str);
     }
 
     // Fetch real data from MCP server
     async function fetchRealData() {
-      // The Flask API server for data - use deployed server or local Flask
       const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
+      console.log('[DEBUG] fetchRealData starting, apiUrl:', apiUrl);
 
       try {
-        // Get stored credentials - password is stored separately in state
         const credentials = JSON.parse(localStorage.getItem('schoology_credentials') || '{}');
+        console.log('[DEBUG] credentials found:', !!credentials.username, 'password stored:', !!credentials.password);
         const storedPassword = state.schoologyPassword || credentials.password || '';
+        console.log('[DEBUG] storedPassword length:', storedPassword.length);
         const authHeader = credentials.username ? 'Basic ' + base64Encode(credentials.username + ':' + storedPassword) : '';
+        console.log('[DEBUG] authHeader present:', !!authHeader);
 
         const headers = {};
         if (authHeader) headers['Authorization'] = authHeader;
 
-        const gradesRes = await fetch(`${apiUrl}/api/grades`, { headers });
-        const coursesRes = await fetch(`${apiUrl}/api/courses`, { headers });
-        const assignmentsRes = await fetch(`${apiUrl}/api/assignments`, { headers });
-        const postsRes = await fetch(`${apiUrl}/api/posts`, { headers });
+        console.log('[DEBUG] fetching grades from:', `${apiUrl}/api/grades`);
+
+        // Create abort controller for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+        const gradesRes = await fetch(`${apiUrl}/api/grades`, { headers, signal: controller.signal });
+        clearTimeout(timeoutId);
+        console.log('[DEBUG] gradesRes.status:', gradesRes.status);
+        const coursesRes = await fetch(`${apiUrl}/api/courses`, { headers, signal: controller.signal });
+        console.log('[DEBUG] coursesRes.status:', coursesRes.status);
+        const assignmentsRes = await fetch(`${apiUrl}/api/assignments`, { headers, signal: controller.signal });
+        console.log('[DEBUG] assignmentsRes.status:', assignmentsRes.status);
+        const postsRes = await fetch(`${apiUrl}/api/posts`, { headers, signal: controller.signal });
+        console.log('[DEBUG] postsRes.status:', postsRes.status);
 
         if (gradesRes.ok && coursesRes.ok && assignmentsRes.ok && postsRes.ok) {
           const gradesData = await gradesRes.json();
@@ -682,7 +733,7 @@
 
       } catch (e) {
         // On connection failure, show error
-        console.error('API connection failed:', e);
+        console.error('[DEBUG] API connection failed:', e);
         state.connectionError = `Cannot reach API server: ${e.message}`;
         renderConnectionError();
       }

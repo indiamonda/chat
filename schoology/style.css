@@ -64,7 +64,7 @@
     }
     .loading-bar-fill {
       height: 100%;
-      background: var(--ai-gradient);
+      background: var(--ai-gradient, linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%));
       width: 0%;
       transition: width 0.3s ease;
     }
