@@ -618,6 +618,14 @@
       renderActivityList();
     }
 
+    // Base64 encoding that handles Unicode characters
+    function base64Encode(str) {
+      if (typeof btoa === 'function') {
+        return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode(parseInt(p1, 16))));
+      }
+      return btoa(str);
+    }
+
     // Fetch real data from MCP server
     async function fetchRealData() {
       // The Flask API server for data - use deployed server or local Flask
@@ -627,7 +635,7 @@
         // Get stored credentials - password is stored separately in state
         const credentials = JSON.parse(localStorage.getItem('schoology_credentials') || '{}');
         const storedPassword = state.schoologyPassword || credentials.password || '';
-        const authHeader = credentials.username ? 'Basic ' + btoa(credentials.username + ':' + storedPassword) : '';
+        const authHeader = credentials.username ? 'Basic ' + base64Encode(credentials.username + ':' + storedPassword) : '';
 
         const headers = {};
         if (authHeader) headers['Authorization'] = authHeader;
