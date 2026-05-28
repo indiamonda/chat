@@ -682,59 +682,76 @@
 
         console.log('[DEBUG] fetching grades from:', `${apiUrl}/api/grades`);
 
-        // Create abort controller for timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+        let gradesData, coursesData, assignmentsData, postsData;
 
-        const gradesRes = await fetch(`${apiUrl}/api/grades`, { headers, signal: controller.signal });
-        clearTimeout(timeoutId);
-        console.log('[DEBUG] gradesRes.status:', gradesRes.status);
-        const coursesRes = await fetch(`${apiUrl}/api/courses`, { headers, signal: controller.signal });
-        console.log('[DEBUG] coursesRes.status:', coursesRes.status);
-        const assignmentsRes = await fetch(`${apiUrl}/api/assignments`, { headers, signal: controller.signal });
-        console.log('[DEBUG] assignmentsRes.status:', assignmentsRes.status);
-        const postsRes = await fetch(`${apiUrl}/api/posts`, { headers, signal: controller.signal });
-        console.log('[DEBUG] postsRes.status:', postsRes.status);
-
-        if (gradesRes.ok && coursesRes.ok && assignmentsRes.ok && postsRes.ok) {
-          const gradesData = await gradesRes.json();
-          const coursesData = await coursesRes.json();
-          const assignmentsData = await assignmentsRes.json();
-          const postsData = await postsRes.json();
-
-          // Handle mock data flag from server
-          if (gradesData._mock) state.grades = gradesData.grades || [];
-          else if (Array.isArray(gradesData)) state.grades = gradesData;
-          else state.grades = gradesData.grades || gradesData.courses || [];
-
-          if (coursesData._mock) state.courses = coursesData.courses || [];
-          else if (Array.isArray(coursesData)) state.courses = coursesData;
-          else state.courses = coursesData.courses || [];
-
-          if (assignmentsData._mock) state.assignments = assignmentsData.assignments || [];
-          else if (Array.isArray(assignmentsData)) state.assignments = assignmentsData;
-          else state.assignments = assignmentsData.assignments || [];
-
-          if (postsData._mock) state.posts = postsData.posts || [];
-          else if (Array.isArray(postsData)) state.posts = postsData;
-          else state.posts = postsData.posts || [];
-
-          // Render with fetched data
-          renderGradesOverview();
-          renderAssignmentsOverview();
-          renderGradesList();
-          renderAssignmentsList();
-          renderActivityList();
-        } else {
-          // If the server responds but some endpoints fail, try partial load or show specific error
-          const statusText = `Grades:${gradesRes.status} Courses:${coursesRes.status} Assignments:${assignmentsRes.status} Posts:${postsRes.status}`;
-          throw new Error(statusText);
+        // Fetch grades first - if this fails, don't continue
+        try {
+          const gradesRes = await fetch(`${apiUrl}/api/grades`, { headers });
+          console.log('[DEBUG] gradesRes.status:', gradesRes.status);
+          if (!gradesRes.ok) {
+            const errText = await gradesRes.text().catch(() => '');
+            console.error('[DEBUG] grades error:', gradesRes.status, errText);
+            throw new Error(`Grades server error: ${gradesRes.status}`);
+          }
+          gradesData = await gradesRes.json();
+        } catch (e) {
+          if (e.message && e.message.includes('Grades server error')) throw e;
+          throw new Error(`Cannot fetch grades: ${e.message}`);
         }
 
+        // Fetch remaining data
+        try {
+          const coursesRes = await fetch(`${apiUrl}/api/courses`, { headers });
+          console.log('[DEBUG] coursesRes.status:', coursesRes.status);
+          if (!coursesRes.ok) throw new Error(`Courses server error: ${coursesRes.status}`);
+          coursesData = await coursesRes.json();
+        } catch (e) { coursesData = { _mock: true, courses: [] }; }
+
+        try {
+          const assignmentsRes = await fetch(`${apiUrl}/api/assignments`, { headers });
+          console.log('[DEBUG] assignmentsRes.status:', assignmentsRes.status);
+          if (!assignmentsRes.ok) throw new Error(`Assignments server error: ${assignmentsRes.status}`);
+          assignmentsData = await assignmentsRes.json();
+        } catch (e) { assignmentsData = { _mock: true, assignments: [] }; }
+
+        try {
+          const postsRes = await fetch(`${apiUrl}/api/posts`, { headers });
+          console.log('[DEBUG] postsRes.status:', postsRes.status);
+          if (!postsRes.ok) throw new Error(`Posts server error: ${postsRes.status}`);
+          postsData = await postsRes.json();
+        } catch (e) { postsData = { _mock: true, posts: [] }; }
+
+        if (gradesData._mock) state.grades = gradesData.grades || [];
+        else if (Array.isArray(gradesData)) state.grades = gradesData;
+        else state.grades = gradesData.grades || gradesData.courses || [];
+
+        if (coursesData._mock) state.courses = coursesData.courses || [];
+        else if (Array.isArray(coursesData)) state.courses = coursesData;
+        else state.courses = coursesData.courses || [];
+
+        if (assignmentsData._mock) state.assignments = assignmentsData.assignments || [];
+        else if (Array.isArray(assignmentsData)) state.assignments = assignmentsData;
+        else state.assignments = assignmentsData.assignments || [];
+
+        if (postsData._mock) state.posts = postsData.posts || [];
+        else if (Array.isArray(postsData)) state.posts = postsData;
+        else state.posts = postsData.posts || [];
+
+        // Render with fetched data
+        renderGradesOverview();
+        renderAssignmentsOverview();
+        renderGradesList();
+        renderAssignmentsList();
+        renderActivityList();
       } catch (e) {
         // On connection failure, show error
         console.error('[DEBUG] API connection failed:', e);
-        state.connectionError = `Cannot reach API server: ${e.message}`;
+        const errMsg = e.message || String(e);
+        if (errMsg.includes('entity.too.large') || errMsg.includes('body too large') || errMsg.includes('maxBodySize')) {
+          state.connectionError = 'Server returned too much data. Try clearing your session.';
+        } else {
+          state.connectionError = `Cannot reach API server: ${errMsg}`;
+        }
         renderConnectionError();
       }
     }
