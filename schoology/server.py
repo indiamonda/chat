@@ -108,7 +108,7 @@ def call_mcp_tool_with_timeout(tool_name, username=None, password=None, timeout_
     import traceback
     try:
         return asyncio.run(asyncio.wait_for(
-            call_mcp_tool_async(tool_name, arguments, username, password),
+            call_mcp_tool_async(tool_name, None, username, password),
             timeout=timeout_seconds
         ))
     except asyncio.TimeoutError:
@@ -180,10 +180,15 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
         tool_name: Name of the MCP tool to call
         username: Student ID for authentication
         password: Schoology password for authentication
+
+    NOTE: Uses call_mcp_tool_with_timeout to prevent hanging on slow MCP calls.
+          MCP first call takes ~30s (browser launch). If timeout, returns mock data.
     """
     import sys
     print(f"[DEBUG] get_data_from_mcp_or_mock called: tool={tool_name}, username={username}", file=sys.stderr)
-    data = call_mcp_tool(tool_name, username=username, password=password)
+
+    # Use timeout version to prevent blocking
+    data = call_mcp_tool_with_timeout(tool_name, username=username, password=password, timeout_seconds=90)
     print(f"[DEBUG] MCP returned: {type(data).__name__} = {data!r:.200}" if data else f"[DEBUG] MCP returned None", file=sys.stderr)
 
     # Check for error in CallToolResult
@@ -244,6 +249,12 @@ def health():
         'timestamp': datetime.now().isoformat(),
         'mcp_available': os.path.exists(VENV_PYTHON) and os.path.exists(SERVER_PY)
     })
+
+
+@app.route('/api/ready')
+def ready():
+    """Simple readiness check - returns immediately without calling MCP."""
+    return jsonify({'ready': True, 'message': 'Server is running'})
 
 
 @app.route('/api/grades')

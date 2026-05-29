@@ -113,7 +113,7 @@
     </div>
   </div>
 
-  <div id="appLoading" class="app-loading">
+  <div id="appLoading" class="app-loading hidden">
     <div class="loading-content">
       <div class="loading-spinner">
         <svg width="130" height="130" viewBox="0 0 130 130" fill="none" xmlns="http://www.w3.org/2000/svg" class="spinner-svg">
@@ -575,7 +575,16 @@
       // Immediately update to 10% to show loading started
       if (loadingPercent) loadingPercent.textContent = '10%';
       if (loadingBarFill) loadingBarFill.style.width = '10%';
-      if (loadingText) loadingText.textContent = 'Starting...';
+      if (loadingText) loadingText.textContent = 'Connecting to MCP server...';
+
+      // Show progress while waiting for MCP
+      let progressPercent = 10;
+      const progressInterval = setInterval(() => {
+        progressPercent = Math.min(progressPercent + 5, 40);
+        if (loadingPercent) loadingPercent.textContent = progressPercent + '%';
+        if (loadingBarFill) loadingBarFill.style.width = progressPercent + '%';
+        if (loadingText) loadingText.textContent = 'Loading data... (may take up to 60s)';
+      }, 2000);
 
       console.log('[DEBUG] Initial state set. demoMode:', state.demoMode);
 
@@ -585,6 +594,11 @@
         if (loadingBarFill) loadingBarFill.style.width = percent + '%';
         if (loadingText && text) loadingText.textContent = text;
       }
+
+      // Clear progress interval when fetch completes
+      const clearProgressInterval = () => {
+        if (progressInterval) clearInterval(progressInterval);
+      };
 
       // Fallback: if we're still on loading screen after 30 seconds, force show app
       setTimeout(() => {
@@ -615,6 +629,7 @@
         updateLoading(40, 'Loading');
         console.log('[DEBUG] Calling fetchRealData...');
         fetchRealData().then(() => {
+          clearProgressInterval();
           console.log('[DEBUG] fetchRealData resolved');
           updateLoading(100, 'Done');
           setTimeout(() => {
@@ -622,8 +637,16 @@
             finishShowApp();
           }, 300);
         }).catch((e) => {
+          clearProgressInterval();
           console.error('[DEBUG] fetchRealData rejected:', e);
-          updateLoading(100, 'Done');
+          const errMsg = e.message || String(e);
+          if (errMsg.includes('entity.too.large') || errMsg.includes('body too large') || errMsg.includes('maxBodySize')) {
+            state.connectionError = 'Server returned too much data. Try clearing your session.';
+          } else {
+            state.connectionError = `Cannot reach API server: ${errMsg}`;
+          }
+          renderConnectionError();
+          updateLoading(100, 'Error');
           setTimeout(() => {
             if (appLoading) appLoading.classList.add('hidden');
             finishShowApp();
@@ -641,12 +664,15 @@
       document.getElementById('connectionStatus').textContent = state.demoMode ? 'Demo Mode' : 'Connected';
       document.getElementById('settingsUsername').textContent = state.username;
 
-      // Render all sections
-      renderGradesOverview();
-      renderAssignmentsOverview();
-      renderGradesList();
-      renderAssignmentsList();
-      renderActivityList();
+      // Only render data sections if there's no connection error
+      if (!state.connectionError) {
+        // Render all sections
+        renderGradesOverview();
+        renderAssignmentsOverview();
+        renderGradesList();
+        renderAssignmentsList();
+        renderActivityList();
+      }
     }
 
     // Base64 encoding that handles Unicode characters
@@ -670,11 +696,17 @@
       console.log('[DEBUG] fetchRealData starting, apiUrl:', apiUrl);
 
       try {
-        const credentials = JSON.parse(localStorage.getItem('schoology_credentials') || '{}');
-        console.log('[DEBUG] credentials found:', !!credentials.username, 'password stored:', !!credentials.password);
-        const storedPassword = state.schoologyPassword || credentials.password || '';
-        console.log('[DEBUG] storedPassword length:', storedPassword.length);
-        const authHeader = credentials.username ? 'Basic ' + base64Encode(credentials.username + ':' + storedPassword) : '';
+        // Get credentials from localStorage (set during handleLogin)
+        const storedCreds = localStorage.getItem('schoology_credentials');
+        const creds = storedCreds ? JSON.parse(storedCreds) : {};
+        console.log('[DEBUG] credentials from localStorage:', !!creds.username, 'password stored:', !!creds.password);
+
+        // Use password from localStorage (the one stored during login)
+        // Don't rely on state.schoologyPassword which isn't restored from sessionStorage
+        const password = creds.password || '';
+        console.log('[DEBUG] password length:', password.length);
+
+        const authHeader = creds.username ? 'Basic ' + base64Encode(creds.username + ':' + password) : '';
         console.log('[DEBUG] authHeader present:', !!authHeader);
 
         const headers = {};
@@ -682,11 +714,17 @@
 
         console.log('[DEBUG] fetching grades from:', `${apiUrl}/api/grades`);
 
+        // MCP is slow - first call takes ~30s because it launches a browser
+        // Use a long timeout and show progress
         let gradesData, coursesData, assignmentsData, postsData;
 
-        // Fetch grades first - if this fails, don't continue
+        // Fetch grades first - this is the slowest call as it launches the browser
         try {
-          const gradesRes = await fetch(`${apiUrl}/api/grades`, { headers });
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for MCP
+          console.log('[DEBUG] MCP call starting (may take 30+ seconds)...');
+          const gradesRes = await fetch(`${apiUrl}/api/grades`, { headers, signal: controller.signal });
+          clearTimeout(timeoutId);
           console.log('[DEBUG] gradesRes.status:', gradesRes.status);
           if (!gradesRes.ok) {
             const errText = await gradesRes.text().catch(() => '');
@@ -694,9 +732,13 @@
             throw new Error(`Grades server error: ${gradesRes.status}`);
           }
           gradesData = await gradesRes.json();
+          console.log('[DEBUG] grades fetched successfully');
         } catch (e) {
-          if (e.message && e.message.includes('Grades server error')) throw e;
-          throw new Error(`Cannot fetch grades: ${e.message}`);
+          console.error('[DEBUG] grades fetch failed:', e.message);
+          if (e.name === 'AbortError' || e.message.includes('timeout') || e.message.includes('Timeout')) {
+            throw new Error('MCP server timed out (60s). Try Demo Mode or wait and retry.');
+          }
+          throw e;
         }
 
         // Fetch remaining data
@@ -1332,7 +1374,17 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
 
     // Init
     initDarkMode(); // Apply dark mode before anything renders
-    checkSession();
+
+    // Check for returning session (don't auto-login on fresh page load)
+    const session = sessionStorage.getItem('schoology_session');
+    if (!session) {
+      // No session - show landing page (default visibility)
+      console.log('[DEBUG] No session found - landing page will be shown');
+    } else {
+      // Has session - restore it
+      console.log('[DEBUG] Session found - restoring');
+      checkSession();
+    }
     loadSettings();
 
     // Typewriter animation
