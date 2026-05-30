@@ -39,6 +39,13 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 
+# Read credentials from environment (passed by Flask proxy) and set runtime credentials
+_runtime_user = os.environ.get("SCHOOLOGY_USERNAME", "")
+_runtime_pass = os.environ.get("SCHOOLOGY_PASSWORD", "")
+if _runtime_user:
+    config.set_runtime_credentials(_runtime_user, _runtime_pass)
+    log.info("Runtime credentials set for user: %s", _runtime_user)
+
 client = SchoologyClient()
 
 
