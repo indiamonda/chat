@@ -577,14 +577,12 @@
       if (loadingBarFill) loadingBarFill.style.width = '10%';
       if (loadingText) loadingText.textContent = 'Connecting to MCP server...';
 
-      // Show progress while waiting for MCP
-      let progressPercent = 10;
+      // Track elapsed seconds
+      const startTime = Date.now();
       const progressInterval = setInterval(() => {
-        progressPercent = Math.min(progressPercent + 5, 40);
-        if (loadingPercent) loadingPercent.textContent = progressPercent + '%';
-        if (loadingBarFill) loadingBarFill.style.width = progressPercent + '%';
-        if (loadingText) loadingText.textContent = 'Loading data... (may take up to 60s)';
-      }, 2000);
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        if (loadingText) loadingText.textContent = `Loading... ${elapsed}s elapsed`;
+      }, 1000);
 
       console.log('[DEBUG] Initial state set. demoMode:', state.demoMode);
 
@@ -600,7 +598,7 @@
         if (progressInterval) clearInterval(progressInterval);
       };
 
-      // Fallback: if we're still on loading screen after 30 seconds, force show app
+      // Fallback: if we're still on loading screen after 120 seconds (matches MCP timeout), force show app with error
       setTimeout(() => {
         const stillLoading = document.getElementById('appLoading');
         if (stillLoading && !stillLoading.classList.contains('hidden')) {
@@ -608,7 +606,7 @@
           stillLoading.classList.add('hidden');
           finishShowApp();
         }
-      }, 30000);
+      }, 120000);
 
       // Load data - demo mode uses local data, otherwise fetch from MCP
       if (state.demoMode) {
@@ -721,7 +719,7 @@
         // Fetch grades first - this is the slowest call as it launches the browser
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout for MCP
+          const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout for MCP
           console.log('[DEBUG] MCP call starting (may take 30+ seconds)...');
           const gradesRes = await fetch(`${apiUrl}/api/grades`, { headers, signal: controller.signal });
           clearTimeout(timeoutId);
@@ -736,7 +734,7 @@
         } catch (e) {
           console.error('[DEBUG] grades fetch failed:', e.message);
           if (e.name === 'AbortError' || e.message.includes('timeout') || e.message.includes('Timeout')) {
-            throw new Error('MCP server timed out (60s). Try Demo Mode or wait and retry.');
+            throw new Error('MCP server timed out (120s). Try Demo Mode or wait and retry.');
           }
           throw e;
         }

@@ -102,7 +102,7 @@ def call_mcp_tool(tool_name, username=None, password=None, arguments=None):
         return None
 
 
-def call_mcp_tool_with_timeout(tool_name, username=None, password=None, timeout_seconds=60):
+def call_mcp_tool_with_timeout(tool_name, username=None, password=None, timeout_seconds=120):
     """Call MCP with timeout to prevent hanging."""
     import sys
     import traceback
@@ -188,7 +188,7 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
     print(f"[DEBUG] get_data_from_mcp_or_mock called: tool={tool_name}, username={username}", file=sys.stderr)
 
     # Use timeout version to prevent blocking
-    data = call_mcp_tool_with_timeout(tool_name, username=username, password=password, timeout_seconds=90)
+    data = call_mcp_tool_with_timeout(tool_name, username=username, password=password, timeout_seconds=120)
     print(f"[DEBUG] MCP returned: {type(data).__name__} = {data!r:.200}" if data else f"[DEBUG] MCP returned None", file=sys.stderr)
 
     # Check for error in CallToolResult
