@@ -81,13 +81,16 @@ class MCPConnectionPool:
             env=env
         )
 
-        stdio_transport = await stdio_client(server_params)
+        # stdio_client returns an async context manager yielding (read_stream, write_stream)
+        # We use __aenter__/__aexit__ manually so the transport lives beyond this method
+        stdio_gen = stdio_client(server_params)
+        stdio_transport = await stdio_gen.__aenter__()
         read_stream, write_stream = stdio_transport
         session = ClientSession(read_stream, write_stream)
         await session.initialize()
         print(f"[MCP POOL] Session initialized for {username}", file=sys.stderr)
-
-        return session, stdio_transport
+        # Store both session and the generator (for __aexit__ later)
+        return session, stdio_gen
 
     async def get_session(self, username: str, password: str):
         """Get or create a persistent session for the given user."""
