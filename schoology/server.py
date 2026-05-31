@@ -10,6 +10,7 @@ import asyncio
 import base64
 import os
 import sys
+import anyio
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
@@ -120,11 +121,20 @@ Each user gets one session. The session is one MCP process that handles multiple
             print(f"[MCP POOL] Session removed for {username}", file=sys.stderr)
 
     async def call_tool(self, tool_name: str, arguments: dict, username: str, password: str):
-        """Call a tool on the user's MCP session. Retries once if session is broken."""
+        """Call a tool on the user's MCP session. Uses CancelScope to limit time."""
         for attempt in (1, 2):
             session = await self.get_session(username, password)
             try:
-                result = await session.call_tool(tool_name, arguments or {})
+                with anyio.CancelScope(shield=True):
+                    async with anyio.move_on_after(150) as scope:
+                        result = await session.call_tool(tool_name, arguments or {})
+                        return result
+                if scope.cancelled:
+                    print(f"[MCP POOL] Tool call timed out for {username}", file=sys.stderr)
+                    self._sessions.pop(username, None)
+                    if attempt == 1:
+                        continue  # Retry once
+                    return None
                 return result
             except GeneratorExit:
                 # MCP server exited after completing the tool
