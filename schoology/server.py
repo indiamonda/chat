@@ -80,13 +80,17 @@ class MCPConnectionPool:
             env=env
         )
 
-        # stdio_client is an async context manager - use 'async with' to enter and exit properly
-        async with stdio_client(server_params) as stdio_transport:
-            read_stream, write_stream = stdio_transport
-            session = ClientSession(read_stream, write_stream)
-            await session.initialize()
-            print(f"[MCP POOL] MCP process initialized for {username}", file=sys.stderr)
-            return session
+        # stdio_client is an async generator context manager. We call __aenter__ to enter,
+        # use the session, but DON'T call __aexit__ here - the caller holds the generator
+        # and will call __aexit__ when done. This keeps the MCP process alive.
+        stdio_gen = stdio_client(server_params)
+        stdio_transport = await stdio_gen.__aenter__()
+        read_stream, write_stream = stdio_transport
+        session = ClientSession(read_stream, write_stream)
+        await session.initialize()
+        print(f"[MCP POOL] MCP process initialized for {username}", file=sys.stderr)
+        # Return both session and generator - caller must call gen.__aexit__() when done
+        return session, stdio_gen
 
     async def get_session(self, username: str, password: str):
         """Get or create a session for the given user.
@@ -96,21 +100,26 @@ Each user gets one session. The session is one MCP process that handles multiple
         async with self._lock:
             if username not in self._sessions:
                 print(f"[MCP POOL] No existing session for {username}, creating...", file=sys.stderr)
-                session = await self._create_session(username, password)
-                self._sessions[username] = (session, password)
+                session, stdio_gen = await self._create_session(username, password)
+                self._sessions[username] = (session, password, stdio_gen)
                 print(f"[MCP POOL] Session created and cached for {username}", file=sys.stderr)
             else:
                 print(f"[MCP POOL] Reusing existing session for {username}", file=sys.stderr)
 
-            session, stored_password = self._sessions[username]
+            session, stored_password, stdio_gen = self._sessions[username]
 
             # If password changed, close old session and create new one
             if password and stored_password != password:
                 print(f"[MCP POOL] Password changed for {username}, recreating session...", file=sys.stderr)
                 if username in self._sessions:
-                    self._sessions.pop(username, None)
-                session = await self._create_session(username, password)
-                self._sessions[username] = (session, password)
+                    old_session, old_password, old_gen = self._sessions.pop(username, None)
+                    if old_gen:
+                        try:
+                            await old_gen.__aexit__(None, None, None)
+                        except Exception:
+                            pass
+                session, stdio_gen = await self._create_session(username, password)
+                self._sessions[username] = (session, password, stdio_gen)
 
             return session
 
@@ -121,20 +130,11 @@ Each user gets one session. The session is one MCP process that handles multiple
             print(f"[MCP POOL] Session removed for {username}", file=sys.stderr)
 
     async def call_tool(self, tool_name: str, arguments: dict, username: str, password: str):
-        """Call a tool on the user's MCP session. Uses CancelScope to limit time."""
+        """Call a tool on the user's MCP session. Retries once if session is broken."""
         for attempt in (1, 2):
             session = await self.get_session(username, password)
             try:
-                with anyio.CancelScope(shield=True):
-                    async with anyio.move_on_after(150) as scope:
-                        result = await session.call_tool(tool_name, arguments or {})
-                        return result
-                if scope.cancelled:
-                    print(f"[MCP POOL] Tool call timed out for {username}", file=sys.stderr)
-                    self._sessions.pop(username, None)
-                    if attempt == 1:
-                        continue  # Retry once
-                    return None
+                result = await session.call_tool(tool_name, arguments or {})
                 return result
             except GeneratorExit:
                 # MCP server exited after completing the tool
