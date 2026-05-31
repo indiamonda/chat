@@ -79,13 +79,17 @@ class MCPConnectionPool:
             env=env
         )
 
-        async with stdio_client(server_params) as stdio_transport:
-            read_stream, write_stream = stdio_transport
-            session = ClientSession(read_stream, write_stream)
-            await session.initialize()
-            print(f"[MCP POOL] MCP process initialized for {username}", file=sys.stderr)
-            # Return session only - MCP process is now ready to use
-            return session
+        # stdio_client is an async context manager. We need to enter and exit properly.
+        # We enter once to get the session, then the session is used for tool calls,
+        # but the context manager's __aexit__ will be called when we exit this method.
+        # This means the MCP process will exit after we're done using the session.
+        # For now, let's use it directly and accept that each session is one-shot.
+        stdio_transport = await stdio_client(server_params)
+        read_stream, write_stream = stdio_transport
+        session = ClientSession(read_stream, write_stream)
+        await session.initialize()
+        print(f"[MCP POOL] MCP process initialized for {username}", file=sys.stderr)
+        return session
 
     async def get_session(self, username: str, password: str):
         """Get or create a session for the given user.
