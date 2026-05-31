@@ -120,23 +120,27 @@ Each user gets one session. The session is one MCP process that handles multiple
             print(f"[MCP POOL] Session removed for {username}", file=sys.stderr)
 
     async def call_tool(self, tool_name: str, arguments: dict, username: str, password: str):
-        """Call a tool on the user's MCP session."""
-        session = await self.get_session(username, password)
-        try:
-            result = await session.call_tool(tool_name, arguments or {})
-            return result
-        except GeneratorExit:
-            # MCP server subprocess exited (not an error, just the process ended)
-            print(f"[MCP POOL] MCP server exited for {username}", file=sys.stderr)
-            if username in self._sessions:
+        """Call a tool on the user's MCP session. Retries once if session is broken."""
+        for attempt in (1, 2):
+            session = await self.get_session(username, password)
+            try:
+                result = await session.call_tool(tool_name, arguments or {})
+                return result
+            except GeneratorExit:
+                # MCP server exited after completing the tool
+                print(f"[MCP POOL] MCP server exited for {username}", file=sys.stderr)
                 self._sessions.pop(username, None)
-            return None
-        except Exception as e:
-            print(f"[MCP POOL] Tool call failed for {username}: {e}", file=sys.stderr)
-            # Session broken - just remove it, don't try to cleanup (process exits on its own)
-            if username in self._sessions:
+                if attempt == 1:
+                    print(f"[MCP POOL] Retrying with fresh MCP process for {username}", file=sys.stderr)
+                    continue  # Retry once with a new session
+                return None
+            except Exception as e:
+                print(f"[MCP POOL] Tool call failed for {username}: {e}", file=sys.stderr)
                 self._sessions.pop(username, None)
-            return None  # Don't re-raise, return None for graceful degradation
+                if attempt == 1:
+                    print(f"[MCP POOL] Retrying with fresh session for {username}", file=sys.stderr)
+                    continue  # Retry once with a new session
+                return None  # Give up after second failure
 
     def close_all(self):
         """Close all sessions. Call on app shutdown."""
