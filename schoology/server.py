@@ -75,18 +75,17 @@ class MCPConnectionPool:
                 args=[SERVER_PY],
                 env=env
             )
+            result = None
             try:
                 async with stdio_client(server_params) as stdio_transport:
                     read_stream, write_stream = stdio_transport
                     session = ClientSession(read_stream, write_stream)
                     await session.initialize()
                     result = await session.call_tool(tool_name, arguments or {})
-                    return result
             except BaseException as e:
-                # MCP server exited or had errors - return None
-                # The async with __aexit__ may raise BaseExceptionGroup, catch it
+                # MCP server exited or had errors - return what we got (may be None)
                 print(f"[MCP] MCP call finished with {type(e).__name__}: {e}", file=sys.stderr)
-                return None
+            return result
 
 
 # Singleton pool instance
