@@ -118,7 +118,8 @@ class MCPConnectionPool:
             try:
                 await exit_stack.aclose()
             except Exception as e:
-                print(f"[MCP POOL] Error closing session for {username}: {e}", file=sys.stderr)
+                # MCP server process exited - ignore cleanup errors
+                print(f"[MCP POOL] Session cleanup error (ignored): {e}", file=sys.stderr)
 
     async def call_tool(self, tool_name: str, arguments: dict, username: str, password: str):
         """Call a tool on the user's persistent MCP session."""
@@ -128,13 +129,9 @@ class MCPConnectionPool:
             return result
         except Exception as e:
             print(f"[MCP POOL] Tool call failed for {username}: {e}", file=sys.stderr)
-            # Session is broken - force kill the MCP process via exit_stack
+            # Session broken - just remove it, don't try to cleanup (process exits on its own)
             if username in self._sessions:
-                _, old_stack, _ = self._sessions.pop(username)
-                try:
-                    await old_stack.aclose()
-                except Exception:
-                    pass
+                self._sessions.pop(username, None)
             return None  # Don't re-raise, return None for graceful degradation
 
     def close_all(self):
