@@ -134,7 +134,7 @@ Each user gets one session. The session is one MCP process that handles multiple
         for attempt in (1, 2):
             session, stdio_gen = None, None
             try:
-                session = await self.get_session(username, password)
+                session, stdio_gen = await self.get_session(username, password)
                 result = await session.call_tool(tool_name, arguments or {})
                 return result
             except GeneratorExit:
