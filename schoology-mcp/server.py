@@ -7,9 +7,15 @@ Run directly:  python server.py   (communicates over stdio)
 """
 
 import logging
+import os
 import re
 import sys
+from pathlib import Path
 from contextlib import asynccontextmanager
+
+# Add the package directory to sys.path so local schoology_mcp is found
+_SCHOOLOGY_MCP_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(_SCHOOLOGY_MCP_DIR))
 
 from mcp.server.fastmcp import FastMCP
 
@@ -38,6 +44,7 @@ logging.basicConfig(
     stream=sys.stderr,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
+log = logging.getLogger(__name__)
 
 # Read credentials from environment (passed by Flask proxy) and set runtime credentials
 _runtime_user = os.environ.get("SCHOOLOGY_USERNAME", "")

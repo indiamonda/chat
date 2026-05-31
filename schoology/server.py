@@ -218,20 +218,9 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
         print(f"[DEBUG] Returning raw data (not a recognized dict), falling back to mock", file=sys.stderr)
         data = None
 
-    print(f"[DEBUG] MCP failed, returning mock data for {tool_name}", file=sys.stderr)
-    mock = get_mock_data()
-    # Map tool names to mock keys: get_upcoming_assignments -> assignments
-    key_map = {
-        'get_grades': 'grades',
-        'get_courses': 'courses',
-        'get_upcoming_assignments': 'assignments',
-        'get_recent_posts': 'posts'
-    }
-    key = key_map.get(tool_name, tool_name.replace('get_', '').replace('_', ''))
-    mock_data = mock.get(key, [])
-
-    # Return mock data with _mock flag so frontend knows MCP is not connected
-    return {'_mock': True, key: mock_data}
+    print(f"[DEBUG] MCP failed for {tool_name}, returning error response", file=sys.stderr)
+    # Return error response WITHOUT mock data - frontend should show error state, not demo info
+    return {'_error': True, 'message': f'MCP call failed for {tool_name}'}
 
 
 @app.route('/')

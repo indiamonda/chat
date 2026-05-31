@@ -820,3 +820,10 @@ export default {
   },
 };
 ```
+
+
+
+
+# User inserted memory
+
+When failing to reach for schoology data, DO NOT USE DEMO INFORMATION UNLESS IS IN THE DEMO MODE!!!!!!!!
