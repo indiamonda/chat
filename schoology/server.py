@@ -134,8 +134,9 @@ Each user gets one session. The session is one MCP process that handles multiple
                     print(f"[MCP POOL] Retrying with fresh MCP process for {username}", file=sys.stderr)
                     continue  # Retry once with a new session
                 return None
-            except Exception as e:
-                print(f"[MCP POOL] Tool call failed for {username}: {e}", file=sys.stderr)
+            except BaseException as e:
+                # Catches Exception, BaseExceptionGroup, GeneratorExit, etc.
+                print(f"[MCP POOL] Tool call failed for {username}: {type(e).__name__}: {e}", file=sys.stderr)
                 self._sessions.pop(username, None)
                 if attempt == 1:
                     print(f"[MCP POOL] Retrying with fresh session for {username}", file=sys.stderr)
@@ -170,10 +171,8 @@ async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, use
         result = await _mcp_pool.call_tool(tool_name, arguments, username, password)
         print(f"[MCP POOL] MCP tool {tool_name} returned: {type(result).__name__}", file=sys.stderr)
         return result
-    except Exception as e:
-        print(f"[MCP POOL] MCP call failed: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
+    except BaseException as e:
+        print(f"[MCP POOL] MCP call failed: {type(e).__name__}: {e}", file=sys.stderr)
         return None
 
 
