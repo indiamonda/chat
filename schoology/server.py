@@ -127,6 +127,12 @@ class MCPConnectionPool:
         try:
             result = await session.call_tool(tool_name, arguments or {})
             return result
+        except GeneratorExit:
+            # MCP server subprocess exited (not an error, just the process ended)
+            print(f"[MCP POOL] MCP server exited for {username}", file=sys.stderr)
+            if username in self._sessions:
+                self._sessions.pop(username, None)
+            return None
         except Exception as e:
             print(f"[MCP POOL] Tool call failed for {username}: {e}", file=sys.stderr)
             # Session broken - just remove it, don't try to cleanup (process exits on its own)
