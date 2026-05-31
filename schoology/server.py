@@ -79,13 +79,13 @@ class MCPConnectionPool:
             env=env
         )
 
-        stdio_transport = await stdio_client(server_params)
-        read_stream, write_stream = stdio_transport
-        session = ClientSession(read_stream, write_stream)
-        await session.initialize()
-        print(f"[MCP POOL] MCP process initialized for {username}", file=sys.stderr)
-
-        return session
+        async with stdio_client(server_params) as stdio_transport:
+            read_stream, write_stream = stdio_transport
+            session = ClientSession(read_stream, write_stream)
+            await session.initialize()
+            print(f"[MCP POOL] MCP process initialized for {username}", file=sys.stderr)
+            # Return session only - MCP process is now ready to use
+            return session
 
     async def get_session(self, username: str, password: str):
         """Get or create a session for the given user.
