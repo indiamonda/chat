@@ -745,21 +745,30 @@
           console.log('[DEBUG] coursesRes.status:', coursesRes.status);
           if (!coursesRes.ok) throw new Error(`Courses server error: ${coursesRes.status}`);
           coursesData = await coursesRes.json();
-        } catch (e) { coursesData = { _mock: true, courses: [] }; }
+        } catch (e) { throw new Error(`Courses fetch failed: ${e.message}`); }
 
         try {
           const assignmentsRes = await fetch(`${apiUrl}/api/assignments`, { headers });
           console.log('[DEBUG] assignmentsRes.status:', assignmentsRes.status);
           if (!assignmentsRes.ok) throw new Error(`Assignments server error: ${assignmentsRes.status}`);
           assignmentsData = await assignmentsRes.json();
-        } catch (e) { assignmentsData = { _mock: true, assignments: [] }; }
+        } catch (e) { throw new Error(`Assignments fetch failed: ${e.message}`); }
 
         try {
           const postsRes = await fetch(`${apiUrl}/api/posts`, { headers });
           console.log('[DEBUG] postsRes.status:', postsRes.status);
           if (!postsRes.ok) throw new Error(`Posts server error: ${postsRes.status}`);
           postsData = await postsRes.json();
-        } catch (e) { postsData = { _mock: true, posts: [] }; }
+        } catch (e) { throw new Error(`Posts fetch failed: ${e.message}`); }
+
+        // Check for MCP errors first - don't use mock data in real mode
+        if (gradesData._error || coursesData._error || assignmentsData._error || postsData._error) {
+          const errMsg = gradesData._error ? gradesData.message :
+                        coursesData._error ? coursesData.message :
+                        assignmentsData._error ? assignmentsData.message :
+                        postsData.message;
+          throw new Error(errMsg || 'MCP server error');
+        }
 
         if (gradesData._mock) state.grades = gradesData.grades || [];
         else if (Array.isArray(gradesData)) state.grades = gradesData;
