@@ -58,35 +58,35 @@ class MCPConnectionPool:
             cls._instance = cls()
         return cls._instance
 
-    async def _create_session(self, username: str, password: str):
-        """Create a new MCP session - spawns a fresh MCP process."""
+    async def call_tool(self, tool_name: str, arguments: dict, username: str, password: str):
+        """Call a tool - spawns a fresh MCP process."""
         from mcp.client.session import ClientSession
         from mcp.client.stdio import StdioServerParameters
         from mcp import stdio_client
 
-        env = {**os.environ.copy()}
-        env['SCHOOLOGY_USERNAME'] = username
-        if password:
-            env['SCHOOLOGY_PASSWORD'] = password
-
-        server_params = StdioServerParameters(
-            command=VENV_PYTHON,
-            args=[SERVER_PY],
-            env=env
-        )
-
-        async with stdio_client(server_params) as stdio_transport:
-            read_stream, write_stream = stdio_transport
-            session = ClientSession(read_stream, write_stream)
-            await session.initialize()
-            return session
-
-    async def call_tool(self, tool_name: str, arguments: dict, username: str, password: str):
-        """Call a tool - spawns a fresh MCP process."""
         async with self._lock:
-            session = await self._create_session(username, password)
-            result = await session.call_tool(tool_name, arguments or {})
-            return result
+            env = {**os.environ.copy()}
+            env['SCHOOLOGY_USERNAME'] = username
+            if password:
+                env['SCHOOLOGY_PASSWORD'] = password
+
+            server_params = StdioServerParameters(
+                command=VENV_PYTHON,
+                args=[SERVER_PY],
+                env=env
+            )
+            try:
+                async with stdio_client(server_params) as stdio_transport:
+                    read_stream, write_stream = stdio_transport
+                    session = ClientSession(read_stream, write_stream)
+                    await session.initialize()
+                    result = await session.call_tool(tool_name, arguments or {})
+                    return result
+            except BaseException as e:
+                # MCP server exited or had errors - return None
+                # The async with __aexit__ may raise BaseExceptionGroup, catch it
+                print(f"[MCP] MCP call finished with {type(e).__name__}: {e}", file=sys.stderr)
+                return None
 
 
 # Singleton pool instance
