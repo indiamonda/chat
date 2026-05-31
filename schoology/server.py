@@ -11,7 +11,6 @@ import base64
 import os
 import sys
 from pathlib import Path
-from contextlib import AsyncExitStack
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -62,14 +61,13 @@ class MCPConnectionPool:
         return cls._instance
 
     async def _create_session(self, username: str, password: str):
-        """Create a new persistent MCP session for the user."""
+        """Create a new MCP session for the user - spawns a fresh MCP process."""
         from mcp.client.session import ClientSession
         from mcp.client.stdio import StdioServerParameters
         from mcp import stdio_client
 
-        print(f"[MCP POOL] Creating new session for {username}", file=sys.stderr)
+        print(f"[MCP POOL] Creating new MCP process for {username}", file=sys.stderr)
 
-        # Build env with credentials for the subprocess
         env = {**os.environ.copy()}
         env['SCHOOLOGY_USERNAME'] = username
         if password:
@@ -81,52 +79,49 @@ class MCPConnectionPool:
             env=env
         )
 
-        # stdio_client returns an async context manager yielding (read_stream, write_stream)
-        # We use __aenter__/__aexit__ manually so the transport lives beyond this method
-        stdio_gen = stdio_client(server_params)
-        stdio_transport = await stdio_gen.__aenter__()
+        stdio_transport = await stdio_client(server_params)
         read_stream, write_stream = stdio_transport
         session = ClientSession(read_stream, write_stream)
         await session.initialize()
-        print(f"[MCP POOL] Session initialized for {username}", file=sys.stderr)
-        # Store both session and the generator (for __aexit__ later)
-        return session, stdio_gen
+        print(f"[MCP POOL] MCP process initialized for {username}", file=sys.stderr)
+
+        return session
 
     async def get_session(self, username: str, password: str):
-        """Get or create a persistent session for the given user."""
+        """Get or create a session for the given user.
+
+Each user gets one session. The session is one MCP process that handles multiple tool calls.
+"""
         async with self._lock:
             if username not in self._sessions:
                 print(f"[MCP POOL] No existing session for {username}, creating...", file=sys.stderr)
-                session, exit_stack = await self._create_session(username, password)
-                self._sessions[username] = (session, exit_stack, password)
+                session = await self._create_session(username, password)
+                self._sessions[username] = (session, password)
                 print(f"[MCP POOL] Session created and cached for {username}", file=sys.stderr)
             else:
                 print(f"[MCP POOL] Reusing existing session for {username}", file=sys.stderr)
 
-            session, exit_stack, stored_password = self._sessions[username]
+            session, stored_password = self._sessions[username]
 
             # If password changed, close old session and create new one
             if password and stored_password != password:
                 print(f"[MCP POOL] Password changed for {username}, recreating session...", file=sys.stderr)
-                await self._close_session(username)
-                session, exit_stack = await self._create_session(username, password)
-                self._sessions[username] = (session, exit_stack, password)
+                if username in self._sessions:
+                    self._sessions.pop(username, None)
+                session = await self._create_session(username, password)
+                self._sessions[username] = (session, password)
 
-            return session, exit_stack
+            return session
 
     async def _close_session(self, username: str):
-        """Close a user's session."""
+        """Close a user's session by removing it from the pool."""
         if username in self._sessions:
-            session, exit_stack, _ = self._sessions.pop(username)
-            try:
-                await exit_stack.aclose()
-            except Exception as e:
-                # MCP server process exited - ignore cleanup errors
-                print(f"[MCP POOL] Session cleanup error (ignored): {e}", file=sys.stderr)
+            self._sessions.pop(username, None)
+            print(f"[MCP POOL] Session removed for {username}", file=sys.stderr)
 
     async def call_tool(self, tool_name: str, arguments: dict, username: str, password: str):
-        """Call a tool on the user's persistent MCP session."""
-        session, exit_stack = await self.get_session(username, password)
+        """Call a tool on the user's MCP session."""
+        session = await self.get_session(username, password)
         try:
             result = await session.call_tool(tool_name, arguments or {})
             return result
