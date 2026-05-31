@@ -121,7 +121,7 @@ Each user gets one session. The session is one MCP process that handles multiple
                 session, stdio_gen = await self._create_session(username, password)
                 self._sessions[username] = (session, password, stdio_gen)
 
-            return session
+            return session, stdio_gen
 
     async def _close_session(self, username: str):
         """Close a user's session by removing it from the pool."""
@@ -132,14 +132,20 @@ Each user gets one session. The session is one MCP process that handles multiple
     async def call_tool(self, tool_name: str, arguments: dict, username: str, password: str):
         """Call a tool on the user's MCP session. Retries once if session is broken."""
         for attempt in (1, 2):
-            session = await self.get_session(username, password)
+            session, stdio_gen = None, None
             try:
+                session = await self.get_session(username, password)
                 result = await session.call_tool(tool_name, arguments or {})
                 return result
             except GeneratorExit:
                 # MCP server exited after completing the tool
                 print(f"[MCP POOL] MCP server exited for {username}", file=sys.stderr)
                 self._sessions.pop(username, None)
+                if stdio_gen:
+                    try:
+                        await stdio_gen.__aexit__(None, None, None)
+                    except Exception:
+                        pass
                 if attempt == 1:
                     print(f"[MCP POOL] Retrying with fresh MCP process for {username}", file=sys.stderr)
                     continue  # Retry once with a new session
@@ -148,6 +154,11 @@ Each user gets one session. The session is one MCP process that handles multiple
                 # Catches Exception, BaseExceptionGroup, GeneratorExit, etc.
                 print(f"[MCP POOL] Tool call failed for {username}: {type(e).__name__}: {e}", file=sys.stderr)
                 self._sessions.pop(username, None)
+                if stdio_gen:
+                    try:
+                        await stdio_gen.__aexit__(None, None, None)
+                    except Exception:
+                        pass
                 if attempt == 1:
                     print(f"[MCP POOL] Retrying with fresh session for {username}", file=sys.stderr)
                     continue  # Retry once with a new session
