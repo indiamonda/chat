@@ -115,7 +115,7 @@ class MCPConnectionPool:
                 session, exit_stack = await self._create_session(username, password)
                 self._sessions[username] = (session, exit_stack, password)
 
-            return session
+            return session, exit_stack
 
     async def _close_session(self, username: str):
         """Close a user's session."""
@@ -128,15 +128,19 @@ class MCPConnectionPool:
 
     async def call_tool(self, tool_name: str, arguments: dict, username: str, password: str):
         """Call a tool on the user's persistent MCP session."""
-        session = await self.get_session(username, password)
+        session, exit_stack = await self.get_session(username, password)
         try:
             result = await session.call_tool(tool_name, arguments or {})
             return result
         except Exception as e:
             print(f"[MCP POOL] Tool call failed for {username}: {e}", file=sys.stderr)
-            # Session may be broken, remove it
+            # Session is broken - force kill the MCP process via exit_stack
             if username in self._sessions:
-                await self._close_session(username)
+                _, old_stack, _ = self._sessions.pop(username)
+                try:
+                    await old_stack.aclose()
+                except Exception:
+                    pass
             raise
 
     def close_all(self):
