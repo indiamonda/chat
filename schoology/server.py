@@ -81,19 +81,13 @@ class MCPConnectionPool:
             env=env
         )
 
-        # Use AsyncExitStack to properly manage async context managers
-        exit_stack = AsyncExitStack()
-        stdio_transport = await exit_stack.enter_async_context(
-            stdio_client(server_params)
-        )
+        stdio_transport = await stdio_client(server_params)
         read_stream, write_stream = stdio_transport
-        session = await exit_stack.enter_async_context(
-            ClientSession(read_stream, write_stream)
-        )
+        session = ClientSession(read_stream, write_stream)
         await session.initialize()
         print(f"[MCP POOL] Session initialized for {username}", file=sys.stderr)
 
-        return session, exit_stack
+        return session, stdio_transport
 
     async def get_session(self, username: str, password: str):
         """Get or create a persistent session for the given user."""
@@ -141,7 +135,7 @@ class MCPConnectionPool:
                     await old_stack.aclose()
                 except Exception:
                     pass
-            raise
+            return None  # Don't re-raise, return None for graceful degradation
 
     def close_all(self):
         """Close all sessions. Call on app shutdown."""
