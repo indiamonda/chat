@@ -2,6 +2,8 @@
 """
 Schoology MCP Frontend Server
 Bridges the web dashboard to the Schoology MCP server
+
+Keeps a persistent MCP server process per user to avoid browser launch overhead.
 """
 
 import asyncio
@@ -9,6 +11,7 @@ import base64
 import os
 import sys
 from pathlib import Path
+from contextlib import AsyncExitStack
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -37,8 +40,117 @@ def decode_auth_header():
         return None, None
 
 
+class MCPConnectionPool:
+    """Holds persistent MCP sessions, one per user.
+
+    Avoids spawning a new MCP process (and launching a new browser) for each request.
+    The first request for a user takes ~60s (cold browser start + ClassLink login).
+    Subsequent requests take ~3-5s (browser warm, session reused).
+    """
+
+    _instance = None
+
+    def __init__(self):
+        # username -> (session, exit_stack, credentials)
+        self._sessions: dict[str, tuple] = {}
+        self._lock = asyncio.Lock()
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    async def _create_session(self, username: str, password: str):
+        """Create a new persistent MCP session for the user."""
+        from mcp.client.session import ClientSession
+        from mcp.client.stdio import StdioServerParameters
+        from mcp import stdio_client
+
+        print(f"[MCP POOL] Creating new session for {username}", file=sys.stderr)
+
+        # Build env with credentials for the subprocess
+        env = {**os.environ.copy()}
+        env['SCHOOLOGY_USERNAME'] = username
+        if password:
+            env['SCHOOLOGY_PASSWORD'] = password
+
+        server_params = StdioServerParameters(
+            command=VENV_PYTHON,
+            args=[SERVER_PY],
+            env=env
+        )
+
+        # Use AsyncExitStack to properly manage async context managers
+        exit_stack = AsyncExitStack()
+        stdio_transport = await exit_stack.enter_async_context(
+            stdio_client(server_params)
+        )
+        read_stream, write_stream = stdio_transport
+        session = await exit_stack.enter_async_context(
+            ClientSession(read_stream, write_stream)
+        )
+        await session.initialize()
+        print(f"[MCP POOL] Session initialized for {username}", file=sys.stderr)
+
+        return session, exit_stack
+
+    async def get_session(self, username: str, password: str):
+        """Get or create a persistent session for the given user."""
+        async with self._lock:
+            if username not in self._sessions:
+                print(f"[MCP POOL] No existing session for {username}, creating...", file=sys.stderr)
+                session, exit_stack = await self._create_session(username, password)
+                self._sessions[username] = (session, exit_stack, password)
+                print(f"[MCP POOL] Session created and cached for {username}", file=sys.stderr)
+            else:
+                print(f"[MCP POOL] Reusing existing session for {username}", file=sys.stderr)
+
+            session, exit_stack, stored_password = self._sessions[username]
+
+            # If password changed, close old session and create new one
+            if password and stored_password != password:
+                print(f"[MCP POOL] Password changed for {username}, recreating session...", file=sys.stderr)
+                await self._close_session(username)
+                session, exit_stack = await self._create_session(username, password)
+                self._sessions[username] = (session, exit_stack, password)
+
+            return session
+
+    async def _close_session(self, username: str):
+        """Close a user's session."""
+        if username in self._sessions:
+            session, exit_stack, _ = self._sessions.pop(username)
+            try:
+                await exit_stack.aclose()
+            except Exception as e:
+                print(f"[MCP POOL] Error closing session for {username}: {e}", file=sys.stderr)
+
+    async def call_tool(self, tool_name: str, arguments: dict, username: str, password: str):
+        """Call a tool on the user's persistent MCP session."""
+        session = await self.get_session(username, password)
+        try:
+            result = await session.call_tool(tool_name, arguments or {})
+            return result
+        except Exception as e:
+            print(f"[MCP POOL] Tool call failed for {username}: {e}", file=sys.stderr)
+            # Session may be broken, remove it
+            if username in self._sessions:
+                await self._close_session(username)
+            raise
+
+    def close_all(self):
+        """Close all sessions. Call on app shutdown."""
+        for username in list(self._sessions.keys()):
+            asyncio.create_task(self._close_session(username))
+
+
+# Singleton pool instance
+_mcp_pool = MCPConnectionPool.get_instance()
+
+
 async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, username: str = None, password: str = None):
-    """Call a tool on the Schoology MCP server via stdio.
+    """Call a tool on the Schoology MCP server via the persistent session pool.
 
     Args:
         tool_name: Name of the MCP tool to call
@@ -46,45 +158,17 @@ async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, use
         username: Student ID for setting runtime credentials
         password: Schoology password for setting runtime credentials
     """
-    from mcp.client.session import ClientSession
-    from mcp.client.stdio import StdioServerParameters
-    from mcp import stdio_client
-    import sys
+    print(f"[MCP POOL] call_mcp_tool_async called: tool={tool_name}, username={username}", file=sys.stderr)
 
-    print(f"[MCP DEBUG] VENV_PYTHON={VENV_PYTHON}", file=sys.stderr)
-    print(f"[MCP DEBUG] SERVER_PY={SERVER_PY}", file=sys.stderr)
-    print(f"[MCP DEBUG] username={username}, password={'***' if password else None}", file=sys.stderr)
+    if not username:
+        raise ValueError("username is required")
 
     try:
-        cmd = [VENV_PYTHON, SERVER_PY]
-        print(f"[MCP DEBUG] Starting MCP with cmd: {cmd}", file=sys.stderr)
-
-        # Build env with credentials for the subprocess
-        env = None
-        if username or password:
-            env = {**os.environ.copy()}
-            if username:
-                env['SCHOOLOGY_USERNAME'] = username
-            if password:
-                env['SCHOOLOGY_PASSWORD'] = password
-
-        server_params = StdioServerParameters(
-            command=cmd[0],
-            args=[cmd[1]],
-            env=env
-        )
-
-        async with stdio_client(server_params) as (read, write):
-            print(f"[MCP DEBUG] MCP stdio connected", file=sys.stderr)
-            async with ClientSession(read, write) as session:
-                print(f"[MCP DEBUG] Initializing MCP session...", file=sys.stderr)
-                await session.initialize()
-                print(f"[MCP DEBUG] MCP session initialized", file=sys.stderr)
-                result = await session.call_tool(tool_name, arguments or {})
-                print(f"[MCP DEBUG] MCP tool {tool_name} returned: {type(result).__name__}", file=sys.stderr)
-                return result
+        result = await _mcp_pool.call_tool(tool_name, arguments, username, password)
+        print(f"[MCP POOL] MCP tool {tool_name} returned: {type(result).__name__}", file=sys.stderr)
+        return result
     except Exception as e:
-        print(f"MCP call failed: {e}", file=sys.stderr)
+        print(f"[MCP POOL] MCP call failed: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc(file=sys.stderr)
         return None
@@ -174,21 +258,22 @@ def get_mock_data():
 
 
 def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
-    """Try MCP first, fall back to mock data.
+    """Try MCP first, fall back to error response (no mock data).
 
     Args:
         tool_name: Name of the MCP tool to call
         username: Student ID for authentication
         password: Schoology password for authentication
 
-    NOTE: Uses call_mcp_tool_with_timeout to prevent hanging on slow MCP calls.
-          MCP first call takes ~30s (browser launch). If timeout, returns mock data.
+    NOTE: First call for a user takes ~90s (cold browser + ClassLink login on 512MB Fly.io).
+          Subsequent calls take ~3-5s (warm browser reuse).
     """
     import sys
     print(f"[DEBUG] get_data_from_mcp_or_mock called: tool={tool_name}, username={username}", file=sys.stderr)
 
-    # Use timeout version to prevent blocking
-    data = call_mcp_tool_with_timeout(tool_name, username=username, password=password, timeout_seconds=120)
+    # Use longer timeout for cold start (browser launch + ClassLink login on Fly.io 512MB)
+    # Warm requests typically complete in 3-5s
+    data = call_mcp_tool_with_timeout(tool_name, username=username, password=password, timeout_seconds=180)
     print(f"[DEBUG] MCP returned: {type(data).__name__} = {data!r:.200}" if data else f"[DEBUG] MCP returned None", file=sys.stderr)
 
     # Check for error in CallToolResult

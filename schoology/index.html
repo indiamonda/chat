@@ -577,11 +577,11 @@
       if (loadingBarFill) loadingBarFill.style.width = '10%';
       if (loadingText) loadingText.textContent = 'Connecting to MCP server...';
 
-      // Track elapsed seconds
+      // Track elapsed seconds (only show after 10s to avoid cluttering display)
       const startTime = Date.now();
       const progressInterval = setInterval(() => {
         const elapsed = Math.round((Date.now() - startTime) / 1000);
-        if (loadingText) loadingText.textContent = `Loading... ${elapsed}s elapsed`;
+        if (elapsed >= 10 && loadingText) loadingText.textContent = `Loading... ${elapsed}s elapsed`;
       }, 1000);
 
       console.log('[DEBUG] Initial state set. demoMode:', state.demoMode);
