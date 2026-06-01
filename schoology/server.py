@@ -77,17 +77,20 @@ class MCPConnectionPool:
             )
             result = None
             try:
+                print(f"[MCP] Creating stdio client...", file=sys.stderr)
                 async with stdio_client(server_params) as stdio_transport:
+                    print(f"[MCP] Stdio transport created, creating session...", file=sys.stderr)
                     read_stream, write_stream = stdio_transport
                     session = ClientSession(read_stream, write_stream)
+                    print(f"[MCP] Session created, initializing...", file=sys.stderr)
                     await session.initialize()
-                    print(f"[MCP] Calling tool {tool_name}...", file=sys.stderr)
+                    print(f"[MCP] Session initialized, calling tool {tool_name}...", file=sys.stderr)
                     result = await session.call_tool(tool_name, arguments or {})
                     print(f"[MCP] Tool {tool_name} returned result type={type(result).__name__}", file=sys.stderr)
             except BaseExceptionGroup as eg:
                 # ExceptionGroup from async generator cleanup - suppress it
                 # The actual result should already be captured in `result`
-                print(f"[MCP] ExceptionGroup suppressed, result={'set' if result else 'None'}", file=sys.stderr)
+                print(f"[MCP] ExceptionGroup raised! result={'set' if result else 'None'}", file=sys.stderr)
             except BaseException as e:
                 print(f"[MCP] MCP call failed with {type(e).__name__}: {e}", file=sys.stderr)
             print(f"[MCP] Returning result={type(result).__name__ if result else 'None'}", file=sys.stderr)
