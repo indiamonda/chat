@@ -54,14 +54,18 @@ def call_mcp_tool_with_timeout(tool_name, username=None, password=None, timeout_
 
     Returns the parsed JSON dict from the subprocess, or None on failure.
     """
+    import time
     request_payload = {
         "tool": tool_name,
         "username": username,
         "password": password,
         "arguments": {},
     }
+    print(f"[MCP] >>> {tool_name} start: user={username} timeout={timeout_seconds}s cmd={RUN_TOOL_PY}", file=sys.stderr)
+    start = time.monotonic()
 
     with _subprocess_lock:
+        print(f"[MCP] {tool_name} acquired subprocess lock at t+{time.monotonic()-start:.1f}s", file=sys.stderr)
         try:
             proc = subprocess.run(
                 [VENV_PYTHON, RUN_TOOL_PY],
@@ -72,31 +76,44 @@ def call_mcp_tool_with_timeout(tool_name, username=None, password=None, timeout_
                 env={**os.environ, "PYTHONUNBUFFERED": "1"},
             )
         except subprocess.TimeoutExpired as exc:
-            print(f"[MCP] {tool_name} timed out after {timeout_seconds}s for {username}", file=sys.stderr)
+            elapsed = time.monotonic() - start
+            print(f"[MCP] !!! {tool_name} TIMED OUT after {timeout_seconds}s ({elapsed:.1f}s wall) for {username}", file=sys.stderr)
             if exc.stderr:
-                for line in exc.stderr.splitlines()[-20:]:
+                print(f"[MCP] {tool_name} subprocess stderr on timeout (last 40 lines):", file=sys.stderr)
+                for line in exc.stderr.splitlines()[-40:]:
                     print(f"[tool] {line}", file=sys.stderr)
+            else:
+                print(f"[MCP] {tool_name} subprocess stderr on timeout: <empty>", file=sys.stderr)
             return None
         except Exception as exc:
-            print(f"[MCP] {tool_name} subprocess failed to start: {type(exc).__name__}: {exc}", file=sys.stderr)
+            print(f"[MCP] !!! {tool_name} subprocess failed to start: {type(exc).__name__}: {exc}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
             return None
 
+    elapsed = time.monotonic() - start
+    print(f"[MCP] <<< {tool_name} subprocess returned: rc={proc.returncode} t+{elapsed:.1f}s stdout_bytes={len(proc.stdout)} stderr_bytes={len(proc.stderr)}", file=sys.stderr)
+
     if proc.stderr:
-        # Forward tool-subprocess logs to our log for debugging
-        for line in proc.stderr.splitlines()[-20:]:
+        print(f"[MCP] {tool_name} subprocess stderr (last 40 lines):", file=sys.stderr)
+        for line in proc.stderr.splitlines()[-40:]:
             print(f"[tool] {line}", file=sys.stderr)
 
     if proc.returncode != 0 and not proc.stdout:
-        print(f"[MCP] {tool_name} exited {proc.returncode} with no stdout: stderr={proc.stderr[-500:]!r}", file=sys.stderr)
+        print(f"[MCP] {tool_name} exited {proc.returncode} with no stdout. stderr_tail={proc.stderr[-500:]!r}", file=sys.stderr)
         return None
 
     if not proc.stdout.strip():
-        print(f"[MCP] {tool_name} produced empty stdout. stderr={proc.stderr[-500:]!r}", file=sys.stderr)
+        print(f"[MCP] {tool_name} produced empty stdout. stderr_tail={proc.stderr[-500:]!r}", file=sys.stderr)
         return None
 
     try:
-        return json.loads(proc.stdout.strip().splitlines()[-1])
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        if isinstance(result, dict) and result.get('_error'):
+            print(f"[MCP] {tool_name} returned error from tool: {result.get('message', '?')!r}", file=sys.stderr)
+        else:
+            keys = list(result.keys()) if isinstance(result, dict) else type(result).__name__
+            print(f"[MCP] {tool_name} success t+{elapsed:.1f}s: keys={keys}", file=sys.stderr)
+        return result
     except Exception as exc:
         print(f"[MCP] {tool_name} returned unparseable JSON: {proc.stdout[:200]!r} ({exc})", file=sys.stderr)
         return None
@@ -172,7 +189,7 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
     # Use longer timeout for cold start (browser launch + ClassLink login on Fly.io 512MB)
     # Warm requests typically complete in 3-5s
     data = call_mcp_tool_with_timeout(tool_name, username=username, password=password, timeout_seconds=180)
-    print(f"[DEBUG] MCP returned: {type(data).__name__} = {data!r:.200}" if data else f"[DEBUG] MCP returned None", file=sys.stderr)
+    print(f"[DEBUG] MCP returned: {type(data).__name__} = {repr(data)[:300]}" if data else f"[DEBUG] MCP returned None", file=sys.stderr)
 
     # Check for error in CallToolResult
     if data is not None and hasattr(data, 'content') and isinstance(data.content, list):
