@@ -86,9 +86,10 @@ class MCPConnectionPool:
                 # ExceptionGroup from async generator cleanup - check if we got a result
                 # Sub-exceptions are typically BrokenResourceError/GeneratorExit from transport
                 sub_types = [type(e).__name__ for e in eg.exceptions]
-                sub_msgs = [str(e)[:100] for e in eg.exceptions]
+                sub_msgs = [str(e)[:200] for e in eg.exceptions]
                 print(f"[MCP] ExceptionGroup during cleanup ({len(eg.exceptions)} sub-exceptions), result={'set' if result else 'None'}, types={sub_types}", file=sys.stderr)
                 print(f"[MCP] Exception messages: {sub_msgs}", file=sys.stderr)
+                raise  # Re-raise after logging
             except BaseException as e:
                 print(f"[MCP] MCP call failed with {type(e).__name__}: {e}", file=sys.stderr)
             return result
