@@ -709,7 +709,8 @@
 
       const headers = getAuthHeader();
 
-      // Step 1: basic info. 60s timeout -- cold browser launch can take ~30-60s
+      // Step 1: basic info. 120s timeout -- cold browser launch + ClassLink
+      // login + first page load on 512MB can take ~90s end-to-end.
       try {
         await loadBasicInfo(apiUrl, headers);
       } catch (err) {
@@ -734,14 +735,14 @@
 
     async function loadBasicInfo(apiUrl, headers) {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 60_000);
-      console.log('[DEBUG] loadBasicInfo: 60s timeout, fetching /api/basic-info');
+      const timer = setTimeout(() => ctrl.abort(), 120_000);
+      console.log('[DEBUG] loadBasicInfo: 120s timeout, fetching /api/basic-info');
       let res;
       try {
         res = await fetch(`${apiUrl}/api/basic-info`, { headers, signal: ctrl.signal });
       } catch (e) {
         clearTimeout(timer);
-        if (e.name === 'AbortError') throw new Error('Timed out loading profile (60s).');
+        if (e.name === 'AbortError') throw new Error('Timed out loading profile (120s).');
         throw new Error(`Network error: ${e.message}`);
       }
       clearTimeout(timer);
