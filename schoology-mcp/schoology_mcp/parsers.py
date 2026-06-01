@@ -343,3 +343,79 @@ def parse_recent_posts(html, base_url, limit=20):
         if len(posts) >= limit:
             break
     return posts
+
+
+# --------------------------------------------------------------------------
+# Profile (name / grade / school)
+# --------------------------------------------------------------------------
+
+def parse_profile(html, base_url):
+    """Extract the student's name, grade level, and school from a profile page.
+
+    Schoology's profile page markup has changed across releases; we try
+    several selectors and fall back to text extraction. The returned dict
+    always has all three keys; missing values come back as None so the
+    dashboard can decide how to render the absence.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    name = (
+        _clean_text(soup.select_one("#main h1"))
+        or _clean_text(soup.select_one(".page-title"))
+        or _clean_text(soup.select_one(".user-info-name"))
+        or _clean_text(soup.select_one(".profile-name h1"))
+        or _clean_text(soup.select_one(".name-title"))
+    )
+    # Strip a leading "Profile of " or similar wrapper if present
+    if name and name.lower().startswith("profile of "):
+        name = name[len("profile of "):].strip() or None
+
+    grade = None
+    school = None
+    # The profile sidebar often has rows like "<th>Grade level</th><td>11</td>"
+    # and "<th>School</th><td>Palo Alto High School</td>". Walk the whole
+    # table to find them.
+    for table in soup.select("table"):
+        for th in table.find_all("th"):
+            label = _clean_text(th)
+            if not label:
+                continue
+            td = th.find_next_sibling("td")
+            value = _clean_text(td) if td else None
+            if not value:
+                continue
+            llabel = label.lower()
+            if grade is None and ("grade" in llabel or "grade level" in llabel):
+                grade = value
+            elif school is None and "school" in llabel:
+                school = value
+
+    # Some profile pages only put the school/grade in plain text -- try
+    # a last-ditch regex on the whole page.
+    if not school or not grade:
+        text = soup.get_text(" ", strip=True)
+
+    if not school:
+        # Common PAUSD schools -- match on display name
+        for known in (
+            "Palo Alto High School",
+            "Henry M. Gunn High School",
+            "JLS Middle School",
+            "Jane Lathrop Stanford Middle School",
+            "Frank S. Greene Middle School",
+        ):
+            if known in text:
+                school = known
+                break
+
+    if not grade:
+        import re
+        m = re.search(r"\bgrade\s*(\d{1,2})\b", text, re.IGNORECASE)
+        if m:
+            grade = m.group(1)
+        else:
+            m = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)\s+grade\b", text, re.IGNORECASE)
+            if m:
+                grade = m.group(1)
+
+    return {"name": name, "grade": grade, "school": school}

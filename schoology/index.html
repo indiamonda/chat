@@ -137,10 +137,31 @@
       </div>
       <div class="loading-text" id="loadingText">Loading</div>
     </div>
+
+    <div class="loading-error hidden" id="loadingError">
+      <div class="loading-error-icon">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <h2 class="loading-error-title">Could not connect to Schoology</h2>
+      <p class="loading-error-message" id="loadingErrorMessage">We couldn't load your student profile. Please try again.</p>
+      <button type="button" class="loading-refresh-btn" id="loadingRefreshBtn">Refresh</button>
+    </div>
   </div>
 
   <!-- App Container (shown after login) -->
   <div class="app-container" id="appContainer">
+    <!-- Global dashboard load progress bar (visible until all 4 background sections are loaded) -->
+    <div class="global-progress hidden" id="globalProgress">
+      <div class="global-progress-bar">
+        <div class="global-progress-bar-fill" id="globalProgressFill"></div>
+      </div>
+      <div class="global-progress-text" id="globalProgressText">Loading your data… 0/4</div>
+    </div>
+
     <!-- Dashboard Header -->
     <header class="dashboard-header" id="dashboardHeader">
       <div class="header-top">
@@ -313,11 +334,20 @@
       demoMode: false,
       sessionToken: null,
       username: null,
+      student: { name: null, grade: null, school: null },
       grades: [],
       assignments: [],
       posts: [],
+      courses: [],
       chatHistory: [],
-      uploadedFiles: []
+      uploadedFiles: [],
+      // Per-section load state for the staged loader:
+      //   'pending'  = enqueued, not yet started
+      //   'loading'  = fetch in flight
+      //   'ready'    = data populated, render done
+      //   'error'    = fetch failed, skeleton still shown
+      sectionStatus: { grades: 'pending', courses: 'pending', assignments: 'pending', posts: 'pending' },
+      loadedCount: 0
     };
 
     // Demo data
@@ -626,29 +656,29 @@
         }
         updateLoading(40, 'Loading');
         console.log('[DEBUG] Calling fetchRealData...');
+        // fetchRealData() now manages its own loading→shell→error transitions
+        // internally (basic-info 60s → shell + background loads, or error card).
+        // The .then()/.catch() below only handle cleanup of the indeterminate
+        // progress bar; we don't re-render the app here because the staged
+        // loader is already in flight.
         fetchRealData().then(() => {
           clearProgressInterval();
           console.log('[DEBUG] fetchRealData resolved');
           updateLoading(100, 'Done');
-          setTimeout(() => {
-            if (appLoading) appLoading.classList.add('hidden');
-            finishShowApp();
-          }, 300);
         }).catch((e) => {
           clearProgressInterval();
           console.error('[DEBUG] fetchRealData rejected:', e);
-          const errMsg = e.message || String(e);
+          // fetchRealData is now expected to handle its own errors via
+          // showLoadingError(); this catch is a safety net for unexpected
+          // throws (e.g. code bug).
+          const errMsg = (e && e.message) || String(e);
           if (errMsg.includes('entity.too.large') || errMsg.includes('body too large') || errMsg.includes('maxBodySize')) {
             state.connectionError = 'Server returned too much data. Try clearing your session.';
           } else {
             state.connectionError = `Cannot reach API server: ${errMsg}`;
           }
-          renderConnectionError();
+          showLoadingError(state.connectionError);
           updateLoading(100, 'Error');
-          setTimeout(() => {
-            if (appLoading) appLoading.classList.add('hidden');
-            finishShowApp();
-          }, 300);
         });
         console.log('[DEBUG] fetchRealData promise created');
       }
@@ -688,120 +718,231 @@
       }
     }
 
-    // Fetch real data from MCP server
+    // Staged loader: 1) basic-info (60s, name+grade+school) → shell + background loads
+    //                 2) /api/grades + /api/courses + /api/assignments + /api/posts in parallel
+    //                 3) on basic-info failure: show error card, do not render dashboard
     async function fetchRealData() {
       const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
       console.log('[DEBUG] fetchRealData starting, apiUrl:', apiUrl);
 
+      const headers = getAuthHeader();
+
+      // Step 1: basic info. 60s timeout -- cold browser launch can take ~30-60s
       try {
-        // Get credentials from localStorage (set during handleLogin)
-        const storedCreds = localStorage.getItem('schoology_credentials');
-        const creds = storedCreds ? JSON.parse(storedCreds) : {};
-        console.log('[DEBUG] credentials from localStorage:', !!creds.username, 'password stored:', !!creds.password);
+        await loadBasicInfo(apiUrl, headers);
+      } catch (err) {
+        console.error('[DEBUG] basic-info failed:', err);
+        const msg = (err && err.message) || 'Could not load profile';
+        showLoadingError(msg);
+        return;
+      }
 
-        // Use password from localStorage (the one stored during login)
-        // Don't rely on state.schoologyPassword which isn't restored from sessionStorage
-        const password = creds.password || '';
-        console.log('[DEBUG] password length:', password.length);
+      // Step 2: shell up; then fire the 4 background loads in parallel.
+      renderDashboardShell();
+      kickoffBackgroundLoads(apiUrl, headers);
+    }
 
-        const authHeader = creds.username ? 'Basic ' + base64Encode(creds.username + ':' + password) : '';
-        console.log('[DEBUG] authHeader present:', !!authHeader);
+    function getAuthHeader() {
+      const storedCreds = localStorage.getItem('schoology_credentials');
+      const creds = storedCreds ? JSON.parse(storedCreds) : {};
+      const password = creds.password || '';
+      if (!creds.username) return {};
+      return { 'Authorization': 'Basic ' + base64Encode(creds.username + ':' + password) };
+    }
 
-        const headers = {};
-        if (authHeader) headers['Authorization'] = authHeader;
-
-        console.log('[DEBUG] fetching grades from:', `${apiUrl}/api/grades`);
-
-        // MCP is slow - first call takes ~30s because it launches a browser
-        // Use a long timeout and show progress
-        let gradesData, coursesData, assignmentsData, postsData;
-
-        // Fetch grades first - this is the slowest call as it launches the browser
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout for MCP
-          console.log('[DEBUG] MCP call starting (may take 30+ seconds)...');
-          const gradesRes = await fetch(`${apiUrl}/api/grades`, { headers, signal: controller.signal });
-          clearTimeout(timeoutId);
-          console.log('[DEBUG] gradesRes.status:', gradesRes.status);
-          if (!gradesRes.ok) {
-            const errText = await gradesRes.text().catch(() => '');
-            console.error('[DEBUG] grades error:', gradesRes.status, errText);
-            throw new Error(`Grades server error: ${gradesRes.status}`);
-          }
-          gradesData = await gradesRes.json();
-          console.log('[DEBUG] grades fetched successfully');
-        } catch (e) {
-          console.error('[DEBUG] grades fetch failed:', e.message);
-          if (e.name === 'AbortError' || e.message.includes('timeout') || e.message.includes('Timeout')) {
-            throw new Error('MCP server timed out (120s). Try Demo Mode or wait and retry.');
-          }
-          throw e;
-        }
-
-        // Fetch remaining data
-        try {
-          const coursesRes = await fetch(`${apiUrl}/api/courses`, { headers });
-          console.log('[DEBUG] coursesRes.status:', coursesRes.status);
-          if (!coursesRes.ok) throw new Error(`Courses server error: ${coursesRes.status}`);
-          coursesData = await coursesRes.json();
-        } catch (e) { throw new Error(`Courses fetch failed: ${e.message}`); }
-
-        try {
-          const assignmentsRes = await fetch(`${apiUrl}/api/assignments`, { headers });
-          console.log('[DEBUG] assignmentsRes.status:', assignmentsRes.status);
-          if (!assignmentsRes.ok) throw new Error(`Assignments server error: ${assignmentsRes.status}`);
-          assignmentsData = await assignmentsRes.json();
-        } catch (e) { throw new Error(`Assignments fetch failed: ${e.message}`); }
-
-        try {
-          const postsRes = await fetch(`${apiUrl}/api/posts`, { headers });
-          console.log('[DEBUG] postsRes.status:', postsRes.status);
-          if (!postsRes.ok) throw new Error(`Posts server error: ${postsRes.status}`);
-          postsData = await postsRes.json();
-        } catch (e) { throw new Error(`Posts fetch failed: ${e.message}`); }
-
-        // Check for MCP errors first - don't use mock data in real mode
-        if (gradesData._error || coursesData._error || assignmentsData._error || postsData._error) {
-          const errMsg = gradesData._error ? gradesData.message :
-                        coursesData._error ? coursesData.message :
-                        assignmentsData._error ? assignmentsData.message :
-                        postsData.message;
-          throw new Error(errMsg || 'MCP server error');
-        }
-
-        if (gradesData._mock) state.grades = gradesData.grades || [];
-        else if (Array.isArray(gradesData)) state.grades = gradesData;
-        else state.grades = gradesData.grades || gradesData.courses || [];
-
-        if (coursesData._mock) state.courses = coursesData.courses || [];
-        else if (Array.isArray(coursesData)) state.courses = coursesData;
-        else state.courses = coursesData.courses || [];
-
-        if (assignmentsData._mock) state.assignments = assignmentsData.assignments || [];
-        else if (Array.isArray(assignmentsData)) state.assignments = assignmentsData;
-        else state.assignments = assignmentsData.assignments || [];
-
-        if (postsData._mock) state.posts = postsData.posts || [];
-        else if (Array.isArray(postsData)) state.posts = postsData;
-        else state.posts = postsData.posts || [];
-
-        // Render with fetched data
-        renderGradesOverview();
-        renderAssignmentsOverview();
-        renderGradesList();
-        renderAssignmentsList();
-        renderActivityList();
+    async function loadBasicInfo(apiUrl, headers) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 60_000);
+      console.log('[DEBUG] loadBasicInfo: 60s timeout, fetching /api/basic-info');
+      let res;
+      try {
+        res = await fetch(`${apiUrl}/api/basic-info`, { headers, signal: ctrl.signal });
       } catch (e) {
-        // On connection failure, show error
-        console.error('[DEBUG] API connection failed:', e);
-        const errMsg = e.message || String(e);
-        if (errMsg.includes('entity.too.large') || errMsg.includes('body too large') || errMsg.includes('maxBodySize')) {
-          state.connectionError = 'Server returned too much data. Try clearing your session.';
-        } else {
-          state.connectionError = `Cannot reach API server: ${errMsg}`;
-        }
-        renderConnectionError();
+        clearTimeout(timer);
+        if (e.name === 'AbortError') throw new Error('Timed out loading profile (60s).');
+        throw new Error(`Network error: ${e.message}`);
+      }
+      clearTimeout(timer);
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`Profile server error ${res.status}: ${body.slice(0, 120)}`);
+      }
+      const data = await res.json();
+      if (data._error) throw new Error(data.message || 'Profile fetch failed');
+      state.student = {
+        name: data.name || null,
+        grade: data.grade || null,
+        school: data.school || null,
+      };
+      console.log('[DEBUG] loadBasicInfo success:', state.student);
+    }
+
+    function showLoadingError(message) {
+      const appLoading = document.getElementById('appLoading');
+      const loadingError = document.getElementById('loadingError');
+      const loadingErrorMessage = document.getElementById('loadingErrorMessage');
+      if (loadingErrorMessage) loadingErrorMessage.textContent = message;
+      if (appLoading) {
+        const spinner = appLoading.querySelector('.loading-spinner, .loading-bar, #loadingProgressBar');
+        if (spinner) spinner.style.display = 'none';
+      }
+      if (loadingError) loadingError.classList.remove('hidden');
+    }
+
+    // After basic-info succeeds: hide loading screen, populate student header,
+    // and render the section skeletons in place. Per-section content is filled
+    // in as background loads complete.
+    function renderDashboardShell() {
+      const appLoading = document.getElementById('appLoading');
+      if (appLoading) appLoading.classList.add('hidden');
+
+      const appContainer = document.getElementById('appContainer');
+      if (appContainer) appContainer.classList.add('visible');
+
+      document.getElementById('connectionStatus').textContent = state.demoMode ? 'Demo Mode' : 'Connected';
+      document.getElementById('settingsUsername').textContent = state.username;
+
+      renderStudentHeader();
+
+      // Show skeletons in all 4 sections immediately; loadSection() replaces
+      // them as data arrives.
+      renderSkeletonFor('gradesOverview');
+      renderSkeletonFor('assignmentsOverview');
+      renderSkeletonFor('gradesList');
+      renderSkeletonFor('assignmentsList');
+      renderSkeletonFor('activityList');
+
+      // Global progress bar (1 = basic-info + 4 background = 5 total) — basic-info
+      // counts as 1, so we start at 1/5 and go up to 5/5.
+      state.loadedCount = 1;
+      updateGlobalProgress();
+
+      const gp = document.getElementById('globalProgress');
+      if (gp) gp.classList.remove('hidden');
+    }
+
+    function renderStudentHeader() {
+      const infoEl = document.getElementById('studentInfo');
+      const nameEl = document.getElementById('studentName');
+      const gradeEl = document.getElementById('studentGrade');
+      if (!infoEl || !nameEl || !gradeEl) return;
+      const s = state.student || {};
+      nameEl.textContent = s.name || state.username || 'Student';
+      const parts = [];
+      if (s.grade) parts.push(`Grade ${s.grade}`);
+      if (s.school) parts.push(s.school);
+      gradeEl.textContent = parts.join(' · ') || '—';
+      infoEl.style.display = 'flex';
+    }
+
+    function renderSkeletonFor(elementId) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      el.innerHTML = `
+        <div class="skeleton-card">
+          <div class="skeleton-line title"></div>
+          <div class="skeleton-line medium"></div>
+          <div class="skeleton-line short"></div>
+        </div>
+        <div class="skeleton-card">
+          <div class="skeleton-line title"></div>
+          <div class="skeleton-line medium"></div>
+          <div class="skeleton-line short"></div>
+        </div>`;
+    }
+
+    function setSectionStatus(name, status) {
+      state.sectionStatus[name] = status;
+      if (status === 'ready') {
+        state.loadedCount += 1;
+        updateGlobalProgress();
+      }
+    }
+
+    function updateGlobalProgress() {
+      const total = 5; // basic-info + 4 background sections
+      const fill = document.getElementById('globalProgressFill');
+      const text = document.getElementById('globalProgressText');
+      const gp = document.getElementById('globalProgress');
+      if (fill) fill.style.width = `${Math.min(100, Math.round((state.loadedCount / total) * 100))}%`;
+      if (text) text.textContent = `Loading your data… ${state.loadedCount}/${total}`;
+      if (state.loadedCount >= total && gp) {
+        setTimeout(() => gp.classList.add('hidden'), 400);
+      }
+    }
+
+    function kickoffBackgroundLoads(apiUrl, headers) {
+      // Fire all 4 in parallel; each updates its own state.sectionStatus.
+      loadSection('grades',     `${apiUrl}/api/grades`,     headers, renderGradesOverview,         renderGradesList,         'low');
+      loadSection('courses',    `${apiUrl}/api/courses`,    headers, renderCoursesIntoGrades,       renderCoursesIntoGrades,  'low');
+      loadSection('assignments',`${apiUrl}/api/assignments`,headers, renderAssignmentsOverview,     renderAssignmentsList,    'low');
+      loadSection('posts',      `${apiUrl}/api/posts`,      headers, renderActivityList,            renderActivityList,       'low');
+    }
+
+    // Generic per-section fetcher. Updates state on success/error, re-renders
+    // the overview and list containers, and bumps the global progress bar.
+    async function loadSection(name, url, headers, renderOverview, renderList, priority) {
+      if (state.sectionStatus[name] === 'ready') return;
+      state.sectionStatus[name] = 'loading';
+      const finalUrl = priority === 'high' ? `${url}?priority=high` : url;
+      try {
+        const res = await fetch(finalUrl, { headers });
+        if (!res.ok) throw new Error(`${name} server error ${res.status}`);
+        const data = await res.json();
+        if (data && data._error) throw new Error(data.message || `${name} fetch failed`);
+        applySectionData(name, data);
+        setSectionStatus(name, 'ready');
+        renderOverview();
+        renderList();
+      } catch (e) {
+        console.error(`[DEBUG] ${name} load failed:`, e);
+        state.sectionStatus[name] = 'error';
+        renderSectionError(name, e.message || 'load failed');
+      }
+    }
+
+    function applySectionData(name, data) {
+      // /api/grades, /api/courses, /api/assignments, /api/posts all return the
+      // array directly (per get_data_from_mcp_or_mock in server.py).
+      if (name === 'grades') {
+        state.grades = Array.isArray(data) ? data : (data.grades || data.courses || []);
+      } else if (name === 'courses') {
+        state.courses = Array.isArray(data) ? data : (data.courses || []);
+      } else if (name === 'assignments') {
+        state.assignments = Array.isArray(data) ? data : (data.assignments || []);
+      } else if (name === 'posts') {
+        state.posts = Array.isArray(data) ? data : (data.posts || []);
+      }
+    }
+
+    function renderSectionError(name, message) {
+      const map = {
+        grades: ['gradesOverview', 'gradesList'],
+        courses: ['gradesOverview', 'gradesList'],
+        assignments: ['assignmentsOverview', 'assignmentsList'],
+        posts: ['activityList', 'activityList'],
+      };
+      const [overviewId, listId] = map[name] || [];
+      const html = `
+        <div class="skeleton-card" style="border-color: var(--error);">
+          <div class="skeleton-line title" style="background: rgba(255,59,48,0.15);"></div>
+          <div class="skeleton-line medium"></div>
+          <div class="skeleton-line short"></div>
+        </div>`;
+      if (overviewId && document.getElementById(overviewId)) {
+        document.getElementById(overviewId).innerHTML = html;
+      }
+      if (listId && document.getElementById(listId) && listId !== overviewId) {
+        document.getElementById(listId).innerHTML = html;
+      }
+    }
+
+    // Course list isn't displayed as a standalone section, but courses feed the
+    // grades renderer. Render a no-op so the loadSection call still works.
+    function renderCoursesIntoGrades() {
+      if (state.courses && state.courses.length && (!state.grades || !state.grades.length)) {
+        // Nothing to do — courses aren't surfaced in the overview; this is a
+        // placeholder so the loadSection() caller has something to call.
       }
     }
 
@@ -876,6 +1017,14 @@
 
     // Track which tabs have been visited
     const visitedTabs = new Set();
+
+    // Loading-screen refresh button (basic-info failed) — full page reload
+    const loadingRefreshBtn = document.getElementById('loadingRefreshBtn');
+    if (loadingRefreshBtn) {
+      loadingRefreshBtn.addEventListener('click', () => {
+        location.reload();
+      });
+    }
 
     // Navigation
     document.querySelectorAll('.nav-tab').forEach(tab => {
@@ -1043,6 +1192,16 @@
       input.value = '';
       clearFilePreviews();
 
+      // AI-priority wait: if any of the 4 background sections are not yet
+      // 'ready', surface an inline progress bar in the AI bubble and wait
+      // for them. Any in-flight background loads are re-fetched at high
+      // priority so they finish before any pending background work.
+      const readyResult = await ensureAllSectionsReady();
+      if (readyResult.cancelled) {
+        addChatMessage('error', 'Stopped waiting for data. Reload to retry, or send the message again to wait.');
+        return;
+      }
+
       showTypingIndicator();
 
       try {
@@ -1074,6 +1233,122 @@
       } catch (e) {
         hideTypingIndicator();
         addChatMessage('error', `Error: ${e.message}`);
+      }
+    }
+
+    // Make sure all 4 background sections are 'ready' before the AI worker
+    // call. Shows an inline loading bar in the AI bubble with a Stop button.
+    // Returns { cancelled: true } if the user clicked Stop.
+    async function ensureAllSectionsReady() {
+      const pendingNames = Object.entries(state.sectionStatus)
+        .filter(([_, s]) => s !== 'ready')
+        .map(([n]) => n);
+      if (pendingNames.length === 0) return { cancelled: false };
+
+      // Re-fire the missing sections at high priority (re-prioritizes any
+      // already-queued background fetches via the backend's /api/reprioritize
+      // when the request lands with ?priority=high).
+      const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
+      const headers = getAuthHeader();
+      for (const name of pendingNames) {
+        const url = sectionUrl(name, apiUrl);
+        loadSection(name, url, headers, sectionOverviewRenderer(name), sectionListRenderer(name), 'high');
+      }
+
+      // Show the inline bar in an AI bubble.
+      const container = document.getElementById('chatMessages');
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-message assistant';
+      bubble.id = 'aiInlineLoading';
+      const total = 4;
+      const initial = total - pendingNames.length;
+      bubble.innerHTML = `
+        <div class="chat-inline-loading">
+          <div class="chat-inline-loading-text">
+            <span id="aiInlineLoadingText">Loading data… ${initial}/${total}</span>
+            <button type="button" class="chat-inline-loading-stop" id="aiInlineLoadingStop">Stop</button>
+          </div>
+          <div class="chat-inline-loading-bar">
+            <div class="chat-inline-loading-bar-fill" id="aiInlineLoadingFill" style="width: ${Math.round((initial / total) * 100)}%;"></div>
+          </div>
+        </div>`;
+      container.appendChild(bubble);
+      container.scrollTop = container.scrollHeight;
+
+      // Stop button: hide the bar, demote any in-flight high-priority
+      // background loads back to low, and let the caller cancel.
+      const stopBtn = bubble.querySelector('#aiInlineLoadingStop');
+      const stopPromise = new Promise(resolve => {
+        stopBtn.addEventListener('click', async () => {
+          stopBtn.disabled = true;
+          stopBtn.textContent = 'Stopping…';
+          await demoteAIPriority();
+          bubble.remove();
+          resolve('cancelled');
+        });
+      });
+
+      // Poll for ready. Section status flips to 'ready' as each loadSection
+      // resolves; we update the inline bar each tick.
+      const readyPromise = new Promise(resolve => {
+        const tick = () => {
+          const loaded = Object.values(state.sectionStatus).filter(s => s === 'ready').length;
+          const text = bubble.querySelector('#aiInlineLoadingText');
+          const fill = bubble.querySelector('#aiInlineLoadingFill');
+          if (text) text.textContent = `Loading data… ${loaded}/${total}`;
+          if (fill) fill.style.width = `${Math.round((loaded / total) * 100)}%`;
+          if (loaded >= total) { resolve('ready'); return; }
+          setTimeout(tick, 200);
+        };
+        tick();
+      });
+
+      const winner = await Promise.race([readyPromise, stopPromise]);
+      if (winner === 'cancelled') {
+        return { cancelled: true };
+      }
+      bubble.remove();
+      return { cancelled: false };
+    }
+
+    function sectionUrl(name, apiUrl) {
+      const map = {
+        grades: `${apiUrl}/api/grades`,
+        courses: `${apiUrl}/api/courses`,
+        assignments: `${apiUrl}/api/assignments`,
+        posts: `${apiUrl}/api/posts`,
+      };
+      return map[name];
+    }
+
+    function sectionOverviewRenderer(name) {
+      const map = {
+        grades: renderGradesOverview,
+        courses: renderCoursesIntoGrades,
+        assignments: renderAssignmentsOverview,
+        posts: renderActivityList,
+      };
+      return map[name];
+    }
+
+    function sectionListRenderer(name) {
+      const map = {
+        grades: renderGradesList,
+        courses: renderCoursesIntoGrades,
+        assignments: renderAssignmentsList,
+        posts: renderActivityList,
+      };
+      return map[name];
+    }
+
+    async function demoteAIPriority() {
+      try {
+        const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
+        await fetch(`${apiUrl}/api/reprioritize`, { method: 'POST' });
+      } catch (e) {
+        // best-effort; if the demote fails, the in-flight fetches still
+        // complete, just at the original priority
+        console.warn('[DEBUG] demoteAIPriority failed:', e);
       }
     }
 
@@ -1466,7 +1741,11 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
           typeSpeed = 40;
         } else {
           isDeleting = false;
-          phraseIndex = (phraseIndex + 1) % typewriterPhrases.length;
+          let nextIndex;
+          do {
+            nextIndex = Math.floor(Math.random() * typewriterPhrases.length);
+          } while (nextIndex === phraseIndex && typewriterPhrases.length > 1);
+          phraseIndex = nextIndex;
           typeSpeed = 500;
         }
       }
