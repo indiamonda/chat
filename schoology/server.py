@@ -310,12 +310,13 @@ def ready():
 def get_basic_info():
     """Fetch the student's name, grade, and school only.
 
-    Used as the lightweight 'first paint' call -- 60s timeout so the
-    loading screen can fail fast and show a refresh button instead of
-    blocking forever.
+    Used as the lightweight 'first paint' call -- 120s timeout so the
+    cold-start path (Chromium launch + ClassLink login + first page
+    load on 512MB) can complete, while still failing fast if the
+    network is actually down.
     """
     username, password = decode_auth_header()
-    data = get_data_from_mcp_or_mock('get_profile', username, password, timeout_seconds=60)
+    data = get_data_from_mcp_or_mock('get_profile', username, password, timeout_seconds=120)
     return jsonify(data)
 
 
