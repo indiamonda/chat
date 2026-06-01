@@ -82,9 +82,12 @@ class MCPConnectionPool:
                     session = ClientSession(read_stream, write_stream)
                     await session.initialize()
                     result = await session.call_tool(tool_name, arguments or {})
+            except BaseExceptionGroup as eg:
+                # ExceptionGroup from async generator cleanup - check if we got a result
+                # Sub-exceptions are typically BrokenResourceError/GeneratorExit from transport
+                print(f"[MCP] ExceptionGroup during cleanup ({len(eg.exceptions)} sub-exceptions), result={'set' if result else 'None'}", file=sys.stderr)
             except BaseException as e:
-                # MCP server exited or had errors - return what we got (may be None)
-                print(f"[MCP] MCP call finished with {type(e).__name__}: {e}", file=sys.stderr)
+                print(f"[MCP] MCP call failed with {type(e).__name__}: {e}", file=sys.stderr)
             return result
 
 
