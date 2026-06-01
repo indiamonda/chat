@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
-Schoology MCP Frontend Server
-Bridges the web dashboard to the Schoology MCP server
+Schoology Frontend Server
+Bridges the web dashboard to the Schoology tool functions.
 
-Keeps a persistent MCP server process per user to avoid browser launch overhead.
+Each tool call is run in a fresh subprocess that calls the tool function
+directly (no MCP stdio protocol). This avoids the result-loss race that
+happens when the MCP one-shot process exits mid-cleanup.
 """
 
-import asyncio
 import base64
+import json
 import os
+import subprocess
 import sys
+import threading
+import traceback
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
@@ -22,7 +27,7 @@ CORS(app)
 SCRIPT_DIR = Path(__file__).parent
 MCP_DIR = SCRIPT_DIR.parent / 'schoology-mcp'
 VENV_PYTHON = str(MCP_DIR.parent / '.schoology-venv' / 'bin' / 'python')
-SERVER_PY = str(MCP_DIR / 'server.py')
+RUN_TOOL_PY = str(SCRIPT_DIR / 'run_tool.py')
 
 
 def decode_auth_header():
@@ -39,118 +44,61 @@ def decode_auth_header():
         return None, None
 
 
-class MCPConnectionPool:
-    """No pooling - spawn fresh MCP process for each request.
+# Serialize tool subprocesses per gunicorn worker to avoid 16 simultaneous
+# Chromium launches on 512MB RAM.
+_subprocess_lock = threading.Lock()
 
-    The MCP server is designed as a one-shot process. Each tool call
-    spawns a new MCP process which handles the call then exits.
-    This is slow (~3 min) but works correctly.
+
+def call_mcp_tool_with_timeout(tool_name, username=None, password=None, timeout_seconds=180):
+    """Call a tool by running run_tool.py in a fresh subprocess.
+
+    Returns the parsed JSON dict from the subprocess, or None on failure.
     """
+    request_payload = {
+        "tool": tool_name,
+        "username": username,
+        "password": password,
+        "arguments": {},
+    }
 
-    _instance = None
-
-    def __init__(self):
-        self._lock = asyncio.Lock()
-
-    @classmethod
-    def get_instance(cls):
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
-
-    async def call_tool(self, tool_name: str, arguments: dict, username: str, password: str):
-        """Call a tool - spawns a fresh MCP process."""
-        from mcp.client.session import ClientSession
-        from mcp.client.stdio import StdioServerParameters
-        from mcp import stdio_client
-
-        async with self._lock:
-            env = {**os.environ.copy()}
-            env['SCHOOLOGY_USERNAME'] = username
-            if password:
-                env['SCHOOLOGY_PASSWORD'] = password
-
-            server_params = StdioServerParameters(
-                command=VENV_PYTHON,
-                args=[SERVER_PY],
-                env=env
+    with _subprocess_lock:
+        try:
+            proc = subprocess.run(
+                [VENV_PYTHON, RUN_TOOL_PY],
+                input=json.dumps(request_payload),
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
             )
-            result = None
-            try:
-                print(f"[MCP] Creating stdio client...", file=sys.stderr)
-                async with stdio_client(server_params) as stdio_transport:
-                    print(f"[MCP] Stdio transport created, creating session...", file=sys.stderr)
-                    read_stream, write_stream = stdio_transport
-                    session = ClientSession(read_stream, write_stream)
-                    print(f"[MCP] Session created, initializing...", file=sys.stderr)
-                    await session.initialize()
-                    print(f"[MCP] Session initialized, calling tool {tool_name}...", file=sys.stderr)
-                    result = await session.call_tool(tool_name, arguments or {})
-                    print(f"[MCP] Tool {tool_name} returned result type={type(result).__name__}", file=sys.stderr)
-            except BaseExceptionGroup as eg:
-                # ExceptionGroup from async generator cleanup - suppress it
-                # The actual result should already be captured in `result`
-                print(f"[MCP] ExceptionGroup raised! result={'set' if result else 'None'}", file=sys.stderr)
-            except BaseException as e:
-                print(f"[MCP] MCP call failed with {type(e).__name__}: {e}", file=sys.stderr)
-            print(f"[MCP] Returning result={type(result).__name__ if result else 'None'}", file=sys.stderr)
-            return result
+        except subprocess.TimeoutExpired as exc:
+            print(f"[MCP] {tool_name} timed out after {timeout_seconds}s for {username}", file=sys.stderr)
+            if exc.stderr:
+                for line in exc.stderr.splitlines()[-20:]:
+                    print(f"[tool] {line}", file=sys.stderr)
+            return None
+        except Exception as exc:
+            print(f"[MCP] {tool_name} subprocess failed to start: {type(exc).__name__}: {exc}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            return None
 
+    if proc.stderr:
+        # Forward tool-subprocess logs to our log for debugging
+        for line in proc.stderr.splitlines()[-20:]:
+            print(f"[tool] {line}", file=sys.stderr)
 
-# Singleton pool instance
-_mcp_pool = MCPConnectionPool.get_instance()
-
-
-async def call_mcp_tool_async(tool_name: str, arguments: dict | None = None, username: str = None, password: str = None):
-    """Call a tool on the Schoology MCP server via the persistent session pool.
-
-    Args:
-        tool_name: Name of the MCP tool to call
-        arguments: Additional arguments for the tool
-        username: Student ID for setting runtime credentials
-        password: Schoology password for setting runtime credentials
-    """
-    print(f"[MCP POOL] call_mcp_tool_async called: tool={tool_name}, username={username}", file=sys.stderr)
-
-    if not username:
-        raise ValueError("username is required")
-
-    try:
-        result = await _mcp_pool.call_tool(tool_name, arguments, username, password)
-        print(f"[MCP POOL] MCP tool {tool_name} returned: {type(result).__name__}", file=sys.stderr)
-        return result
-    except BaseException as e:
-        print(f"[MCP POOL] MCP call failed: {type(e).__name__}: {e}", file=sys.stderr)
+    if proc.returncode != 0 and not proc.stdout:
+        print(f"[MCP] {tool_name} exited {proc.returncode} with no stdout: stderr={proc.stderr[-500:]!r}", file=sys.stderr)
         return None
 
-
-def call_mcp_tool(tool_name, username=None, password=None, arguments=None):
-    """Synchronous wrapper for calling MCP tools."""
-    import sys
-    import traceback
-    try:
-        return asyncio.run(call_mcp_tool_async(tool_name, arguments, username, password))
-    except Exception as e:
-        print(f"MCP call failed: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+    if not proc.stdout.strip():
+        print(f"[MCP] {tool_name} produced empty stdout. stderr={proc.stderr[-500:]!r}", file=sys.stderr)
         return None
 
-
-def call_mcp_tool_with_timeout(tool_name, username=None, password=None, timeout_seconds=120):
-    """Call MCP with timeout to prevent hanging."""
-    import sys
-    import traceback
     try:
-        return asyncio.run(asyncio.wait_for(
-            call_mcp_tool_async(tool_name, None, username, password),
-            timeout=timeout_seconds
-        ))
-    except asyncio.TimeoutError:
-        print(f"MCP call timed out after {timeout_seconds}s for {tool_name}", file=sys.stderr)
-        return None
-    except Exception as e:
-        print(f"MCP call failed: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+    except Exception as exc:
+        print(f"[MCP] {tool_name} returned unparseable JSON: {proc.stdout[:200]!r} ({exc})", file=sys.stderr)
         return None
 
 
@@ -237,6 +185,8 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
     if data is not None:
         # MCP returns dicts with keys like "courses", "assignments", "posts"
         if isinstance(data, dict):
+            if data.get('_error'):
+                return {'_error': True, 'message': data.get('message', 'unknown error')}
             if 'courses' in data:
                 print(f"[DEBUG] Returning courses array with {len(data.get('courses', []))} items", file=sys.stderr)
                 return data['courses']
@@ -271,7 +221,7 @@ def health():
         'status': 'ok',
         'service': 'schoology-mcp-frontend',
         'timestamp': datetime.now().isoformat(),
-        'mcp_available': os.path.exists(VENV_PYTHON) and os.path.exists(SERVER_PY)
+        'mcp_available': os.path.exists(VENV_PYTHON) and os.path.exists(RUN_TOOL_PY)
     })
 
 
@@ -333,7 +283,7 @@ def clear_session():
 @app.route('/api/status')
 def get_status():
     """Get connection status."""
-    mcp_installed = os.path.exists(VENV_PYTHON) and os.path.exists(SERVER_PY)
+    mcp_installed = os.path.exists(VENV_PYTHON) and os.path.exists(RUN_TOOL_PY)
     username, _ = decode_auth_header()
     storage_state = MCP_DIR / f'storage_state_{username}.json' if username else MCP_DIR / 'storage_state.json'
 
@@ -347,7 +297,7 @@ def get_status():
 @app.route('/api/setup-status')
 def setup_status():
     """Check what setup is needed."""
-    venv_exists = (MCP_DIR / '.venv' / 'bin' / 'python').exists()
+    venv_exists = os.path.exists(VENV_PYTHON)
     env_exists = (MCP_DIR / '.env').exists()
     username, _ = decode_auth_header()
     storage_exists = (MCP_DIR / f'storage_state_{username}.json').exists() if username else (MCP_DIR / 'storage_state.json').exists()
@@ -356,8 +306,8 @@ def setup_status():
         'needs_setup': not venv_exists,
         'needs_credentials': not env_exists,
         'needs_login': not storage_exists,
-        'venv_path': str(MCP_DIR / '.venv'),
-        'server_path': str(SERVER_PY)
+        'venv_path': str(Path(VENV_PYTHON).parent.parent),
+        'server_path': RUN_TOOL_PY
     })
 
 
