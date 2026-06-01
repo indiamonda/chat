@@ -73,74 +73,57 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 14px;
-      padding: 32px 28px;
-      max-width: 380px;
-      background: var(--surface, #1a1a2e);
-      border: 1px solid #ff6b6b55;
-      border-radius: 20px;
-      box-shadow: 0 12px 40px rgba(255, 107, 107, 0.12);
+      gap: 10px;
+      padding: 0;
+      background: none;
+      border: none;
+      box-shadow: none;
     }
     .loading-error.hidden { display: none; }
-    .loading-error-icon { line-height: 0; }
-    .loading-error-title {
-      margin: 0;
-      font-size: 1.25rem;
-      font-weight: 600;
-      color: var(--text-primary, #fff);
-      text-align: center;
-    }
     .loading-error-message {
       margin: 0;
-      font-size: 0.95rem;
+      font-size: 1rem;
       color: var(--text-secondary, #aaa);
       text-align: center;
       line-height: 1.4;
     }
     .loading-refresh-btn {
-      margin-top: 6px;
-      padding: 10px 28px;
-      background: var(--ai-gradient, linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%));
-      color: #fff;
+      background: none;
       border: none;
-      border-radius: 12px;
+      padding: 0;
+      color: var(--primary, #6366f1);
       font-family: inherit;
       font-size: 0.95rem;
-      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: 3px;
       cursor: pointer;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
-    .loading-refresh-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35); }
-    .loading-refresh-btn:active { transform: translateY(0); }
+    .loading-refresh-btn:hover { color: var(--text, #fff); }
 
     .global-progress {
-      position: sticky;
+      position: fixed;
       top: 0;
-      z-index: 50;
-      background: var(--surface, #1a1a2e);
-      padding: 10px 24px 12px;
-      border-bottom: 1px solid var(--border, #2a2a3e);
+      left: 0;
+      right: 0;
+      height: 2px;
+      z-index: 100;
+      background: transparent;
+      pointer-events: none;
     }
     .global-progress.hidden { display: none; }
     .global-progress-bar {
-      height: 4px;
+      height: 100%;
       background: var(--border, #2a2a3e);
-      border-radius: 2px;
+      opacity: 0.4;
       overflow: hidden;
     }
     .global-progress-bar-fill {
       height: 100%;
       width: 0%;
-      background: var(--ai-gradient, linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%));
+      background: linear-gradient(90deg, #6366f1, #a855f7);
       transition: width 0.4s ease;
     }
-    .global-progress-text {
-      margin-top: 6px;
-      font-size: 0.8rem;
-      color: var(--text-secondary, #aaa);
-      font-family: 'Didact Gothic', sans-serif;
-      text-align: center;
-    }
+    .global-progress-text { display: none; }
 
     .loading-text {
       font-size: 1rem;
@@ -1645,49 +1628,45 @@
       .grade-card:hover { transform: none; }
     }
 
-    /* ── AI inline loading bar (inside the AI bubble) ── */
+    /* ── AI inline loading (inside the AI bubble) ── */
     .chat-inline-loading {
       display: flex;
-      flex-direction: column;
+      align-items: center;
       gap: 8px;
-      padding: 4px 2px;
-      min-width: 260px;
+      padding: 0;
+      min-width: 0;
     }
     .chat-inline-loading-text {
       font-size: 0.85rem;
       color: var(--text-secondary);
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 12px;
+      gap: 8px;
     }
-    .chat-inline-loading-bar {
-      width: 100%;
-      height: 4px;
-      background: var(--surface);
-      border-radius: 999px;
-      overflow: hidden;
-      border: 1px solid var(--border);
+    .chat-inline-loading-text::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--primary, #6366f1);
+      animation: chatPulse 1.4s ease-in-out infinite;
     }
-    .chat-inline-loading-bar-fill {
-      height: 100%;
-      width: 0%;
-      background: var(--ai-gradient, linear-gradient(90deg, var(--primary), var(--accent)));
-      background: linear-gradient(90deg, #5b8def, #b06bff);
-      transition: width 280ms ease;
+    @keyframes chatPulse {
+      0%, 100% { opacity: 0.3; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.1); }
     }
+    .chat-inline-loading-bar { display: none; }
+    .chat-inline-loading-bar-fill { display: none; }
     .chat-inline-loading-stop {
-      background: transparent;
-      border: 1px solid var(--border);
+      background: none;
+      border: none;
+      padding: 0;
       color: var(--text-secondary);
-      padding: 4px 10px;
-      border-radius: 999px;
       font-family: inherit;
       font-size: 0.78rem;
+      text-decoration: underline;
+      text-underline-offset: 2px;
       cursor: pointer;
-      transition: all 160ms ease;
     }
-    .chat-inline-loading-stop:hover {
-      color: var(--error);
-      border-color: var(--error);
-    }
+    .chat-inline-loading-stop:hover { color: var(--error, #ff6b6b); }
+    .chat-inline-loading-stop:disabled { opacity: 0.5; cursor: default; }
