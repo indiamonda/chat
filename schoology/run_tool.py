@@ -42,6 +42,7 @@ def _load_tool_functions():
         return TOOL_FUNCTIONS
     import server as server_mod
     TOOL_FUNCTIONS.update({
+        "get_profile": server_mod.get_profile,
         "get_grades": server_mod.get_grades,
         "get_courses": server_mod.get_courses,
         "get_upcoming_assignments": server_mod.get_upcoming_assignments,

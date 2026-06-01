@@ -98,6 +98,27 @@ async def get_grades(detailed: bool = False) -> dict:
 
 
 @mcp.tool()
+async def get_profile() -> dict:
+    """Return the logged-in student's name, grade level, and school.
+
+    Used as the lightweight 'first paint' fetch for the dashboard: shows
+    a personalized loading screen and an identity strip on the dashboard
+    without paying the cost of pulling every course/grade/assignment.
+    """
+    username = _get_username_from_config()
+    html = await client.fetch(
+        f"/user/{username}", username, wait_selector="#main h1, .page-title, .user-info-name"
+    )
+    info = parsers.parse_profile(html, config.BASE_URL)
+    return {
+        "base_url": config.BASE_URL,
+        "name": info.get("name"),
+        "grade": info.get("grade"),
+        "school": info.get("school"),
+    }
+
+
+@mcp.tool()
 async def get_courses() -> dict:
     """Get the list of courses the student is enrolled in."""
     username = _get_username_from_config()

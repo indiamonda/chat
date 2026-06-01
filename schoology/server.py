@@ -49,6 +49,56 @@ def decode_auth_header():
 _subprocess_lock = threading.Lock()
 
 
+class FetchQueue:
+    """Priority fetch queue for tool subprocesses.
+
+    Each submission runs as a daemon thread that takes the global subprocess
+    lock (so still serializes within one gunicorn worker because of memory
+    limits) and writes its result back into the queue item. The submitter
+    gets a (Event, item_ref) pair; the Event fires when the result is ready.
+
+    Priority: lower value = served sooner. Background loads use 10; AI-priority
+    loads use 0. Within a priority band, FIFO.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._counter = 0
+        self._items = []  # list of [priority, seq, tool_name, username, password, event, result]
+
+    def submit(self, tool_name, username, password, priority=10):
+        """Enqueue a fetch and start a worker thread. Returns (event, item_ref)."""
+        with self._lock:
+            self._counter += 1
+            item = [priority, self._counter, tool_name, username, password, threading.Event(), None]
+            self._items.append(item)
+            self._items.sort(key=lambda x: (x[0], x[1]))
+            threading.Thread(target=self._worker, args=(item,), daemon=True).start()
+        return item[5], item
+
+    def _worker(self, item):
+        with _subprocess_lock:
+            result = call_mcp_tool_with_timeout(item[2], item[3], item[4])
+            item[6] = result
+        item[5].set()
+
+    def reprioritize(self, new_priority, predicate=None):
+        """Re-rank queued (not yet finished) items to new_priority if predicate matches.
+
+        Default predicate: reprioritize everything currently at AI priority (< 10)
+        to new_priority. Pass a custom callable to target a specific item.
+        """
+        with self._lock:
+            for item in self._items:
+                if not item[5].is_set() and (predicate is None or predicate(item)):
+                    item[0] = new_priority
+            self._items.sort(key=lambda x: (x[0], x[1]))
+
+
+# Singleton
+_fetch_queue = FetchQueue()
+
+
 def call_mcp_tool_with_timeout(tool_name, username=None, password=None, timeout_seconds=180):
     """Call a tool by running run_tool.py in a fresh subprocess.
 
@@ -172,23 +222,31 @@ def get_mock_data():
     }
 
 
-def get_data_from_mcp_or_mock(tool_name, username=None, password=None):
+def get_data_from_mcp_or_mock(tool_name, username=None, password=None, timeout_seconds=180, priority=10):
     """Try MCP first, fall back to error response (no mock data).
 
     Args:
         tool_name: Name of the MCP tool to call
         username: Student ID for authentication
         password: Schoology password for authentication
+        timeout_seconds: hard timeout for the subprocess
+        priority: 0 = AI, 10 = background. Lower runs sooner in the queue.
 
     NOTE: First call for a user takes ~90s (cold browser + ClassLink login on 512MB Fly.io).
           Subsequent calls take ~3-5s (warm browser reuse).
     """
     import sys
-    print(f"[DEBUG] get_data_from_mcp_or_mock called: tool={tool_name}, username={username}", file=sys.stderr)
+    print(f"[DEBUG] get_data_from_mcp_or_mock called: tool={tool_name}, username={username}, priority={priority}", file=sys.stderr)
 
-    # Use longer timeout for cold start (browser launch + ClassLink login on Fly.io 512MB)
-    # Warm requests typically complete in 3-5s
-    data = call_mcp_tool_with_timeout(tool_name, username=username, password=password, timeout_seconds=180)
+    if priority <= 0:
+        # AI-priority: enqueue and wait
+        evt, item = _fetch_queue.submit(tool_name, username, password, priority=0)
+        if not evt.wait(timeout=timeout_seconds):
+            print(f"[DEBUG] {tool_name} AI-priority queue wait timed out after {timeout_seconds}s", file=sys.stderr)
+            return {'_error': True, 'message': f'{tool_name} timeout'}
+        data = item[6]
+    else:
+        data = call_mcp_tool_with_timeout(tool_name, username=username, password=password, timeout_seconds=timeout_seconds)
     print(f"[DEBUG] MCP returned: {type(data).__name__} = {repr(data)[:300]}" if data else f"[DEBUG] MCP returned None", file=sys.stderr)
 
     # Check for error in CallToolResult
@@ -248,11 +306,30 @@ def ready():
     return jsonify({'ready': True, 'message': 'Server is running'})
 
 
+@app.route('/api/basic-info')
+def get_basic_info():
+    """Fetch the student's name, grade, and school only.
+
+    Used as the lightweight 'first paint' call -- 60s timeout so the
+    loading screen can fail fast and show a refresh button instead of
+    blocking forever.
+    """
+    username, password = decode_auth_header()
+    data = get_data_from_mcp_or_mock('get_profile', username, password, timeout_seconds=60)
+    return jsonify(data)
+
+
+def _priority_from_request():
+    """Map ?priority=high|low query param to numeric priority (0 or 10)."""
+    p = (request.args.get('priority') or '').lower()
+    return 0 if p == 'high' else 10
+
+
 @app.route('/api/grades')
 def get_grades():
     """Get current grades."""
     username, password = decode_auth_header()
-    data = get_data_from_mcp_or_mock('get_grades', username, password)
+    data = get_data_from_mcp_or_mock('get_grades', username, password, priority=_priority_from_request())
     return jsonify(data)
 
 
@@ -260,7 +337,7 @@ def get_grades():
 def get_courses():
     """Get enrolled courses."""
     username, password = decode_auth_header()
-    data = get_data_from_mcp_or_mock('get_courses', username, password)
+    data = get_data_from_mcp_or_mock('get_courses', username, password, priority=_priority_from_request())
     return jsonify(data)
 
 
@@ -268,7 +345,7 @@ def get_courses():
 def get_assignments():
     """Get upcoming assignments."""
     username, password = decode_auth_header()
-    data = get_data_from_mcp_or_mock('get_upcoming_assignments', username, password)
+    data = get_data_from_mcp_or_mock('get_upcoming_assignments', username, password, priority=_priority_from_request())
     return jsonify(data)
 
 
@@ -276,7 +353,7 @@ def get_assignments():
 def get_posts():
     """Get recent posts."""
     username, password = decode_auth_header()
-    data = get_data_from_mcp_or_mock('get_recent_posts', username, password)
+    data = get_data_from_mcp_or_mock('get_recent_posts', username, password, priority=_priority_from_request())
     return jsonify(data)
 
 
@@ -285,6 +362,18 @@ def refresh_data():
     """Force refresh all data."""
     # Note: Per-student sessions are managed by MCP; no global cache to clear
     return jsonify({'status': 'ok', 'last_updated': datetime.now().isoformat()})
+
+
+@app.route('/api/reprioritize', methods=['POST'])
+def reprioritize_queue():
+    """Demote all queued high-priority (AI) fetches back to background priority.
+
+    Called by the frontend when the user stops an AI response. Body is ignored;
+    we always reprioritize everything currently in the queue that's still
+    pending and not yet started.
+    """
+    _fetch_queue.reprioritize(10)
+    return jsonify({'status': 'ok'})
 
 
 @app.route('/api/clear-session', methods=['POST'])
