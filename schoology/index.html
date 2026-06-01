@@ -139,15 +139,7 @@
     </div>
 
     <div class="loading-error hidden" id="loadingError">
-      <div class="loading-error-icon">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ff6b6b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="8" x2="12" y2="12"/>
-          <line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-      </div>
-      <h2 class="loading-error-title">Could not connect to Schoology</h2>
-      <p class="loading-error-message" id="loadingErrorMessage">We couldn't load your student profile. Please try again.</p>
+      <p class="loading-error-message" id="loadingErrorMessage">We couldn't load your profile.</p>
       <button type="button" class="loading-refresh-btn" id="loadingRefreshBtn">Refresh</button>
     </div>
   </div>
@@ -628,16 +620,6 @@
         if (progressInterval) clearInterval(progressInterval);
       };
 
-      // Fallback: if we're still on loading screen after 120 seconds (matches MCP timeout), force show app with error
-      setTimeout(() => {
-        const stillLoading = document.getElementById('appLoading');
-        if (stillLoading && !stillLoading.classList.contains('hidden')) {
-          console.error('[DEBUG] Loading timeout - forcing app to show');
-          stillLoading.classList.add('hidden');
-          finishShowApp();
-        }
-      }, 120000);
-
       // Load data - demo mode uses local data, otherwise fetch from MCP
       if (state.demoMode) {
         console.log('[DEBUG] Loading demo data...');
@@ -782,9 +764,13 @@
       const loadingError = document.getElementById('loadingError');
       const loadingErrorMessage = document.getElementById('loadingErrorMessage');
       if (loadingErrorMessage) loadingErrorMessage.textContent = message;
+      // Hide the spinner, percent, bar, and elapsed-time text so the user only
+      // sees the error message + refresh link, no chrome.
       if (appLoading) {
-        const spinner = appLoading.querySelector('.loading-spinner, .loading-bar, #loadingProgressBar');
-        if (spinner) spinner.style.display = 'none';
+        for (const sel of ['.loading-spinner', '.loading-percent', '.loading-bar', '.loading-text']) {
+          const el = appLoading.querySelector(sel);
+          if (el) el.style.display = 'none';
+        }
       }
       if (loadingError) loadingError.classList.remove('hidden');
     }
@@ -1255,7 +1241,7 @@
         loadSection(name, url, headers, sectionOverviewRenderer(name), sectionListRenderer(name), 'high');
       }
 
-      // Show the inline bar in an AI bubble.
+      // Show the inline loading indicator inside an AI bubble.
       const container = document.getElementById('chatMessages');
       const bubble = document.createElement('div');
       bubble.className = 'chat-message assistant';
@@ -1264,13 +1250,8 @@
       const initial = total - pendingNames.length;
       bubble.innerHTML = `
         <div class="chat-inline-loading">
-          <div class="chat-inline-loading-text">
-            <span id="aiInlineLoadingText">Loading data… ${initial}/${total}</span>
-            <button type="button" class="chat-inline-loading-stop" id="aiInlineLoadingStop">Stop</button>
-          </div>
-          <div class="chat-inline-loading-bar">
-            <div class="chat-inline-loading-bar-fill" id="aiInlineLoadingFill" style="width: ${Math.round((initial / total) * 100)}%;"></div>
-          </div>
+          <span class="chat-inline-loading-text" id="aiInlineLoadingText">Loading data… ${initial}/${total}</span>
+          <button type="button" class="chat-inline-loading-stop" id="aiInlineLoadingStop">Stop</button>
         </div>`;
       container.appendChild(bubble);
       container.scrollTop = container.scrollHeight;
@@ -1289,14 +1270,12 @@
       });
 
       // Poll for ready. Section status flips to 'ready' as each loadSection
-      // resolves; we update the inline bar each tick.
+      // resolves; we update the inline text each tick.
       const readyPromise = new Promise(resolve => {
         const tick = () => {
           const loaded = Object.values(state.sectionStatus).filter(s => s === 'ready').length;
           const text = bubble.querySelector('#aiInlineLoadingText');
-          const fill = bubble.querySelector('#aiInlineLoadingFill');
           if (text) text.textContent = `Loading data… ${loaded}/${total}`;
-          if (fill) fill.style.width = `${Math.round((loaded / total) * 100)}%`;
           if (loaded >= total) { resolve('ready'); return; }
           setTimeout(tick, 200);
         };
