@@ -134,7 +134,6 @@
       <div class="loading-bar">
         <div class="loading-bar-fill" id="loadingBarFill"></div>
       </div>
-      <div class="loading-text" id="loadingText">Loading</div>
       <div class="loading-percent" id="loadingPercent">0%</div>
       <div class="loading-elapsed" id="loadingElapsed"></div>
     </div>
@@ -590,12 +589,10 @@
     let _progressInterval = null;
 
     function setupLoadingUI() {
-      const loadingText = document.getElementById('loadingText');
       const loadingElapsed = document.getElementById('loadingElapsed');
       const loadingPercent = document.getElementById('loadingPercent');
       const loadingBarFill = document.getElementById('loadingBarFill');
 
-      if (loadingText) loadingText.textContent = 'Loading';
       if (loadingElapsed) loadingElapsed.textContent = 'loading... 0s';
       if (loadingPercent) loadingPercent.textContent = '0%';
       if (loadingBarFill) loadingBarFill.classList.remove('done');
@@ -616,7 +613,6 @@
       }, 250);
 
       return {
-        loadingText,
         loadingElapsed,
         loadingPercent,
         loadingBarFill,
@@ -647,7 +643,7 @@
       // Un-hide the loading chrome that showLoadingError() hid. Clear the
       // inline `display: none` style and let the default CSS take over.
       if (appLoading) {
-        for (const sel of ['.loading-spinner', '.loading-bar', '.loading-text', '.loading-percent', '.loading-elapsed']) {
+        for (const sel of ['.loading-spinner', '.loading-bar', '.loading-percent', '.loading-elapsed']) {
           const el = appLoading.querySelector(sel);
           if (el) el.style.display = '';
         }
@@ -693,7 +689,7 @@
       console.log('[DEBUG] loadingUI ready.');
 
       function updateLoading(text) {
-        if (loadingUI.loadingText && text) loadingUI.loadingText.textContent = text;
+        if (loadingUI.loadingElapsed && text) loadingUI.loadingElapsed.textContent = text;
       }
 
       // Load data - demo mode uses local data, otherwise fetch from MCP
@@ -837,10 +833,10 @@
       const loadingError = document.getElementById('loadingError');
       const loadingErrorMessage = document.getElementById('loadingErrorMessage');
       if (loadingErrorMessage) loadingErrorMessage.textContent = message;
-      // Hide the spinner, bar, loading text, percent, and elapsed counter
+      // Hide the spinner, bar, percent, and elapsed counter
       // so the user only sees the error message + refresh link, no chrome.
       if (appLoading) {
-        for (const sel of ['.loading-spinner', '.loading-bar', '.loading-text', '.loading-percent', '.loading-elapsed']) {
+        for (const sel of ['.loading-spinner', '.loading-bar', '.loading-percent', '.loading-elapsed']) {
           const el = appLoading.querySelector(sel);
           if (el) el.style.display = 'none';
         }
