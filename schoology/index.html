@@ -141,7 +141,20 @@
 
     <div class="loading-error hidden" id="loadingError">
       <p class="loading-error-message" id="loadingErrorMessage">We couldn't load your profile.</p>
-      <button type="button" class="loading-refresh-btn" id="loadingRefreshBtn">Refresh</button>
+      <div class="loading-error-actions">
+        <button type="button" class="loading-action-btn" id="loadingResumeBtn">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+          Resume
+        </button>
+        <button type="button" class="loading-action-btn" id="loadingRestartBtn">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+          </svg>
+          Restart
+        </button>
+      </div>
     </div>
   </div>
 
@@ -568,6 +581,94 @@
       state.posts = demoData.posts;
     }
 
+    // Loading-screen progress: bar fill (0% -> 95% over 120s linear) plus a
+    // matching numeric percent and an elapsed counter. Used by both the
+    // initial showApp() and the Resume path (which re-shows the chrome and
+    // retries the basic-info fetch without a full page reload).
+    const PROGRESS_DURATION_MS = 120_000;
+    const PROGRESS_MAX_PCT = 95;
+    let _progressInterval = null;
+
+    function setupLoadingUI() {
+      const loadingText = document.getElementById('loadingText');
+      const loadingElapsed = document.getElementById('loadingElapsed');
+      const loadingPercent = document.getElementById('loadingPercent');
+      const loadingBarFill = document.getElementById('loadingBarFill');
+
+      if (loadingText) loadingText.textContent = 'Loading';
+      if (loadingElapsed) loadingElapsed.textContent = 'loading... 0s';
+      if (loadingPercent) loadingPercent.textContent = '0%';
+      if (loadingBarFill) loadingBarFill.classList.remove('done');
+
+      if (_progressInterval) clearInterval(_progressInterval);
+      const startTime = Date.now();
+      _progressInterval = setInterval(() => {
+        const elapsedMs = Date.now() - startTime;
+        const elapsed = Math.round(elapsedMs / 1000);
+        if (loadingElapsed) loadingElapsed.textContent = `loading... ${elapsed}s`;
+        if (loadingPercent) {
+          const pct = Math.min(
+            PROGRESS_MAX_PCT,
+            (elapsedMs / PROGRESS_DURATION_MS) * PROGRESS_MAX_PCT,
+          );
+          loadingPercent.textContent = `${Math.round(pct)}%`;
+        }
+      }, 250);
+
+      return {
+        loadingText,
+        loadingElapsed,
+        loadingPercent,
+        loadingBarFill,
+        // Snap to 100% and stop the interval -- call this on a successful
+        // load (or in demo mode after instant load).
+        complete: () => {
+          if (_progressInterval) {
+            clearInterval(_progressInterval);
+            _progressInterval = null;
+          }
+          if (loadingBarFill) loadingBarFill.classList.add('done');
+          if (loadingPercent) loadingPercent.textContent = '100%';
+        },
+      };
+    }
+
+    // Called by the "Resume" button on the error card. Re-shows the loading
+    // chrome and retries the basic-info fetch in place -- no full page
+    // reload, the user can fix WiFi / network and try again.
+    function resumeFromError() {
+      const appLoading = document.getElementById('appLoading');
+      const loadingError = document.getElementById('loadingError');
+
+      // Make #appLoading visible (it may have been hidden by renderDashboardShell
+      // on a previous successful run before the background loads failed).
+      if (appLoading) appLoading.classList.remove('hidden');
+
+      // Un-hide the loading chrome that showLoadingError() hid. Clear the
+      // inline `display: none` style and let the default CSS take over.
+      if (appLoading) {
+        for (const sel of ['.loading-spinner', '.loading-bar', '.loading-text', '.loading-percent', '.loading-elapsed']) {
+          const el = appLoading.querySelector(sel);
+          if (el) el.style.display = '';
+        }
+      }
+      if (loadingError) loadingError.classList.add('hidden');
+
+      const ui = setupLoadingUI();
+
+      const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
+      const headers = getAuthHeader();
+
+      fetchRealData().then(() => {
+        console.log('[DEBUG] resume: fetchRealData resolved');
+        ui.complete();
+      }).catch((e) => {
+        console.error('[DEBUG] resume: fetchRealData rejected:', e);
+        const errMsg = (e && e.message) || String(e);
+        showLoadingError(errMsg);
+      });
+    }
+
     function showApp() {
       console.log('[DEBUG] showApp() START');
       console.log('[DEBUG] state:', JSON.stringify({demoMode: state.demoMode, authenticated: state.authenticated}));
@@ -588,57 +689,19 @@
       if (landingPage) landingPage.style.display = 'none';
       if (appLoading) appLoading.classList.remove('hidden');
 
-      // Get loading elements
-      const loadingText = document.getElementById('loadingText');
-      const loadingElapsed = document.getElementById('loadingElapsed');
-      const loadingPercent = document.getElementById('loadingPercent');
-      const loadingBarFill = document.getElementById('loadingBarFill');
-
-      console.log('[DEBUG] elements:', {loadingText: !!loadingText, loadingElapsed: !!loadingElapsed, loadingBarFill: !!loadingBarFill});
-
-      if (loadingText) loadingText.textContent = 'Loading';
-      if (loadingElapsed) loadingElapsed.textContent = '0s';
-      if (loadingPercent) loadingPercent.textContent = '0%';
-
-      // Tick an elapsed-time counter every second so the user can see the
-      // page is making progress while fetchRealData is in flight. Previously
-      // a static bar that froze at 40% made it look hung.
-      // The percentage mirrors the bar's CSS animation (0% -> 95% over 120s
-      // linear), so the number and the fill stay in sync.
-      const PROGRESS_DURATION_MS = 120_000;
-      const PROGRESS_MAX_PCT = 95;
-      const startTime = Date.now();
-      const progressInterval = setInterval(() => {
-        const elapsedMs = Date.now() - startTime;
-        const elapsed = Math.round(elapsedMs / 1000);
-        if (loadingElapsed) loadingElapsed.textContent = `${elapsed}s`;
-        if (loadingPercent) {
-          const pct = Math.min(
-            PROGRESS_MAX_PCT,
-            (elapsedMs / PROGRESS_DURATION_MS) * PROGRESS_MAX_PCT,
-          );
-          loadingPercent.textContent = `${Math.round(pct)}%`;
-        }
-      }, 250);
-
-      console.log('[DEBUG] Initial state set. demoMode:', state.demoMode);
+      const loadingUI = setupLoadingUI();
+      console.log('[DEBUG] loadingUI ready.');
 
       function updateLoading(text) {
-        if (loadingText && text) loadingText.textContent = text;
+        if (loadingUI.loadingText && text) loadingUI.loadingText.textContent = text;
       }
-
-      // Clear progress interval when fetch completes
-      const clearProgressInterval = () => {
-        if (progressInterval) clearInterval(progressInterval);
-      };
 
       // Load data - demo mode uses local data, otherwise fetch from MCP
       if (state.demoMode) {
         console.log('[DEBUG] Loading demo data...');
         loadDemoData();
         updateLoading('Done');
-        if (loadingBarFill) loadingBarFill.classList.add('done');
-        if (loadingPercent) loadingPercent.textContent = '100%';
+        loadingUI.complete();
         if (appLoading) appLoading.classList.add('hidden');
         finishShowApp();
       } else {
@@ -656,12 +719,9 @@
         // counter; we don't re-render the app here because the staged
         // loader is already in flight.
         fetchRealData().then(() => {
-          clearProgressInterval();
           console.log('[DEBUG] fetchRealData resolved');
-          if (loadingBarFill) loadingBarFill.classList.add('done');
-          if (loadingPercent) loadingPercent.textContent = '100%';
+          loadingUI.complete();
         }).catch((e) => {
-          clearProgressInterval();
           console.error('[DEBUG] fetchRealData rejected:', e);
           // fetchRealData is now expected to handle its own errors via
           // showLoadingError(); this catch is a safety net for unexpected
@@ -1017,10 +1077,18 @@
     // Track which tabs have been visited
     const visitedTabs = new Set();
 
-    // Loading-screen refresh button (basic-info failed) — full page reload
-    const loadingRefreshBtn = document.getElementById('loadingRefreshBtn');
-    if (loadingRefreshBtn) {
-      loadingRefreshBtn.addEventListener('click', () => {
+    // Loading-screen action buttons (basic-info failed):
+    //   Resume: re-run the fetch in place (no page reload)
+    //   Restart: full page reload
+    const loadingResumeBtn = document.getElementById('loadingResumeBtn');
+    if (loadingResumeBtn) {
+      loadingResumeBtn.addEventListener('click', () => {
+        resumeFromError();
+      });
+    }
+    const loadingRestartBtn = document.getElementById('loadingRestartBtn');
+    if (loadingRestartBtn) {
+      loadingRestartBtn.addEventListener('click', () => {
         location.reload();
       });
     }
