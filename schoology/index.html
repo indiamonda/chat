@@ -131,6 +131,9 @@
           </g>
         </svg>
       </div>
+      <div class="loading-bar">
+        <div class="loading-bar-fill" id="loadingBarFill"></div>
+      </div>
       <div class="loading-text" id="loadingText">Loading</div>
       <div class="loading-elapsed" id="loadingElapsed"></div>
     </div>
@@ -587,8 +590,9 @@
       // Get loading elements
       const loadingText = document.getElementById('loadingText');
       const loadingElapsed = document.getElementById('loadingElapsed');
+      const loadingBarFill = document.getElementById('loadingBarFill');
 
-      console.log('[DEBUG] elements:', {loadingText: !!loadingText, loadingElapsed: !!loadingElapsed});
+      console.log('[DEBUG] elements:', {loadingText: !!loadingText, loadingElapsed: !!loadingElapsed, loadingBarFill: !!loadingBarFill});
 
       if (loadingText) loadingText.textContent = 'Loading';
       if (loadingElapsed) loadingElapsed.textContent = '0s';
@@ -618,6 +622,7 @@
         console.log('[DEBUG] Loading demo data...');
         loadDemoData();
         updateLoading('Done');
+        if (loadingBarFill) loadingBarFill.classList.add('done');
         if (appLoading) appLoading.classList.add('hidden');
         finishShowApp();
       } else {
@@ -637,6 +642,7 @@
         fetchRealData().then(() => {
           clearProgressInterval();
           console.log('[DEBUG] fetchRealData resolved');
+          if (loadingBarFill) loadingBarFill.classList.add('done');
         }).catch((e) => {
           clearProgressInterval();
           console.error('[DEBUG] fetchRealData rejected:', e);
@@ -754,10 +760,10 @@
       const loadingError = document.getElementById('loadingError');
       const loadingErrorMessage = document.getElementById('loadingErrorMessage');
       if (loadingErrorMessage) loadingErrorMessage.textContent = message;
-      // Hide the spinner, loading text, and elapsed counter so the user only
-      // sees the error message + refresh link, no chrome.
+      // Hide the spinner, bar, loading text, and elapsed counter so the user
+      // only sees the error message + refresh link, no chrome.
       if (appLoading) {
-        for (const sel of ['.loading-spinner', '.loading-text', '.loading-elapsed']) {
+        for (const sel of ['.loading-spinner', '.loading-bar', '.loading-text', '.loading-elapsed']) {
           const el = appLoading.querySelector(sel);
           if (el) el.style.display = 'none';
         }
