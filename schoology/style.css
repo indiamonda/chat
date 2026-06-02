@@ -49,24 +49,15 @@
       from { transform: rotate(0deg); }
       to { transform: rotate(-360deg); }
     }
-    .loading-percent {
-      font-size: 2rem;
-      font-weight: 400;
-      color: var(--text);
-      font-family: 'Didact Gothic', sans-serif;
-    }
-    .loading-bar {
-      width: 200px;
-      height: 4px;
-      background: var(--border);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-    .loading-bar-fill {
-      height: 100%;
-      background: var(--ai-gradient, linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%));
-      width: 0%;
-      transition: width 0.3s ease;
+    .loading-percent { display: none; }
+    .loading-bar { display: none; }
+    .loading-bar-fill { display: none; }
+    .loading-elapsed {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      font-family: 'Oxygen Mono', monospace;
+      opacity: 0.6;
+      min-height: 1em;
     }
 
     .loading-error {
