@@ -99,15 +99,22 @@ async def get_grades(detailed: bool = False) -> dict:
 
 @mcp.tool()
 async def get_profile() -> dict:
-    """Return the logged-in student's name, grade level, and school.
+    """Return the logged-in student's name (and grade/school if available).
 
     Used as the lightweight 'first paint' fetch for the dashboard: shows
     a personalized loading screen and an identity strip on the dashboard
     without paying the cost of pulling every course/grade/assignment.
+
+    Fetches /home (the URL the other "first paint" tools already use) rather
+    than /users/<id> -- the user-profile page hangs at page.goto on the cold
+    /home path, so the dashboard would never recover. /home is fast, rendered
+    by the same logged-in context, and exposes the user's name in the top
+    navigation. grade/school aren't on /home, so they come back as None and
+    the frontend shows "—" in the identity strip.
     """
     username = _get_username_from_config()
     html = await client.fetch(
-        f"/users/{username}", username, wait_selector="#main h1, .page-title, .user-info-name"
+        "/home", username, wait_selector="body.s_*, #main, .s-home-page",
     )
     info = parsers.parse_profile(html, config.BASE_URL)
     return {
