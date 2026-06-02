@@ -369,18 +369,22 @@ _HOME_NAME_SELECTORS = (
 _HOME_NAME_NEGATIVE = ("logout", "sign out", "settings", "profile")  # not literal matches -- see filter below
 
 
-def parse_profile(html, base_url):
+def parse_profile(html, base_url, username=None):
     """Extract the student's name, grade level, and school from the /home page.
 
     /home reliably renders the logged-in user's display name in the top
     navigation; grade/school aren't on /home, so those keys come back as None
     and the dashboard shows "—" in their place. The returned dict always has
     all three keys so the caller can treat them uniformly.
+
+    `username` (the 8-digit student id, if known) is used to disambiguate the
+    current user's profile link from feed-author links -- the activity feed
+    also uses `href="/users/<id>"` for the authors of posts.
     """
     import re as _re
     soup = BeautifulSoup(html, "html.parser")
 
-    name = _extract_home_user_name(soup)
+    name = _extract_home_user_name(soup, username)
 
     grade = None
     school = None
@@ -410,31 +414,81 @@ def parse_profile(html, base_url):
     return {"name": name, "grade": grade, "school": school}
 
 
-def _extract_home_user_name(soup):
+def _extract_home_user_name(soup, username=None):
     """Best-effort extraction of the logged-in user's name from /home markup.
 
-    Tries a list of likely selectors, falling through to the <title> element.
-    Returns None if nothing looks like a personal name (so the caller can
-    decide what to render).
+    Priority:
+    1. A link to `/users/<username>` (the current user's own profile link) --
+       deterministic, immune to feed-author noise. Skips links inside the
+       activity feed (`li[id^='edge-assoc-']`).
+    2. A header/nav-scoped link to any `/users/<id>`.
+    3. A short list of common name-bearing elements.
+    4. The `<title>` element.
+
+    Returns None if nothing looks like a personal name.
     """
+    # (1) Deterministic: any anchor whose href is exactly /users/<username> and
+    # which sits OUTSIDE the activity feed (the feed uses the same href shape
+    # for post authors). We also accept hrefs that just *contain* the username.
+    if username:
+        for a in soup.find_all("a", href=True):
+            href = a.get("href") or ""
+            if f"/users/{username}" not in href:
+                continue
+            if _in_activity_feed(a):
+                continue
+            for source in (a.get("title"), _clean_text(a)):
+                if source and _looks_like_a_person_name(source):
+                    return source
+            # The link's parent might carry the visible name (e.g. an avatar +
+            # name pair rendered as <a><img/><span>Name</span></a>).
+            parent = a.parent
+            if parent is not None:
+                ptxt = _clean_text(parent)
+                if ptxt and _looks_like_a_person_name(ptxt):
+                    return ptxt
+
+    # (2)+(3) Tolerant cascade: scoped header/nav links, then named elements.
     for sel in _HOME_NAME_SELECTORS:
-        el = soup.select_one(sel)
-        text = _clean_text(el)
-        if text and _looks_like_a_person_name(text):
-            return text
-        # For links to /users/<id>, the link's text is usually the name. If
-        # `text` was empty, try the `title` attribute (a common a11y pattern).
-        if el and el.name == "a" and "/users/" in (el.get("href") or ""):
-            title_attr = (el.get("title") or "").strip()
-            if title_attr and _looks_like_a_person_name(title_attr):
-                return title_attr
-    # Last resort: a "Home | Schoology" <title> is useless, but some custom
-    # skins embed the name there. Return as-is and let the caller decide.
+        for el in soup.select(sel):
+            if _in_activity_feed(el):
+                continue
+            text = _clean_text(el)
+            if text and _looks_like_a_person_name(text):
+                return text
+            if el and el.name == "a" and "/users/" in (el.get("href") or ""):
+                title_attr = (el.get("title") or "").strip()
+                if title_attr and _looks_like_a_person_name(title_attr):
+                    return title_attr
+
+    # (4) Last resort: <title>. "Home | Schoology" is useless, but some skins
+    # embed the user's name there.
     if soup.title and soup.title.string:
         raw = soup.title.string.strip()
         if _looks_like_a_person_name(raw):
             return raw
     return None
+
+
+def _in_activity_feed(el):
+    """True if `el` is inside an activity-feed post item.
+
+    The /home feed renders posts as `<li id="edge-assoc-NNN">` and uses the
+    same `/users/<id>` href shape for post authors. We must not pick those
+    up as the current user's name.
+    """
+    if el is None:
+        return False
+    # The element itself, or any ancestor up to 6 levels, is a feed item.
+    cur = el
+    for _ in range(6):
+        if cur is None:
+            return False
+        cid = cur.get("id") or ""
+        if isinstance(cid, str) and cid.startswith("edge-assoc-"):
+            return True
+        cur = cur.parent
+    return False
 
 
 def _looks_like_a_person_name(text):
