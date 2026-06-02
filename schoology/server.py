@@ -244,6 +244,17 @@ _daemon_total_calls = 0
 _daemon_total_respawns = 0
 
 
+def _get_daemon():
+    """Return the worker's daemon singleton, spawning it on first use."""
+    global _daemon
+    if _daemon is not None:
+        return _daemon
+    with _daemon_init_lock:
+        if _daemon is None:
+            _daemon = DaemonClient()
+    return _daemon
+
+
 def _eagerly_start_daemon():
     """Spawn the daemon at worker startup so the cold start overlaps with page load.
 
@@ -263,17 +274,6 @@ def _eagerly_start_daemon():
 
 
 _eagerly_start_daemon()
-
-
-def _get_daemon():
-    """Return the worker's daemon singleton, spawning it on first use."""
-    global _daemon
-    if _daemon is not None:
-        return _daemon
-    with _daemon_init_lock:
-        if _daemon is None:
-            _daemon = DaemonClient()
-    return _daemon
 
 
 def _kill_daemon():
