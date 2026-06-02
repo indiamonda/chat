@@ -832,9 +832,19 @@
       const appLoading = document.getElementById('appLoading');
       const loadingError = document.getElementById('loadingError');
       const loadingErrorMessage = document.getElementById('loadingErrorMessage');
+      const loadingResumeBtn = document.getElementById('loadingResumeBtn');
       if (loadingErrorMessage) loadingErrorMessage.textContent = message;
+      // When the time limit is reached (client-side 120s abort, server-side
+      // MCP timeout, or "MCP call failed for ..."), retrying in place won't
+      // help -- the server is the bottleneck, not the network. Hide the
+      // Resume button so the user only sees Restart.
+      const isTimeout = /timed out|timeout|mcp call failed/i.test(message || '');
+      if (loadingResumeBtn) {
+        if (isTimeout) loadingResumeBtn.classList.add('hidden');
+        else loadingResumeBtn.classList.remove('hidden');
+      }
       // Hide the spinner, bar, percent, and elapsed counter
-      // so the user only sees the error message + refresh link, no chrome.
+      // so the user only sees the error message + buttons, no chrome.
       if (appLoading) {
         for (const sel of ['.loading-spinner', '.loading-bar', '.loading-percent', '.loading-elapsed']) {
           const el = appLoading.querySelector(sel);
