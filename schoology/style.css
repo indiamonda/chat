@@ -105,7 +105,15 @@
       text-align: center;
       line-height: 1.4;
     }
-    .loading-refresh-btn {
+    .loading-error-actions {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      align-items: center;
+      gap: 18px;
+      margin-top: 4px;
+    }
+    .loading-action-btn {
       background: none;
       border: none;
       padding: 0;
@@ -115,8 +123,12 @@
       text-decoration: underline;
       text-underline-offset: 3px;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
     }
-    .loading-refresh-btn:hover { color: var(--text, #fff); }
+    .loading-action-btn:hover { color: var(--text, #fff); }
+    .loading-action-btn svg { display: block; }
 
     .global-progress {
       position: fixed;
