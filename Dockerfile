@@ -41,4 +41,5 @@ EXPOSE 8080 8081
 ENV DATA_DIR=/data
 ENV SCHOOLOGY_HEADLESS=true
 ENV SCHOOLOGY_KEEPALIVE=false
-CMD ["sh", "-c", "cd /app/schoology; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 2 --threads 8 server:app & node /app/server/index.js"]
+ENV SCHOOLOGY_STORAGE_STATE=/data/schoology_storage.json
+CMD ["sh", "-c", "cd /app/schoology; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 2 --threads 8 -c /app/schoology/gunicorn.conf.py server:app & node /app/server/index.js"]
