@@ -346,57 +346,47 @@ def parse_recent_posts(html, base_url, limit=20):
 
 
 # --------------------------------------------------------------------------
-# Profile (name / grade / school)
+# Profile (name / grade / school) -- from the /home page
 # --------------------------------------------------------------------------
 
-def parse_profile(html, base_url):
-    """Extract the student's name, grade level, and school from a profile page.
+# Schoology puts the logged-in user's name in the top navigation. The most
+# reliable target is a link to the user's own /users/<id> profile; we ignore
+# any link inside the activity feed (which uses the same URL pattern for the
+# authors of posts) by scoping the search to header/nav elements.
+_HOME_NAME_SELECTORS = (
+    "header a[href*='/users/']",
+    ".topnav a[href*='/users/']",
+    ".s-topnav a[href*='/users/']",
+    "#header a[href*='/users/']",
+    ".account-menu a[href*='/users/']",
+    ".user-menu a[href*='/users/']",
+    ".user-name",
+    ".s-user-name",
+    ".topnav-account-name",
+    ".user-thumb-info .name",
+    ".name-title",
+)
+_HOME_NAME_NEGATIVE = ("logout", "sign out", "settings", "profile")  # not literal matches -- see filter below
 
-    Schoology's profile page markup has changed across releases; we try
-    several selectors and fall back to text extraction. The returned dict
-    always has all three keys; missing values come back as None so the
-    dashboard can decide how to render the absence.
+
+def parse_profile(html, base_url):
+    """Extract the student's name, grade level, and school from the /home page.
+
+    /home reliably renders the logged-in user's display name in the top
+    navigation; grade/school aren't on /home, so those keys come back as None
+    and the dashboard shows "—" in their place. The returned dict always has
+    all three keys so the caller can treat them uniformly.
     """
+    import re as _re
     soup = BeautifulSoup(html, "html.parser")
 
-    name = (
-        _clean_text(soup.select_one("#main h1"))
-        or _clean_text(soup.select_one(".page-title"))
-        or _clean_text(soup.select_one(".user-info-name"))
-        or _clean_text(soup.select_one(".profile-name h1"))
-        or _clean_text(soup.select_one(".name-title"))
-    )
-    # Strip a leading "Profile of " or similar wrapper if present
-    if name and name.lower().startswith("profile of "):
-        name = name[len("profile of "):].strip() or None
+    name = _extract_home_user_name(soup)
 
     grade = None
     school = None
-    # The profile sidebar often has rows like "<th>Grade level</th><td>11</td>"
-    # and "<th>School</th><td>Palo Alto High School</td>". Walk the whole
-    # table to find them.
-    for table in soup.select("table"):
-        for th in table.find_all("th"):
-            label = _clean_text(th)
-            if not label:
-                continue
-            td = th.find_next_sibling("td")
-            value = _clean_text(td) if td else None
-            if not value:
-                continue
-            llabel = label.lower()
-            if grade is None and ("grade" in llabel or "grade level" in llabel):
-                grade = value
-            elif school is None and "school" in llabel:
-                school = value
-
-    # Some profile pages only put the school/grade in plain text -- try
-    # a last-ditch regex on the whole page.
-    if not school or not grade:
-        text = soup.get_text(" ", strip=True)
+    text = soup.get_text(" ", strip=True)
 
     if not school:
-        # Common PAUSD schools -- match on display name
         for known in (
             "Palo Alto High School",
             "Henry M. Gunn High School",
@@ -409,13 +399,55 @@ def parse_profile(html, base_url):
                 break
 
     if not grade:
-        import re
-        m = re.search(r"\bgrade\s*(\d{1,2})\b", text, re.IGNORECASE)
+        m = _re.search(r"\bgrade\s*(\d{1,2})\b", text, _re.IGNORECASE)
         if m:
             grade = m.group(1)
         else:
-            m = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)\s+grade\b", text, re.IGNORECASE)
+            m = _re.search(r"\b(\d{1,2})(?:st|nd|rd|th)\s+grade\b", text, _re.IGNORECASE)
             if m:
                 grade = m.group(1)
 
     return {"name": name, "grade": grade, "school": school}
+
+
+def _extract_home_user_name(soup):
+    """Best-effort extraction of the logged-in user's name from /home markup.
+
+    Tries a list of likely selectors, falling through to the <title> element.
+    Returns None if nothing looks like a personal name (so the caller can
+    decide what to render).
+    """
+    for sel in _HOME_NAME_SELECTORS:
+        el = soup.select_one(sel)
+        text = _clean_text(el)
+        if text and _looks_like_a_person_name(text):
+            return text
+        # For links to /users/<id>, the link's text is usually the name. If
+        # `text` was empty, try the `title` attribute (a common a11y pattern).
+        if el and el.name == "a" and "/users/" in (el.get("href") or ""):
+            title_attr = (el.get("title") or "").strip()
+            if title_attr and _looks_like_a_person_name(title_attr):
+                return title_attr
+    # Last resort: a "Home | Schoology" <title> is useless, but some custom
+    # skins embed the name there. Return as-is and let the caller decide.
+    if soup.title and soup.title.string:
+        raw = soup.title.string.strip()
+        if _looks_like_a_person_name(raw):
+            return raw
+    return None
+
+
+def _looks_like_a_person_name(text):
+    """Heuristic: 2-5 words, each starting with a letter, no nav-y tokens."""
+    if not text:
+        return False
+    lowered = text.lower()
+    if any(tok in lowered for tok in _HOME_NAME_NEGATIVE):
+        return False
+    words = text.split()
+    if not (2 <= len(words) <= 5):
+        return False
+    # Reject purely numeric / punctuation tokens
+    if not all(w[0].isalpha() for w in words if w):
+        return False
+    return True
