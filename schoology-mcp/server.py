@@ -113,9 +113,7 @@ async def get_profile() -> dict:
     the frontend shows "—" in the identity strip.
     """
     username = _get_username_from_config()
-    html = await client.fetch(
-        "/home", username, wait_selector="body.s_*, #main, .s-home-page",
-    )
+    html = await client.fetch("/home", username, extra_wait_ms=3_000)
     info = parsers.parse_profile(html, config.BASE_URL, username=username)
     return {
         "base_url": config.BASE_URL,
