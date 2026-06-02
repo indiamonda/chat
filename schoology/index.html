@@ -131,11 +131,8 @@
           </g>
         </svg>
       </div>
-      <div class="loading-percent" id="loadingPercent">0%</div>
-      <div class="loading-bar">
-        <div class="loading-bar-fill" id="loadingBarFill"></div>
-      </div>
       <div class="loading-text" id="loadingText">Loading</div>
+      <div class="loading-elapsed" id="loadingElapsed"></div>
     </div>
 
     <div class="loading-error hidden" id="loadingError">
@@ -588,30 +585,26 @@
       if (appLoading) appLoading.classList.remove('hidden');
 
       // Get loading elements
-      const loadingPercent = document.getElementById('loadingPercent');
-      const loadingBarFill = document.getElementById('loadingBarFill');
       const loadingText = document.getElementById('loadingText');
+      const loadingElapsed = document.getElementById('loadingElapsed');
 
-      console.log('[DEBUG] elements:', {loadingPercent: !!loadingPercent, loadingBarFill: !!loadingBarFill, loadingText: !!loadingText});
+      console.log('[DEBUG] elements:', {loadingText: !!loadingText, loadingElapsed: !!loadingElapsed});
 
-      // Immediately update to 10% to show loading started
-      if (loadingPercent) loadingPercent.textContent = '10%';
-      if (loadingBarFill) loadingBarFill.style.width = '10%';
-      if (loadingText) loadingText.textContent = 'Connecting to MCP server...';
+      if (loadingText) loadingText.textContent = 'Loading';
+      if (loadingElapsed) loadingElapsed.textContent = '0s';
 
-      // Track elapsed seconds (only show after 10s to avoid cluttering display)
+      // Tick an elapsed-time counter every second so the user can see the
+      // page is making progress while fetchRealData is in flight. Previously
+      // a static bar that froze at 40% made it look hung.
       const startTime = Date.now();
       const progressInterval = setInterval(() => {
         const elapsed = Math.round((Date.now() - startTime) / 1000);
-        if (elapsed >= 10 && loadingText) loadingText.textContent = `Loading... ${elapsed}s elapsed`;
+        if (loadingElapsed) loadingElapsed.textContent = `${elapsed}s`;
       }, 1000);
 
       console.log('[DEBUG] Initial state set. demoMode:', state.demoMode);
 
-      function updateLoading(percent, text) {
-        console.log('[DEBUG] updateLoading:', percent, text);
-        if (loadingPercent) loadingPercent.textContent = Math.round(percent) + '%';
-        if (loadingBarFill) loadingBarFill.style.width = percent + '%';
+      function updateLoading(text) {
         if (loadingText && text) loadingText.textContent = text;
       }
 
@@ -624,29 +617,26 @@
       if (state.demoMode) {
         console.log('[DEBUG] Loading demo data...');
         loadDemoData();
-        updateLoading(100, 'Done');
+        updateLoading('Done');
         if (appLoading) appLoading.classList.add('hidden');
         finishShowApp();
       } else {
         console.log('[DEBUG] Fetching real data...');
-        updateLoading(20, 'Loading');
         try {
           loadChatHistory();
           console.log('[DEBUG] loadChatHistory done');
         } catch (e) {
           console.error('[DEBUG] loadChatHistory error:', e);
         }
-        updateLoading(40, 'Loading');
         console.log('[DEBUG] Calling fetchRealData...');
-        // fetchRealData() now manages its own loading→shell→error transitions
-        // internally (basic-info 60s → shell + background loads, or error card).
-        // The .then()/.catch() below only handle cleanup of the indeterminate
-        // progress bar; we don't re-render the app here because the staged
+        // fetchRealData() manages its own loading→shell→error transitions
+        // internally (basic-info 120s → shell + background loads, or error
+        // card). The .then()/.catch() below only clean up the elapsed
+        // counter; we don't re-render the app here because the staged
         // loader is already in flight.
         fetchRealData().then(() => {
           clearProgressInterval();
           console.log('[DEBUG] fetchRealData resolved');
-          updateLoading(100, 'Done');
         }).catch((e) => {
           clearProgressInterval();
           console.error('[DEBUG] fetchRealData rejected:', e);
@@ -660,7 +650,6 @@
             state.connectionError = `Cannot reach API server: ${errMsg}`;
           }
           showLoadingError(state.connectionError);
-          updateLoading(100, 'Error');
         });
         console.log('[DEBUG] fetchRealData promise created');
       }
@@ -765,10 +754,10 @@
       const loadingError = document.getElementById('loadingError');
       const loadingErrorMessage = document.getElementById('loadingErrorMessage');
       if (loadingErrorMessage) loadingErrorMessage.textContent = message;
-      // Hide the spinner, percent, bar, and elapsed-time text so the user only
+      // Hide the spinner, loading text, and elapsed counter so the user only
       // sees the error message + refresh link, no chrome.
       if (appLoading) {
-        for (const sel of ['.loading-spinner', '.loading-percent', '.loading-bar', '.loading-text']) {
+        for (const sel of ['.loading-spinner', '.loading-text', '.loading-elapsed']) {
           const el = appLoading.querySelector(sel);
           if (el) el.style.display = 'none';
         }
