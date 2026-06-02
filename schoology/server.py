@@ -3,9 +3,11 @@
 Schoology Frontend Server
 Bridges the web dashboard to the Schoology tool functions.
 
-Each tool call is run in a fresh subprocess that calls the tool function
-directly (no MCP stdio protocol). This avoids the result-loss race that
-happens when the MCP one-shot process exits mid-cleanup.
+Gunicorn worker 0 hosts a long-lived run_tool.py daemon (one SchoologyClient
+in-process, persistent across calls -- warm browser, ~3-5s per call after
+the first cold start). Worker 1 falls back to per-request subprocesses so
+we don't double the Chromium memory on 512MB Fly machines. See
+gunicorn.conf.py and the `_should_use_daemon()` helper below.
 """
 
 import base64
@@ -14,6 +16,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 import traceback
 from pathlib import Path
 from datetime import datetime
@@ -42,6 +45,21 @@ def decode_auth_header():
         return username, password
     except Exception:
         return None, None
+
+
+def _storage_state_path(username):
+    """Return the Playwright storage_state file for a given student.
+
+    Mirrors the rule in schoology-mcp/schoology_mcp/browser.py:_storage_path:
+    the per-student file is `{stem}_{username}{suffix}` of the base path.
+    The base path comes from the SCHOOLOGY_STORAGE_STATE env var (default
+    /app/schoology-mcp/storage_state.json); the Dockerfile overrides it
+    to /data/schoology_storage.json so cookies survive a redeploy.
+    """
+    base = Path(os.environ.get("SCHOOLOGY_STORAGE_STATE", str(MCP_DIR / "storage_state.json")))
+    if username:
+        return base.parent / f"{base.stem}_{username}{base.suffix}"
+    return base
 
 
 # Serialize tool subprocesses per gunicorn worker to avoid 16 simultaneous
@@ -78,7 +96,7 @@ class FetchQueue:
 
     def _worker(self, item):
         with _subprocess_lock:
-            result = call_mcp_tool_with_timeout(item[2], item[3], item[4])
+            result = call_mcp_tool(item[2], item[3], item[4], timeout_seconds=180)
             item[6] = result
         item[5].set()
 
@@ -99,12 +117,207 @@ class FetchQueue:
 _fetch_queue = FetchQueue()
 
 
-def call_mcp_tool_with_timeout(tool_name, username=None, password=None, timeout_seconds=180):
+# ---------------------------------------------------------------------------
+# Long-lived MCP daemon (worker 0 only; worker 1 uses the subprocess path).
+# ---------------------------------------------------------------------------
+# Gunicorn config (gunicorn.conf.py) sets GUNICORN_WORKER_INDEX=0|1 in the
+# master's env before each fork, and the child inherits it. Worker 0 hosts
+# the daemon (warm browser across calls, ~3-5s per call after the first).
+# Worker 1 falls back to the per-request subprocess path so we don't double
+# the Chromium memory on 512MB Fly machines.
+
+
+def _should_use_daemon() -> bool:
+    """True if this worker should host the long-lived MCP daemon."""
+    return os.environ.get("GUNICORN_WORKER_INDEX") == "0"
+
+
+class DaemonClient:
+    """Long-lived run_tool.py subprocess with a persistent SchoologyClient.
+
+    Wire protocol: one JSON-line request on stdin, one JSON-line response
+    on stdout. Strictly ordered (one request -> one response, no pipelining).
+    Stderr is drained on a background thread so log output never deadlocks
+    the pipe.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._stdout_buffer = b""
+        self.proc = None
+        self._stderr_thread = None
+        self.started_at = time.monotonic()
+        self._spawn()
+
+    def _spawn(self):
+        env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+        print(f"[MCP-DAEMON] spawning run_tool.py subprocess (worker={os.environ.get('GUNICORN_WORKER_INDEX')})", file=sys.stderr)
+        self.proc = subprocess.Popen(
+            [VENV_PYTHON, RUN_TOOL_PY],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+        )
+        self._stderr_thread = threading.Thread(
+            target=self._drain_stderr,
+            name=f"mcp-daemon-stderr-{self.proc.pid}",
+            daemon=True,
+        )
+        self._stderr_thread.start()
+
+    def _drain_stderr(self):
+        try:
+            for raw in iter(self.proc.stderr.readline, b""):
+                line = raw.decode("utf-8", errors="replace")
+                print(f"[daemon] {line}", end="", file=sys.stderr)
+                sys.stderr.flush()
+        except Exception as exc:  # noqa: BLE001 - thread must not crash
+            print(f"[MCP-DAEMON] stderr drainer died: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+    def call(self, request, timeout_seconds):
+        """Send one request, read one response, return the parsed JSON dict."""
+        with self._lock:
+            if self.proc.poll() is not None:
+                raise EOFError(f"daemon exited (rc={self.proc.returncode})")
+
+            payload = (json.dumps(request) + "\n").encode("utf-8")
+            try:
+                self.proc.stdin.write(payload)
+                self.proc.stdin.flush()
+            except (BrokenPipeError, OSError) as exc:
+                raise EOFError(f"daemon stdin closed: {exc}")
+
+            line = self._read_line_with_timeout(timeout_seconds)
+            return json.loads(line.decode("utf-8"))
+
+    def _read_line_with_timeout(self, timeout_seconds):
+        """Read one newline-terminated line from the daemon's stdout.
+
+        Uses select.select for the timeout and a manual buffer to handle
+        partial reads. Reads via os.read on the raw fd to avoid mixing
+        with the BufferedReader's internal state.
+        """
+        import select
+        fd = self.proc.stdout.fileno()
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            if b"\n" in self._stdout_buffer:
+                line, self._stdout_buffer = self._stdout_buffer.split(b"\n", 1)
+                return line
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"daemon read timed out after {timeout_seconds}s")
+
+            ready, _, _ = select.select([fd], [], [], remaining)
+            if not ready:
+                continue  # loop re-checks buffer + timeout
+
+            chunk = os.read(fd, 4096)
+            if not chunk:
+                raise EOFError("daemon stdout closed")
+            self._stdout_buffer += chunk
+
+    def close(self):
+        if self.proc is None:
+            return
+        try:
+            if self.proc.poll() is None:
+                try:
+                    self.proc.stdin.close()  # signal EOF so the daemon exits cleanly
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    self.proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.proc.kill()
+                    self.proc.wait()
+        except Exception:  # noqa: BLE001
+            pass
+        self.proc = None
+
+
+_daemon = None
+_daemon_init_lock = threading.Lock()
+_daemon_total_calls = 0
+_daemon_total_respawns = 0
+
+
+def _get_daemon():
+    """Return the worker's daemon singleton, spawning it on first use."""
+    global _daemon
+    if _daemon is not None:
+        return _daemon
+    with _daemon_init_lock:
+        if _daemon is None:
+            _daemon = DaemonClient()
+    return _daemon
+
+
+def _kill_daemon():
+    """Tear down the current daemon so the next call respawns it."""
+    global _daemon, _daemon_total_respawns
+    if _daemon is None:
+        return
+    try:
+        _daemon.close()
+    except Exception:  # noqa: BLE001
+        pass
+    _daemon = None
+    _daemon_total_respawns += 1
+
+
+def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
+    """Call a tool through the long-lived daemon.
+
+    Respawns and retries once on daemon death (EOFError / BrokenPipeError
+    / OSError). On TimeoutError, the daemon is left running -- it may be
+    in the middle of a slow first-call cold start, and killing it would
+    just make the next caller pay the same cold-start cost on a fresh
+    process.
+    """
+    global _daemon_total_calls
+    request = {
+        "tool": tool_name,
+        "username": username,
+        "password": password,
+        "arguments": {},
+    }
+    try:
+        result = _get_daemon().call(request, timeout_seconds)
+        _daemon_total_calls += 1
+        return result
+    except (EOFError, BrokenPipeError, OSError) as exc:
+        print(f"[MCP-DAEMON] {tool_name}: daemon died ({type(exc).__name__}: {exc}); respawning", file=sys.stderr)
+        _kill_daemon()
+    except TimeoutError as exc:
+        print(f"[MCP-DAEMON] {tool_name}: timed out after {timeout_seconds}s; leaving daemon running", file=sys.stderr)
+        return None
+
+    # Retry once on a fresh daemon
+    try:
+        result = _get_daemon().call(request, timeout_seconds)
+        _daemon_total_calls += 1
+        return result
+    except Exception as exc:  # noqa: BLE001
+        print(f"[MCP-DAEMON] {tool_name}: retry after respawn failed ({type(exc).__name__}: {exc})", file=sys.stderr)
+        _kill_daemon()
+        return None
+
+
+def call_mcp_tool(tool_name, username=None, password=None, timeout_seconds=180):
+    """Dispatcher: daemon (worker 0) or per-request subprocess (worker 1)."""
+    if _should_use_daemon():
+        return _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds)
+    return call_mcp_tool_subprocess(tool_name, username=username, password=password, timeout_seconds=timeout_seconds)
+
+
+def call_mcp_tool_subprocess(tool_name, username=None, password=None, timeout_seconds=180):
     """Call a tool by running run_tool.py in a fresh subprocess.
 
     Returns the parsed JSON dict from the subprocess, or None on failure.
     """
-    import time
     request_payload = {
         "tool": tool_name,
         "username": username,
@@ -246,7 +459,7 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None, timeout_s
             return {'_error': True, 'message': f'{tool_name} timeout'}
         data = item[6]
     else:
-        data = call_mcp_tool_with_timeout(tool_name, username=username, password=password, timeout_seconds=timeout_seconds)
+        data = call_mcp_tool(tool_name, username=username, password=password, timeout_seconds=timeout_seconds)
     print(f"[DEBUG] MCP returned: {type(data).__name__} = {repr(data)[:300]}" if data else f"[DEBUG] MCP returned None", file=sys.stderr)
 
     # Check for error in CallToolResult
@@ -381,7 +594,7 @@ def reprioritize_queue():
 def clear_session():
     """Clear the Schoology session for the authenticated student."""
     username, _ = decode_auth_header()
-    storage_state = MCP_DIR / f'storage_state_{username}.json' if username else MCP_DIR / 'storage_state.json'
+    storage_state = _storage_state_path(username)
     if storage_state.exists():
         storage_state.unlink()
     return jsonify({'status': 'ok'})
@@ -392,7 +605,7 @@ def get_status():
     """Get connection status."""
     mcp_installed = os.path.exists(VENV_PYTHON) and os.path.exists(RUN_TOOL_PY)
     username, _ = decode_auth_header()
-    storage_state = MCP_DIR / f'storage_state_{username}.json' if username else MCP_DIR / 'storage_state.json'
+    storage_state = _storage_state_path(username)
 
     return jsonify({
         'mcp_installed': mcp_installed,
@@ -407,7 +620,7 @@ def setup_status():
     venv_exists = os.path.exists(VENV_PYTHON)
     env_exists = (MCP_DIR / '.env').exists()
     username, _ = decode_auth_header()
-    storage_exists = (MCP_DIR / f'storage_state_{username}.json').exists() if username else (MCP_DIR / 'storage_state.json').exists()
+    storage_exists = _storage_state_path(username).exists()
 
     return jsonify({
         'needs_setup': not venv_exists,
@@ -415,6 +628,40 @@ def setup_status():
         'needs_login': not storage_exists,
         'venv_path': str(Path(VENV_PYTHON).parent.parent),
         'server_path': RUN_TOOL_PY
+    })
+
+
+@app.route('/api/daemon-status')
+def daemon_status():
+    """Status of the long-lived MCP daemon in this gunicorn worker.
+
+    Worker 0 reports the daemon's state; worker 1 reports enabled=False
+    and falls back to per-request subprocesses. Useful for verifying the
+    warm/cold path after a deploy.
+    """
+    enabled = _should_use_daemon()
+    if not enabled:
+        return jsonify({
+            'enabled': False,
+            'running': False,
+            'pid': None,
+            'calls': 0,
+            'respawns': 0,
+            'uptime_s': 0,
+            'worker_index': os.environ.get('GUNICORN_WORKER_INDEX'),
+            'mode': 'subprocess-fallback',
+        })
+
+    running = _daemon is not None and _daemon.proc is not None and _daemon.proc.poll() is None
+    return jsonify({
+        'enabled': True,
+        'running': running,
+        'pid': _daemon.proc.pid if running else None,
+        'calls': _daemon_total_calls,
+        'respawns': _daemon_total_respawns,
+        'uptime_s': round(time.monotonic() - _daemon.started_at, 1) if _daemon else 0,
+        'worker_index': os.environ.get('GUNICORN_WORKER_INDEX'),
+        'mode': 'long-lived-daemon',
     })
 
 
