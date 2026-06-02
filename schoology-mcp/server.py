@@ -107,7 +107,7 @@ async def get_profile() -> dict:
     """
     username = _get_username_from_config()
     html = await client.fetch(
-        f"/user/{username}", username, wait_selector="#main h1, .page-title, .user-info-name"
+        f"/users/{username}", username, wait_selector="#main h1, .page-title, .user-info-name"
     )
     info = parsers.parse_profile(html, config.BASE_URL)
     return {

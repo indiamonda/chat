@@ -200,7 +200,14 @@ class SchoologyClient:
         """Navigate to a path and return (final_url, html)."""
         page = await context.new_page()
         try:
-            await page.goto(f"{config.BASE_URL}{path}", wait_until="domcontentloaded")
+            # Schoology polls in the background, so 'networkidle' never settles
+            # on its own. Cap the goto itself at 30s so a hung page surfaces as
+            # a clean timeout instead of blocking for the full outer timeout.
+            await page.goto(
+                f"{config.BASE_URL}{path}",
+                wait_until="domcontentloaded",
+                timeout=30_000,
+            )
             try:
                 await page.wait_for_load_state("networkidle", timeout=15_000)
             except PlaywrightTimeout:
