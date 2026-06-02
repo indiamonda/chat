@@ -116,7 +116,7 @@ async def get_profile() -> dict:
     html = await client.fetch(
         "/home", username, wait_selector="body.s_*, #main, .s-home-page",
     )
-    info = parsers.parse_profile(html, config.BASE_URL)
+    info = parsers.parse_profile(html, config.BASE_URL, username=username)
     return {
         "base_url": config.BASE_URL,
         "name": info.get("name"),
