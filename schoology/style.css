@@ -49,9 +49,28 @@
       from { transform: rotate(0deg); }
       to { transform: rotate(-360deg); }
     }
-    .loading-percent { display: none; }
-    .loading-bar { display: none; }
-    .loading-bar-fill { display: none; }
+    .loading-bar {
+      width: 200px;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .loading-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--ai-gradient, linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%));
+      animation: loadingBarFill 120s linear forwards;
+    }
+    @keyframes loadingBarFill {
+      from { width: 0%; }
+      to { width: 95%; }
+    }
+    .loading-bar-fill.done {
+      animation: none;
+      width: 100%;
+      transition: width 0.3s ease;
+    }
     .loading-elapsed {
       font-size: 0.85rem;
       color: var(--text-secondary);
