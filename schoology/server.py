@@ -244,6 +244,27 @@ _daemon_total_calls = 0
 _daemon_total_respawns = 0
 
 
+def _eagerly_start_daemon():
+    """Spawn the daemon at worker startup so the cold start overlaps with page load.
+
+    Without this, the user's first /api/basic-info call pays the full 60-90s
+    cold start. With it, the cold start begins when the gunicorn worker boots
+    -- well before the browser even finishes loading the dashboard -- so by
+    the time the frontend's JS makes its first MCP call, the daemon is often
+    already warm. Best-effort: a failure here is logged and ignored; the
+    first call will lazy-spawn the daemon instead.
+    """
+    if not _should_use_daemon():
+        return
+    try:
+        _get_daemon()
+    except Exception as exc:  # noqa: BLE001 - never fail worker startup on this
+        print(f"[MCP-DAEMON] eager spawn failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+
+
+_eagerly_start_daemon()
+
+
 def _get_daemon():
     """Return the worker's daemon singleton, spawning it on first use."""
     global _daemon
@@ -288,12 +309,19 @@ def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
         result = _get_daemon().call(request, timeout_seconds)
         _daemon_total_calls += 1
         return result
+    except TimeoutError as exc:
+        # On timeout the daemon is likely still cold-starting -- but if
+        # we leave it running, the next caller will read the first
+        # call's stale response (the daemon eventually writes it after
+        # the cold start). Killing and respawning is the safe default:
+        # the protocol stays in sync, and the next caller pays one
+        # extra cold start. (Real users with valid creds will succeed
+        # on the first call and never hit this path.)
+        print(f"[MCP-DAEMON] {tool_name}: timed out after {timeout_seconds}s; killing daemon to keep protocol in sync", file=sys.stderr)
+        _kill_daemon()
     except (EOFError, BrokenPipeError, OSError) as exc:
         print(f"[MCP-DAEMON] {tool_name}: daemon died ({type(exc).__name__}: {exc}); respawning", file=sys.stderr)
         _kill_daemon()
-    except TimeoutError as exc:
-        print(f"[MCP-DAEMON] {tool_name}: timed out after {timeout_seconds}s; leaving daemon running", file=sys.stderr)
-        return None
 
     # Retry once on a fresh daemon
     try:
