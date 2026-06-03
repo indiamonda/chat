@@ -1981,7 +1981,7 @@
           try { iframe.remove(); } catch (e) {}
           resolve({ output: logs.join('\n'), error: `timed out after ${timeoutMs}ms` });
         }, timeoutMs);
-        iframe.srcdoc = `<!doctype html><html><body><script>${wrapped}</script></body></html>`;
+        iframe.srcdoc = `<!doctype html><html><body><script>${wrapped}</` + `script></body></html>`;
         document.body.appendChild(iframe);
       });
     }
