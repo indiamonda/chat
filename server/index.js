@@ -898,12 +898,24 @@ function proxyRequest(req, res, targetPort, basePath) {
     }
   });
 
-  // Write body if present. express.json() sets req.body={} for requests
-  // with no body, so we must skip empty bodies -- otherwise GET requests
-  // get a `{}` payload that gunicorn misreads as a second request line on
-  // the keep-alive connection, returning 400s for the next request.
-  if (req.body != null && Object.keys(req.body).length > 0 && req.method !== 'GET' && req.method !== 'HEAD') {
-    proxyReq.write(JSON.stringify(req.body));
+  // Body forwarding. Two cases:
+  //   1. express.json() parsed a JSON body into req.body -- the raw stream
+  //      is already consumed, so re-serialize.
+  //   2. Non-JSON body (multipart, etc.) -- express.json() left req.body
+  //      empty and the raw stream is still readable, so pipe it through.
+  // Skip entirely for GET/HEAD and for empty bodies -- otherwise gunicorn
+  // sees a stray `{}` on a keep-alive connection and 400s the next request.
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    if (req.body && Object.keys(req.body).length > 0) {
+      const body = JSON.stringify(req.body);
+      proxyReq.setHeader('Content-Length', Buffer.byteLength(body));
+      proxyReq.write(body);
+    } else if (Number(req.headers['content-length'] || 0) > 0) {
+      req.pipe(proxyReq);
+      // req.pipe will call end() when the source stream closes; don't call
+      // proxyReq.end() again or the connection will hang up early.
+      return;
+    }
   }
   proxyReq.end();
 }
