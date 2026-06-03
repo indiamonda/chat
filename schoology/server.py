@@ -21,6 +21,7 @@ import sys
 import threading
 import time
 import traceback
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -586,17 +587,18 @@ def get_basic_info():
 
     The upstream schoology-mcp removed the dedicated ``get_profile``
     tool, so the lightweight "first paint" identity fetch no longer
-    exists. Return an explicit 410 so the frontend knows to skip the
-    identity strip and render the dashboard with whatever
-    ``get_courses``/``get_grades`` returns. Cold-start timeouts still
-    benefit from the 120s budget (the *first* tool call pays for
-    Chromium + ClassLink login) but the rest is now opportunistic.
+    exists. Return 200 with a ``removed`` marker so the browser does
+    not log a "Failed to load resource" console error; the frontend
+    reads ``removed`` and skips the identity strip, rendering the
+    dashboard with whatever ``get_courses``/``get_grades`` returns.
+    Cold-start timeouts still benefit from the 120s budget (the
+    *first* tool call pays for Chromium + ClassLink login) but the
+    rest is now opportunistic.
     """
     return jsonify({
-        "_error": True,
-        "message": "get_profile was removed in schoology-mcp upstream; the dashboard will derive identity from courses/grades instead.",
         "removed": True,
-    }), 410
+        "message": "get_profile was removed in schoology-mcp upstream; the dashboard will derive identity from courses/grades instead.",
+    }), 200
 
 
 def _priority_from_request():
@@ -745,6 +747,330 @@ def daemon_status():
 # Each module in schoology/ai/ registers its own routes via register_routes(app).
 from schoology.ai import register_routes as _register_ai_routes
 _register_ai_routes(app)
+
+
+# ---------------------------------------------------------------------------
+# AI chat + global memory persistence
+#
+# One file per chat at <DATA_DIR>/ai_chats/<username>/<chatId>.json, plus a
+# _memory.json for cross-chat "remember this" items and a _last_chat.json
+# recording which chat the user had open. Atomic writes (tmp + os.replace)
+# keep the persistent volume safe against partial writes on redeploys.
+# Auth is the same Basic-auth header as the rest of the API.
+# ---------------------------------------------------------------------------
+AI_CHATS_DIR = Path(os.environ.get('DATA_DIR', '/data')) / 'ai_chats'
+MAX_MEMORY_ITEMS = 50
+MAX_CHATS_PER_USER = 50
+MAX_MESSAGES_PER_CHAT = 200
+MAX_OTHER_SUMMARIES = 8
+MAX_MEMORY_IN_CONTEXT = 20
+SUMMARIZE_MIN_MESSAGES = 4  # don't summarize very short chats
+SUMMARY_MAX_CHARS = 400
+
+
+def _chat_user_dir(username: str) -> Path:
+    """Return the per-user chat directory, creating it if missing."""
+    d = AI_CHATS_DIR / _safe_username(username)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _safe_username(username: str) -> str:
+    """Username from Basic auth may contain anything; constrain to a safe
+    filename component so we never write outside AI_CHATS_DIR."""
+    return ''.join(c for c in (username or '') if c.isalnum() or c in '._-') or 'anonymous'
+
+
+def _atomic_write_json(path: Path, obj) -> None:
+    """Write JSON atomically: tmp + os.replace. Safe on the persistent volume."""
+    tmp = path.with_suffix(path.suffix + '.tmp')
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+
+
+def _read_json(path: Path, default):
+    """Read JSON, returning ``default`` if the file is missing or malformed."""
+    if not path.exists():
+        return default
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return default
+
+
+def _chat_path(username: str, chat_id: str) -> Path:
+    return _chat_user_dir(username) / f'{chat_id}.json'
+
+
+def _summarize_chat(messages) -> str:
+    """Build a short non-LLM summary from a chat's message list.
+
+    Joins user-authored text, truncates to SUMMARY_MAX_CHARS. Good enough
+    for the "other chats" awareness block; if the user later wants LLM
+    summaries, this is the single place to swap.
+    """
+    parts = []
+    for m in messages:
+        if m.get('role') == 'user':
+            text = (m.get('content') or '').strip()
+            if text:
+                parts.append(text)
+    blob = ' | '.join(parts)
+    if len(blob) > SUMMARY_MAX_CHARS:
+        blob = blob[:SUMMARY_MAX_CHARS].rstrip() + '...'
+    return blob
+
+
+def _require_username():
+    """Return username from auth, or raise with a Flask abort."""
+    username, _ = decode_auth_header()
+    if not username:
+        return None
+    return username
+
+
+def _list_chat_files(username: str):
+    d = _chat_user_dir(username)
+    return sorted(d.glob('*.json'), key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+@app.route('/api/chats', methods=['GET'])
+def list_chats():
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    out = []
+    for p in _list_chat_files(username):
+        if p.name.startswith('_'):
+            continue
+        chat = _read_json(p, None)
+        if not chat or not isinstance(chat, dict) or 'id' not in chat:
+            continue
+        out.append({
+            'id': chat['id'],
+            'title': chat.get('title') or 'Untitled',
+            'createdAt': chat.get('createdAt'),
+            'updatedAt': chat.get('updatedAt'),
+            'summary': chat.get('summary') or '',
+            'messageCount': len(chat.get('messages') or []),
+        })
+    out.sort(key=lambda c: c.get('updatedAt') or 0, reverse=True)
+    return jsonify(out)
+
+
+@app.route('/api/chats', methods=['POST'])
+def create_chat():
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    # Cap total chats per user; if over, drop the oldest by updatedAt.
+    existing = list(_list_chat_files(username))
+    real = [p for p in existing if not p.name.startswith('_')]
+    if len(real) >= MAX_CHATS_PER_USER:
+        real.sort(key=lambda p: p.stat().st_mtime)
+        for p in real[: len(real) - MAX_CHATS_PER_USER + 1]:
+            try: p.unlink()
+            except OSError: pass
+    body = request.get_json(silent=True) or {}
+    title = (body.get('title') or '').strip()[:80] or 'New chat'
+    now = int(time.time() * 1000)
+    chat = {
+        'id': uuid.uuid4().hex,
+        'title': title,
+        'createdAt': now,
+        'updatedAt': now,
+        'messages': [],
+        'summary': None,
+        'summaryUpdatedAt': None,
+    }
+    _atomic_write_json(_chat_path(username, chat['id']), chat)
+    return jsonify(chat), 201
+
+
+@app.route('/api/chats/<chat_id>', methods=['GET'])
+def get_chat(chat_id):
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    chat = _read_json(_chat_path(username, chat_id), None)
+    if not chat:
+        return jsonify({'error': 'not_found'}), 404
+    return jsonify(chat)
+
+
+@app.route('/api/chats/<chat_id>', methods=['PUT'])
+def update_chat(chat_id):
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    path = _chat_path(username, chat_id)
+    chat = _read_json(path, None)
+    if not chat:
+        return jsonify({'error': 'not_found'}), 404
+    body = request.get_json(silent=True) or {}
+    if 'title' in body and isinstance(body['title'], str):
+        chat['title'] = body['title'].strip()[:80] or chat.get('title') or 'Untitled'
+    if 'messages' in body and isinstance(body['messages'], list):
+        # Cap the message list server-side; oldest dropped.
+        messages = body['messages'][-MAX_MESSAGES_PER_CHAT:]
+        chat['messages'] = messages
+        # Auto-summarize when there's enough material.
+        non_system = [m for m in messages if m.get('role') != 'system']
+        if len(non_system) >= SUMMARIZE_MIN_MESSAGES:
+            chat['summary'] = _summarize_chat(messages)
+            chat['summaryUpdatedAt'] = int(time.time() * 1000)
+    chat['updatedAt'] = int(time.time() * 1000)
+    _atomic_write_json(path, chat)
+    return jsonify(chat)
+
+
+@app.route('/api/chats/<chat_id>', methods=['DELETE'])
+def delete_chat(chat_id):
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    path = _chat_path(username, chat_id)
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return jsonify({'error': 'not_found'}), 404
+    # If this was the last-opened pointer, clear it.
+    last = _chat_user_dir(username) / '_last_chat.json'
+    try:
+        data = _read_json(last, None)
+        if data and data.get('chatId') == chat_id:
+            last.unlink()
+    except OSError:
+        pass
+    return '', 204
+
+
+@app.route('/api/chats/context', methods=['POST'])
+def chat_context():
+    """Return cross-chat summaries + global memory for context injection.
+
+    The frontend posts {chatId: ...} to exclude the currently-open chat
+    from the "other chats" list. The server reads from disk; nothing is
+    written, no LLM call, no per-request summary regeneration.
+    """
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    body = request.get_json(silent=True) or {}
+    exclude = (body.get('chatId') or '').strip()
+
+    other = []
+    for p in _list_chat_files(username):
+        if p.name.startswith('_'):
+            continue
+        chat = _read_json(p, None)
+        if not chat or chat.get('id') == exclude:
+            continue
+        if not (chat.get('summary') or chat.get('title')):
+            continue
+        other.append({
+            'id': chat.get('id'),
+            'title': chat.get('title') or 'Untitled',
+            'summary': chat.get('summary') or '',
+            'updatedAt': chat.get('updatedAt'),
+        })
+    other.sort(key=lambda c: c.get('updatedAt') or 0, reverse=True)
+    other = other[:MAX_OTHER_SUMMARIES]
+
+    mem = _read_json(_chat_user_dir(username) / '_memory.json', {'items': []})
+    items = (mem.get('items') or [])[-MAX_MEMORY_IN_CONTEXT:]
+
+    return jsonify({
+        'otherSummaries': other,
+        'globalMemory': [{'id': i.get('id'), 'text': i.get('text')} for i in items],
+    })
+
+
+@app.route('/api/memory', methods=['GET'])
+def list_memory():
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    mem = _read_json(_chat_user_dir(username) / '_memory.json', {'items': []})
+    return jsonify({'items': mem.get('items') or []})
+
+
+@app.route('/api/memory', methods=['POST'])
+def add_memory():
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    body = request.get_json(silent=True) or {}
+    text = (body.get('text') or '').strip()
+    if not text:
+        return jsonify({'error': 'text is required'}), 400
+    if len(text) > 1000:
+        return jsonify({'error': 'text too long (max 1000 chars)'}), 400
+    source = (body.get('sourceChatId') or '').strip() or None
+    path = _chat_user_dir(username) / '_memory.json'
+    mem = _read_json(path, {'items': []})
+    items = mem.get('items') or []
+    # De-dupe exact matches (case-insensitive) so the same fact isn't stored twice.
+    lower = text.lower()
+    items = [i for i in items if (i.get('text') or '').lower() != lower]
+    items.append({
+        'id': uuid.uuid4().hex,
+        'text': text,
+        'createdAt': int(time.time() * 1000),
+        'sourceChatId': source,
+    })
+    # Cap: drop oldest first.
+    if len(items) > MAX_MEMORY_ITEMS:
+        items = items[-MAX_MEMORY_ITEMS:]
+    mem['items'] = items
+    _atomic_write_json(path, mem)
+    return jsonify({'id': items[-1]['id'], 'text': text}), 201
+
+
+@app.route('/api/memory/<memory_id>', methods=['DELETE'])
+def delete_memory(memory_id):
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    path = _chat_user_dir(username) / '_memory.json'
+    mem = _read_json(path, {'items': []})
+    items = mem.get('items') or []
+    new_items = [i for i in items if i.get('id') != memory_id]
+    if len(new_items) == len(items):
+        return jsonify({'error': 'not_found'}), 404
+    mem['items'] = new_items
+    _atomic_write_json(path, mem)
+    return '', 204
+
+
+@app.route('/api/chats/last', methods=['POST'])
+def set_last_chat():
+    """Record the last chat the user had open, for restore-on-load."""
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    body = request.get_json(silent=True) or {}
+    chat_id = (body.get('chatId') or '').strip()
+    path = _chat_user_dir(username) / '_last_chat.json'
+    if not chat_id:
+        try: path.unlink()
+        except FileNotFoundError: pass
+        return '', 204
+    _atomic_write_json(path, {'chatId': chat_id, 'ts': int(time.time() * 1000)})
+    return '', 204
+
+
+@app.route('/api/chats/last', methods=['GET'])
+def get_last_chat():
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    data = _read_json(_chat_user_dir(username) / '_last_chat.json', None)
+    if not data:
+        return jsonify({'chatId': None})
+    return jsonify({'chatId': data.get('chatId')})
 
 
 if __name__ == '__main__':
