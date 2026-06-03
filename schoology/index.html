@@ -186,7 +186,7 @@
         </div>
       </div>
       <div class="student-info" id="studentInfo" style="display: none;">
-        <span id="studentName">—</span> · Grade <span id="studentGrade">—</span>
+        <span id="studentName">—</span>
       </div>
     </header>
 
@@ -206,20 +206,12 @@
     <div class="tab-content active" id="tab-ai">
       <div class="section">
         <div class="ai-container">
+          <div class="chat-sidebar" id="chatSidebar"></div>
+          <div class="ai-chat-wrapper">
           <div class="chat-messages" id="chatMessages">
-            <div class="chat-message assistant">
+            <div class="chat-message assistant" id="welcomeBubble">
               <div class="markdown-content">
-                <p>👋 Welcome to your AI Study Assistant! I have access to your grades, assignments, and recent posts from Schoology.</p>
-                <p>I can also help you with a lot more:</p>
-                <ul>
-                  <li><strong>Math</strong> — calculate, solve equations, derivatives, integrals, limits, matrix operations, permutations, combinations, graph functions, convert units</li>
-                  <li><strong>Geometry</strong> — open Desmos or GeoGebra for any expression or command</li>
-                  <li><strong>Knowledge</strong> — look up topics on Wikipedia, search arXiv for papers, search the web</li>
-                  <li><strong>Science</strong> — periodic table lookups, physical constants</li>
-                  <li><strong>Files</strong> — attach PDFs, images, audio, code, and more — I'll read them and answer questions</li>
-                  <li>Help with assignments, summarize posts, and create study plans from your grades</li>
-                </ul>
-                <p>Just ask in natural language — I'll use the right tool automatically.</p>
+                <p>Hi! 👋 What can I help you with today?</p>
               </div>
             </div>
           </div>
@@ -261,6 +253,7 @@
               <input type="file" id="fileUpload" class="file-input" accept="*" onchange="handleFileUpload(event)">
             </div>
           </div>
+          </div><!-- /.ai-chat-wrapper -->
         </div>
       </div>
     </div>
@@ -350,7 +343,16 @@
       assignments: [],
       posts: [],
       courses: [],
-      chatHistory: [],
+      // Multi-chat state. `chats` is the sidebar list, `currentChatId`
+      // and `currentMessages` describe the open chat, and `globalMemory`
+      // holds facts the user has asked the AI to remember across all
+      // chats. In demo mode, server calls are skipped and currentMessages
+      // is persisted to localStorage instead.
+      chats: [],
+      currentChatId: null,
+      currentMessages: [],
+      globalMemory: [],
+      _chatLoadToken: 0,    // race guard for loadCurrentChat
       uploadedFiles: [],
       // Per-section load state for the staged loader:
       //   'pending'  = enqueued, not yet started
@@ -547,33 +549,442 @@
       }
     }
 
-    function loadChatHistory() {
-      if (state.demoMode || !state.username) return;
-      const key = 'schoology_chat_history_' + state.username;
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        try {
-          state.chatHistory = JSON.parse(saved);
-        } catch (e) { state.chatHistory = []; }
+    // ---- Multi-chat persistence ----
+    //
+    // In normal mode, chats live on the server under /data/ai_chats/<username>/
+    // (see schoology/server.py for endpoints). The sidebar fetches the chat
+    // list, the open chat's messages are loaded lazily, and writes are
+    // debounced. In demo mode we skip the server entirely and keep one
+    // chat's messages in localStorage (schoology_chat_history_<username>)
+    // for parity with the old single-chat behavior.
+
+    const _LOCAL_CHAT_KEY = (u) => 'schoology_chat_history_' + u;
+    let _saveChatTimer = null;
+
+    function aiApiBase() {
+      return localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
+    }
+
+    async function _apiFetch(path, init) {
+      // Same auth/Content-Type pattern as the rest of the dashboard, so
+      // the Node proxy forwards the Basic-auth header unchanged to Flask.
+      const headers = { 'Content-Type': 'application/json', ...(init && init.headers || {}) };
+      const auth = getAuthHeader();
+      if (auth) headers['Authorization'] = auth;
+      const res = await fetch(`${aiApiBase()}${path}`, { ...(init || {}), headers });
+      let body = null;
+      const text = await res.text();
+      if (text) { try { body = JSON.parse(text); } catch (_) { body = { _raw: text }; } }
+      return { ok: res.ok, status: res.status, body };
+    }
+
+    async function loadChats() {
+      if (state.demoMode) {
+        // Restore one localStorage chat (old behavior) so demo users
+        // aren't left with an empty UI.
+        const saved = localStorage.getItem(_LOCAL_CHAT_KEY(state.username || 'demo'));
+        state.currentMessages = saved ? (JSON.parse(saved) || []) : [];
+        state.currentChatId = '__demo__';
+        renderChatMessages();
+        renderChatSidebar();
+        return;
+      }
+      const res = await _apiFetch('/api/chats');
+      if (!res.ok) {
+        // Fall back to localStorage if the server is unavailable so the
+        // user isn't locked out.
+        const saved = localStorage.getItem(_LOCAL_CHAT_KEY(state.username || ''));
+        state.currentMessages = saved ? (JSON.parse(saved) || []) : [];
+        renderChatMessages();
+        renderChatSidebar();
+        return;
+      }
+      state.chats = Array.isArray(res.body) ? res.body : [];
+      // Restore the last-opened chat, else fall back to the most recent.
+      let openId = null;
+      const last = await _apiFetch('/api/chats/last');
+      if (last.ok && last.body && last.body.chatId) {
+        const exists = state.chats.some(c => c.id === last.body.chatId);
+        if (exists) openId = last.body.chatId;
+      }
+      if (!openId && state.chats.length) openId = state.chats[0].id;
+      if (openId) {
+        await loadCurrentChat(openId, { recordLast: false });
+      } else {
+        state.currentChatId = null;
+        state.currentMessages = [];
+        renderChatMessages();
+        renderChatSidebar();
       }
     }
 
-    function saveChatHistory() {
-      if (state.demoMode || !state.username) return;
-      const key = 'schoology_chat_history_' + state.username;
-      localStorage.setItem(key, JSON.stringify(state.chatHistory));
+    async function loadCurrentChat(chatId, opts) {
+      opts = opts || {};
+      const token = ++state._chatLoadToken;
+      if (state.demoMode) {
+        state.currentChatId = '__demo__';
+        renderChatMessages();
+        renderChatSidebar();
+        return;
+      }
+      const res = await _apiFetch('/api/chats/' + encodeURIComponent(chatId));
+      if (token !== state._chatLoadToken) return; // a newer load superseded us
+      if (!res.ok) {
+        addChatMessage('error', `Couldn't open chat: ${res.status}`);
+        return;
+      }
+      state.currentChatId = res.body.id;
+      state.currentMessages = Array.isArray(res.body.messages) ? res.body.messages : [];
+      renderChatMessages();
+      renderChatSidebar();
+      if (opts.recordLast !== false) {
+        _apiFetch('/api/chats/last', { method: 'POST', body: JSON.stringify({ chatId: res.body.id }) }).catch(() => {});
+      }
+    }
+
+    async function createNewChat() {
+      if (state.demoMode) {
+        // Demo: clear the in-memory chat (localStorage write happens on send).
+        state.currentChatId = '__demo__';
+        state.currentMessages = [];
+        renderChatMessages();
+        renderChatSidebar();
+        return;
+      }
+      const res = await _apiFetch('/api/chats', { method: 'POST', body: JSON.stringify({}) });
+      if (!res.ok) {
+        addChatMessage('error', `Couldn't create chat: ${res.status}`);
+        return;
+      }
+      state.chats.unshift({
+        id: res.body.id, title: res.body.title,
+        createdAt: res.body.createdAt, updatedAt: res.body.updatedAt,
+        summary: '', messageCount: 0,
+      });
+      state.currentChatId = res.body.id;
+      state.currentMessages = [];
+      renderChatMessages();
+      renderChatSidebar();
+      _apiFetch('/api/chats/last', { method: 'POST', body: JSON.stringify({ chatId: res.body.id }) }).catch(() => {});
+    }
+
+    function _autoTitleFromMessage(text) {
+      const t = String(text || '').replace(/\s+/g, ' ').trim();
+      if (!t) return 'New chat';
+      return t.length > 40 ? t.slice(0, 40) + '...' : t;
+    }
+
+    function scheduleSaveCurrentChat() {
+      // Debounce: many tool calls can fire per turn, so we don't want to
+      // PUT the whole messages array on every push. 500ms is short enough
+      // to feel instant for a user navigating away, long enough to batch.
+      if (state.demoMode) {
+        if (state.username) {
+          localStorage.setItem(_LOCAL_CHAT_KEY(state.username), JSON.stringify(state.currentMessages));
+        }
+        return;
+      }
+      if (!state.currentChatId) return;
+      if (_saveChatTimer) clearTimeout(_saveChatTimer);
+      _saveChatTimer = setTimeout(() => { saveCurrentChatNow(); }, 500);
+    }
+
+    async function saveCurrentChatNow() {
+      if (_saveChatTimer) { clearTimeout(_saveChatTimer); _saveChatTimer = null; }
+      if (state.demoMode) {
+        if (state.username) {
+          localStorage.setItem(_LOCAL_CHAT_KEY(state.username), JSON.stringify(state.currentMessages));
+        }
+        return;
+      }
+      if (!state.currentChatId) return;
+      const chatId = state.currentChatId;
+      const body = { messages: state.currentMessages };
+      // First-message title: derive from the first user message if the
+      // chat still has its default "New chat" title.
+      const chat = state.chats.find(c => c.id === chatId);
+      if (chat && (!chat.title || chat.title === 'New chat')) {
+        const firstUser = state.currentMessages.find(m => m.role === 'user');
+        if (firstUser) {
+          const t = _autoTitleFromMessage(firstUser.content);
+          if (t !== chat.title) { chat.title = t; body.title = t; }
+        }
+      }
+      const res = await _apiFetch('/api/chats/' + encodeURIComponent(chatId), {
+        method: 'PUT', body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        // Refresh sidebar entry with the new title/summary from server.
+        if (chat) {
+          chat.updatedAt = res.body.updatedAt;
+          chat.summary = res.body.summary || chat.summary;
+          chat.messageCount = (res.body.messages || []).length;
+          // Re-sort by updatedAt desc.
+          state.chats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          renderChatSidebar();
+        }
+      }
+    }
+
+    async function deleteChat(chatId) {
+      if (!confirm('Delete this chat? This cannot be undone.')) return;
+      if (state.demoMode) {
+        if (state.currentChatId === '__demo__') {
+          state.currentMessages = [];
+          renderChatMessages();
+        }
+        return;
+      }
+      const res = await _apiFetch('/api/chats/' + encodeURIComponent(chatId), { method: 'DELETE' });
+      if (!res.ok && res.status !== 404) {
+        addChatMessage('error', `Couldn't delete chat: ${res.status}`);
+        return;
+      }
+      const wasCurrent = chatId === state.currentChatId;
+      state.chats = state.chats.filter(c => c.id !== chatId);
+      if (wasCurrent) {
+        if (state.chats.length) {
+          await loadCurrentChat(state.chats[0].id);
+        } else {
+          state.currentChatId = null;
+          state.currentMessages = [];
+          renderChatMessages();
+          renderChatSidebar();
+        }
+      } else {
+        renderChatSidebar();
+      }
+    }
+
+    async function renameChat(chatId, newTitle) {
+      const t = (newTitle || '').trim();
+      if (!t) return;
+      if (state.demoMode) return;
+      const res = await _apiFetch('/api/chats/' + encodeURIComponent(chatId), {
+        method: 'PUT', body: JSON.stringify({ title: t.slice(0, 80) }),
+      });
+      if (res.ok) {
+        const chat = state.chats.find(c => c.id === chatId);
+        if (chat) chat.title = res.body.title;
+        renderChatSidebar();
+      }
+    }
+
+    async function loadGlobalMemory() {
+      if (state.demoMode) { state.globalMemory = []; return; }
+      const res = await _apiFetch('/api/memory');
+      if (res.ok && res.body && Array.isArray(res.body.items)) {
+        state.globalMemory = res.body.items;
+      }
+    }
+
+    async function addGlobalMemory(text, sourceChatId) {
+      if (state.demoMode) return;
+      const res = await _apiFetch('/api/memory', {
+        method: 'POST',
+        body: JSON.stringify({ text, sourceChatId }),
+      });
+      if (res.ok && res.body) {
+        // Optimistic local update so the next send sees it without a round-trip.
+        state.globalMemory.push({ id: res.body.id, text: res.body.text });
+        // Keep state in sync with server cap.
+        if (state.globalMemory.length > 50) state.globalMemory = state.globalMemory.slice(-50);
+      }
+    }
+
+    async function deleteGlobalMemory(id) {
+      if (state.demoMode) return;
+      const res = await _apiFetch('/api/memory/' + encodeURIComponent(id), { method: 'DELETE' });
+      if (res.ok || res.status === 404) {
+        state.globalMemory = state.globalMemory.filter(m => m.id !== id);
+      }
+    }
+
+    const _REMEMBER_KEYWORDS = [
+      /\bremember\b/i,
+      /don[’']t forget/i,
+      /do not forget/i,
+      /\bnote that\b/i,
+      /keep in mind/i,
+      /from now on/i,
+      /always remember/i,
+    ];
+
+    function detectRemember(message) {
+      const t = String(message || '');
+      return _REMEMBER_KEYWORDS.some(rx => rx.test(t));
+    }
+
+    async function fetchChatContextExtras(excludeChatId) {
+      if (state.demoMode) return { otherSummaries: [], globalMemory: state.globalMemory };
+      const res = await _apiFetch('/api/chats/context', {
+        method: 'POST',
+        body: JSON.stringify({ chatId: excludeChatId || state.currentChatId || '' }),
+      });
+      if (!res.ok) return { otherSummaries: [], globalMemory: state.globalMemory };
+      return res.body || { otherSummaries: [], globalMemory: [] };
+    }
+
+    function buildContextExtrasSystemMessage(extras) {
+      // This is the second system message in the prompt (after the main
+      // system prompt in buildContextMessages). It's how the AI sees
+      // global memory and other-chat summaries.
+      const parts = [];
+      const mem = (extras && extras.globalMemory) || [];
+      if (mem.length) {
+        parts.push('GLOBAL MEMORY (user has asked you to remember these facts; they persist across all chats):');
+        for (const m of mem) parts.push(`- ${m.text}`);
+      }
+      const others = (extras && extras.otherSummaries) || [];
+      if (others.length) {
+        parts.push('');
+        parts.push('OTHER CHATS (brief summaries for awareness only; do NOT proactively reference them unless the user asks):');
+        for (const c of others) {
+          const stamp = c.updatedAt ? new Date(c.updatedAt).toISOString().slice(0, 10) : 'unknown';
+          const summary = c.summary ? ` — ${c.summary}` : '';
+          parts.push(`- [${stamp}] "${c.title}"${summary}`);
+        }
+      }
+      if (!parts.length) return null;
+      return { role: 'system', content: parts.join('\n') };
+    }
+
+    function renderChatSidebar() {
+      const el = document.getElementById('chatSidebar');
+      if (!el) return;
+      if (state.demoMode) {
+        el.innerHTML = `
+          <div class="chat-sidebar-header">
+            <div class="chat-sidebar-title">Chats</div>
+            <button onclick="createNewChat()" title="New chat">+ New</button>
+          </div>
+          <div class="chat-sidebar-demo-note">Demo mode — chats aren't saved to your account.</div>
+          <div class="chat-list"></div>
+        `;
+        return;
+      }
+      const items = state.chats.map(c => {
+        const active = c.id === state.currentChatId;
+        const preview = (c.summary || '').trim() || (c.messageCount ? `${c.messageCount} messages` : 'No messages yet');
+        const title = (c.title || 'New chat').replace(/[<>"]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+        return `
+          <div class="chat-list-item${active ? ' active' : ''}" data-chat-id="${c.id}">
+            <div class="title" ondblclick="startRenameChat('${c.id}', this)">${title}</div>
+            <div class="preview">${escapeHtml(preview)}</div>
+            <div class="actions">
+              <button title="Rename" onclick="event.stopPropagation(); startRenameChat('${c.id}', this.parentElement.parentElement.querySelector('.title'))">✎</button>
+              <button title="Delete" onclick="event.stopPropagation(); deleteChat('${c.id}')">🗑</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+      el.innerHTML = `
+        <div class="chat-sidebar-header">
+          <div class="chat-sidebar-title">Chats</div>
+          <button onclick="createNewChat()" title="New chat">+ New</button>
+        </div>
+        <div class="chat-list">${items || '<div class="chat-list-empty">No chats yet. Click "+ New" to start.</div>'}</div>
+        <div class="chat-sidebar-footer">
+          <button class="chat-sidebar-mem-btn" onclick="openMemoryPanel()" title="View remembered facts">📌 Memory</button>
+        </div>
+      `;
+      // Click-to-switch on each row.
+      el.querySelectorAll('.chat-list-item').forEach(node => {
+        node.addEventListener('click', (e) => {
+          // Ignore clicks on action buttons (they call stopPropagation already).
+          const id = node.getAttribute('data-chat-id');
+          if (id && id !== state.currentChatId) loadCurrentChat(id);
+        });
+      });
+    }
+
+    function startRenameChat(chatId, titleEl) {
+      const chat = state.chats.find(c => c.id === chatId);
+      if (!chat) return;
+      const current = chat.title || 'New chat';
+      const next = prompt('Rename chat:', current);
+      if (next != null && next.trim() && next.trim() !== current) {
+        renameChat(chatId, next.trim());
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s || '').replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
+
+    function openMemoryPanel() {
+      // Read-only list for now; deletion could be wired to a confirmation
+      // prompt. Keeps the surface area small.
+      if (!state.globalMemory.length) {
+        alert('No remembered facts yet. Tell the AI "remember ..." to add one.');
+        return;
+      }
+      const lines = state.globalMemory.map((m, i) => `${i + 1}. ${m.text}`);
+      const choice = prompt(
+        'Remembered facts (enter a number to delete, or Cancel to close):\n\n' + lines.join('\n'),
+        ''
+      );
+      const n = parseInt(choice, 10);
+      if (!isNaN(n) && n >= 1 && n <= state.globalMemory.length) {
+        const item = state.globalMemory[n - 1];
+        if (item && item.id) deleteGlobalMemory(item.id);
+      }
+    }
+
+    function renderChatMessages() {
+      const container = document.getElementById('chatMessages');
+      if (!container) return;
+      if (!state.currentMessages || state.currentMessages.length === 0) {
+        container.innerHTML = `
+          <div class="chat-message assistant" id="welcomeBubble">
+            <div class="markdown-content">
+              <p>Hi! 👋 What can I help you with today?</p>
+            </div>
+          </div>
+        `;
+        return;
+      }
+      // Rebuild from state.currentMessages. We don't try to preserve the
+      // typing indicator / inline loading bubble here -- those are short-
+      // lived and will be re-added by sendChatMessage / inline loaders.
+      container.innerHTML = '';
+      for (const m of state.currentMessages) {
+        const type = m.role === 'user' ? 'user' : 'assistant';
+        // Skip tool/system messages in the visible UI; they only matter
+        // for the model's context.
+        if (m.role === 'tool' || m.role === 'system') continue;
+        addChatMessage(type, m.content, { skipHistory: true });
+      }
+      // Auto-scroll to the bottom so the user lands at the latest message.
+      container.scrollTop = container.scrollHeight;
     }
 
     function clearAllData() {
-      if (!confirm('Clear all data including chat history? This cannot be undone.')) return;
+      if (!confirm('Clear all data including chats and remembered facts? This cannot be undone.')) return;
       // Clear all schoology localStorage keys for this user
       const keys = Object.keys(localStorage).filter(k => k.startsWith('schoology_'));
       keys.forEach(k => localStorage.removeItem(k));
+      // Best-effort wipe of server-side chats + memory. Don't block the
+      // reload on this -- even if the server is down, localStorage is
+      // already gone.
+      if (!state.demoMode) {
+        for (const c of [...state.chats]) {
+          _apiFetch('/api/chats/' + encodeURIComponent(c.id), { method: 'DELETE' }).catch(() => {});
+        }
+        for (const m of [...state.globalMemory]) {
+          if (m && m.id) _apiFetch('/api/memory/' + encodeURIComponent(m.id), { method: 'DELETE' }).catch(() => {});
+        }
+      }
       // Reset state
       state.grades = [];
       state.assignments = [];
       state.posts = [];
-      state.chatHistory = [];
+      state.chats = [];
+      state.currentChatId = null;
+      state.currentMessages = [];
+      state.globalMemory = [];
       state.uploadedFiles = [];
       // Re-init
       loadSettings();
@@ -709,10 +1120,15 @@
       } else {
         console.log('[DEBUG] Fetching real data...');
         try {
-          loadChatHistory();
-          console.log('[DEBUG] loadChatHistory done');
+          // Load chats and global memory in parallel; both feed the AI
+          // context but neither is required for the dashboard to render.
+          Promise.all([loadChats(), loadGlobalMemory()]).then(() => {
+            console.log('[DEBUG] loadChats + loadGlobalMemory done');
+          }).catch(e => {
+            console.error('[DEBUG] loadChats error:', e);
+          });
         } catch (e) {
-          console.error('[DEBUG] loadChatHistory error:', e);
+          console.error('[DEBUG] loadChats error:', e);
         }
         console.log('[DEBUG] Calling fetchRealData...');
         // fetchRealData() manages its own loading→shell→error transitions
@@ -820,19 +1236,20 @@
         throw new Error(`Network error: ${e.message}`);
       }
       clearTimeout(timer);
-      // 410 Gone = upstream schoology-mcp removed the get_profile tool. Treat
-      // as a soft skip: no identity strip, but let the dashboard load using
-      // whatever courses/grades return. Don't block the whole UI on this.
-      if (res.status === 410) {
-        console.log('[DEBUG] loadBasicInfo: profile removed upstream; proceeding without identity strip');
-        state.student = { name: null, grade: null, school: null };
-        return;
-      }
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new Error(`Profile server error ${res.status}: ${body.slice(0, 120)}`);
       }
       const data = await res.json();
+      // Server returns 200 with {removed: true} when upstream schoology-mcp
+      // no longer exposes get_profile. Treat as a soft skip: no identity
+      // strip, but let the dashboard load using whatever courses/grades
+      // return. Don't block the whole UI on this.
+      if (data.removed) {
+        console.log('[DEBUG] loadBasicInfo: profile removed upstream; proceeding without identity strip');
+        state.student = { name: null, grade: null, school: null };
+        return;
+      }
       if (data._error) throw new Error(data.message || 'Profile fetch failed');
       state.student = {
         name: data.name || null,
@@ -903,14 +1320,12 @@
     function renderStudentHeader() {
       const infoEl = document.getElementById('studentInfo');
       const nameEl = document.getElementById('studentName');
-      const gradeEl = document.getElementById('studentGrade');
-      if (!infoEl || !nameEl || !gradeEl) return;
+      if (!infoEl || !nameEl) return;
       const s = state.student || {};
-      nameEl.textContent = s.name || state.username || 'Student';
-      const parts = [];
-      if (s.grade) parts.push(`Grade ${s.grade}`);
-      if (s.school) parts.push(s.school);
-      gradeEl.textContent = parts.join(' · ') || '—';
+      const name = s.name || state.username || 'Student';
+      nameEl.textContent = `Welcome! ${name}`;
+      // grade, school, and any future identity fields stay on state.student
+      // for the AI to read -- only the visible header is restricted to name.
       infoEl.style.display = 'flex';
     }
 
@@ -1276,9 +1691,8 @@
       if (trimmed.length > TOOL_RESULT_HISTORY_CAP) {
         trimmed = trimmed.slice(0, TOOL_RESULT_HISTORY_CAP) + '... (truncated)';
       }
-      state.chatHistory.push({ role: 'tool', name: toolName, content: trimmed });
-      // Persist lazily; the next sendChatMessage call will save the full
-      // history. We don't await here -- tool calls can fire in parallel.
+      state.currentMessages.push({ role: 'tool', name: toolName, content: trimmed });
+      scheduleSaveCurrentChat();
     }
 
     // The registry. Each entry:
@@ -1994,6 +2408,26 @@
 
       const workerUrl = localStorage.getItem('schoology-ai-worker-url');
 
+      // If there's no open chat yet, create one first so the message
+      // lands in a persisted chat (real mode) or a localStorage chat
+      // (demo mode). The wait keeps the rest of the flow synchronous
+      // from the caller's perspective.
+      if (!state.demoMode && !state.currentChatId) {
+        const created = await _apiFetch('/api/chats', { method: 'POST', body: JSON.stringify({}) });
+        if (!created.ok) {
+          addChatMessage('error', `Couldn't create chat: ${created.status}`);
+          return;
+        }
+        state.chats.unshift({
+          id: created.body.id, title: created.body.title,
+          createdAt: created.body.createdAt, updatedAt: created.body.updatedAt,
+          summary: '', messageCount: 0,
+        });
+        state.currentChatId = created.body.id;
+        state.currentMessages = [];
+        _apiFetch('/api/chats/last', { method: 'POST', body: JSON.stringify({ chatId: created.body.id }) }).catch(() => {});
+      }
+
       // Build the full user-visible message. If files are attached, fetch
       // the AI-readable summaries and inline them so the model can use
       // them; this is the only way file content reaches the worker.
@@ -2006,18 +2440,30 @@
       }
 
       addChatMessage('user', message || '[File uploaded]');
-      state.chatHistory.push({ role: 'user', content: fullMessage });
-      saveChatHistory();
+      state.currentMessages.push({ role: 'user', content: fullMessage });
+      scheduleSaveCurrentChat();
 
-      // Summarize old messages if too many
-      if (state.chatHistory.length > 15) {
-        const summaryIndex = Math.floor(state.chatHistory.length / 2);
-        const oldMessages = state.chatHistory.slice(0, summaryIndex);
-        const summaryPrompt = `Summarize this conversation concisely in 2-3 sentences:\n` +
-          oldMessages.map(m => `${m.role}: ${m.content}`).join('\n');
-        state.chatHistory = [
-          { role: 'system', content: `Previous conversation summary: ${generateSummary(oldMessages)}` }
-        ].concat(state.chatHistory.slice(summaryIndex));
+      // Heuristic "remember" detection -- if the user clearly asked the
+      // AI to remember something, persist it on their account so it's
+      // injected into every chat's context. Fire-and-forget; failure
+      // doesn't block the send.
+      if (detectRemember(message)) {
+        addGlobalMemory(message, state.currentChatId).then(() => {
+          // Soft note in the UI so the user can see it was saved.
+          addChatMessage('assistant', '_📌 Noted — saved to your memory._');
+          state.currentMessages.push({ role: 'assistant', content: '_📌 Noted — saved to your memory._' });
+          scheduleSaveCurrentChat();
+        }).catch(() => {});
+      }
+
+      // Cap the in-memory history length so the AI context doesn't grow
+      // unbounded. Server caps at MAX_MESSAGES_PER_CHAT (200) on the
+      // next save; locally we keep the last 60 messages for snappier
+      // builds. Older messages are dropped, not summarized -- the
+      // server's `_summarize_chat` produces a separate summary field
+      // for cross-chat awareness.
+      if (state.currentMessages.length > 60) {
+        state.currentMessages = state.currentMessages.slice(-60);
       }
 
       input.value = '';
@@ -2035,31 +2481,37 @@
 
       showTypingIndicator();
 
+      // Pull cross-chat summaries + memory for context injection. The
+      // /api/chats/context call excludes the current chat from the
+      // "other chats" list automatically.
+      const extras = await fetchChatContextExtras(state.currentChatId);
+
       try {
         if (workerUrl) {
           const response = await fetch(`${workerUrl}/v1/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage), max_tokens: 1024, temperature: 0.6, stream: false })
+            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage, extras), max_tokens: 1024, temperature: 0.6, stream: false })
           });
           hideTypingIndicator();
           if (!response.ok) throw new Error(await response.text());
           const data = await response.json();
           const reply = data.choices?.[0]?.message?.content || 'No response received.';
           addChatMessage('assistant', reply);
-          state.chatHistory.push({ role: 'assistant', content: reply });
-          saveChatHistory();
+          state.currentMessages.push({ role: 'assistant', content: reply });
+          scheduleSaveCurrentChat();
           handleAICommands(reply);
         } else if (state.demoMode) {
           hideTypingIndicator();
           const demoResponse = generateDemoResponse(message);
           addChatMessage('assistant', demoResponse);
-          state.chatHistory.push({ role: 'assistant', content: demoResponse });
-          saveChatHistory();
+          state.currentMessages.push({ role: 'assistant', content: demoResponse });
+          scheduleSaveCurrentChat();
         } else {
           hideTypingIndicator();
           addChatMessage('error', 'AI Worker URL not configured. Please add your DeepSeek proxy worker URL in Settings.');
-          state.chatHistory.push({ role: 'assistant', content: '[Error: AI not configured]' });
+          state.currentMessages.push({ role: 'assistant', content: '[Error: AI not configured]' });
+          scheduleSaveCurrentChat();
         }
       } catch (e) {
         hideTypingIndicator();
@@ -2176,11 +2628,6 @@
       }
     }
 
-    function generateSummary(messages) {
-      const text = messages.map(m => m.content).join(' ');
-      return text.substring(0, 500) + (text.length > 500 ? '...' : '');
-    }
-
     function generateDemoResponse(message) {
       const lower = message.toLowerCase();
       if (lower.includes('grade') || lower.includes('gpa')) {
@@ -2199,7 +2646,7 @@
       return `I understand you're asking about "${message}". Since you're in demo mode, here's a helpful response:\n\nYou can ask me about:\n- Your **grades** and GPA\n- **Upcoming assignments**\n- **Concepts** from any subject\n- Help with **homework** or **studying**\n\nI can also ${toolBlurbs.slice(0, 6).join(', ')}, and more.\n\nTry asking something like "What are my current grades?" or "What's due this week?" to get started! 🚀`;
     }
 
-    function buildContextMessages(currentMessage) {
+    function buildContextMessages(currentMessage, contextExtras) {
       const now = new Date();
       const systemPrompt = `You are an expert AI study assistant for a PAUSD student dashboard. Your goal is to provide thorough, helpful, and detailed responses.
 
@@ -2226,18 +2673,26 @@ ${state.assignments.map(a => `- ${a.title} (${a.courseName}) - Due: ${a.dueDate 
 Recent Posts:
 ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join('\n')}`;
 
-      return [
-        { role: 'system', content: systemPrompt },
-        ...state.chatHistory.slice(-10),
-        { role: 'user', content: currentMessage }
-      ];
+      const out = [{ role: 'system', content: systemPrompt }];
+      // Second system message: global memory + cross-chat summaries.
+      // buildContextExtrasSystemMessage returns null when there's nothing
+      // to inject, in which case we skip it entirely.
+      const extrasMsg = buildContextExtrasSystemMessage(contextExtras);
+      if (extrasMsg) out.push(extrasMsg);
+      // Trim to the last 10 messages from the current chat -- keeps the
+      // per-turn context bounded; the server's stored summary covers
+      // the long tail.
+      out.push(...state.currentMessages.slice(-10));
+      out.push({ role: 'user', content: currentMessage });
+      return out;
     }
 
     async function handleAICommands(text) {
       // Dispatch all [TOOL:args] brackets from the model's reply. Each
       // match is fed to the registry's executor; the result's display
-      // string is added to the chat UI and the history string is pushed
-      // into chatHistory so the model sees the result on its next turn.
+      // string is added to the chat UI and a {role:'tool'} entry is
+      // pushed into state.currentMessages so the model sees the result
+      // on its next turn.
       const seen = new Set();  // dedupe across overlapping regexes
       for (const key of Object.keys(TOOL_REGISTRY)) {
         const entry = TOOL_REGISTRY[key];
@@ -2277,7 +2732,8 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       }
     }
 
-    function addChatMessage(type, content) {
+    function addChatMessage(type, content, opts) {
+      opts = opts || {};
       const container = document.getElementById('chatMessages');
       const div = document.createElement('div');
       div.className = `chat-message ${type}`;
@@ -2291,6 +2747,9 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
         container.appendChild(div);
       }
       container.scrollTop = container.scrollHeight;
+      // Note: history pushing is handled by the caller (sendChatMessage
+      // pushes user/assistant messages explicitly). The skipHistory flag
+      // is here so renderChatMessages can re-render without double-pushing.
     }
 
     // Fade-in effect for AI responses

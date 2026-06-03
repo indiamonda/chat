@@ -1772,6 +1772,19 @@ function broadcastRoomListUpdate() {
   io.emit('roomListUpdate', getAllActiveRooms());
 }
 
+// Normalize the first argument of createRoom/quickplay. Older clients send
+// a bare mode string; new (Zone No Light) clients send { mode, map }.
+// Returns { mode, map }; mode is '' if the input was malformed.
+function normalizeCreateArgs(arg) {
+  if (typeof arg === 'string') return { mode: arg, map: null };
+  if (arg && typeof arg === 'object') {
+    const mode = typeof arg.mode === 'string' ? arg.mode : '';
+    const map = typeof arg.map === 'string' ? arg.map.slice(0, 64) || null : null;
+    return { mode, map };
+  }
+  return { mode: '', map: null };
+}
+
 /** Last-known player names and positions (game namespace) for /tp etc. */
 const gamePlayerNames = new Map();
 const gamePlayerPositions = new Map();
@@ -1972,11 +1985,15 @@ gameNsp.on('connection', (socket) => {
     }
   });
 
-  socket.on('quickplay', (mode, cb) => {
+  socket.on('quickplay', (arg, cb) => {
     if (typeof cb !== 'function') return;
-    if (typeof mode !== 'string') return cb({ error: 'bad mode' });
+    const { mode, map: requestedMap } = normalizeCreateArgs(arg);
+    if (!mode) return cb({ error: 'bad mode' });
     leaveCurrentRoom(socket, currentRoom);
-    // First try to find an open room in global registry
+    // First try to find an open room in global registry. Map is NOT used
+    // for matching: a quickplay player accepts whatever map the host
+    // chose. The room's `map` is returned in the callback so the client
+    // loads the right map.
     const max = ROOM_MAX_PLAYERS[mode] || QUICKPLAY_MAX;
     for (const [key, meta] of globalRoomRegistry) {
       if (meta.mode === mode && meta.playerCount < max) {
@@ -1985,12 +2002,12 @@ gameNsp.on('connection', (socket) => {
         if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
         gameRooms.get(currentRoom).add(socket.id);
         updateRoomPlayerCount(currentRoom, 1);
-        cb({ room: meta.code, roomKey: currentRoom, count: meta.playerCount + 1 });
+        cb({ room: meta.code, roomCode: meta.code, roomKey: currentRoom, count: meta.playerCount + 1, map: meta.map || null });
         broadcastZombieHost(currentRoom);
         return;
       }
     }
-    // No open room, create new one
+    // No open room, create new one using the client's chosen map.
     const prefix = `qp:${mode}:`;
     let code;
     for (let i = 0; i < 50; i++) {
@@ -2000,15 +2017,16 @@ gameNsp.on('connection', (socket) => {
     currentRoom = `${prefix}${code}`;
     socket.join(currentRoom);
     gameRooms.set(currentRoom, new Set([socket.id]));
-    registerRoom(currentRoom, mode, code, socket.id);
-    cb({ room: code, roomKey: currentRoom, count: 1 });
+    registerRoom(currentRoom, mode, code, socket.id, requestedMap);
+    cb({ room: code, roomCode: code, roomKey: currentRoom, count: 1, map: requestedMap });
     broadcastRoomListUpdate();
     broadcastZombieHost(currentRoom);
   });
 
-  socket.on('createRoom', (mode, cb) => {
+  socket.on('createRoom', (arg, cb) => {
     if (typeof cb !== 'function') return;
-    if (typeof mode !== 'string') return cb({ error: 'bad mode' });
+    const { mode, map: requestedMap } = normalizeCreateArgs(arg);
+    if (!mode) return cb({ error: 'bad mode' });
     leaveCurrentRoom(socket, currentRoom);
     let code;
     for (let i = 0; i < 50; i++) {
@@ -2018,8 +2036,8 @@ gameNsp.on('connection', (socket) => {
     currentRoom = `cr:${mode}:${code}`;
     socket.join(currentRoom);
     gameRooms.set(currentRoom, new Set([socket.id]));
-    registerRoom(currentRoom, mode, code, socket.id);
-    cb({ code, roomKey: currentRoom });
+    registerRoom(currentRoom, mode, code, socket.id, requestedMap);
+    cb({ code, roomCode: code, roomKey: currentRoom, map: requestedMap });
     broadcastRoomListUpdate();
     broadcastZombieHost(currentRoom);
   });
@@ -2045,7 +2063,7 @@ gameNsp.on('connection', (socket) => {
     if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
     gameRooms.get(currentRoom).add(socket.id);
     updateRoomPlayerCount(currentRoom, 1);
-    cb({ ok: true, code, roomKey: currentRoom });
+    cb({ ok: true, code, roomCode: meta.code, roomKey: currentRoom, map: meta.map || null });
     broadcastRoomListUpdate();
     broadcastZombieHost(currentRoom);
   });
