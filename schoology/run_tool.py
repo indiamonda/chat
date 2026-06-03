@@ -12,6 +12,11 @@ across calls.
 
 Exits cleanly on stdin EOF (parent process closed the pipe) or
 SIGTERM.
+
+The schoology-mcp server is single-tenant: this daemon's USERNAME and
+PASSWORD are read from the *environment* of the subprocess (set by the
+parent when spawning). The parent (`schoology/server.py`) maintains one
+daemon per authenticated user so multiple students can be served.
 """
 
 import asyncio
@@ -51,11 +56,12 @@ def _load_tool_functions() -> dict:
         return _TOOL_FUNCTIONS
     import server as server_mod
     _TOOL_FUNCTIONS = {
-        "get_profile": server_mod.get_profile,
         "get_grades": server_mod.get_grades,
         "get_courses": server_mod.get_courses,
         "get_upcoming_assignments": server_mod.get_upcoming_assignments,
         "get_assignment_info": server_mod.get_assignment_info,
+        "get_course_materials": server_mod.get_course_materials,
+        "get_material": server_mod.get_material,
         "get_recent_posts": server_mod.get_recent_posts,
     }
     return _TOOL_FUNCTIONS
@@ -64,14 +70,9 @@ def _load_tool_functions() -> dict:
 async def handle_request(client, req: dict) -> dict:
     """Dispatch one tool call. Returns the result dict (may include _error)."""
     tool = req.get("tool")
-    username = req.get("username")
-    if not tool or not username:
-        return {"_error": True, "message": "tool and username are required"}
-
-    # Configure credentials before any tool runs -- tools read them lazily
-    # via config.get_runtime_credentials().
-    from schoology_mcp import config
-    config.set_runtime_credentials(username, req.get("password") or "")
+    username = req.get("username") or "<env>"
+    if not tool:
+        return {"_error": True, "message": "tool is required"}
 
     fn = _load_tool_functions().get(tool)
     if fn is None:
@@ -87,6 +88,12 @@ async def main_loop() -> None:
     # `client = SchoologyClient()` in schoology-mcp.server binds to *this* loop.
     from schoology_mcp import config  # noqa: F401 -- ensure .env loaded
     from schoology_mcp.browser import SchoologyClient
+
+    # Validate env credentials up front so we fail loud rather than per-call.
+    if not config.USERNAME:
+        log.warning("SCHOOLOGY_USERNAME not set in this daemon's env; tools will fail")
+    else:
+        log.info("Daemon serving user: %s", config.USERNAME)
 
     client = SchoologyClient()
     loop = asyncio.get_running_loop()

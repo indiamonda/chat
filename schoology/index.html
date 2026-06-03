@@ -820,6 +820,14 @@
         throw new Error(`Network error: ${e.message}`);
       }
       clearTimeout(timer);
+      // 410 Gone = upstream schoology-mcp removed the get_profile tool. Treat
+      // as a soft skip: no identity strip, but let the dashboard load using
+      // whatever courses/grades return. Don't block the whole UI on this.
+      if (res.status === 410) {
+        console.log('[DEBUG] loadBasicInfo: profile removed upstream; proceeding without identity strip');
+        state.student = { name: null, grade: null, school: null };
+        return;
+      }
       if (!res.ok) {
         const body = await res.text().catch(() => '');
         throw new Error(`Profile server error ${res.status}: ${body.slice(0, 120)}`);
