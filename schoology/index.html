@@ -13,6 +13,9 @@
   <link rel="stylesheet" href="/schoology/style.css">
   <script src="/schoology/assets/katex.min.js"></script>
   <script src="/schoology/assets/marked.min.js"></script>
+  <!-- Skulpt for in-browser Python execution (the [PYTHON:...] tool) -->
+  <script src="https://cdn.jsdelivr.net/npm/skulpt@0.11.1/dist/skulpt.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/skulpt@0.11.1/dist/skulpt-stdlib.js"></script>
 </head>
 <body>
   <!-- SVG filter for liquid glass distortion -->
@@ -207,13 +210,16 @@
             <div class="chat-message assistant">
               <div class="markdown-content">
                 <p>👋 Welcome to your AI Study Assistant! I have access to your grades, assignments, and recent posts from Schoology.</p>
-                <p>You can ask me to:</p>
+                <p>I can also help you with a lot more:</p>
                 <ul>
-                  <li>Explain concepts from your classes</li>
-                  <li>Help with assignments and homework</li>
-                  <li>Summarize recent posts from teachers</li>
-                  <li>Create study plans based on your grades</li>
+                  <li><strong>Math</strong> — calculate, solve equations, derivatives, integrals, limits, matrix operations, permutations, combinations, graph functions, convert units</li>
+                  <li><strong>Geometry</strong> — open Desmos or GeoGebra for any expression or command</li>
+                  <li><strong>Knowledge</strong> — look up topics on Wikipedia, search arXiv for papers, search the web</li>
+                  <li><strong>Science</strong> — periodic table lookups, physical constants</li>
+                  <li><strong>Files</strong> — attach PDFs, images, audio, code, and more — I'll read them and answer questions</li>
+                  <li>Help with assignments, summarize posts, and create study plans from your grades</li>
                 </ul>
+                <p>Just ask in natural language — I'll use the right tool automatically.</p>
               </div>
             </div>
           </div>
@@ -1234,6 +1240,744 @@
       `).join('');
     }
 
+    // -----------------------------------------------------------------------
+    // AI tool registry: single source of truth for [TOOL:args] bracket
+    // commands the model can emit. The system prompt, welcome message, demo
+    // responses, and handleAICommands all read from this registry -- adding
+    // a tool is one entry. The dispatcher strips matched brackets from the
+    // model's reply before saving the rest to chat history.
+    // -----------------------------------------------------------------------
+    const TOOL_RESULT_HISTORY_CAP = 2000;
+
+    function aiApiUrl() {
+      return localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
+    }
+
+    async function aiFetch(path, init = {}) {
+      // Standard fetch wrapper that includes the Basic auth header so
+      // backend routes can identify the student.
+      const headers = { 'Content-Type': 'application/json', ...(init.headers || {}) };
+      const auth = getAuthHeader();
+      if (auth) headers['Authorization'] = auth;
+      return fetch(`${aiApiUrl()}${path}`, { ...init, headers });
+    }
+
+    function pushToolHistory(toolName, content) {
+      // Cap each tool result so the conversation context doesn't explode.
+      let trimmed = String(content || '');
+      if (trimmed.length > TOOL_RESULT_HISTORY_CAP) {
+        trimmed = trimmed.slice(0, TOOL_RESULT_HISTORY_CAP) + '... (truncated)';
+      }
+      state.chatHistory.push({ role: 'tool', name: toolName, content: trimmed });
+      // Persist lazily; the next sendChatMessage call will save the full
+      // history. We don't await here -- tool calls can fire in parallel.
+    }
+
+    // The registry. Each entry:
+    //   name        -- short id used in the [NAME:...] bracket
+    //   regex       -- global regex matching the full bracket (used to strip
+    //                  from the reply and to find all occurrences)
+    //   captureIdx  -- which capture group holds the user's argument
+    //                  (1 for most; null for whole-bracket)
+    //   prompt      -- the line in the system prompt's TOOLS block
+    //   userBlurb   -- short description for the welcome message / demo
+    //   executor    -- async (matchStr, args) => { display, history }
+    //                  - display: string shown in chat UI (or null)
+    //                  - history: string saved to chat history (or null)
+    const TOOL_REGISTRY = {
+      NOTIFY: {
+        name: 'NOTIFY',
+        regex: /\[NOTIFY:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Send a browser notification with [NOTIFY:text]',
+        userBlurb: 'send notifications',
+        executor: (_match, text) => {
+          showNotification(text, 'info');
+          return { display: null, history: `Notification sent: "${text}"` };
+        },
+      },
+      SEARCH: {
+        name: 'SEARCH',
+        regex: /\[SEARCH:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Search the web with [SEARCH:query]',
+        userBlurb: 'search the web',
+        executor: async (_match, query) => {
+          try {
+            const res = await aiFetch(`/api/search/web?q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            if (data.abstract) {
+              const display = `**Search: ${query}**\n\n${data.abstract}`;
+              return { display, history: `Web search for "${query}": ${data.abstract}` };
+            }
+            if (data.answer) {
+              const display = `**Search: ${query}**\n\n${data.answer}`;
+              return { display, history: `Web search for "${query}": ${data.answer}` };
+            }
+            return { display: null, history: `Web search for "${query}": no result found.` };
+          } catch (e) {
+            return { display: null, history: `Web search for "${query}" failed: ${e.message}` };
+          }
+        },
+      },
+      WIKI: {
+        name: 'WIKI',
+        regex: /\[WIKI:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Look up a Wikipedia summary with [WIKI:topic]',
+        userBlurb: 'look up topics on Wikipedia',
+        executor: async (_match, topic) => {
+          try {
+            const res = await aiFetch(`/api/wiki/summary?topic=${encodeURIComponent(topic)}`);
+            const data = await res.json();
+            if (data.extract) {
+              const display = `**Wikipedia: ${data.title || topic}**\n\n${data.extract}`;
+              return { display, history: `Wikipedia summary of "${topic}": ${data.extract}` };
+            }
+            return { display: null, history: `Wikipedia: no summary found for "${topic}".` };
+          } catch (e) {
+            return { display: null, history: `Wikipedia lookup for "${topic}" failed: ${e.message}` };
+          }
+        },
+      },
+      WIKI_SEARCH: {
+        name: 'WIKI_SEARCH',
+        regex: /\[WIKI_SEARCH:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Search Wikipedia for a list of results with [WIKI_SEARCH:query]',
+        userBlurb: 'search Wikipedia for multiple results',
+        executor: async (_match, q) => {
+          try {
+            const res = await aiFetch(`/api/wiki/search?q=${encodeURIComponent(q)}&limit=5`);
+            const data = await res.json();
+            if (data.results && data.results.length) {
+              const list = data.results.map(r => `- **${r.title}**: ${r.snippet}`).join('\n');
+              return { display: `**Wikipedia search: ${q}**\n\n${list}`, history: `Wikipedia search for "${q}" returned ${data.results.length} results:\n${list}` };
+            }
+            return { display: null, history: `Wikipedia search for "${q}" returned no results.` };
+          } catch (e) {
+            return { display: null, history: `Wikipedia search for "${q}" failed: ${e.message}` };
+          }
+        },
+      },
+      WIKI_RANDOM: {
+        name: 'WIKI_RANDOM',
+        regex: /\[WIKI_RANDOM\]/g,
+        captureIdx: null,
+        prompt: 'Fetch a random Wikipedia article with [WIKI_RANDOM]',
+        userBlurb: 'discover a random Wikipedia article',
+        executor: async () => {
+          try {
+            const res = await aiFetch('/api/wiki/random');
+            const data = await res.json();
+            if (data.extract) {
+              const display = `**Random Wikipedia: ${data.title}**\n\n${data.extract}`;
+              return { display, history: `Random Wikipedia article: ${data.title} -- ${data.extract}` };
+            }
+            return { display: null, history: 'Random Wikipedia fetch returned no extract.' };
+          } catch (e) {
+            return { display: null, history: `Random Wikipedia failed: ${e.message}` };
+          }
+        },
+      },
+      ARXIV: {
+        name: 'ARXIV',
+        regex: /\[ARXIV:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Search arXiv for academic papers with [ARXIV:query]',
+        userBlurb: 'search arXiv for academic papers',
+        executor: async (_match, q) => {
+          try {
+            const res = await aiFetch(`/api/search/arxiv?q=${encodeURIComponent(q)}&limit=5`);
+            const data = await res.json();
+            if (data.results && data.results.length) {
+              const list = data.results.map(r => `- **${r.title}** (${(r.authors || []).join(', ')})\n  ${r.summary}`).join('\n\n');
+              return { display: `**arXiv: ${q}**\n\n${list}`, history: `arXiv search for "${q}" returned ${data.results.length} papers:\n${list}` };
+            }
+            return { display: null, history: `arXiv search for "${q}" returned no papers.` };
+          } catch (e) {
+            return { display: null, history: `arXiv search for "${q}" failed: ${e.message}` };
+          }
+        },
+      },
+      CALC: {
+        name: 'CALC',
+        regex: /\[CALC:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Evaluate a math expression with [CALC:expr] (returns result + LaTeX)',
+        userBlurb: 'evaluate math expressions',
+        executor: async (_match, expr) => {
+          try {
+            const res = await aiFetch('/api/math/eval', { method: 'POST', body: JSON.stringify({ expr }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Math eval of "${expr}" failed: ${data.message}` };
+            const display = `**${expr}** = ${data.result}\n\n$$${data.latex || data.result}$$`;
+            return { display, history: `Math: ${expr} = ${data.result}` };
+          } catch (e) {
+            return { display: null, history: `Math eval of "${expr}" failed: ${e.message}` };
+          }
+        },
+      },
+      SOLVE: {
+        name: 'SOLVE',
+        regex: /\[SOLVE:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Solve an equation with [SOLVE:equation in variable x] (e.g. [SOLVE:x^2 - 4 = 0]). Default variable is x.',
+        userBlurb: 'solve equations',
+        executor: async (_match, eq) => {
+          try {
+            const res = await aiFetch('/api/math/solve', { method: 'POST', body: JSON.stringify({ equation: eq, variable: 'x' }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Solve of "${eq}" failed: ${data.message}` };
+            const sols = (data.solutions || []).map(s => s.result).join(', ') || '(no solutions)';
+            const display = `**Solving ${eq}**\n\nSolutions: ${sols}`;
+            return { display, history: `Solve ${eq}: [${sols}]` };
+          } catch (e) {
+            return { display: null, history: `Solve of "${eq}" failed: ${e.message}` };
+          }
+        },
+      },
+      DERIVATIVE: {
+        name: 'DERIVATIVE',
+        regex: /\[DERIVATIVE:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Take a derivative with [DERIVATIVE:expr] (variable x)',
+        userBlurb: 'compute derivatives',
+        executor: async (_match, expr) => {
+          try {
+            const res = await aiFetch('/api/math/calculus', { method: 'POST', body: JSON.stringify({ op: 'diff', expr, var: 'x' }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Derivative of "${expr}" failed: ${data.message}` };
+            return { display: `**d/dx (${expr})** = ${data.result}\n\n$$${data.latex || data.result}$$`, history: `d/dx(${expr}) = ${data.result}` };
+          } catch (e) {
+            return { display: null, history: `Derivative of "${expr}" failed: ${e.message}` };
+          }
+        },
+      },
+      INTEGRAL: {
+        name: 'INTEGRAL',
+        regex: /\[INTEGRAL:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Compute an integral with [INTEGRAL:expr] (variable x, indefinite).',
+        userBlurb: 'compute integrals',
+        executor: async (_match, expr) => {
+          try {
+            const res = await aiFetch('/api/math/calculus', { method: 'POST', body: JSON.stringify({ op: 'int', expr, var: 'x' }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Integral of "${expr}" failed: ${data.message}` };
+            return { display: `**∫ ${expr} dx** = ${data.result}\n\n$$${data.latex || data.result}$$`, history: `∫${expr} dx = ${data.result}` };
+          } catch (e) {
+            return { display: null, history: `Integral of "${expr}" failed: ${e.message}` };
+          }
+        },
+      },
+      LIMIT: {
+        name: 'LIMIT',
+        regex: /\[LIMIT:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Take a limit with [LIMIT:expr at:point] (e.g. [LIMIT:sin(x)/x at:0]).',
+        userBlurb: 'compute limits',
+        executor: async (_match, exprWithPoint) => {
+          // Parse "expr at:point" -- the limit endpoint wants them separate.
+          const m = exprWithPoint.match(/^(.+?)\s+at:\s*(.+)$/);
+          if (!m) return { display: null, history: `Limit syntax: [LIMIT:expr at:point] (got "${exprWithPoint}")` };
+          const expr = m[1].trim();
+          const point = m[2].trim();
+          try {
+            const res = await aiFetch('/api/math/calculus', { method: 'POST', body: JSON.stringify({ op: 'limit', expr, var: 'x', point }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Limit of "${expr}" at ${point} failed: ${data.message}` };
+            return { display: `**lim(x→${point}) ${expr}** = ${data.result}\n\n$$${data.latex || data.result}$$`, history: `lim(x→${point}) ${expr} = ${data.result}` };
+          } catch (e) {
+            return { display: null, history: `Limit of "${expr}" at ${point} failed: ${e.message}` };
+          }
+        },
+      },
+      PERM: {
+        name: 'PERM',
+        regex: /\[PERM:(\d+)\s+(\d+)\]/g,
+        captureIdx: null,
+        prompt: 'Permutations with [PERM:n k] (nPk)',
+        userBlurb: 'compute permutations',
+        executor: async (_match, n, k) => {
+          try {
+            const res = await aiFetch('/api/math/combinatorics', { method: 'POST', body: JSON.stringify({ op: 'perm', n: parseInt(n), k: parseInt(k) }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `P(${n},${k}) failed: ${data.message}` };
+            return { display: `**P(${n}, ${k})** = ${data.result}`, history: `P(${n},${k}) = ${data.result}` };
+          } catch (e) {
+            return { display: null, history: `P(${n},${k}) failed: ${e.message}` };
+          }
+        },
+      },
+      COMB: {
+        name: 'COMB',
+        regex: /\[COMB:(\d+)\s+(\d+)\]/g,
+        captureIdx: null,
+        prompt: 'Combinations with [COMB:n k] (nCk)',
+        userBlurb: 'compute combinations',
+        executor: async (_match, n, k) => {
+          try {
+            const res = await aiFetch('/api/math/combinatorics', { method: 'POST', body: JSON.stringify({ op: 'comb', n: parseInt(n), k: parseInt(k) }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `C(${n},${k}) failed: ${data.message}` };
+            return { display: `**C(${n}, ${k})** = ${data.result}`, history: `C(${n},${k}) = ${data.result}` };
+          } catch (e) {
+            return { display: null, history: `C(${n},${k}) failed: ${e.message}` };
+          }
+        },
+      },
+      GRAPH: {
+        name: 'GRAPH',
+        regex: /\[GRAPH:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Plot a function with [GRAPH:expr from:lo to:hi] (e.g. [GRAPH:sin(x) from:0 to:6.28]).',
+        userBlurb: 'plot math functions',
+        executor: async (_match, exprWithRange) => {
+          const m = exprWithRange.match(/^(.+?)\s+from:\s*([-\d.eE]+)\s+to:\s*([-\d.eE]+)$/);
+          if (!m) return { display: null, history: `Graph syntax: [GRAPH:expr from:lo to:hi] (got "${exprWithRange}")` };
+          const expr = m[1].trim();
+          const x_range = [parseFloat(m[2]), parseFloat(m[3])];
+          try {
+            const res = await aiFetch('/api/math/graph', { method: 'POST', body: JSON.stringify({ expr, x_range }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Graph of "${expr}" failed: ${data.message}` };
+            return { display: `**Graph: y = ${expr}**\n\n![graph](data:image/png;base64,${data.png_base64})`, history: `Plotted y = ${expr} from ${x_range[0]} to ${x_range[1]}.` };
+          } catch (e) {
+            return { display: null, history: `Graph of "${expr}" failed: ${e.message}` };
+          }
+        },
+      },
+      CONVERT: {
+        name: 'CONVERT',
+        regex: /\[CONVERT:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Convert units with [CONVERT:value from:unit to:unit] (e.g. [CONVERT:5 from:ft to:m]).',
+        userBlurb: 'convert units',
+        executor: async (_match, args) => {
+          const m = args.match(/^([-\d.eE]+)\s+from:\s*(\S+)\s+to:\s*(\S+)$/);
+          if (!m) return { display: null, history: `Convert syntax: [CONVERT:value from:unit to:unit] (got "${args}")` };
+          const value = parseFloat(m[1]);
+          const from = m[2];
+          const to = m[3];
+          try {
+            const res = await aiFetch('/api/math/convert', { method: 'POST', body: JSON.stringify({ value, from_unit: from, to_unit: to }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Convert ${value} ${from} to ${to} failed: ${data.message}` };
+            return { display: `**${value} ${from}** = **${data.result} ${to}**`, history: `${value} ${from} = ${data.result} ${to}` };
+          } catch (e) {
+            return { display: null, history: `Convert ${value} ${from} to ${to} failed: ${e.message}` };
+          }
+        },
+      },
+      DESMOS: {
+        name: 'DESMOS',
+        regex: /\[DESMOS:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Open a Desmos graphing calculator with [DESMOS:expression] (e.g. [DESMOS:y=sin(x)]).',
+        userBlurb: 'open Desmos graphing calculator',
+        executor: async (_match, expr) => {
+          const url = `${aiApiUrl()}/api/geometry/desmos?expr=${encodeURIComponent(expr)}`;
+          const display = `**Desmos: ${expr}**\n\n[Open in new tab](${url})`;
+          return { display, history: `Opened Desmos with expression: ${expr}` };
+        },
+      },
+      GEOGEBRA: {
+        name: 'GEOGEBRA',
+        regex: /\[GEOGEBRA:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Open GeoGebra with [GEOGEBRA:command] (e.g. [GEOGEBRA:Circle((0,0),2)]).',
+        userBlurb: 'open GeoGebra geometry',
+        executor: async (_match, cmd) => {
+          const url = `${aiApiUrl()}/api/geometry/geogebra?cmd=${encodeURIComponent(cmd)}`;
+          return { display: `**GeoGebra: ${cmd}**\n\n[Open in new tab](${url})`, history: `Opened GeoGebra with command: ${cmd}` };
+        },
+      },
+      ELEMENT: {
+        name: 'ELEMENT',
+        regex: /\[ELEMENT:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Look up a periodic table element with [ELEMENT:symbol or name or number] (e.g. [ELEMENT:Au]).',
+        userBlurb: 'look up periodic table elements',
+        executor: async (_match, token) => {
+          try {
+            const res = await aiFetch(`/api/element/${encodeURIComponent(token)}`);
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Element "${token}" lookup failed: ${data.message}` };
+            const display = `**${data.name} (${data.symbol})** -- atomic number ${data.number}\n\n` +
+              `- Atomic mass: ${data.mass}\n- Group: ${data.group}, Period: ${data.period}\n` +
+              `- Category: ${data.category}\n- Electron config: ${data.electron_config}\n` +
+              (data.electronegativity ? `- Electronegativity: ${data.electronegativity}\n` : '') +
+              `- Phase at STP: ${data.phase_at_stp}`;
+            return { display, history: `Element ${data.name} (${data.symbol}, #${data.number}): mass=${data.mass}, group=${data.group}, config=${data.electron_config}.` };
+          } catch (e) {
+            return { display: null, history: `Element "${token}" lookup failed: ${e.message}` };
+          }
+        },
+      },
+      PHYSICS: {
+        name: 'PHYSICS',
+        regex: /\[PHYSICS:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Look up a physical constant with [PHYSICS:key] (e.g. [PHYSICS:c], [PHYSICS:G], [PHYSICS:h], [PHYSICS:kB]).',
+        userBlurb: 'look up physical constants',
+        executor: async (_match, key) => {
+          try {
+            const res = await aiFetch(`/api/physics/constant/${encodeURIComponent(key)}`);
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Constant "${key}" lookup failed: ${data.message}` };
+            const display = `**${data.symbol || data.key}** -- ${data.name}\n\nValue: ${data.value} ${data.unit}`;
+            return { display, history: `Physical constant ${data.symbol || data.key} (${data.name}) = ${data.value} ${data.unit}.` };
+          } catch (e) {
+            return { display: null, history: `Constant "${key}" lookup failed: ${e.message}` };
+          }
+        },
+      },
+      TIME: {
+        name: 'TIME',
+        regex: /\[TIME:([^\]]*)\]/g,
+        captureIdx: 1,
+        prompt: 'Get current time, optionally in a timezone, with [TIME:zone] (e.g. [TIME:America/Los_Angeles]; omit zone for UTC).',
+        userBlurb: 'check the current time in any timezone',
+        executor: async (_match, zone) => {
+          try {
+            const path = zone ? `/api/timezone?zone=${encodeURIComponent(zone.trim())}` : '/api/time';
+            const res = await aiFetch(path);
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Time lookup failed: ${data.message}` };
+            if (zone) {
+              return { display: `**${data.zone}**\n\n${data.weekday}, ${data.date} ${data.time} (UTC${data.utc_offset})`, history: `Current time in ${data.zone}: ${data.datetime}` };
+            }
+            return { display: `**UTC**\n\n${data.now_utc}`, history: `Current UTC: ${data.now_utc}` };
+          } catch (e) {
+            return { display: null, history: `Time lookup failed: ${e.message}` };
+          }
+        },
+      },
+      WEATHER: {
+        name: 'WEATHER',
+        regex: /\[WEATHER:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Get current weather and 3-day forecast for a location with [WEATHER:city] (e.g. [WEATHER:Palo Alto]).',
+        userBlurb: 'check the weather anywhere',
+        executor: async (_match, loc) => {
+          try {
+            const res = await aiFetch(`/api/weather?location=${encodeURIComponent(loc)}`);
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Weather for "${loc}" failed: ${data.message}` };
+            const cur = data.current || {};
+            const days = (data.forecast_3d || []).map(d => `- **${d.date}**: high ${d.high_c}°C / low ${d.low_c}°C`).join('\n');
+            const locStr = `${data.location.name}, ${data.location.admin1 || ''} ${data.location.country || ''}`.trim();
+            const display = `**Weather: ${locStr}**\n\nCurrent: ${cur.temperature_c}°C, humidity ${cur.humidity}%, wind ${cur.wind_kph} kph\n\n3-day forecast:\n${days}`;
+            return { display, history: `Weather in ${locStr}: ${cur.temperature_c}°C now, humidity ${cur.humidity}%, wind ${cur.wind_kph} kph.` };
+          } catch (e) {
+            return { display: null, history: `Weather for "${loc}" failed: ${e.message}` };
+          }
+        },
+      },
+      PYTHON: {
+        name: 'PYTHON',
+        regex: /\[PYTHON:([\s\S]+?)\]/g,
+        captureIdx: 1,
+        prompt: 'Run Python in the browser with [PYTHON:code] (Skulpt, no server). stdlib only, no external imports.',
+        userBlurb: 'run Python code in the browser',
+        executor: async (_match, code) => {
+          if (typeof Sk === 'undefined') {
+            return { display: null, history: 'Python execution failed: Skulpt not loaded.' };
+          }
+          try {
+            const out = await runPythonSkulpt(code);
+            const display = `**Python**\n\n\`\`\`\n${out || '(no output)'}\n\`\`\``;
+            return { display, history: `Python execution:\n${code}\n---\nOutput:\n${out || '(no output)'}` };
+          } catch (e) {
+            return { display: null, history: `Python execution failed: ${e.message || e}` };
+          }
+        },
+      },
+      JS: {
+        name: 'JS',
+        regex: /\[JS:([\s\S]+?)\]/g,
+        captureIdx: 1,
+        prompt: 'Run JavaScript in a sandboxed iframe with [JS:code]. 5s timeout. console.log output is captured.',
+        userBlurb: 'run JavaScript in the browser',
+        executor: async (_match, code) => {
+          const result = await runJsInIframe(code, 5000);
+          if (result.error) return { display: null, history: `JS execution failed: ${result.error}` };
+          const display = `**JavaScript**\n\n\`\`\`\n${result.output || '(no output)'}\n\`\`\``;
+          return { display, history: `JS execution:\n${code}\n---\nOutput:\n${result.output || '(no output)'}` };
+        },
+      },
+      HTML: {
+        name: 'HTML',
+        regex: /\[HTML:([\s\S]+?)\]/g,
+        captureIdx: 1,
+        prompt: 'Render HTML in a sandboxed iframe with [HTML:code]. The result is shown visually in the chat.',
+        userBlurb: 'render HTML in the browser',
+        executor: async (_match, code) => {
+          const display = `**HTML preview**\n\n<div class="html-preview-frame">${code}</div>`;
+          return { display, history: `Rendered HTML: ${code.slice(0, 200)}${code.length > 200 ? '...' : ''}` };
+        },
+      },
+      RUN: {
+        name: 'RUN',
+        regex: /\[RUN:(\w+)\s+([\s\S]+?)\]/g,
+        captureIdx: null,
+        prompt: 'Run code on a server-side judge (C/C++/Rust/Go/Java/etc.) with [RUN:lang code] (e.g. [RUN:python print(2+2)]). Requires JUDGE0_KEY env var on the server.',
+        userBlurb: 'run C/C++/Rust/Go/Java code via a server judge',
+        executor: async (_match, lang, code) => {
+          try {
+            const res = await aiFetch('/api/code/run', { method: 'POST', body: JSON.stringify({ language: lang, source: code }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Run ${lang} failed: ${data.message}` };
+            const parts = [];
+            if (data.compile_output) parts.push(`**Compile:**\n\`\`\`\n${data.compile_output}\n\`\`\``);
+            if (data.stdout) parts.push(`**Stdout:**\n\`\`\`\n${data.stdout}\n\`\`\``);
+            if (data.stderr) parts.push(`**Stderr:**\n\`\`\`\n${data.stderr}\n\`\`\``);
+            if (data.status) parts.push(`*Status: ${data.status}*`);
+            return { display: parts.join('\n\n') || '(no output)', history: `${lang} run: ${data.stdout || data.stderr || data.status || 'no output'}` };
+          } catch (e) {
+            return { display: null, history: `Run ${lang} failed: ${e.message}` };
+          }
+        },
+      },
+      GITHUB: {
+        name: 'GITHUB',
+        regex: /\[GITHUB:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Look up a GitHub repository with [GITHUB:user/repo] (e.g. [GITHUB:anthropics/claude-code]).',
+        userBlurb: 'look up GitHub repositories',
+        executor: async (_match, repoPath) => {
+          const parts = repoPath.split('/');
+          if (parts.length < 2) return { display: null, history: `GitHub path must be 'user/repo' (got '${repoPath}')` };
+          const [owner, name] = parts;
+          try {
+            const res = await aiFetch(`/api/github/repo/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`);
+            const data = await res.json();
+            if (data._error) return { display: null, history: `GitHub ${repoPath} failed: ${data.message}` };
+            const display = `**${data.full_name}**\n\n${data.description || '(no description)'}\n\n` +
+              `- ⭐ ${data.stars}  🍴 ${data.forks}  📝 ${data.language || '—'}  License: ${data.license || '—'}\n` +
+              `- Last push: ${data.pushed_at}\n` +
+              `- [Open on GitHub](${data.html_url})`;
+            return { display, history: `GitHub ${data.full_name}: ${data.stars} stars, ${data.forks} forks. ${data.description || ''}` };
+          } catch (e) {
+            return { display: null, history: `GitHub ${repoPath} failed: ${e.message}` };
+          }
+        },
+      },
+      GITLAB: {
+        name: 'GITLAB',
+        regex: /\[GITLAB:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Look up a GitLab project with [GITLAB:namespace/project] (e.g. [GITLAB:inkscape/inkscape]).',
+        userBlurb: 'look up GitLab projects',
+        executor: async (_match, p) => {
+          try {
+            const res = await aiFetch(`/api/gitlab/${encodeURIComponent(p)}`);
+            const data = await res.json();
+            if (data._error) return { display: null, history: `GitLab ${p} failed: ${data.message}` };
+            return { display: `**${data.name}**\n\n${data.description || ''}\n\n⭐ ${data.stars}  🍴 ${data.forks}\n[Open](${data.url})`, history: `GitLab ${p}: ${data.stars} stars.` };
+          } catch (e) {
+            return { display: null, history: `GitLab ${p} failed: ${e.message}` };
+          }
+        },
+      },
+      CODEBERG: {
+        name: 'CODEBERG',
+        regex: /\[CODEBERG:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Look up a Codeberg repo with [CODEBERG:user/repo].',
+        userBlurb: 'look up Codeberg repositories',
+        executor: async (_match, repoPath) => {
+          const parts = repoPath.split('/');
+          if (parts.length < 2) return { display: null, history: `Codeberg path must be 'user/repo' (got '${repoPath}')` };
+          const [owner, name] = parts;
+          try {
+            const res = await aiFetch(`/api/codeberg/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`);
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Codeberg ${repoPath} failed: ${data.message}` };
+            return { display: `**${data.full_name}**\n\n${data.description || ''}\n\n⭐ ${data.stars}  🍴 ${data.forks}\n[Open](${data.url})`, history: `Codeberg ${data.full_name}: ${data.stars} stars.` };
+          } catch (e) {
+            return { display: null, history: `Codeberg ${repoPath} failed: ${e.message}` };
+          }
+        },
+      },
+      YOUTUBE: {
+        name: 'YOUTUBE',
+        regex: /\[YOUTUBE:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Look up a YouTube video with [YOUTUBE:url] (returns title, author, thumbnail, and captions when available).',
+        userBlurb: 'look up YouTube videos',
+        executor: async (_match, url) => {
+          try {
+            const res = await aiFetch(`/api/youtube/info?url=${encodeURIComponent(url)}`);
+            const data = await res.json();
+            if (data._error) return { display: null, history: `YouTube lookup failed: ${data.message}` };
+            const parts = [`**${data.title || '(no title)'}**`];
+            if (data.author) parts.push(`by ${data.author}`);
+            if (data.thumbnail) parts.push(`![thumb](${data.thumbnail})`);
+            if (data.transcript) parts.push(`\n**Transcript (excerpt):**\n${data.transcript.slice(0, 1500)}${data.transcript.length > 1500 ? '...' : ''}`);
+            return { display: parts.join('\n\n'), history: `YouTube: ${data.title} (${data.author || 'unknown'})` };
+          } catch (e) {
+            return { display: null, history: `YouTube lookup failed: ${e.message}` };
+          }
+        },
+      },
+      SCREENSHOT: {
+        name: 'SCREENSHOT',
+        regex: /\[SCREENSHOT:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Take a screenshot of a URL with [SCREENSHOT:url] (renders in the chat as an image).',
+        userBlurb: 'take screenshots of web pages',
+        executor: async (_match, url) => {
+          try {
+            const res = await aiFetch('/api/web/screenshot', { method: 'POST', body: JSON.stringify({ url }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Screenshot of ${url} failed: ${data.message}` };
+            return { display: `**Screenshot: ${url}**\n\n![screenshot](data:image/png;base64,${data.png_base64})`, history: `Took screenshot of ${url} (${data.size_bytes} bytes).` };
+          } catch (e) {
+            return { display: null, history: `Screenshot of ${url} failed: ${e.message}` };
+          }
+        },
+      },
+      FETCH: {
+        name: 'FETCH',
+        regex: /\[FETCH:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Fetch the main text of a URL with [FETCH:url] (HTML pages are summarized via readability).',
+        userBlurb: 'fetch and read web pages',
+        executor: async (_match, url) => {
+          try {
+            const res = await aiFetch('/api/web/fetch', { method: 'POST', body: JSON.stringify({ url }) });
+            const data = await res.json();
+            if (data._error) return { display: null, history: `Fetch of ${url} failed: ${data.message}` };
+            const text = (data.text || '').slice(0, 3000);
+            return { display: `**${data.title || url}**\n\n${text}${data.text && data.text.length > 3000 ? '...(truncated)' : ''}`, history: `Fetched ${url} (${data.content_type}, ${data.size_bytes} bytes, ${(data.text || '').length} chars).` };
+          } catch (e) {
+            return { display: null, history: `Fetch of ${url} failed: ${e.message}` };
+          }
+        },
+      },
+    };
+
+    // Build the TOOLS block of the system prompt from the registry.
+    function buildToolsPrompt() {
+      const lines = ['TOOLS:'];
+      for (const k of Object.keys(TOOL_REGISTRY)) {
+        lines.push(`- ${TOOL_REGISTRY[k].prompt}`);
+      }
+      lines.push(`- You know the current time: ${new Date().toLocaleString()}`);
+      return lines.join('\n');
+    }
+
+    // Build the "what I can do" list shown in the welcome message / demo
+    // mode "help" / "hello" branches.
+    function buildUserFacingToolList() {
+      const seen = new Set();
+      const blurbs = [];
+      for (const k of Object.keys(TOOL_REGISTRY)) {
+        const b = TOOL_REGISTRY[k].userBlurb;
+        if (b && !seen.has(b)) {
+          seen.add(b);
+          blurbs.push(b);
+        }
+      }
+      return blurbs;
+    }
+
+    // -----------------------------------------------------------------------
+    // In-browser code execution helpers
+    // -----------------------------------------------------------------------
+
+    // Run Python via Skulpt and capture stdout. Skulpt is loaded from CDN
+    // in the <head> above. We use a single shared Skulpt configuration;
+    // each run gets its own output buffer.
+    async function runPythonSkulpt(code) {
+      // Configure Skulpt on first use.
+      if (!Sk.__configured) {
+        Sk.configure({
+          output: (text) => { _skulptOutputBuf += text; },
+          read: (x) => {
+            if (Sk.builtinFiles === undefined || Sk.builtinFiles["files"][x] === undefined)
+              throw `File not found: '${x}'`;
+            return Sk.builtinFiles["files"][x];
+          },
+          execLimit: 5000,
+        });
+        Sk.__configured = true;
+      }
+      // Ensure the stdlib is available -- skulpt-stdlib.js adds it
+      // to Sk.builtinFiles.files.
+      _skulptOutputBuf = '';
+      try {
+        await Sk.misceval.asyncToPromise(() => Sk.importMainWithBody("__main__", false, code, true));
+      } catch (e) {
+        return `${_skulptOutputBuf}\n[Error: ${e.toString()}]`.trim();
+      }
+      return _skulptOutputBuf;
+    }
+    let _skulptOutputBuf = '';
+
+    // Run JS in a sandboxed iframe with a hard timeout. console.log
+    // output is captured by injecting a hook before the user code.
+    function runJsInIframe(code, timeoutMs = 5000) {
+      return new Promise((resolve) => {
+        const iframe = document.createElement('iframe');
+        iframe.setAttribute('sandbox', 'allow-scripts');
+        iframe.style.display = 'none';
+        const logs = [];
+        const send = (kind, args) => {
+          logs.push(`${kind === 'log' ? '' : '[' + kind + '] '}${args.map(a => {
+            try { return typeof a === 'string' ? a : JSON.stringify(a); }
+            catch (e) { return String(a); }
+          }).join(' ')}`);
+        };
+        // We hook console by injecting a small shim that posts the
+        // args back to the parent. The parent collects them in `logs`.
+        const wrapped = `
+          (function(){
+            const send = (kind, args) => {
+              try { parent.postMessage({__js_run: true, kind, text: args.map(a => {
+                if (typeof a === 'string') return a;
+                try { return JSON.stringify(a); } catch(e) { return String(a); }
+              }).join(' ')}, '*'); } catch(e) {}
+            };
+            const orig = { log: console.log, error: console.error, warn: console.warn, info: console.info };
+            console.log = (...a) => { send('log', a); orig.log.apply(console, a); };
+            console.error = (...a) => { send('error', a); orig.error.apply(console, a); };
+            console.warn = (...a) => { send('warn', a); orig.warn.apply(console, a); };
+            console.info = (...a) => { send('info', a); orig.info.apply(console, a); };
+            window.addEventListener('error', (e) => { send('error', [e.message]); });
+            try {
+              ${code}
+              parent.postMessage({__js_run: true, kind: 'done'}, '*');
+            } catch (e) {
+              send('error', [e && e.message ? e.message : String(e)]);
+              parent.postMessage({__js_run: true, kind: 'done'}, '*');
+            }
+          })();
+        `;
+        const handler = (event) => {
+          if (!event.data || !event.data.__js_run) return;
+          if (event.data.kind === 'done') {
+            window.removeEventListener('message', handler);
+            clearTimeout(timer);
+            try { iframe.remove(); } catch (e) {}
+            resolve({ output: logs.join('\n'), error: null });
+            return;
+          }
+          send(event.data.kind, [event.data.text]);
+        };
+        window.addEventListener('message', handler);
+        const timer = setTimeout(() => {
+          window.removeEventListener('message', handler);
+          try { iframe.remove(); } catch (e) {}
+          resolve({ output: logs.join('\n'), error: `timed out after ${timeoutMs}ms` });
+        }, timeoutMs);
+        iframe.srcdoc = `<!doctype html><html><body><script>${wrapped}</script></body></html>`;
+        document.body.appendChild(iframe);
+      });
+    }
+
     // AI Chat
     async function sendChatMessage() {
       const input = document.getElementById('chatInput');
@@ -1242,9 +1986,15 @@
 
       const workerUrl = localStorage.getItem('schoology-ai-worker-url');
 
+      // Build the full user-visible message. If files are attached, fetch
+      // the AI-readable summaries and inline them so the model can use
+      // them; this is the only way file content reaches the worker.
       let fullMessage = message;
-      if (state.uploadedFiles.length > 0) {
-        fullMessage += '\n\n[Files attached]';
+      const fileContexts = state.uploadedFiles.length
+        ? await fetchFileContexts()
+        : '';
+      if (fileContexts) {
+        fullMessage += '\n\n[Attached files -- AI-readable context follows]\n' + fileContexts;
       }
 
       addChatMessage('user', message || '[File uploaded]');
@@ -1431,13 +2181,14 @@
       if (lower.includes('assignment') || lower.includes('homework') || lower.includes('due')) {
         return `You have several upcoming assignments:\n\n- **Calculus Chapter 7 Test** - Due May 25 (3 days)\n- **Hamlet Analysis Essay** - Due May 23 (Tomorrow!)\n- **Momentum Lab Report** - Due May 24 (2 days)\n\nI recommend starting with the Hamlet essay since it's due soonest. Would you like me to help you with any of these? 💡`;
       }
+      const toolBlurbs = buildUserFacingToolList();
       if (lower.includes('help') || lower.includes('explain')) {
-        return `I'd be happy to help! Here are some things I can assist with:\n\n- **Math** $\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$ - Just type an equation\n- **Code** - I can help debug or explain concepts\n- **Writing** - Essay structure, grammar tips\n- **General study** - Creating flashcards, summary notes\n\nWhat would you like help with today? 📚`;
+        return `I'd be happy to help! Here are some things I can do:\n\n- **Math** $\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$ — try [CALC:integrate(sin(x),x)] or [GRAPH:sin(x) from:0 to:6.28]\n- **Code** — I can help debug or explain concepts\n- **Writing** — Essay structure, grammar tips\n- **General study** — Creating flashcards, summary notes\n\nI can also ${toolBlurbs.slice(0, 6).join(', ')}, and more.\n\nWhat would you like help with today? 📚`;
       }
       if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
-        return `Hello! 👋 Great to see you. I'm your AI study assistant powered by DeepSeek.\n\nI have access to your current grades and assignments. Feel free to ask me anything about your courses, get help with homework, or even search the web and Wikipedia for additional resources!\n\nWhat would you like to work on today?`;
+        return `Hello! 👋 Great to see you. I'm your AI study assistant powered by DeepSeek.\n\nI have access to your current grades, assignments, and Schoology posts. I can also ${toolBlurbs.slice(0, 8).join(', ')}, and more.\n\nWhat would you like to work on today?`;
       }
-      return `I understand you're asking about "${message}". Since you're in demo mode, here's a helpful response:\n\nYou can ask me about:\n- Your **grades** and GPA\n- **Upcoming assignments**\n- **Concepts** from any subject\n- Help with **homework** or **studying**\n\nTry asking something like "What are my current grades?" or "What's due this week?" to get started! 🚀`;
+      return `I understand you're asking about "${message}". Since you're in demo mode, here's a helpful response:\n\nYou can ask me about:\n- Your **grades** and GPA\n- **Upcoming assignments**\n- **Concepts** from any subject\n- Help with **homework** or **studying**\n\nI can also ${toolBlurbs.slice(0, 6).join(', ')}, and more.\n\nTry asking something like "What are my current grades?" or "What's due this week?" to get started! 🚀`;
     }
 
     function buildContextMessages(currentMessage) {
@@ -1455,11 +2206,7 @@ RESPONSE STYLE:
 - Offer follow-up suggestions or related topics the user might want to explore
 - Never give one-word or extremely brief answers — a good answer is thorough
 
-TOOLS:
-- Send notifications with [NOTIFY:text]
-- Search the web with [SEARCH:query]
-- Look up Wikipedia with [WIKI:topic]
-- You know the current time: ${now.toLocaleString()}
+${buildToolsPrompt()}
 
 STUDENT DATA (use when relevant):
 Grades:
@@ -1478,35 +2225,47 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       ];
     }
 
-    function handleAICommands(text) {
-      const notifyMatch = text.match(/\[NOTIFY:([^\]]+)\]/g);
-      if (notifyMatch) {
-        notifyMatch.forEach(m => showNotification(m.replace('[NOTIFY:', '').replace(']', ''), 'info'));
-        text = text.replace(/\[NOTIFY:[^\]]+\]/g, '');
-      }
-      const searchMatch = text.match(/\[SEARCH:([^\]]+)\]/g);
-      if (searchMatch) {
-        searchMatch.forEach(async m => {
-          const query = m.replace('[SEARCH:', '').replace(']', '');
+    async function handleAICommands(text) {
+      // Dispatch all [TOOL:args] brackets from the model's reply. Each
+      // match is fed to the registry's executor; the result's display
+      // string is added to the chat UI and the history string is pushed
+      // into chatHistory so the model sees the result on its next turn.
+      const seen = new Set();  // dedupe across overlapping regexes
+      for (const key of Object.keys(TOOL_REGISTRY)) {
+        const entry = TOOL_REGISTRY[key];
+        // Use a fresh regex per call to avoid lastIndex carry-over.
+        const re = new RegExp(entry.regex.source, entry.regex.flags);
+        let m;
+        const matches = [];
+        while ((m = re.exec(text)) !== null) {
+          matches.push(m);
+          if (m.index === re.lastIndex) re.lastIndex++;
+        }
+        if (!matches.length) continue;
+        for (const match of matches) {
+          // Skip if the same span was already handled by an earlier entry.
+          const spanKey = match.index + ':' + match[0].length;
+          if (seen.has(spanKey)) continue;
+          seen.add(spanKey);
+          // Extract args: either the whole match (captureIdx === null) or
+          // the named capture group.
+          let args;
+          if (entry.captureIdx === null) {
+            args = match.slice(1);
+          } else {
+            args = match[entry.captureIdx];
+          }
           try {
-            const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`);
-            const data = await res.json();
-            if (data.AbstractText) addChatMessage('assistant', `**Search: ${query}**\n\n${data.AbstractText}`);
-          } catch (e) { console.error('Search failed'); }
-        });
-        text = text.replace(/\[SEARCH:[^\]]+\]/g, '');
-      }
-      const wikiMatch = text.match(/\[WIKI:([^\]]+)\]/g);
-      if (wikiMatch) {
-        wikiMatch.forEach(async m => {
-          const topic = m.replace('[WIKI:', '').replace(']', '');
-          try {
-            const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(topic)}`);
-            const data = await res.json();
-            if (data.extract) addChatMessage('assistant', `**Wikipedia: ${data.title}**\n\n${data.extract}`);
-          } catch (e) { console.error('Wiki failed'); }
-        });
-        text = text.replace(/\[WIKI:[^\]]+\]/g, '');
+            const result = await entry.executor(match[0], ...(Array.isArray(args) ? args : [args]));
+            if (result.display) addChatMessage('assistant', result.display);
+            if (result.history) pushToolHistory(entry.name, result.history);
+          } catch (e) {
+            console.error(`Tool ${entry.name} failed:`, e);
+            pushToolHistory(entry.name, `Tool ${entry.name} failed: ${e.message}`);
+          }
+        }
+        // Strip matched brackets from the local text copy.
+        text = text.replace(entry.regex, '');
       }
     }
 
@@ -1590,7 +2349,10 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       toggleEmojiPicker();
     }
 
-    // File upload handler
+    // File upload handler -- POSTs each file to /api/file/ingest, which
+    // stores it on the server and returns an id we can pass to
+    // /api/file/context before sending the chat message. The bytes
+    // never leave the user's session until the user hits Send.
     async function handleFileUpload(event) {
       const files = event.target.files;
       if (!files.length) return;
@@ -1600,25 +2362,100 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       container.innerHTML = '';
       state.uploadedFiles = [];
 
+      showNotification(`Uploading ${files.length} file(s)…`, 'info');
+
       for (const file of files) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
+        try {
+          const form = new FormData();
+          form.append('file', file);
+          const auth = getAuthHeader();
+          const res = await fetch(`${aiApiUrl()}/api/file/ingest`, {
+            method: 'POST',
+            body: form,
+            headers: auth ? { 'Authorization': auth } : {},
+          });
+          if (!res.ok) {
+            const errText = await res.text().catch(() => 'upload failed');
+            console.error('[AI-FILE] upload failed:', errText);
+            showNotification(`Upload failed for ${file.name}`, 'error');
+            continue;
+          }
+          const meta = await res.json();
+          // Preview: for images read as dataURL (cheap, just for the
+          // preview chip); for audio/video show a small player; for
+          // everything else show a generic icon.
           const preview = document.createElement('div');
           preview.className = 'image-preview-item';
-          const isImage = file.type.startsWith('image/');
-          if (isImage) {
-            preview.innerHTML = `<img src="${e.target.result}" alt="${file.name}"><button class="remove-btn" onclick="removeFile(this, '${file.name}')">×</button>`;
+          if (file.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              preview.innerHTML = `<img src="${ev.target.result}" alt="${file.name}"><button class="remove-btn" onclick="removeFileById('${meta.id}')">×</button>`;
+            };
+            reader.readAsDataURL(file);
+          } else if (file.type.startsWith('audio/')) {
+            preview.innerHTML = `<div style="padding:6px;font-size:11px;text-align:center;">🎵<br>${escapeHtml(file.name)}</div><button class="remove-btn" onclick="removeFileById('${meta.id}')">×</button>`;
+          } else if (file.type.startsWith('video/')) {
+            preview.innerHTML = `<div style="padding:6px;font-size:11px;text-align:center;">🎬<br>${escapeHtml(file.name)}</div><button class="remove-btn" onclick="removeFileById('${meta.id}')">×</button>`;
           } else {
-            preview.innerHTML = `<div style="padding:10px;font-size:12px;text-align:center;">📄</div><button class="remove-btn" onclick="removeFile(this, '${file.name}')">×</button>`;
+            preview.innerHTML = `<div style="padding:10px;font-size:12px;text-align:center;">📄<br>${escapeHtml(file.name)}</div><button class="remove-btn" onclick="removeFileById('${meta.id}')">×</button>`;
           }
           container.appendChild(preview);
-          state.uploadedFiles.push({ name: file.name, type: file.type, data: e.target.result });
-        };
-        reader.readAsDataURL(file);
+          state.uploadedFiles.push({ id: meta.id, name: meta.name, type: meta.type, size: meta.size });
+        } catch (e) {
+          console.error('[AI-FILE] upload error:', e);
+          showNotification(`Upload error for ${file.name}: ${e.message}`, 'error');
+        }
       }
 
-      showNotification(`${files.length} file(s) attached`, 'info');
+      showNotification(`${state.uploadedFiles.length} file(s) ready`, 'info');
       event.target.value = '';
+    }
+
+    function removeFileById(id) {
+      state.uploadedFiles = state.uploadedFiles.filter(f => f.id !== id);
+      // Rebuild the preview strip from state (the clicked button is
+      // already gone via the inline onclick).
+      const container = document.getElementById('filePreviewContainer');
+      // The clicked chip is already removed; remove any orphaned ones.
+      // We re-render to be safe.
+      if (!state.uploadedFiles.length) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+      }
+      // Drop any chip whose data-id no longer matches a state file.
+      const chips = container.querySelectorAll('.image-preview-item');
+      chips.forEach(chip => {
+        const btn = chip.querySelector('.remove-btn');
+        if (btn) {
+          const m = btn.getAttribute('onclick') && btn.getAttribute('onclick').match(/removeFileById\('([a-f0-9]+)'\)/);
+          if (m && !state.uploadedFiles.find(f => f.id === m[1])) chip.remove();
+        }
+      });
+    }
+
+    // Fetch the AI-readable summary for all attached files before sending.
+    // This is what makes the model actually see the file contents.
+    async function fetchFileContexts() {
+      if (!state.uploadedFiles.length) return '';
+      const ids = state.uploadedFiles.map(f => f.id);
+      try {
+        const res = await aiFetch('/api/file/context', { method: 'POST', body: JSON.stringify({ file_ids: ids }) });
+        const data = await res.json();
+        if (!Array.isArray(data)) return '';
+        const lines = [];
+        for (const item of data) {
+          if (item.error) {
+            lines.push(`[File: ${item.name || item.id}] (could not read: ${item.error})`);
+          } else {
+            lines.push(`[File: ${item.name} (${item.type})]\n${item.summary}`);
+          }
+        }
+        return lines.join('\n\n');
+      } catch (e) {
+        console.error('[AI-FILE] context fetch failed:', e);
+        return '';
+      }
     }
 
     function removeFile(btn, name) {

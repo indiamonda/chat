@@ -693,6 +693,12 @@ def daemon_status():
     })
 
 
+# AI Assistant tool routes (math, geometry, knowledge, science, files).
+# Each module in schoology/ai/ registers its own routes via register_routes(app).
+from schoology.ai import register_routes as _register_ai_routes
+_register_ai_routes(app)
+
+
 if __name__ == '__main__':
     print("""
     ╔═══════════════════════════════════════════════════════════╗

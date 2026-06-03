@@ -1,0 +1,24 @@
+{
+  "constants": {
+    "c":   {"name": "speed of light in vacuum",                "value": 299792458,        "unit": "m/s",            "symbol": "c"},
+    "G":   {"name": "gravitational constant",                  "value": 6.67430e-11,      "unit": "m^3/(kg s^2)",   "symbol": "G"},
+    "h":   {"name": "Planck constant",                         "value": 6.62607015e-34,   "unit": "J s",            "symbol": "h"},
+    "hbar": {"name": "reduced Planck constant",                "value": 1.054571817e-34,  "unit": "J s",            "symbol": "ℏ"},
+    "e":   {"name": "elementary charge",                       "value": 1.602176634e-19,  "unit": "C",              "symbol": "e"},
+    "me":  {"name": "electron mass",                           "value": 9.1093837015e-31, "unit": "kg",             "symbol": "mₑ"},
+    "mp":  {"name": "proton mass",                             "value": 1.67262192369e-27,"unit": "kg",             "symbol": "mₚ"},
+    "mn":  {"name": "neutron mass",                            "value": 1.67492749804e-27,"unit": "kg",             "symbol": "mₙ"},
+    "kB":  {"name": "Boltzmann constant",                      "value": 1.380649e-23,     "unit": "J/K",            "symbol": "k_B"},
+    "R":   {"name": "gas constant",                            "value": 8.314462618,      "unit": "J/(mol K)",      "symbol": "R"},
+    "NA":  {"name": "Avogadro constant",                       "value": 6.02214076e23,    "unit": "1/mol",          "symbol": "N_A"},
+    "F":   {"name": "Faraday constant",                        "value": 96485.33212,      "unit": "C/mol",          "symbol": "F"},
+    "g":   {"name": "standard gravity (Earth surface)",        "value": 9.80665,          "unit": "m/s^2",          "symbol": "g"},
+    "atm": {"name": "standard atmosphere",                     "value": 101325,           "unit": "Pa",             "symbol": "atm"},
+    "eps0": {"name": "vacuum permittivity",                    "value": 8.8541878128e-12, "unit": "F/m",            "symbol": "ε₀"},
+    "mu0": {"name": "vacuum permeability",                    "value": 1.25663706212e-6, "unit": "N/A^2",          "symbol": "μ₀"},
+    "ke":  {"name": "Coulomb constant",                        "value": 8.9875517873681764e9, "unit": "N m^2/C^2",  "symbol": "kₑ"},
+    "sigma": {"name": "Stefan-Boltzmann constant",             "value": 5.670374419e-8,   "unit": "W/(m^2 K^4)",    "symbol": "σ"},
+    "Rinf": {"name": "Rydberg constant",                       "value": 10973731.568160,  "unit": "1/m",            "symbol": "R_∞"},
+    "alpha": {"name": "fine-structure constant",              "value": 7.2973525693e-3,  "unit": "",               "symbol": "α"}
+  }
+}

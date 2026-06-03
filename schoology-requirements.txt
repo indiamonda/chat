@@ -2,3 +2,30 @@ flask>=2.0.0
 flask-cors>=3.0.0
 gunicorn>=20.0.0
 mcp>=1.0
+
+# AI Assistant -- Phase 1: math, geometry, knowledge, science
+sympy>=1.12
+numpy>=1.24
+scipy>=1.11
+matplotlib>=3.7
+pint>=0.22
+requests>=2.31
+
+# AI Assistant -- Phase 2: file readers, vision, audio, video
+pypdf>=4.0
+python-docx>=1.0
+python-pptx>=0.6.21
+openpyxl>=3.1
+mido>=1.3
+pytesseract>=0.3.10
+Pillow>=10.0
+pydub>=0.25
+librosa>=0.10
+openai-whisper
+# open_clip_torch is heavy; lazy-loaded, optional
+# open_clip_torch>=2.24
+
+# AI Assistant -- Phase 3: code, integrations, basics, web
+# (Judge0 needs a key -- see ai/code.py for env var)
+readability-lxml>=0.8
+youtube-transcript-api>=0.6
