@@ -898,8 +898,11 @@ function proxyRequest(req, res, targetPort, basePath) {
     }
   });
 
-  // Write body if present (after express.json() parsed it)
-  if (req.body != null) {
+  // Write body if present. express.json() sets req.body={} for requests
+  // with no body, so we must skip empty bodies -- otherwise GET requests
+  // get a `{}` payload that gunicorn misreads as a second request line on
+  // the keep-alive connection, returning 400s for the next request.
+  if (req.body != null && Object.keys(req.body).length > 0 && req.method !== 'GET' && req.method !== 'HEAD') {
     proxyReq.write(JSON.stringify(req.body));
   }
   proxyReq.end();
