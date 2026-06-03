@@ -114,7 +114,7 @@ def _fetch(url: str, max_bytes: int = 2_000_000) -> dict:
 
 def register_routes(app):
     @app.route("/api/web/screenshot", methods=["POST"])
-    def _screenshot_route():
+    def _web_screenshot_route():
         payload = request.get_json(silent=True) or {}
         url = (payload.get("url") or "").strip()
         if not url:
@@ -126,7 +126,7 @@ def register_routes(app):
         return jsonify(_screenshot(url, full_page, wait_for))
 
     @app.route("/api/web/fetch", methods=["POST"])
-    def _fetch_route():
+    def _web_fetch_route():
         payload = request.get_json(silent=True) or {}
         url = (payload.get("url") or "").strip()
         if not url:

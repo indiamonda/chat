@@ -192,7 +192,7 @@ def register_routes(app):
         })
 
     @app.route("/api/file/<file_id>", methods=["GET"])
-    def _fetch_route(file_id):
+    def _file_fetch_route(file_id):
         """Stream a previously-ingested file by id."""
         # Sanitize: only allow hex ids.
         if not all(c in "0123456789abcdef" for c in file_id) or len(file_id) > 32:
