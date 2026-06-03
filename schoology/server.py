@@ -18,8 +18,16 @@ import sys
 import threading
 import time
 import traceback
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+# Gunicorn is launched with cwd=/app/schoology (see Dockerfile CMD), so
+# `schoology.ai` is not on the import path. Add /app so the AI tool
+# package resolves.
+_PARENT_DIR = str(Path(__file__).resolve().parent.parent)
+if _PARENT_DIR not in sys.path:
+    sys.path.insert(0, _PARENT_DIR)
+
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
