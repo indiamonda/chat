@@ -265,7 +265,7 @@ class DaemonClient:
 # own daemon process (configured with that student's USERNAME/PASSWORD).
 # Capped at _DAEMON_POOL_MAX to keep memory bounded on 512MB Fly; when
 # the cap is reached the least-recently-used daemon is killed.
-_DAEMON_POOL_MAX = int(os.environ.get("DAEMON_POOL_MAX", "5"))
+_DAEMON_POOL_MAX = int(os.environ.get("DAEMON_POOL_MAX", "100"))
 _daemons: dict[str, "DaemonClient"] = {}
 _daemons_lock = threading.Lock()
 _daemon_total_calls = 0
