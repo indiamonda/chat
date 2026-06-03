@@ -57,34 +57,22 @@ def _wiki_article(topic: str, sections_only: bool = False) -> dict:
         data = _get(f"{WIKI_REST}/page/summary/{urllib.parse.quote(title)}")
         if "_error" in data:
             return data
-    # Get the plain text body via the REST mobile-sections endpoint; it
-    # returns a flat list of sections we can stitch together.
-    data = _get(f"{WIKI_REST}/page/mobile-sections/{urllib.parse.quote(title)}")
-    if "_error" in data:
-        return data
-    lead = data.get("lead", {})
-    sections = data.get("remaining", {}).get("sections", [])
-    out_sections = []
-    for s in sections:
-        out_sections.append({
-            "id": s.get("id"),
-            "title": s.get("line"),
-            "level": s.get("toclevel", 1),
-        })
-    if sections_only:
-        return {"title": lead.get("displaytitle") or title, "sections": out_sections}
-    # Build a single plain-text body (truncate hard at 50k chars).
-    parts = [re_strip_tags(lead.get("sections", [{}])[0].get("text", ""))]
-    for s in sections[:30]:  # cap number of sections
-        for sec in s.get("sections", []):
-            parts.append(re_strip_tags(sec.get("text", "")))
-    text = "\n\n".join(p for p in parts if p)
+    # Get the plain text body via the MediaWiki action=parse API. The REST
+    # mobile-sections endpoint was decommissioned, but action=parse still
+    # works and returns wikitext we can strip.
+    parsed = _get(
+        f"{WIKI_API}?action=parse&page={urllib.parse.quote(title)}"
+        f"&format=json&prop=wikitext&redirects=1"
+    )
+    if "_error" in parsed:
+        return parsed
+    wikitext = parsed.get("parse", {}).get("wikitext", {}).get("*", "")
+    text = re_strip_tags(wikitext)
     if len(text) > 50_000:
         text = text[:50_000] + "...(truncated)"
     return {
-        "title": lead.get("displaytitle") or title,
+        "title": parsed.get("parse", {}).get("displaytitle") or title,
         "text": text,
-        "sections": out_sections,
     }
 
 
@@ -123,11 +111,19 @@ def _wiki_random() -> dict:
 
 
 def re_strip_tags(html: str) -> str:
-    """Quickly strip HTML tags from a string. Wikipedia REST returns
-    HTML bodies; we want plain text to put in the model context."""
+    """Quickly strip HTML tags and wikitext markup from a string. Wikipedia
+    REST returns HTML bodies; the action=parse API returns wikitext which
+    has its own syntax. We want plain text to put in the model context."""
     import re
     s = re.sub(r"<[^>]+>", "", html or "")
+    # Wikitext cleanup: templates {{...}}, links [[...|label]], files, refs.
+    s = re.sub(r"\{\{[^{}]*?\}\}", "", s)  # simple templates (no nested)
+    s = re.sub(r"\[\[(?:[^\]|]*\|)?([^\]]+)\]\]", r"\1", s)  # [[link|label]] -> label
+    s = re.sub(r"\[\[[^\]]+\]\]", "", s)  # remaining [[...]]
+    s = re.sub(r"'''?", "", s)  # bold/italic
+    s = re.sub(r"<ref[^>]*?/>", "", s)
     s = s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&#39;", "'")
+    s = re.sub(r"\s+", " ", s)
     return s.strip()
 
 
@@ -175,7 +171,7 @@ def _search_arxiv(q: str, limit: int = 5) -> dict:
         r = requests.get(
             ARXIV_API,
             params={"search_query": q, "start": 0, "max_results": limit},
-            timeout=15,
+            timeout=30,
         )
         r.raise_for_status()
     except Exception as exc:
