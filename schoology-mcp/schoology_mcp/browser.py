@@ -9,16 +9,11 @@ Auto-refresh strategy (Schoology sessions expire quickly):
 2. **Keep-alive** -- a background task periodically re-visits Schoology so the
    sliding session stays warm, so interactive calls rarely pay re-login latency.
 3. **Persistence** -- the refreshed session is written back to
-   `storage_state_{username}.json` so per-student sessions persist.
-4. **Per-student contexts** -- each student gets their own browser context,
-   keyed by username. Supports concurrent multiple students.
+   `storage_state.json` so server restarts reuse it.
 """
 
 import asyncio
 import logging
-import os
-from pathlib import Path
-from typing import Self
 
 from playwright.async_api import async_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeout
@@ -28,115 +23,67 @@ from .auth import login
 
 log = logging.getLogger("schoology_mcp.browser")
 
-# Override Playwright's default browser cache directory
-PLAYWRIGHT_BROWSERS_DIR = os.environ.get(
-    "PLAYWRIGHT_BROWSERS_DIR",
-    "/root/.cache/ms-playwright"
-)
-
 
 class SchoologyClient:
-    """Owns one headless browser with per-student contexts.
-
-    Each student gets their own Playwright BrowserContext, stored in a dict
-    keyed by username. This allows concurrent requests for different students.
-    """
+    """Owns one headless browser + context for the MCP server's lifetime."""
 
     def __init__(self) -> None:
         self._pw = None
         self._browser = None
-        # Per-student contexts: username -> (context, keepalive_task)
-        self._contexts: dict[str, tuple] = {}
+        self._context = None
         self._lock = asyncio.Lock()
+        self._keepalive_task: asyncio.Task | None = None
 
     # -- lifecycle ---------------------------------------------------------
 
     async def _ensure_browser(self) -> None:
-        if self._browser is not None:
+        if self._context is not None:
             return
         log.info("Launching Chromium (headless=%s)", config.HEADLESS)
         self._pw = await async_playwright().start()
-        env = {}
-        # Only set PLAYWRIGHT_BROWSERS_DIR if explicitly configured to non-default
-        if PLAYWRIGHT_BROWSERS_DIR != "/root/.cache/ms-playwright":
-            env["PLAYWRIGHT_BROWSERS_DIR"] = PLAYWRIGHT_BROWSERS_DIR
-            log.info("Browser launch env: %s", env)
-        self._browser = await self._pw.chromium.launch(
-            headless=config.HEADLESS,
-            args=[
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-software-rasterizer",
-                "--no-zygote",
-                "--disable-features=VizDisplayCompositor",
-                "--disable-blink-features=AutomationControlled",
-                "--disable-extensions",
-                "--disable-background-networking",
-                "--disable-default-apps",
-                "--disable-sync",
-                "--disable-translate",
-                "--metrics-recording-only",
-                "--mute-audio",
-                "--no-first-run",
-                "--safebrowsing-disable-auto-update",
-            ],
-            env=env if env else None
-        )
-
-    def _storage_path(self, username: str) -> Path:
-        """Get storage state file path for a given username."""
-        stem = config.STORAGE_STATE_PATH.stem
-        suffix = config.STORAGE_STATE_PATH.suffix
-        return config.STORAGE_STATE_PATH.parent / f"{stem}_{username}{suffix}"
-
-    async def _get_context(self, username: str) -> tuple:
-        """Get or create a browser context for the given username.
-
-        Returns (context, keepalive_task or None).
-        """
-        if username in self._contexts:
-            return self._contexts[username]
-
-        storage_path = self._storage_path(username)
-        if storage_path.exists():
-            log.info("Restoring session for %s from %s", username, storage_path)
-            context = await self._browser.new_context(storage_state=str(storage_path))
+        self._browser = await self._pw.chromium.launch(headless=config.HEADLESS)
+        if config.STORAGE_STATE_PATH.exists():
+            log.info("Restoring session from %s", config.STORAGE_STATE_PATH)
+            self._context = await self._browser.new_context(
+                storage_state=str(config.STORAGE_STATE_PATH)
+            )
         else:
-            log.info("Creating new context for %s", username)
-            context = await self._browser.new_context()
+            self._context = await self._browser.new_context()
 
-        self._contexts[username] = (context, None)
-        return context, None
+        if config.KEEPALIVE_ENABLED and self._keepalive_task is None:
+            self._keepalive_task = asyncio.create_task(self._keepalive_loop())
+            log.info(
+                "Keep-alive enabled: refresh every %ds", config.KEEPALIVE_SECONDS
+            )
 
     async def close(self) -> None:
-        for username, (context, task) in list(self._contexts.items()):
-            if task is not None:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-            await context.close()
-        self._contexts.clear()
-
+        if self._keepalive_task is not None:
+            self._keepalive_task.cancel()
+            try:
+                await self._keepalive_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+            self._keepalive_task = None
+        if self._context is not None:
+            await self._context.close()
         if self._browser is not None:
             await self._browser.close()
         if self._pw is not None:
             await self._pw.stop()
-        self._browser = self._pw = None
+        self._context = self._browser = self._pw = None
 
     # -- session management ------------------------------------------------
 
-    async def _login_and_save(self, context, username: str) -> None:
+    async def _login_and_save(self) -> None:
         """Re-run ClassLink login in the live context and persist the session."""
-        await login(context, username=username)
-        storage_path = self._storage_path(username)
-        await context.storage_state(path=str(storage_path))
-        log.info("Session refreshed and saved to %s", storage_path)
+        await login(self._context)
+        await self._save_state()
+        log.info("Session refreshed and saved to %s", config.STORAGE_STATE_PATH)
 
-    async def _keepalive_loop(self, context, username: str) -> None:
+    async def _save_state(self) -> None:
+        await self._context.storage_state(path=str(config.STORAGE_STATE_PATH))
+
+    async def _keepalive_loop(self) -> None:
         """Periodically refresh the session so it never goes cold."""
         while True:
             try:
@@ -144,47 +91,49 @@ class SchoologyClient:
             except asyncio.CancelledError:
                 break
             try:
-                url, html = await self._load(context, "/home")
-                if _is_logged_in(url, html):
-                    storage_path = self._storage_path(username)
-                    await context.storage_state(path=str(storage_path))
-                    log.debug("Keep-alive: session healthy for %s", username)
-                else:
-                    log.info("Keep-alive: session expired for %s -- re-logging in", username)
-                    await self._login_and_save(context, username)
+                async with self._lock:
+                    if self._context is None:
+                        break
+                    await self._refresh_session()
             except asyncio.CancelledError:
                 break
             except Exception as exc:  # noqa: BLE001
-                log.warning("Keep-alive refresh failed for %s: %s", username, exc)
+                log.warning("Keep-alive refresh failed: %s", exc)
+
+    async def _refresh_session(self) -> None:
+        """Ping Schoology to keep the session warm; re-login if it has died."""
+        url, html = await self._load("/home")
+        if _is_logged_in(url, html):
+            await self._save_state()  # captures the refreshed cookie expiry
+            log.debug("Keep-alive: session healthy")
+        else:
+            log.info("Keep-alive: session expired -- re-logging in")
+            await self._login_and_save()
 
     # -- fetching ----------------------------------------------------------
 
     async def fetch(
         self,
         path: str,
-        username: str,
         wait_selector: str | None = None,
         extra_wait_ms: int = 2_000,
     ) -> str:
         """Return the rendered HTML of a Schoology page under BASE_URL.
 
-        The username is used to select/created the per-student browser context.
-        Re-logs in and retries once if the page comes back logged out.
+        Serialized with a lock (so concurrent calls and keep-alive share one
+        login). Re-logs in and retries once if the page comes back logged out.
         """
         async with self._lock:
             await self._ensure_browser()
-            context, _ = await self._get_context(username)
-
             for attempt in (1, 2):
-                url, html = await self._load(context, path, wait_selector, extra_wait_ms)
+                url, html = await self._load(path, wait_selector, extra_wait_ms)
                 if _is_logged_in(url, html):
                     if attempt == 2:
-                        storage_path = self._storage_path(username)
-                        await context.storage_state(path=str(storage_path))
+                        await self._save_state()
                     return html
                 if attempt == 1:
                     log.info("Session expired while fetching %s -- re-logging in", path)
-                    await self._login_and_save(context, username)
+                    await self._login_and_save()
             raise RuntimeError(
                 f"Not logged in after re-login when fetching {path}. "
                 "Check credentials or run scripts/login_check.py --show-browser."
@@ -192,22 +141,14 @@ class SchoologyClient:
 
     async def _load(
         self,
-        context,
         path: str,
         wait_selector: str | None = None,
         extra_wait_ms: int = 0,
     ) -> tuple[str, str]:
         """Navigate to a path and return (final_url, html)."""
-        page = await context.new_page()
+        page = await self._context.new_page()
         try:
-            # Schoology polls in the background, so 'networkidle' never settles
-            # on its own. Cap the goto itself at 30s so a hung page surfaces as
-            # a clean timeout instead of blocking for the full outer timeout.
-            await page.goto(
-                f"{config.BASE_URL}{path}",
-                wait_until="domcontentloaded",
-                timeout=30_000,
-            )
+            await page.goto(f"{config.BASE_URL}{path}", wait_until="domcontentloaded")
             try:
                 await page.wait_for_load_state("networkidle", timeout=15_000)
             except PlaywrightTimeout:

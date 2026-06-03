@@ -346,162 +346,121 @@ def parse_recent_posts(html, base_url, limit=20):
 
 
 # --------------------------------------------------------------------------
-# Profile (name / grade / school) -- from the /home page
+# Course materials (verified against real /course/NNN/materials dumps)
 # --------------------------------------------------------------------------
 
-# Schoology puts the logged-in user's name in the top navigation. The most
-# reliable target is a link to the user's own /users/<id> profile; we ignore
-# any link inside the activity feed (which uses the same URL pattern for the
-# authors of posts) by scoping the search to header/nav elements.
-_HOME_NAME_SELECTORS = (
-    "header a[href*='/users/']",
-    ".topnav a[href*='/users/']",
-    ".s-topnav a[href*='/users/']",
-    "#header a[href*='/users/']",
-    ".account-menu a[href*='/users/']",
-    ".user-menu a[href*='/users/']",
-    ".user-name",
-    ".s-user-name",
-    ".topnav-account-name",
-    ".user-thumb-info .name",
-    ".name-title",
-)
-_HOME_NAME_NEGATIVE = ("logout", "sign out", "settings", "profile")  # not literal matches -- see filter below
+# Materials page uses #folder-contents-table with rows:
+#   tr.material-row-folder            → folder, link to ?f=NNN
+#   tr.dr.type-assignment             → assignment, link to /assignment/NNN
+#   tr.dr.type-document               → file/link/PDF, link to /course/.../materials/...
+#   tr.dr.type-page                   → page, link to /page/NNN
+#   tr.dr.type-discussion             → discussion (same pattern)
+#
+# All items have a single td.folder-contents-cell with the title in the first <a>.
+
+def _material_type_from_row(row):
+    """Infer material type from the TR's class list."""
+    classes = row.get("class") or []
+    if "material-row-folder" in classes:
+        return "folder"
+    for cls in classes:
+        if cls.startswith("type-"):
+            return cls[5:]  # e.g. "assignment", "document", "page", "discussion"
+    return "unknown"
 
 
-def parse_profile(html, base_url, username=None):
-    """Extract the student's name, grade level, and school from the /home page.
+def parse_course_materials(html, base_url):
+    """Extract materials from a Schoology course materials page (root or folder).
 
-    /home reliably renders the logged-in user's display name in the top
-    navigation; grade/school aren't on /home, so those keys come back as None
-    and the dashboard shows "—" in their place. The returned dict always has
-    all three keys so the caller can treat them uniformly.
-
-    `username` (the 8-digit student id, if known) is used to disambiguate the
-    current user's profile link from feed-author links -- the activity feed
-    also uses `href="/users/<id>"` for the authors of posts.
+    Returns a list of dicts with keys: type, title, url, preview.
+    For folders the url points to the folder page (?f=NNN).
     """
-    import re as _re
     soup = BeautifulSoup(html, "html.parser")
-
-    name = _extract_home_user_name(soup, username)
-
-    grade = None
-    school = None
-    text = soup.get_text(" ", strip=True)
-
-    if not school:
-        for known in (
-            "Palo Alto High School",
-            "Henry M. Gunn High School",
-            "JLS Middle School",
-            "Jane Lathrop Stanford Middle School",
-            "Frank S. Greene Middle School",
-        ):
-            if known in text:
-                school = known
-                break
-
-    if not grade:
-        m = _re.search(r"\bgrade\s*(\d{1,2})\b", text, _re.IGNORECASE)
-        if m:
-            grade = m.group(1)
-        else:
-            m = _re.search(r"\b(\d{1,2})(?:st|nd|rd|th)\s+grade\b", text, _re.IGNORECASE)
-            if m:
-                grade = m.group(1)
-
-    return {"name": name, "grade": grade, "school": school}
+    table = soup.select_one("#folder-contents-table")
+    if not table:
+        return []
+    items = []
+    for row in table.select("tr"):
+        item_type = _material_type_from_row(row)
+        td = row.select_one("td.folder-contents-cell")
+        if not td:
+            continue
+        a = td.find("a", href=True)
+        title = _clean_text(a) if a else _clean_text(td)
+        if not title:
+            continue
+        url = absolute_url(a["href"], base_url) if a else None
+        # Strip the type-label prefix (e.g. "Expand folder. Folder. Title..." → "Title")
+        full_text = _clean_text(td) or ""
+        preview = None
+        if item_type == "folder" and title and title in full_text:
+            after = full_text[full_text.index(title) + len(title):].strip()
+            if after:
+                preview = after[:200]
+        items.append({"type": item_type, "title": title, "url": url, "preview": preview})
+    return items
 
 
-def _extract_home_user_name(soup, username=None):
-    """Best-effort extraction of the logged-in user's name from /home markup.
+# --------------------------------------------------------------------------
+# Individual material pages (page, document/file, external link)
+# --------------------------------------------------------------------------
 
-    Priority:
-    1. A link to `/users/<username>` (the current user's own profile link) --
-       deterministic, immune to feed-author noise. Skips links inside the
-       activity feed (`li[id^='edge-assoc-']`).
-    2. A header/nav-scoped link to any `/users/<id>`.
-    3. A short list of common name-bearing elements.
-    4. The `<title>` element.
-
-    Returns None if nothing looks like a personal name.
-    """
-    # (1) Deterministic: any anchor whose href is exactly /users/<username> and
-    # which sits OUTSIDE the activity feed (the feed uses the same href shape
-    # for post authors). We also accept hrefs that just *contain* the username.
-    if username:
-        for a in soup.find_all("a", href=True):
-            href = a.get("href") or ""
-            if f"/users/{username}" not in href:
-                continue
-            if _in_activity_feed(a):
-                continue
-            for source in (a.get("title"), _clean_text(a)):
-                if source and _looks_like_a_person_name(source):
-                    return source
-            # The link's parent might carry the visible name (e.g. an avatar +
-            # name pair rendered as <a><img/><span>Name</span></a>).
-            parent = a.parent
-            if parent is not None:
-                ptxt = _clean_text(parent)
-                if ptxt and _looks_like_a_person_name(ptxt):
-                    return ptxt
-
-    # (2)+(3) Tolerant cascade: scoped header/nav links, then named elements.
-    for sel in _HOME_NAME_SELECTORS:
-        for el in soup.select(sel):
-            if _in_activity_feed(el):
-                continue
-            text = _clean_text(el)
-            if text and _looks_like_a_person_name(text):
-                return text
-            if el and el.name == "a" and "/users/" in (el.get("href") or ""):
-                title_attr = (el.get("title") or "").strip()
-                if title_attr and _looks_like_a_person_name(title_attr):
-                    return title_attr
-
-    # (4) Last resort: <title>. "Home | Schoology" is useless, but some skins
-    # embed the user's name there.
-    if soup.title and soup.title.string:
-        raw = soup.title.string.strip()
-        if _looks_like_a_person_name(raw):
-            return raw
-    return None
-
-
-def _in_activity_feed(el):
-    """True if `el` is inside an activity-feed post item.
-
-    The /home feed renders posts as `<li id="edge-assoc-NNN">` and uses the
-    same `/users/<id>` href shape for post authors. We must not pick those
-    up as the current user's name.
-    """
-    if el is None:
-        return False
-    # The element itself, or any ancestor up to 6 levels, is a feed item.
-    cur = el
-    for _ in range(6):
-        if cur is None:
-            return False
-        cid = cur.get("id") or ""
-        if isinstance(cid, str) and cid.startswith("edge-assoc-"):
-            return True
-        cur = cur.parent
-    return False
-
-
-def _looks_like_a_person_name(text):
-    """Heuristic: 2-5 words, each starting with a letter, no nav-y tokens."""
+def _strip_lesson_plan_suffix(text):
     if not text:
-        return False
-    lowered = text.lower()
-    if any(tok in lowered for tok in _HOME_NAME_NEGATIVE):
-        return False
-    words = text.split()
-    if not (2 <= len(words) <= 5):
-        return False
-    # Reject purely numeric / punctuation tokens
-    if not all(w[0].isalpha() for w in words if w):
-        return False
-    return True
+        return text
+    import re as _re
+    return _re.sub(r"\s*\d+\s+lesson plans?\s*$", "", text).strip() or None
+
+
+def parse_page_content(html, base_url):
+    """Extract content from a Schoology Page (/page/NNN)."""
+    soup = BeautifulSoup(html, "html.parser")
+    title = _strip_lesson_plan_suffix(_clean_text(soup.select_one("h1.page-title")))
+    course = _first_course_breadcrumb(soup)
+    body_el = soup.select_one(".s-rte, .info-body, .page-body")
+    body = _clean_text(body_el)
+    body_html = body_el.decode_contents().strip() if body_el else None
+    return {"type": "page", "title": title, "course": course, "body": body, "body_html": body_html}
+
+
+def parse_document_info(html, base_url):
+    """Extract info from a Schoology file/document page (/materials/gp/NNN)."""
+    soup = BeautifulSoup(html, "html.parser")
+    title_el = soup.select_one("h1.page-title")
+    title = _clean_text(title_el)
+    if title:
+        title = title.split(" 0 lesson plans")[0].strip()
+    course = _first_course_breadcrumb(soup)
+    download_url = viewer_url = None
+    for a in soup.select("a[href*='/attachment/']"):
+        href = a["href"]
+        if "/source/" in href and not download_url:
+            download_url = absolute_url(href, base_url)
+        elif "/docviewer" in href and not viewer_url:
+            viewer_url = absolute_url(href, base_url)
+    return {
+        "type": "document",
+        "title": title,
+        "course": course,
+        "download_url": download_url,
+        "viewer_url": viewer_url,
+    }
+
+
+def parse_link_info(html, base_url):
+    """Extract the external URL from a Schoology link material page (/materials/link/view/NNN)."""
+    import urllib.parse as _up
+    soup = BeautifulSoup(html, "html.parser")
+    title_el = soup.select_one("h1.page-title")
+    title = _clean_text(title_el)
+    if title:
+        title = title.split(" 0 lesson plans")[0].strip()
+    course = _first_course_breadcrumb(soup)
+    external_url = None
+    for a in soup.select("a[href*='/link?']"):
+        href = a["href"]
+        qs = _up.parse_qs(_up.urlparse(href).query)
+        if "path" in qs:
+            external_url = qs["path"][0]
+            break
+    return {"type": "link", "title": title, "course": course, "url": external_url}

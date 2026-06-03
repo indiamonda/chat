@@ -3,11 +3,14 @@
 Schoology Frontend Server
 Bridges the web dashboard to the Schoology tool functions.
 
-Gunicorn worker 0 hosts a long-lived run_tool.py daemon (one SchoologyClient
-in-process, persistent across calls -- warm browser, ~3-5s per call after
-the first cold start). Worker 1 falls back to per-request subprocesses so
-we don't double the Chromium memory on 512MB Fly machines. See
-gunicorn.conf.py and the `_should_use_daemon()` helper below.
+Gunicorn worker 0 hosts a *pool* of long-lived run_tool.py daemons -- one
+per authenticated student -- so each user gets a warm browser (the schoology
+-mcp server is single-tenant and reads its USERNAME/PASSWORD from the
+process env at spawn time). The pool is bounded by DAEMON_POOL_MAX (default
+5) and evicts the least-recently-used daemon when full. Worker 1 falls back
+to per-request subprocesses with the same env-var credential pattern, so we
+don't double Chromium memory on 512MB Fly machines. See gunicorn.conf.py
+and the `_should_use_daemon()` helper below.
 """
 
 import base64
@@ -147,9 +150,15 @@ class DaemonClient:
     on stdout. Strictly ordered (one request -> one response, no pipelining).
     Stderr is drained on a background thread so log output never deadlocks
     the pipe.
+
+    The schoology-mcp server is single-tenant: the daemon's USERNAME and
+    PASSWORD are set in its environment at spawn time. Each DaemonClient
+    is therefore tied to one user.
     """
 
-    def __init__(self):
+    def __init__(self, username: str, password: str):
+        self.username = username
+        self.password = password
         self._lock = threading.Lock()
         self._stdout_buffer = b""
         self.proc = None
@@ -158,8 +167,13 @@ class DaemonClient:
         self._spawn()
 
     def _spawn(self):
-        env = {**os.environ, "PYTHONUNBUFFERED": "1"}
-        print(f"[MCP-DAEMON] spawning run_tool.py subprocess (worker={os.environ.get('GUNICORN_WORKER_INDEX')})", file=sys.stderr)
+        env = {
+            **os.environ,
+            "PYTHONUNBUFFERED": "1",
+            "SCHOOLOGY_USERNAME": self.username,
+            "SCHOOLOGY_PASSWORD": self.password,
+        }
+        print(f"[MCP-DAEMON] spawning run_tool.py for user={self.username} (worker={os.environ.get('GUNICORN_WORKER_INDEX')})", file=sys.stderr)
         self.proc = subprocess.Popen(
             [VENV_PYTHON, RUN_TOOL_PY],
             stdin=subprocess.PIPE,
@@ -246,99 +260,101 @@ class DaemonClient:
         self.proc = None
 
 
-_daemon = None
-_daemon_init_lock = threading.Lock()
+# Per-user daemon registry. Each gunicorn worker has its own dict.
+# The schoology-mcp server is single-tenant, so each student needs their
+# own daemon process (configured with that student's USERNAME/PASSWORD).
+# Capped at _DAEMON_POOL_MAX to keep memory bounded on 512MB Fly; when
+# the cap is reached the least-recently-used daemon is killed.
+_DAEMON_POOL_MAX = int(os.environ.get("DAEMON_POOL_MAX", "5"))
+_daemons: dict[str, "DaemonClient"] = {}
+_daemons_lock = threading.Lock()
 _daemon_total_calls = 0
 _daemon_total_respawns = 0
 
 
-def _get_daemon():
-    """Return the worker's daemon singleton, spawning it on first use."""
-    global _daemon
-    if _daemon is not None:
-        return _daemon
-    with _daemon_init_lock:
-        if _daemon is None:
-            _daemon = DaemonClient()
-    return _daemon
+def _get_daemon(username: str, password: str) -> "DaemonClient":
+    """Return a daemon for ``username``, spawning one (with eviction) on miss."""
+    global _daemon_total_calls
+    with _daemons_lock:
+        d = _daemons.get(username)
+        if d is not None and d.proc.poll() is None:
+            return d
+        # Spawn fresh; evict LRU if at cap.
+        if len(_daemons) >= _DAEMON_POOL_MAX:
+            lru_user, lru_daemon = next(iter(_daemons.items()))
+            try:
+                lru_daemon.close()
+            except Exception:  # noqa: BLE001
+                pass
+            _daemons.pop(lru_user, None)
+            print(f"[MCP-DAEMON] evicted LRU daemon for user={lru_user} (pool cap {_DAEMON_POOL_MAX})", file=sys.stderr)
+        d = DaemonClient(username, password)
+        _daemons[username] = d
+        return d
+
+
+def _kill_daemon(username: str | None = None) -> None:
+    """Tear down a daemon so the next call respawns it.
+
+    If ``username`` is None, kill all daemons.
+    """
+    global _daemon_total_respawns
+    with _daemons_lock:
+        if username is None:
+            victims = list(_daemons.items())
+        else:
+            d = _daemons.pop(username, None)
+            victims = [(username, d)] if d else []
+        for user, d in victims:
+            if d is None:
+                continue
+            try:
+                d.close()
+            except Exception:  # noqa: BLE001
+                pass
+            _daemon_total_respawns += 1
 
 
 def _eagerly_start_daemon():
-    """Spawn the daemon at worker startup so the cold start overlaps with page load.
-
-    Without this, the user's first /api/basic-info call pays the full 60-90s
-    cold start. With it, the cold start begins when the gunicorn worker boots
-    -- well before the browser even finishes loading the dashboard -- so by
-    the time the frontend's JS makes its first MCP call, the daemon is often
-    already warm. Best-effort: a failure here is logged and ignored; the
-    first call will lazy-spawn the daemon instead.
-    """
-    if not _should_use_daemon():
-        return
-    try:
-        _get_daemon()
-    except Exception as exc:  # noqa: BLE001 - never fail worker startup on this
-        print(f"[MCP-DAEMON] eager spawn failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-
-
-_eagerly_start_daemon()
-
-
-def _kill_daemon():
-    """Tear down the current daemon so the next call respawns it."""
-    global _daemon, _daemon_total_respawns
-    if _daemon is None:
-        return
-    try:
-        _daemon.close()
-    except Exception:  # noqa: BLE001
-        pass
-    _daemon = None
-    _daemon_total_respawns += 1
+    """No-op: with per-user daemons, we can't eagerly spawn without creds.
+    The first real request will spawn the right daemon."""
+    return
 
 
 def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
-    """Call a tool through the long-lived daemon.
+    """Call a tool through the long-lived daemon for ``username``.
 
     Respawns and retries once on daemon death (EOFError / BrokenPipeError
-    / OSError). On TimeoutError, the daemon is left running -- it may be
-    in the middle of a slow first-call cold start, and killing it would
-    just make the next caller pay the same cold-start cost on a fresh
-    process.
+    / OSError). On TimeoutError, the daemon is killed and respawned to
+    keep the wire protocol in sync with the slow first-call response.
     """
     global _daemon_total_calls
+    if not username or not password:
+        return {"_error": True, "message": "username and password required for daemon path"}
     request = {
         "tool": tool_name,
         "username": username,
-        "password": password,
         "arguments": {},
     }
     try:
-        result = _get_daemon().call(request, timeout_seconds)
+        result = _get_daemon(username, password).call(request, timeout_seconds)
         _daemon_total_calls += 1
         return result
     except TimeoutError as exc:
-        # On timeout the daemon is likely still cold-starting -- but if
-        # we leave it running, the next caller will read the first
-        # call's stale response (the daemon eventually writes it after
-        # the cold start). Killing and respawning is the safe default:
-        # the protocol stays in sync, and the next caller pays one
-        # extra cold start. (Real users with valid creds will succeed
-        # on the first call and never hit this path.)
         print(f"[MCP-DAEMON] {tool_name}: timed out after {timeout_seconds}s; killing daemon to keep protocol in sync", file=sys.stderr)
-        _kill_daemon()
+        _kill_daemon(username)
     except (EOFError, BrokenPipeError, OSError) as exc:
-        print(f"[MCP-DAEMON] {tool_name}: daemon died ({type(exc).__name__}: {exc}); respawning", file=sys.stderr)
-        _kill_daemon()
+        print(f"[MCP-DAEMON] {tool_name}: daemon for {username} died ({type(exc).__name__}: {exc}); respawning", file=sys.stderr)
+        _kill_daemon(username)
 
-    # Retry once on a fresh daemon
+    # Retry once on a fresh daemon for the same user.
     try:
-        result = _get_daemon().call(request, timeout_seconds)
+        result = _get_daemon(username, password).call(request, timeout_seconds)
         _daemon_total_calls += 1
         return result
     except Exception as exc:  # noqa: BLE001
         print(f"[MCP-DAEMON] {tool_name}: retry after respawn failed ({type(exc).__name__}: {exc})", file=sys.stderr)
-        _kill_daemon()
+        _kill_daemon(username)
         return None
 
 
@@ -352,14 +368,23 @@ def call_mcp_tool(tool_name, username=None, password=None, timeout_seconds=180):
 def call_mcp_tool_subprocess(tool_name, username=None, password=None, timeout_seconds=180):
     """Call a tool by running run_tool.py in a fresh subprocess.
 
-    Returns the parsed JSON dict from the subprocess, or None on failure.
+    The schoology-mcp server reads USERNAME/PASSWORD from its env, so
+    this path sets them when spawning. Returns the parsed JSON dict from
+    the subprocess, or None on failure.
     """
     request_payload = {
         "tool": tool_name,
         "username": username,
-        "password": password,
         "arguments": {},
     }
+    env = {
+        **os.environ,
+        "PYTHONUNBUFFERED": "1",
+    }
+    if username:
+        env["SCHOOLOGY_USERNAME"] = username
+    if password:
+        env["SCHOOLOGY_PASSWORD"] = password
     print(f"[MCP] >>> {tool_name} start: user={username} timeout={timeout_seconds}s cmd={RUN_TOOL_PY}", file=sys.stderr)
     start = time.monotonic()
 
@@ -372,7 +397,7 @@ def call_mcp_tool_subprocess(tool_name, username=None, password=None, timeout_se
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+                env=env,
             )
         except subprocess.TimeoutExpired as exc:
             elapsed = time.monotonic() - start
@@ -559,14 +584,19 @@ def ready():
 def get_basic_info():
     """Fetch the student's name, grade, and school only.
 
-    Used as the lightweight 'first paint' call -- 120s timeout so the
-    cold-start path (Chromium launch + ClassLink login + first page
-    load on 512MB) can complete, while still failing fast if the
-    network is actually down.
+    The upstream schoology-mcp removed the dedicated ``get_profile``
+    tool, so the lightweight "first paint" identity fetch no longer
+    exists. Return an explicit 410 so the frontend knows to skip the
+    identity strip and render the dashboard with whatever
+    ``get_courses``/``get_grades`` returns. Cold-start timeouts still
+    benefit from the 120s budget (the *first* tool call pays for
+    Chromium + ClassLink login) but the rest is now opportunistic.
     """
-    username, password = decode_auth_header()
-    data = get_data_from_mcp_or_mock('get_profile', username, password, timeout_seconds=120)
-    return jsonify(data)
+    return jsonify({
+        "_error": True,
+        "message": "get_profile was removed in schoology-mcp upstream; the dashboard will derive identity from courses/grades instead.",
+        "removed": True,
+    }), 410
 
 
 def _priority_from_request():
@@ -686,18 +716,28 @@ def daemon_status():
             'uptime_s': 0,
             'worker_index': os.environ.get('GUNICORN_WORKER_INDEX'),
             'mode': 'subprocess-fallback',
+            'pool_max': 0,
+            'pool_size': 0,
+            'users': [],
         })
 
-    running = _daemon is not None and _daemon.proc is not None and _daemon.proc.poll() is None
+    with _daemons_lock:
+        # Use the most-recently-used daemon as the "primary" reported here.
+        primary = next(reversed(_daemons.values()), None) if _daemons else None
+        users = list(_daemons.keys())
+    running = primary is not None and primary.proc.poll() is None
     return jsonify({
         'enabled': True,
         'running': running,
-        'pid': _daemon.proc.pid if running else None,
+        'pid': primary.proc.pid if running else None,
         'calls': _daemon_total_calls,
         'respawns': _daemon_total_respawns,
-        'uptime_s': round(time.monotonic() - _daemon.started_at, 1) if _daemon else 0,
+        'uptime_s': round(time.monotonic() - primary.started_at, 1) if primary else 0,
         'worker_index': os.environ.get('GUNICORN_WORKER_INDEX'),
-        'mode': 'long-lived-daemon',
+        'mode': 'per-user-daemon-pool',
+        'pool_max': _DAEMON_POOL_MAX,
+        'pool_size': len(users),
+        'users': users,
     })
 
 
