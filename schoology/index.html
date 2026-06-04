@@ -603,41 +603,50 @@
         return;
       }
       state.chats = Array.isArray(res.body) ? res.body : [];
-      // If the user has no chats at all, create a default empty one so the
-      // sidebar isn't a lonely "+ New" button. The user renames it (or the
-      // AI does, after the first message).
-      if (state.chats.length === 0) {
-        const created = await _apiFetch('/api/chats', { method: 'POST', body: JSON.stringify({}) });
-        if (created.ok) {
-          state.chats.unshift({
-            id: created.body.id, title: created.body.title,
-            createdAt: created.body.createdAt, updatedAt: created.body.updatedAt,
-            summary: '', messageCount: 0,
-          });
-          state.currentChatId = created.body.id;
-          state.currentMessages = [];
-          renderChatMessages();
-          renderChatSidebar();
-          _apiFetch('/api/chats/last', { method: 'POST', body: JSON.stringify({ chatId: created.body.id }) }).catch(() => {});
-          return;
+
+      if (state.chats.length > 0) {
+        // Open an existing chat: prefer the last-opened one, else the most
+        // recent by updatedAt (which is how the server sorted the list).
+        let openId = null;
+        const last = await _apiFetch('/api/chats/last');
+        if (last.ok && last.body && last.body.chatId
+            && state.chats.some(c => c.id === last.body.chatId)) {
+          openId = last.body.chatId;
+        } else {
+          openId = state.chats[0].id;
         }
-      }
-      // Restore the last-opened chat, else fall back to the most recent.
-      let openId = null;
-      const last = await _apiFetch('/api/chats/last');
-      if (last.ok && last.body && last.body.chatId) {
-        const exists = state.chats.some(c => c.id === last.body.chatId);
-        if (exists) openId = last.body.chatId;
-      }
-      if (!openId && state.chats.length) openId = state.chats[0].id;
-      if (openId) {
         await loadCurrentChat(openId, { recordLast: false });
-      } else {
+        return;
+      }
+
+      // No chats on the server yet — mint a default empty one so the
+      // sidebar isn't a lonely "+ New" button. The user (or the AI, after
+      // the first message) can rename it.
+      await _createDefaultChat();
+    }
+
+    async function _createDefaultChat() {
+      const created = await _apiFetch('/api/chats', { method: 'POST', body: JSON.stringify({}) });
+      if (!created.ok) {
+        // Couldn't create. Leave the sidebar empty; the user can hit
+        // "+ New" to retry. Don't fall through to the "open existing"
+        // path because state.chats is empty there too.
         state.currentChatId = null;
         state.currentMessages = [];
         renderChatMessages();
         renderChatSidebar();
+        return;
       }
+      state.chats.unshift({
+        id: created.body.id, title: created.body.title,
+        createdAt: created.body.createdAt, updatedAt: created.body.updatedAt,
+        summary: '', messageCount: 0,
+      });
+      state.currentChatId = created.body.id;
+      state.currentMessages = [];
+      renderChatMessages();
+      renderChatSidebar();
+      _apiFetch('/api/chats/last', { method: 'POST', body: JSON.stringify({ chatId: created.body.id }) }).catch(() => {});
     }
 
     async function loadCurrentChat(chatId, opts) {
@@ -1381,11 +1390,26 @@
       const nameEl = document.getElementById('studentName');
       if (!infoEl || !nameEl) return;
       const s = state.student || {};
-      const name = s.name || state.username || 'Student';
+      // s.name is null upstream (get_profile was removed from schoology-mcp),
+      // so derive a first name from the Basic Auth username. Common
+      // patterns: "john.smith" -> "John", "jane_doe" -> "Jane", "alex42" ->
+      // "Alex". Falls back to the raw username if nothing matches.
+      const name = s.name || deriveFirstName(state.username) || 'Student';
       nameEl.textContent = `Welcome! ${name}`;
       // grade, school, and any future identity fields stay on state.student
       // for the AI to read -- only the visible header is restricted to name.
       infoEl.style.display = 'flex';
+    }
+
+    // Username -> "first name" heuristic. We don't have a real name (basic-
+    // info was removed upstream); we just want the header to read like a
+    // person instead of a student ID. Splits on . _ -, drops trailing
+    // digits, and capitalizes the first letter.
+    function deriveFirstName(username) {
+      if (!username) return '';
+      const parts = username.split(/[._\-]/).filter(Boolean);
+      const base = (parts[0] || username).replace(/\d+$/, '') || username;
+      return base.charAt(0).toUpperCase() + base.slice(1);
     }
 
     function renderSkeletonFor(elementId) {
@@ -2528,15 +2552,13 @@
       input.value = '';
       clearFilePreviews();
 
-      // AI-priority wait: if any of the 4 background sections are not yet
-      // 'ready', surface an inline progress bar in the AI bubble and wait
-      // for them. Any in-flight background loads are re-fetched at high
-      // priority so they finish before any pending background work.
-      const readyResult = await ensureAllSectionsReady();
-      if (readyResult.cancelled) {
-        addChatMessage('error', 'Stopped waiting for data. Reload to retry, or send the message again to wait.');
-        return;
-      }
+      // Don't block the AI on dashboard data. The 4 background sections
+      // (grades/courses/assignments/posts) load in parallel after the
+      // dashboard shell renders; on cold start they can take ~30-60s for
+      // the daemon pool to spin up. Greetings, "what can you do?", math
+      // questions, etc. don't need that data, so the AI responds now and
+      // the data joins the system prompt on the NEXT message if it has
+      // arrived by then.
 
       showTypingIndicator();
 
@@ -2589,114 +2611,6 @@
       }
     }
 
-    // Make sure all 4 background sections are 'ready' before the AI worker
-    // call. Shows an inline loading bar in the AI bubble with a Stop button.
-    // Returns { cancelled: true } if the user clicked Stop.
-    async function ensureAllSectionsReady() {
-      const pendingNames = Object.entries(state.sectionStatus)
-        .filter(([_, s]) => s !== 'ready')
-        .map(([n]) => n);
-      if (pendingNames.length === 0) return { cancelled: false };
-
-      // Re-fire the missing sections at high priority (re-prioritizes any
-      // already-queued background fetches via the backend's /api/reprioritize
-      // when the request lands with ?priority=high).
-      const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
-      const headers = getAuthHeader();
-      for (const name of pendingNames) {
-        const url = sectionUrl(name, apiUrl);
-        loadSection(name, url, headers, sectionOverviewRenderer(name), sectionListRenderer(name), 'high');
-      }
-
-      // Show the inline loading indicator inside an AI bubble.
-      const container = document.getElementById('chatMessages');
-      const bubble = document.createElement('div');
-      bubble.className = 'chat-message assistant';
-      bubble.id = 'aiInlineLoading';
-      const total = 4;
-      const initial = total - pendingNames.length;
-      bubble.innerHTML = `
-        <div class="chat-inline-loading">
-          <span class="chat-inline-loading-text" id="aiInlineLoadingText">Loading data… ${initial}/${total}</span>
-          <button type="button" class="chat-inline-loading-stop" id="aiInlineLoadingStop">Stop</button>
-        </div>`;
-      container.appendChild(bubble);
-      container.scrollTop = container.scrollHeight;
-
-      // Stop button: hide the bar, demote any in-flight high-priority
-      // background loads back to low, and let the caller cancel.
-      const stopBtn = bubble.querySelector('#aiInlineLoadingStop');
-      const stopPromise = new Promise(resolve => {
-        stopBtn.addEventListener('click', async () => {
-          stopBtn.disabled = true;
-          stopBtn.textContent = 'Stopping…';
-          await demoteAIPriority();
-          bubble.remove();
-          resolve('cancelled');
-        });
-      });
-
-      // Poll for ready. Section status flips to 'ready' as each loadSection
-      // resolves; we update the inline text each tick.
-      const readyPromise = new Promise(resolve => {
-        const tick = () => {
-          const loaded = Object.values(state.sectionStatus).filter(s => s === 'ready').length;
-          const text = bubble.querySelector('#aiInlineLoadingText');
-          if (text) text.textContent = `Loading data… ${loaded}/${total}`;
-          if (loaded >= total) { resolve('ready'); return; }
-          setTimeout(tick, 200);
-        };
-        tick();
-      });
-
-      const winner = await Promise.race([readyPromise, stopPromise]);
-      if (winner === 'cancelled') {
-        return { cancelled: true };
-      }
-      bubble.remove();
-      return { cancelled: false };
-    }
-
-    function sectionUrl(name, apiUrl) {
-      const map = {
-        grades: `${apiUrl}/api/grades`,
-        courses: `${apiUrl}/api/courses`,
-        assignments: `${apiUrl}/api/assignments`,
-        posts: `${apiUrl}/api/posts`,
-      };
-      return map[name];
-    }
-
-    function sectionOverviewRenderer(name) {
-      const map = {
-        grades: renderGradesOverview,
-        courses: renderCoursesIntoGrades,
-        assignments: renderAssignmentsOverview,
-        posts: renderActivityList,
-      };
-      return map[name];
-    }
-
-    function sectionListRenderer(name) {
-      const map = {
-        grades: renderGradesList,
-        courses: renderCoursesIntoGrades,
-        assignments: renderAssignmentsList,
-        posts: renderActivityList,
-      };
-      return map[name];
-    }
-
-    async function demoteAIPriority() {
-      try {
-        const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
-        await fetch(`${apiUrl}/api/reprioritize`, { method: 'POST' });
-      } catch (e) {
-        // best-effort; if the demote fails, the in-flight fetches still
-        // complete, just at the original priority
-        console.warn('[DEBUG] demoteAIPriority failed:', e);
-      }
-    }
 
     function generateDemoResponse(message) {
       const lower = message.toLowerCase();
