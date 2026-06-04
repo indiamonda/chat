@@ -937,7 +937,14 @@
         </div>
         <div class="chat-list">${items || '<div class="chat-list-empty">No chats yet. Click "+ New" to start.</div>'}</div>
         <div class="chat-sidebar-footer">
-          <button class="chat-sidebar-mem-btn" onclick="openMemoryPanel()" title="View remembered facts">📌 Memory</button>
+          <button class="chat-sidebar-mem-btn" onclick="openMemoryPanel()" title="View remembered facts">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 17v5"/>
+              <path d="M9 10.76V6h6v4.76l3 3.34V16H6v-1.9l3-3.34z"/>
+              <line x1="9" y1="16" x2="15" y2="16"/>
+            </svg>
+            <span>Memory</span>
+          </button>
         </div>
       `;
       // Click-to-switch on each row.
