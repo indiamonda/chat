@@ -7094,3 +7094,72 @@ input[type="checkbox"]:checked::after {
   animation-duration: 0s !important;
   animation-delay: 0s !important;
 }
+
+/* ── DM Voice Chat Overlay (1:1 private calls) ── */
+.dm-voice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #111;
+}
+.dm-voice-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 1rem;
+}
+.dm-voice-modal {
+  background: var(--surface, #1a1a1a);
+  border: 1px solid var(--border, #333);
+  border-radius: 12px;
+  padding: 2rem 1.5rem 1.5rem;
+  width: 100%;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+.dm-voice-modal-avatar img {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin: 0 auto 1rem;
+  display: block;
+}
+.dm-voice-modal-name {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: var(--text, #fff);
+}
+.dm-voice-modal-sub {
+  font-size: 0.9rem;
+  color: var(--text-muted, #aaa);
+  margin-bottom: 1.5rem;
+}
+.dm-voice-modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+.dm-voice-modal-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: none;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  color: #fff;
+}
+.dm-voice-modal-decline {
+  background: #c0392b;
+}
+.dm-voice-modal-accept {
+  background: #27ae60;
+}
+.dm-voice-modal-btn:hover { filter: brightness(1.1); }
