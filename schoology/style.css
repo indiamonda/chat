@@ -963,6 +963,34 @@
       padding: 24px;
       margin-bottom: 20px;
     }
+    .section-error-card {
+      background: var(--surface);
+      border: 1px solid var(--error);
+      border-radius: 20px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .section-error-title {
+      color: var(--error);
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .section-error-message {
+      color: var(--text);
+      font-size: 0.9rem;
+      word-break: break-word;
+    }
+    .section-retry-btn {
+      margin-top: 14px;
+      padding: 6px 14px;
+      background: transparent;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .section-retry-btn:hover { background: var(--primary); color: white; }
     .skeleton-line {
       height: 16px;
       background: linear-gradient(90deg, var(--surface-elevated) 25%, var(--surface-hover) 50%, var(--surface-elevated) 75%);

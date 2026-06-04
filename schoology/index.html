@@ -360,6 +360,9 @@
       //   'ready'    = data populated, render done
       //   'error'    = fetch failed, skeleton still shown
       sectionStatus: { grades: 'pending', courses: 'pending', assignments: 'pending', posts: 'pending' },
+      // Saved args for each section so the Retry button on the error card
+      // can re-fire the same fetch (url, headers, renderers, priority).
+      sectionLoaders: {},
       loadedCount: 0
     };
 
@@ -1458,23 +1461,44 @@
 
     // Generic per-section fetcher. Updates state on success/error, re-renders
     // the overview and list containers, and bumps the global progress bar.
+    //
+    // Retries up to 2 times on transient `TypeError: Failed to fetch` errors
+    // (Chrome's `ERR_NETWORK_IO_SUSPENDED`, `ERR_INTERNET_DISCONNECTED`, etc.
+    // all surface as that). These fire when the browser suspends in-flight
+    // fetches -- tab backgrounded, page lost focus, low-power state -- and a
+    // short retry almost always succeeds. If all retries fail, render the
+    // error card with a "Retry" button that re-fires the same fetch.
     async function loadSection(name, url, headers, renderOverview, renderList, priority) {
       if (state.sectionStatus[name] === 'ready') return;
+      // Stash args so the Retry button on the error card can re-fire the
+      // same fetch without the caller having to re-supply them.
+      state.sectionLoaders[name] = { url, headers, renderOverview, renderList, priority };
       state.sectionStatus[name] = 'loading';
       const finalUrl = priority === 'high' ? `${url}?priority=high` : url;
-      try {
-        const res = await fetch(finalUrl, { headers });
-        if (!res.ok) throw new Error(`${name} server error ${res.status}`);
-        const data = await res.json();
-        if (data && data._error) throw new Error(data.message || `${name} fetch failed`);
-        applySectionData(name, data);
-        setSectionStatus(name, 'ready');
-        renderOverview();
-        renderList();
-      } catch (e) {
-        console.error(`[DEBUG] ${name} load failed:`, e);
-        state.sectionStatus[name] = 'error';
-        renderSectionError(name, e.message || 'load failed');
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const res = await fetch(finalUrl, { headers });
+          if (!res.ok) throw new Error(`${name} server error ${res.status}`);
+          const data = await res.json();
+          if (data && data._error) throw new Error(data.message || `${name} fetch failed`);
+          applySectionData(name, data);
+          setSectionStatus(name, 'ready');
+          renderOverview();
+          renderList();
+          return;
+        } catch (e) {
+          const transient = e instanceof TypeError && /Failed to fetch/i.test(e.message);
+          if (transient && attempt < maxAttempts) {
+            // Back off: 400ms, 1200ms. Browser-suspended fetches clear fast.
+            await new Promise(r => setTimeout(r, 400 * Math.pow(3, attempt - 1)));
+            continue;
+          }
+          console.error(`[DEBUG] ${name} load failed (attempt ${attempt}/${maxAttempts}):`, e);
+          state.sectionStatus[name] = 'error';
+          renderSectionError(name, e.message || 'load failed', attempt === maxAttempts);
+          return;
+        }
       }
     }
 
@@ -1492,7 +1516,7 @@
       }
     }
 
-    function renderSectionError(name, message) {
+    function renderSectionError(name, message, showRetry) {
       const map = {
         grades: ['gradesOverview', 'gradesList'],
         courses: ['gradesOverview', 'gradesList'],
@@ -1500,11 +1524,17 @@
         posts: ['activityList', 'activityList'],
       };
       const [overviewId, listId] = map[name] || [];
+      // Show the actual error message in plain text, plus a Retry button.
+      // Per the error-display convention: render the exact message, no
+      // "something went wrong" placeholder, no "contact admin" boilerplate.
+      const retryBtn = showRetry
+        ? `<button type="button" class="section-retry-btn" onclick="retrySection('${name}')">Retry</button>`
+        : '';
       const html = `
-        <div class="skeleton-card" style="border-color: var(--error);">
-          <div class="skeleton-line title" style="background: rgba(255,59,48,0.15);"></div>
-          <div class="skeleton-line medium"></div>
-          <div class="skeleton-line short"></div>
+        <div class="section-error-card">
+          <div class="section-error-title">Couldn't load ${name}</div>
+          <div class="section-error-message">${escapeHtml(message)}</div>
+          ${retryBtn}
         </div>`;
       if (overviewId && document.getElementById(overviewId)) {
         document.getElementById(overviewId).innerHTML = html;
@@ -1512,6 +1542,17 @@
       if (listId && document.getElementById(listId) && listId !== overviewId) {
         document.getElementById(listId).innerHTML = html;
       }
+    }
+
+    // Re-fire a section load with the args saved in state.sectionLoaders.
+    // Called from the Retry button on the error card.
+    async function retrySection(name) {
+      const args = state.sectionLoaders[name];
+      if (!args) return;
+      // Reset status so loadSection's "already ready" early-return doesn't
+      // short-circuit the retry.
+      state.sectionStatus[name] = 'pending';
+      await loadSection(name, args.url, args.headers, args.renderOverview, args.renderList, args.priority);
     }
 
     // Course list isn't displayed as a standalone section, but courses feed the
