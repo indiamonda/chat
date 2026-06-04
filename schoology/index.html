@@ -568,9 +568,12 @@
     async function _apiFetch(path, init) {
       // Same auth/Content-Type pattern as the rest of the dashboard, so
       // the Node proxy forwards the Basic-auth header unchanged to Flask.
+      // getAuthHeader() returns the full { Authorization: 'Basic ...' }
+      // object, so pluck the string out -- assigning the whole object
+      // would coerce to '[object Object]' and break Basic auth at Flask.
       const headers = { 'Content-Type': 'application/json', ...(init && init.headers || {}) };
       const auth = getAuthHeader();
-      if (auth) headers['Authorization'] = auth;
+      if (auth && auth.Authorization) headers['Authorization'] = auth.Authorization;
       const res = await fetch(`${aiApiBase()}${path}`, { ...(init || {}), headers });
       let body = null;
       const text = await res.text();
@@ -600,6 +603,25 @@
         return;
       }
       state.chats = Array.isArray(res.body) ? res.body : [];
+      // If the user has no chats at all, create a default empty one so the
+      // sidebar isn't a lonely "+ New" button. The user renames it (or the
+      // AI does, after the first message).
+      if (state.chats.length === 0) {
+        const created = await _apiFetch('/api/chats', { method: 'POST', body: JSON.stringify({}) });
+        if (created.ok) {
+          state.chats.unshift({
+            id: created.body.id, title: created.body.title,
+            createdAt: created.body.createdAt, updatedAt: created.body.updatedAt,
+            summary: '', messageCount: 0,
+          });
+          state.currentChatId = created.body.id;
+          state.currentMessages = [];
+          renderChatMessages();
+          renderChatSidebar();
+          _apiFetch('/api/chats/last', { method: 'POST', body: JSON.stringify({ chatId: created.body.id }) }).catch(() => {});
+          return;
+        }
+      }
       // Restore the last-opened chat, else fall back to the most recent.
       let openId = null;
       const last = await _apiFetch('/api/chats/last');
@@ -668,10 +690,48 @@
       _apiFetch('/api/chats/last', { method: 'POST', body: JSON.stringify({ chatId: res.body.id }) }).catch(() => {});
     }
 
-    function _autoTitleFromMessage(text) {
-      const t = String(text || '').replace(/\s+/g, ' ').trim();
-      if (!t) return 'New chat';
-      return t.length > 40 ? t.slice(0, 40) + '...' : t;
+    // AI-driven chat naming. After the user's first message, ask the AI
+    // worker for a short title (2-5 words) and PUT it back to the server.
+    // Silent on failure: a missing worker URL, a network error, or an
+    // over-quota response all leave the title as "New chat" -- the user
+    // can always rename manually.
+    async function aiNameChat(chatId, firstUserMessage) {
+      const workerUrl = localStorage.getItem('schoology-ai-worker-url');
+      if (!workerUrl || state.demoMode || !chatId) return;
+      const seed = String(firstUserMessage || '').slice(0, 400);
+      if (!seed) return;
+      try {
+        const res = await fetch(`${workerUrl}/v1/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'deepseek-chat',
+            messages: [
+              { role: 'system', content: 'You generate very short chat titles (2-5 words). Reply with ONLY the title text: no quotes, no leading emoji, no trailing punctuation, no prefix like "Title:".' },
+              { role: 'user', content: `First message in the chat:\n"""${seed}"""\n\nTitle:` },
+            ],
+            max_tokens: 20,
+            temperature: 0.4,
+            stream: false,
+          }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        let title = String(data.choices?.[0]?.message?.content || '').trim();
+        // Strip quotes, leading emoji, trailing punctuation.
+        title = title.replace(/^["'`]+|["'`]+$/g, '').replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\s]+/u, '').replace(/[.!?,;:\-–—]+$/, '').trim();
+        if (!title) return;
+        if (title.length > 60) title = title.slice(0, 60);
+        const put = await _apiFetch('/api/chats/' + encodeURIComponent(chatId), {
+          method: 'PUT', body: JSON.stringify({ title }),
+        });
+        if (put.ok) {
+          const chat = state.chats.find(c => c.id === chatId);
+          if (chat) { chat.title = put.body.title || title; renderChatSidebar(); }
+        }
+      } catch (e) {
+        console.warn('[aiNameChat] failed:', e);
+      }
     }
 
     function scheduleSaveCurrentChat() {
@@ -699,22 +759,14 @@
       }
       if (!state.currentChatId) return;
       const chatId = state.currentChatId;
+      // Title is owned by the AI (after the first message) or by the user
+      // (manual rename). saveCurrentChatNow only persists messages.
       const body = { messages: state.currentMessages };
-      // First-message title: derive from the first user message if the
-      // chat still has its default "New chat" title.
-      const chat = state.chats.find(c => c.id === chatId);
-      if (chat && (!chat.title || chat.title === 'New chat')) {
-        const firstUser = state.currentMessages.find(m => m.role === 'user');
-        if (firstUser) {
-          const t = _autoTitleFromMessage(firstUser.content);
-          if (t !== chat.title) { chat.title = t; body.title = t; }
-        }
-      }
       const res = await _apiFetch('/api/chats/' + encodeURIComponent(chatId), {
         method: 'PUT', body: JSON.stringify(body),
       });
       if (res.ok) {
-        // Refresh sidebar entry with the new title/summary from server.
+        const chat = state.chats.find(c => c.id === chatId);
         if (chat) {
           chat.updatedAt = res.body.updatedAt;
           chat.summary = res.body.summary || chat.summary;
@@ -1681,7 +1733,7 @@
       // backend routes can identify the student.
       const headers = { 'Content-Type': 'application/json', ...(init.headers || {}) };
       const auth = getAuthHeader();
-      if (auth) headers['Authorization'] = auth;
+      if (auth && auth.Authorization) headers['Authorization'] = auth.Authorization;
       return fetch(`${aiApiUrl()}${path}`, { ...init, headers });
     }
 
@@ -2501,6 +2553,17 @@
           state.currentMessages.push({ role: 'assistant', content: reply });
           scheduleSaveCurrentChat();
           handleAICommands(reply);
+          // If this was the user's first message in a brand-new chat and
+          // the title is still the server's "New chat" default, ask the
+          // AI to name it. Fire-and-forget; the chat keeps working while
+          // the name is in flight, and failures are silent.
+          if (state.currentChatId && !state.demoMode) {
+            const userCount = state.currentMessages.filter(m => m.role === 'user').length;
+            const meta = state.chats.find(c => c.id === state.currentChatId);
+            if (userCount === 1 && meta && (!meta.title || meta.title === 'New chat')) {
+              aiNameChat(state.currentChatId, message);
+            }
+          }
         } else if (state.demoMode) {
           hideTypingIndicator();
           const demoResponse = generateDemoResponse(message);
@@ -2839,7 +2902,7 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
           const res = await fetch(`${aiApiUrl()}/api/file/ingest`, {
             method: 'POST',
             body: form,
-            headers: auth ? { 'Authorization': auth } : {},
+            headers: auth && auth.Authorization ? { 'Authorization': auth.Authorization } : {},
           });
           if (!res.ok) {
             const errText = await res.text().catch(() => 'upload failed');
