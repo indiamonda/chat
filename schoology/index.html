@@ -400,11 +400,15 @@
     renderer.code = function({ text, lang }) {
       const code = String(text || '');
       const language = lang || 'text';
+      // Stash the raw code in a data attribute (HTML-escaped) so the click
+      // handler can read it back losslessly. Inlining it into the onclick
+      // string with a regex-based escape broke on any code containing
+      // newlines or quotes, leaking raw text into the button.
       return `<div class="code-block" data-lang="${escapeHtml(language)}">
         <div class="code-header">
           <span class="code-lang">${escapeHtml(language)}</span>
-          <button class="copy-btn" onclick="copyCode(this, \`${escapeForJS(code)}\`)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <button class="copy-btn" data-code="${escapeHtml(code)}" onclick="copyCode(this)" title="Copy code">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" aria-hidden="true">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
             </svg>
@@ -433,8 +437,6 @@
       if (typeof result !== 'string') return String(result);
       return result;
     }
-
-    function escapeForJS(str) { return str.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$'); }
 
     // Password - simple direct check (no obfuscation for debugging)
     const CORRECT_PASSWORD = 'sb250wocaonimalegebide';
@@ -1154,12 +1156,13 @@
       // typing indicator / inline loading bubble here -- those are short-
       // lived and will be re-added by sendChatMessage / inline loaders.
       container.innerHTML = '';
-      for (const m of state.currentMessages) {
+      for (let i = 0; i < state.currentMessages.length; i++) {
+        const m = state.currentMessages[i];
         const type = m.role === 'user' ? 'user' : 'assistant';
         // Skip tool/system messages in the visible UI; they only matter
         // for the model's context.
         if (m.role === 'tool' || m.role === 'system') continue;
-        addChatMessage(type, m.content, { skipHistory: true });
+        addChatMessage(type, m.content, { skipHistory: true, msgIdx: i });
       }
       // Auto-scroll to the bottom so the user lands at the latest message.
       container.scrollTop = container.scrollHeight;
@@ -2702,7 +2705,7 @@
         fullMessage += '\n\n[Attached files -- AI-readable context follows]\n' + fileContexts;
       }
 
-      addChatMessage('user', message || '[File uploaded]');
+      addChatMessage('user', message || '[File uploaded]', { msgIdx: state.currentMessages.length });
       state.currentMessages.push({ role: 'user', content: fullMessage });
       scheduleSaveCurrentChat();
 
@@ -2713,7 +2716,7 @@
       if (detectRemember(message)) {
         addGlobalMemory(message, state.currentChatId).then(() => {
           // Soft note in the UI so the user can see it was saved.
-          addChatMessage('assistant', '_📌 Noted — saved to your memory._');
+          addChatMessage('assistant', '_📌 Noted — saved to your memory._', { msgIdx: state.currentMessages.length });
           state.currentMessages.push({ role: 'assistant', content: '_📌 Noted — saved to your memory._' });
           scheduleSaveCurrentChat();
         }).catch(() => {});
@@ -2740,6 +2743,17 @@
       // the data joins the system prompt on the NEXT message if it has
       // arrived by then.
 
+      await _requestAssistantReply(fullMessage, { autoNameWith: message });
+    }
+
+    // Shared "send the AI call, append the assistant reply" routine.
+    // Called by both the input send path and the edit-and-resend path.
+    // `opts.autoNameWith` is the bare user text used to name a brand-new
+    // chat on its first message; pass null/undefined on edits (the chat
+    // already has a name).
+    async function _requestAssistantReply(userFullMessage, opts) {
+      opts = opts || {};
+      const workerUrl = localStorage.getItem('schoology-ai-worker-url');
       showTypingIndicator();
 
       // Pull cross-chat summaries + memory for context injection. The
@@ -2752,13 +2766,13 @@
           const response = await fetch(`${workerUrl}/v1/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(fullMessage, extras), max_tokens: 1024, temperature: 0.6, stream: false })
+            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(userFullMessage, extras), max_tokens: 1024, temperature: 0.6, stream: false })
           });
           hideTypingIndicator();
           if (!response.ok) throw new Error(await response.text());
           const data = await response.json();
           const reply = data.choices?.[0]?.message?.content || 'No response received.';
-          addChatMessage('assistant', reply);
+          addChatMessage('assistant', reply, { msgIdx: state.currentMessages.length });
           state.currentMessages.push({ role: 'assistant', content: reply });
           scheduleSaveCurrentChat();
           handleAICommands(reply);
@@ -2766,17 +2780,17 @@
           // the title is still the server's "New chat" default, ask the
           // AI to name it. Fire-and-forget; the chat keeps working while
           // the name is in flight, and failures are silent.
-          if (state.currentChatId && !state.demoMode) {
+          if (opts.autoNameWith && state.currentChatId && !state.demoMode) {
             const userCount = state.currentMessages.filter(m => m.role === 'user').length;
             const meta = state.chats.find(c => c.id === state.currentChatId);
             if (userCount === 1 && meta && (!meta.title || meta.title === 'New chat')) {
-              aiNameChat(state.currentChatId, message);
+              aiNameChat(state.currentChatId, opts.autoNameWith);
             }
           }
         } else if (state.demoMode) {
           hideTypingIndicator();
-          const demoResponse = generateDemoResponse(message);
-          addChatMessage('assistant', demoResponse);
+          const demoResponse = generateDemoResponse(userFullMessage);
+          addChatMessage('assistant', demoResponse, { msgIdx: state.currentMessages.length });
           state.currentMessages.push({ role: 'assistant', content: demoResponse });
           scheduleSaveCurrentChat();
         } else {
@@ -2901,19 +2915,179 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       const container = document.getElementById('chatMessages');
       const div = document.createElement('div');
       div.className = `chat-message ${type}`;
+      if (opts.msgIdx !== undefined) div.dataset.msgIdx = String(opts.msgIdx);
+
       if (type === 'assistant') {
         // For assistant messages, use typewriter animation
         div.innerHTML = `<div class="markdown-content"></div>`;
-        container.appendChild(div);
-        typewriterEffect(div.querySelector('.markdown-content'), content);
+      } else if (type === 'user') {
+        const contentEl = document.createElement('div');
+        contentEl.className = 'message-content';
+        contentEl.textContent = content;
+        div.appendChild(contentEl);
       } else {
         div.textContent = content;
-        container.appendChild(div);
+      }
+
+      // Action buttons (hover-revealed). Copy for every message; edit only
+      // for user messages (the AI's reply gets regenerated when its parent
+      // user message is edited, so editing assistant text doesn't make sense).
+      const actions = document.createElement('div');
+      actions.className = 'message-actions';
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'msg-action-btn msg-action-copy';
+      copyBtn.type = 'button';
+      copyBtn.title = 'Copy';
+      copyBtn.setAttribute('aria-label', 'Copy message');
+      copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+      copyBtn.onclick = copyMessage;
+      actions.appendChild(copyBtn);
+      if (type === 'user') {
+        const editBtn = document.createElement('button');
+        editBtn.className = 'msg-action-btn msg-action-edit';
+        editBtn.type = 'button';
+        editBtn.title = 'Edit & resend';
+        editBtn.setAttribute('aria-label', 'Edit message');
+        editBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+        editBtn.onclick = editUserMessage;
+        actions.appendChild(editBtn);
+      }
+      div.appendChild(actions);
+
+      container.appendChild(div);
+      if (type === 'assistant') {
+        typewriterEffect(div.querySelector('.markdown-content'), content);
       }
       container.scrollTop = container.scrollHeight;
       // Note: history pushing is handled by the caller (sendChatMessage
       // pushes user/assistant messages explicitly). The skipHistory flag
       // is here so renderChatMessages can re-render without double-pushing.
+    }
+
+    // Copy a message's text content to the clipboard. Clones the bubble
+    // and strips the action toolbar / edit form so we get just the message
+    // text, not the UI chrome.
+    function copyMessage(btn) {
+      const msg = btn.closest('.chat-message');
+      if (!msg) return;
+      const clone = msg.cloneNode(true);
+      clone.querySelectorAll('.message-actions, .edit-textarea, .edit-actions').forEach(el => el.remove());
+      const text = (clone.textContent || '').trim();
+      if (!text) return;
+      if (!navigator.clipboard) {
+        showNotification('Clipboard not available', 'error');
+        return;
+      }
+      navigator.clipboard.writeText(text).then(() => {
+        _flashCopyButton(btn);
+      }).catch(() => {
+        showNotification('Copy failed', 'error');
+      });
+    }
+
+    function _flashCopyButton(btn) {
+      const original = btn.innerHTML;
+      btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.innerHTML = original;
+        btn.classList.remove('copied');
+      }, 1500);
+    }
+
+    // Inline edit form for a user message. Replaces the bubble with a
+    // textarea + Save/Cancel; on Save the message is updated, everything
+    // after it in the chat is dropped, and the AI response is regenerated.
+    function editUserMessage(btn) {
+      const msg = btn.closest('.chat-message');
+      if (!msg || !msg.classList.contains('user')) return;
+      const msgIdx = parseInt(msg.dataset.msgIdx || '-1', 10);
+      if (msgIdx < 0 || msgIdx >= state.currentMessages.length) return;
+      if (msg.classList.contains('editing')) return;
+      const original = state.currentMessages[msgIdx].content;
+      msg.classList.add('editing');
+      // Hide the action toolbar while editing so its buttons can't collide
+      // with the form buttons.
+      const actions = msg.querySelector('.message-actions');
+      if (actions) actions.style.display = 'none';
+      const contentEl = msg.querySelector('.message-content');
+      if (contentEl) contentEl.style.display = 'none';
+
+      const form = document.createElement('div');
+      form.className = 'edit-form';
+      const textarea = document.createElement('textarea');
+      textarea.className = 'edit-textarea';
+      textarea.value = original;
+      textarea.rows = Math.min(12, Math.max(2, original.split('\n').length));
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+          e.preventDefault();
+          saveUserMessageEdit(form, msgIdx, textarea);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          cancelUserMessageEdit();
+        }
+      });
+      form.appendChild(textarea);
+
+      const editActions = document.createElement('div');
+      editActions.className = 'edit-actions';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'edit-cancel-btn';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.onclick = cancelUserMessageEdit;
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.className = 'edit-save-btn';
+      saveBtn.textContent = 'Save & Submit';
+      saveBtn.onclick = () => saveUserMessageEdit(form, msgIdx, textarea);
+      editActions.appendChild(cancelBtn);
+      editActions.appendChild(saveBtn);
+      form.appendChild(editActions);
+
+      msg.appendChild(form);
+      textarea.focus();
+      // Move caret to end so the user can keep typing without first
+      // clearing the existing text.
+      const len = textarea.value.length;
+      textarea.setSelectionRange(len, len);
+      // Auto-size to content.
+      textarea.style.height = 'auto';
+      textarea.style.height = textarea.scrollHeight + 'px';
+      textarea.addEventListener('input', () => {
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+      });
+    }
+
+    function cancelUserMessageEdit() {
+      // Easiest correct path: re-render from state. The state is unchanged
+      // because nothing was pushed during edit, so the original message
+      // comes back identical.
+      renderChatMessages();
+    }
+
+    async function saveUserMessageEdit(form, msgIdx, textarea) {
+      const edited = (textarea.value || '').trim();
+      if (!edited) {
+        showNotification('Message cannot be empty', 'error');
+        return;
+      }
+      if (msgIdx < 0 || msgIdx >= state.currentMessages.length) return;
+      // Update the user message in state. We don't re-attach file contexts
+      // (the file picker is gone by the time the user is editing), so the
+      // full model-facing content is just the edited text.
+      state.currentMessages[msgIdx].content = edited;
+      // Drop everything after the edited message -- the AI's previous
+      // reply and any follow-ups are stale.
+      state.currentMessages = state.currentMessages.slice(0, msgIdx + 1);
+      scheduleSaveCurrentChat();
+      // Re-render to show the updated message bubble (no edit form).
+      renderChatMessages();
+      // Regenerate the AI response. Skip auto-naming on edits -- the chat
+      // already has a title from its first message.
+      await _requestAssistantReply(edited, { autoNameWith: null });
     }
 
     // Fade-in effect for AI responses
@@ -3116,7 +3290,12 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       event.target.value = '';
     }
 
-    function copyCode(btn, code) {
+    function copyCode(btn) {
+      const code = btn.dataset.code || '';
+      if (!navigator.clipboard) {
+        showNotification('Clipboard not available', 'error');
+        return;
+      }
       navigator.clipboard.writeText(code).then(() => {
         const copyText = btn.querySelector('.copy-text');
         if (copyText) copyText.textContent = 'Copied!';
@@ -3125,6 +3304,8 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
           if (copyText) copyText.textContent = 'Copy';
           btn.classList.remove('copied');
         }, 2000);
+      }).catch(() => {
+        showNotification('Copy failed', 'error');
       });
     }
 
