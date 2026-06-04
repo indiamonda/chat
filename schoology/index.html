@@ -353,6 +353,7 @@
       currentMessages: [],
       globalMemory: [],
       _chatLoadToken: 0,    // race guard for loadCurrentChat
+      chatSearchQuery: '',  // sidebar filter, persisted per-session only
       uploadedFiles: [],
       // Per-section load state for the staged loader:
       //   'pending'  = enqueued, not yet started
@@ -913,41 +914,164 @@
       return { role: 'system', content: parts.join('\n') };
     }
 
+    // Group a list of chats (each with .updatedAt) by date bucket for
+    // the sidebar. Most-recent first within each bucket. Empty buckets
+    // are dropped so we don't render "Older" headers when there are no
+    // older chats.
+    function groupChatsByDate(chats) {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
+      const startOfWeek = startOfToday - 7 * 24 * 60 * 60 * 1000;
+      const buckets = { Today: [], Yesterday: [], 'Previous 7 days': [], Older: [] };
+      for (const c of chats) {
+        const t = c.updatedAt || 0;
+        if (t >= startOfToday) buckets.Today.push(c);
+        else if (t >= startOfYesterday) buckets.Yesterday.push(c);
+        else if (t >= startOfWeek) buckets['Previous 7 days'].push(c);
+        else buckets.Older.push(c);
+      }
+      return buckets;
+    }
+
+    // "5m" / "2h" / "Yesterday" / "3d" / "5/28" — relative for recent,
+    // absolute for anything older than a week. Always short, always one
+    // piece of metadata. Falsy timestamps return '' so the cell collapses
+    // cleanly.
+    function relativeTime(ts) {
+      if (!ts) return '';
+      const diff = Date.now() - ts;
+      const min = 60 * 1000, hr = 60 * min, day = 24 * hr;
+      if (diff < min) return 'now';
+      if (diff < hr) return Math.floor(diff / min) + 'm';
+      if (diff < day) return Math.floor(diff / hr) + 'h';
+      // "Yesterday" / "Xd" for the rest of the week.
+      const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+      if (diff < 2 * day) return 'Yesterday';
+      if (diff < 7 * day) return Math.floor(diff / day) + 'd';
+      // Older: month/day in the local timezone, no year (we don't need
+      // the year in a sidebar list -- if you see a date, it's "old").
+      const d = new Date(ts);
+      return (d.getMonth() + 1) + '/' + d.getDate();
+    }
+
     function renderChatSidebar() {
       const el = document.getElementById('chatSidebar');
       if (!el) return;
       if (state.demoMode) {
         el.innerHTML = `
-          <div class="chat-sidebar-header">
-            <div class="chat-sidebar-title">Chats</div>
-            <button onclick="createNewChat()" title="New chat">+ New</button>
+          <div class="chat-sidebar-top">
+            <div class="chat-sidebar-search">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" placeholder="Search chats" disabled>
+            </div>
+            <button class="chat-sidebar-new-btn" onclick="createNewChat()" title="New chat" aria-label="New chat">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
           </div>
           <div class="chat-sidebar-demo-note">Demo mode — chats aren't saved to your account.</div>
           <div class="chat-list"></div>
+          ${_sidebarFooterHtml()}
         `;
         return;
       }
-      const items = state.chats.map(c => {
-        const active = c.id === state.currentChatId;
-        const preview = (c.summary || '').trim() || (c.messageCount ? `${c.messageCount} messages` : 'No messages yet');
-        const title = (c.title || 'New chat').replace(/[<>"]/g, c => ({'<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-        return `
-          <div class="chat-list-item${active ? ' active' : ''}" data-chat-id="${c.id}">
-            <div class="title" ondblclick="startRenameChat('${c.id}', this)">${title}</div>
-            <div class="preview">${escapeHtml(preview)}</div>
-            <div class="actions">
-              <button title="Rename" onclick="event.stopPropagation(); startRenameChat('${c.id}', this.parentElement.parentElement.querySelector('.title'))">✎</button>
-              <button title="Delete" onclick="event.stopPropagation(); deleteChat('${c.id}')">🗑</button>
-            </div>
-          </div>
-        `;
-      }).join('');
+
+      // Search filter (case-insensitive title match). Empty = show all.
+      const q = (state.chatSearchQuery || '').trim().toLowerCase();
+      const filtered = q
+        ? state.chats.filter(c => (c.title || '').toLowerCase().includes(q))
+        : state.chats;
+
+      const buckets = groupChatsByDate(filtered);
+      const listHtml = filtered.length
+        ? Object.entries(buckets)
+            .filter(([, list]) => list.length)
+            .map(([label, list]) => `
+              <div class="chat-list-section">
+                <div class="chat-list-section-header">${label}</div>
+                ${list.map(_chatItemHtml).join('')}
+              </div>
+            `).join('')
+        : `<div class="chat-list-empty">${
+            q ? `No chats matching "${escapeHtml(q)}"` : 'No chats yet — tap <strong>+</strong> to start.'
+          }</div>`;
+
       el.innerHTML = `
-        <div class="chat-sidebar-header">
-          <div class="chat-sidebar-title">Chats</div>
-          <button onclick="createNewChat()" title="New chat">+ New</button>
+        <div class="chat-sidebar-top">
+          <div class="chat-sidebar-search">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="chatSearchInput" placeholder="Search chats" value="${escapeHtml(state.chatSearchQuery || '')}" autocomplete="off">
+          </div>
+          <button class="chat-sidebar-new-btn" onclick="createNewChat()" title="New chat" aria-label="New chat">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
         </div>
-        <div class="chat-list">${items || '<div class="chat-list-empty">No chats yet. Click "+ New" to start.</div>'}</div>
+        <div class="chat-list">${listHtml}</div>
+        ${_sidebarFooterHtml()}
+      `;
+
+      // Search input handler -- rerender the list (only) on each keystroke.
+      // We don't full-re-render the sidebar to keep focus in the input.
+      const searchInput = el.querySelector('#chatSearchInput');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          state.chatSearchQuery = e.target.value;
+          const listEl = el.querySelector('.chat-list');
+          if (!listEl) return;
+          const q2 = state.chatSearchQuery.trim().toLowerCase();
+          const filtered2 = q2
+            ? state.chats.filter(c => (c.title || '').toLowerCase().includes(q2))
+            : state.chats;
+          const buckets2 = groupChatsByDate(filtered2);
+          listEl.innerHTML = filtered2.length
+            ? Object.entries(buckets2)
+                .filter(([, list]) => list.length)
+                .map(([label, list]) => `
+                  <div class="chat-list-section">
+                    <div class="chat-list-section-header">${label}</div>
+                    ${list.map(_chatItemHtml).join('')}
+                  </div>
+                `).join('')
+            : `<div class="chat-list-empty">${
+                q2 ? `No chats matching "${escapeHtml(q2)}"` : 'No chats yet — tap <strong>+</strong> to start.'
+              }</div>`;
+          _wireChatItemClicks(listEl);
+        });
+      }
+
+      _wireChatItemClicks(el);
+    }
+
+    // One chat row -- bullet dot, title, relative time. Action buttons
+    // (rename/delete) pop in on hover. Extracted so the search re-render
+    // path can reuse it without duplicating the markup.
+    function _chatItemHtml(c) {
+      const active = c.id === state.currentChatId;
+      const title = (c.title || 'New chat').replace(/[<>"]/g, ch => ({'<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+      return `
+        <div class="chat-list-item${active ? ' active' : ''}" data-chat-id="${c.id}">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="title" ondblclick="startRenameChat('${c.id}', this)">${title}</span>
+          <span class="time">${escapeHtml(relativeTime(c.updatedAt))}</span>
+          <div class="actions">
+            <button title="Rename" aria-label="Rename" onclick="event.stopPropagation(); startRenameChat('${c.id}', this.parentElement.parentElement.querySelector('.title'))">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
+            <button title="Delete" aria-label="Delete" onclick="event.stopPropagation(); deleteChat('${c.id}')">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Footer: prominent Memory button (with item count badge) and a
+    // small user row showing the first letter of the username.
+    function _sidebarFooterHtml() {
+      const memCount = state.globalMemory ? state.globalMemory.length : 0;
+      const firstName = deriveFirstName(state.username) || state.username || 'You';
+      const initial = (firstName[0] || '?').toUpperCase();
+      return `
         <div class="chat-sidebar-footer">
           <button class="chat-sidebar-mem-btn" onclick="openMemoryPanel()" title="View remembered facts">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -956,13 +1080,22 @@
               <line x1="9" y1="16" x2="15" y2="16"/>
             </svg>
             <span>Memory</span>
+            ${memCount ? `<span class="mem-count">${memCount}</span>` : ''}
           </button>
+          <div class="chat-sidebar-user" onclick="openSettings()" title="Open settings">
+            <span class="avatar">${escapeHtml(initial)}</span>
+            <span class="name">${escapeHtml(firstName)}</span>
+          </div>
         </div>
       `;
-      // Click-to-switch on each row.
-      el.querySelectorAll('.chat-list-item').forEach(node => {
+    }
+
+    // Wire click-to-switch on every chat-list-item inside the given
+    // container. Called once on full re-render and again after the
+    // search-input re-render so the new rows are clickable.
+    function _wireChatItemClicks(root) {
+      root.querySelectorAll('.chat-list-item').forEach(node => {
         node.addEventListener('click', (e) => {
-          // Ignore clicks on action buttons (they call stopPropagation already).
           const id = node.getAttribute('data-chat-id');
           if (id && id !== state.currentChatId) loadCurrentChat(id);
         });
@@ -1653,24 +1786,30 @@
     }
 
     // Navigation
-    document.querySelectorAll('.nav-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        const tabName = tab.dataset.tab;
-        const isFirstVisit = !visitedTabs.has(tabName);
-        visitedTabs.add(tabName);
+    function switchToTab(tabName) {
+      if (!tabName) return;
+      const isFirstVisit = !visitedTabs.has(tabName);
+      visitedTabs.add(tabName);
 
-        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        tab.classList.add('active');
-        const targetTab = document.getElementById('tab-' + tabName);
-        targetTab.classList.add('active');
-        if (isFirstVisit) {
-          targetTab.classList.add('animate-in');
-        }
-        if (tabName === 'grades') renderGradesList();
-        if (tabName === 'assignments') renderAssignmentsList();
-        if (tabName === 'activity') renderActivityList();
-      });
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      const navTab = document.querySelector(`.nav-tab[data-tab="${tabName}"]`);
+      if (navTab) navTab.classList.add('active');
+      const targetTab = document.getElementById('tab-' + tabName);
+      if (!targetTab) return;
+      targetTab.classList.add('active');
+      if (isFirstVisit) targetTab.classList.add('animate-in');
+      if (tabName === 'grades') renderGradesList();
+      if (tabName === 'assignments') renderAssignmentsList();
+      if (tabName === 'activity') renderActivityList();
+    }
+
+    function openSettings() {
+      switchToTab('settings');
+    }
+
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.addEventListener('click', () => switchToTab(tab.dataset.tab));
     });
 
     // Render functions
