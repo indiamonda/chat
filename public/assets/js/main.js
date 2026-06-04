@@ -79,6 +79,21 @@ let state = {
   _voiceSidePanel: null,
   _voiceChatMessages: [],
   _voiceParticipantCount: 0,
+  // DM voice chat (1:1 private calls). Mirrors the group voice feature set.
+  _dmVoiceJoined: false,
+  _dmVoiceConvId: null,
+  _dmVoicePeer: null,            // single RTCPeerConnection
+  _dmVoiceDataChannel: null,     // for in-call text chat
+  _dmVoiceLocalStream: null,
+  _dmVoiceScreenStream: null,
+  _dmVoiceMicOn: true,
+  _dmVoiceCamOn: false,
+  _dmVoiceScreenOn: false,
+  _dmVoiceSidePanel: null,       // 'chat' | 'members' | null
+  _dmVoiceChatMessages: [],      // transient in-call chat (NOT persisted)
+  _dmVoicePeerMedia: { audio: true, video: false, screen: false },
+  _dmVoiceRinging: null,         // { fromUserId, fromUsername, fromDisplayName, fromAvatarUrl, convId }
+  _dmVoiceRingingOutgoing: null, // { toUserId, convId }
   _chatboxStyles: [],
   _presence: {},
   _typing: {},
@@ -2539,7 +2554,10 @@ function getMentionedDeletedUsers(content) {
 }
 
 function isFriend(userId) {
-  if (userId === 'jimmyqrg') return true;
+  // JimmyQrg is auto-friend to everyone (server side: AUTO_FRIEND_IDS). Symmetrically,
+  // jimmyqrg himself gets all friend features by default — file attach, voice-record
+  // button, no 10-message cap — regardless of whether the other user has friended him.
+  if (userId === 'jimmyqrg' || state.user?.id === 'jimmyqrg') return true;
   return state.friend_ids && state.friend_ids.includes(userId);
 }
 
@@ -2859,6 +2877,20 @@ function connectSocket() {
   });
   state.socket = s;
   voiceSetupSignalListeners();
+  dmVoiceSetupSignalListeners();
+  // Restore any pending incoming DM voice ring from a page reload / socket reconnect.
+  apiGet('/api/dm-voice/state').then(({ ringing_from, in_call, conv }) => {
+    if (ringing_from) {
+      state._dmVoiceRinging = {
+        fromUserId: ringing_from.userId,
+        fromUsername: ringing_from.username,
+        fromDisplayName: ringing_from.display_name,
+        fromAvatarUrl: ringing_from.avatar_url,
+        convId: ringing_from.convId,
+      };
+      render();
+    }
+  }).catch(() => {});
   startPresenceHeartbeat();
 }
 
@@ -3438,6 +3470,419 @@ function voiceSendChatMessage(content) {
         if (wrap) wrap.scrollTop = wrap.scrollHeight;
       });
     }
+  });
+}
+
+// ── DM Voice Chat (1:1 WebRTC, per-conversation) ──
+// Mirrors the group voice chat feature set: mic, cam, screen share, in-call text
+// chat side panel, participants list. Access is friends-only (defense-in-depth on
+// the client; the server re-checks with areFriends in dm-voice:invite).
+
+function dmVoiceLookupUser(uid) {
+  return (state.users || []).find(u => u.id === uid);
+}
+
+function dmVoiceUserName(uid) {
+  const u = dmVoiceLookupUser(uid);
+  return u?.display_name || u?.username || uid;
+}
+
+function dmVoiceUserAvatar(uid) {
+  const u = dmVoiceLookupUser(uid);
+  return u?.avatar_url || getDefaultAvatarUrl(uid);
+}
+
+async function dmVoiceInvite(toUserId, convId) {
+  if (!state.socket || !toUserId || !convId) return;
+  if (state._dmVoiceJoined) { showToast('You are already in a call'); return; }
+  state.socket.emit('dm-voice:invite', { to: toUserId, convId }, (res) => {
+    if (res?.error) { showToast(res.error); return; }
+    state._dmVoiceRingingOutgoing = { toUserId, convId };
+    render();
+  });
+}
+
+function dmVoiceCancelInvite() {
+  const out = state._dmVoiceRingingOutgoing;
+  if (!out) return;
+  state.socket?.emit('dm-voice:cancel-invite', { to: out.toUserId, convId: out.convId });
+  state._dmVoiceRingingOutgoing = null;
+  render();
+}
+
+async function dmVoiceAccept(fromUserId, convId) {
+  if (state._dmVoiceJoined) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    state._dmVoiceLocalStream = stream;
+    stream.getAudioTracks().forEach(t => { t.enabled = true; });
+    state._dmVoiceMicOn = true;
+    state._dmVoiceConvId = convId;
+    state._dmVoiceRinging = null;
+    state.socket?.emit('dm-voice:accept', { to: fromUserId, convId }, (res) => {
+      if (res?.error) {
+        showToast(res.error);
+        dmVoiceCleanup();
+        return;
+      }
+      state._dmVoiceJoined = true;
+      // Create the peer connection as the non-initiator (callee). The caller will
+      // send the offer once they see our dm-voice:state.
+      dmVoiceCreatePeer(fromUserId, false);
+      render();
+    });
+  } catch (err) {
+    showToast('Could not access microphone: ' + (err.message || err));
+  }
+}
+
+function dmVoiceDecline(fromUserId, convId) {
+  state.socket?.emit('dm-voice:decline', { to: fromUserId, convId });
+  state._dmVoiceRinging = null;
+  render();
+}
+
+function dmVoiceLeave() {
+  const convId = state._dmVoiceConvId;
+  state.socket?.emit('dm-voice:leave', { convId }, () => {});
+  dmVoiceCleanup();
+  render();
+}
+
+function dmVoiceCleanup() {
+  if (state._dmVoicePeer) {
+    try { state._dmVoicePeer.close(); } catch (_) {}
+  }
+  state._dmVoiceDataChannel = null;
+  state._dmVoicePeer = null;
+  state._dmVoiceLocalStream?.getTracks().forEach(t => t.stop());
+  state._dmVoiceScreenStream?.getTracks().forEach(t => t.stop());
+  state._dmVoiceLocalStream = null;
+  state._dmVoiceScreenStream = null;
+  state._dmVoiceJoined = false;
+  state._dmVoiceConvId = null;
+  state._dmVoiceCamOn = false;
+  state._dmVoiceMicOn = true;
+  state._dmVoiceScreenOn = false;
+  state._dmVoiceSidePanel = null;
+  state._dmVoiceChatMessages = [];
+  state._dmVoicePeerMedia = { audio: true, video: false, screen: false };
+  state._dmVoiceRinging = null;
+  state._dmVoiceRingingOutgoing = null;
+}
+
+function dmVoiceCreatePeer(remoteUserId, initiator) {
+  if (state._dmVoicePeer) {
+    try { state._dmVoicePeer.close(); } catch (_) {}
+  }
+  const pc = new RTCPeerConnection(RTC_CONFIG);
+  state._dmVoicePeer = pc;
+
+  // Caller (initiator) creates the data channel; callee receives via ondatachannel.
+  if (initiator) {
+    const dc = pc.createDataChannel('dm-voice-chat');
+    dmVoiceAttachDataChannel(dc);
+  } else {
+    pc.ondatachannel = (e) => dmVoiceAttachDataChannel(e.channel);
+  }
+
+  let negotiating = false;
+  const sendOffer = async () => {
+    if (!initiator || negotiating || pc.signalingState !== 'stable') return;
+    try {
+      negotiating = true;
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      state.socket?.emit('dm-voice:offer', { to: remoteUserId, convId: state._dmVoiceConvId, offer: pc.localDescription }, () => {});
+    } catch (_) {} finally { negotiating = false; }
+  };
+
+  if (state._dmVoiceLocalStream) {
+    for (const track of state._dmVoiceLocalStream.getTracks()) {
+      pc.addTrack(track, state._dmVoiceLocalStream);
+    }
+  }
+  if (state._dmVoiceScreenStream) {
+    for (const track of state._dmVoiceScreenStream.getTracks()) {
+      pc.addTrack(track, state._dmVoiceScreenStream);
+    }
+  }
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      state.socket?.emit('dm-voice:ice-candidate', { to: remoteUserId, convId: state._dmVoiceConvId, candidate: e.candidate }, () => {});
+    }
+  };
+
+  pc.ontrack = (e) => {
+    const container = document.getElementById('dm-voice-remote');
+    if (!container) { render(); return; }
+    const track = e.track;
+    let el;
+    if (track.kind === 'video') {
+      el = container.querySelector('video') || document.createElement('video');
+      el.autoplay = true; el.playsInline = true; el.muted = false;
+      if (!el.parentNode) container.appendChild(el);
+      const ms = el.srcObject instanceof MediaStream ? el.srcObject : new MediaStream();
+      ms.addTrack(track);
+      el.srcObject = ms;
+    } else if (track.kind === 'audio') {
+      el = container.querySelector('audio') || document.createElement('audio');
+      el.autoplay = true; el.muted = false;
+      if (!el.parentNode) container.appendChild(el);
+      const ms = el.srcObject instanceof MediaStream ? el.srcObject : new MediaStream();
+      ms.addTrack(track);
+      el.srcObject = ms;
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+      // Peer disconnected — keep the overlay open so the user can re-invite, but
+      // close the connection so we don't keep trying to a dead peer.
+      try { pc.close(); } catch (_) {}
+      if (state._dmVoicePeer === pc) state._dmVoicePeer = null;
+    }
+  };
+
+  if (initiator) {
+    pc.onnegotiationneeded = sendOffer;
+    queueMicrotask(() => { void sendOffer(); });
+  }
+  return pc;
+}
+
+function dmVoiceAttachDataChannel(dc) {
+  state._dmVoiceDataChannel = dc;
+  dc.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg?.kind === 'chat' && typeof msg.text === 'string') {
+        const peerId = state._dmVoicePeerUserId || 'peer';
+        state._dmVoiceChatMessages.push({ from: peerId, text: msg.text, ts: Date.now() });
+        render();
+        requestAnimationFrame(() => {
+          const wrap = document.getElementById('dm-voice-chat-messages');
+          if (wrap) wrap.scrollTop = wrap.scrollHeight;
+        });
+      }
+    } catch (_) {}
+  };
+}
+
+function dmVoiceSendChatMessage(content) {
+  if (!content?.trim() || !state._dmVoiceJoined) return;
+  const text = content.trim();
+  // Local echo (peer echoes back via the data channel when they receive).
+  state._dmVoiceChatMessages.push({ from: state.user?.id, text, ts: Date.now() });
+  const dc = state._dmVoiceDataChannel;
+  if (dc && dc.readyState === 'open') {
+    try { dc.send(JSON.stringify({ kind: 'chat', text })); } catch (_) {}
+  }
+  render();
+  requestAnimationFrame(() => {
+    const wrap = document.getElementById('dm-voice-chat-messages');
+    if (wrap) wrap.scrollTop = wrap.scrollHeight;
+  });
+}
+
+async function dmVoiceToggleMic() {
+  if (!state._dmVoiceLocalStream) return;
+  state._dmVoiceMicOn = !state._dmVoiceMicOn;
+  state._dmVoiceLocalStream.getAudioTracks().forEach(t => { t.enabled = state._dmVoiceMicOn; });
+  dmVoiceBroadcastMediaState();
+  render();
+}
+
+async function dmVoiceToggleCam() {
+  if (!state._dmVoiceLocalStream) return;
+  if (!state._dmVoiceCamOn) {
+    try {
+      const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const videoTrack = camStream.getVideoTracks()[0];
+      state._dmVoiceLocalStream.addTrack(videoTrack);
+      state._dmVoicePeer?.addTrack(videoTrack, state._dmVoiceLocalStream);
+      state._dmVoiceCamOn = true;
+      const localVid = document.getElementById('dm-voice-local-video');
+      if (localVid) {
+        localVid.srcObject = state._dmVoiceLocalStream;
+        localVid.style.display = '';
+      }
+    } catch (err) {
+      showToast('Could not access camera: ' + (err.message || err));
+      return;
+    }
+  } else {
+    state._dmVoiceLocalStream.getVideoTracks().forEach(t => {
+      t.stop();
+      state._dmVoiceLocalStream.removeTrack(t);
+      const sender = state._dmVoicePeer?.getSenders().find(s => s.track === t);
+      if (sender) state._dmVoicePeer.removeTrack(sender);
+    });
+    state._dmVoiceCamOn = false;
+    const localVid = document.getElementById('dm-voice-local-video');
+    if (localVid) { localVid.srcObject = null; localVid.style.display = 'none'; }
+  }
+  dmVoiceBroadcastMediaState();
+  render();
+}
+
+async function dmVoiceShareScreen(options = {}) {
+  if (state._dmVoiceScreenOn) { dmVoiceStopScreenShare(); return; }
+  try {
+    const constraints = { video: true, audio: !!options.systemAudio };
+    if (options.displaySurface) constraints.video = { displaySurface: options.displaySurface };
+    const screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+    state._dmVoiceScreenStream = screenStream;
+    state._dmVoiceScreenOn = true;
+    for (const track of screenStream.getTracks()) {
+      state._dmVoicePeer?.addTrack(track, screenStream);
+      track.onended = () => dmVoiceStopScreenShare();
+    }
+    dmVoiceBroadcastMediaState();
+    render();
+  } catch (err) {
+    if (err.name !== 'NotAllowedError') showToast('Screen share failed: ' + (err.message || err));
+  }
+}
+
+function dmVoiceStopScreenShare() {
+  if (state._dmVoiceScreenStream) {
+    state._dmVoiceScreenStream.getTracks().forEach(t => {
+      t.stop();
+      const sender = state._dmVoicePeer?.getSenders().find(s => s.track === t);
+      if (sender) state._dmVoicePeer.removeTrack(sender);
+    });
+    state._dmVoiceScreenStream = null;
+  }
+  state._dmVoiceScreenOn = false;
+  dmVoiceBroadcastMediaState();
+  render();
+}
+
+function dmVoiceBroadcastMediaState() {
+  if (!state._dmVoiceConvId) return;
+  state.socket?.emit('dm-voice:media-state', {
+    convId: state._dmVoiceConvId,
+    audio: state._dmVoiceMicOn,
+    video: state._dmVoiceCamOn,
+    screen: state._dmVoiceScreenOn,
+  });
+}
+
+function dmVoiceSetupSignalListeners() {
+  const s = state.socket;
+  if (!s) return;
+
+  s.on('dm-voice:incoming', ({ fromUserId, fromUsername, fromDisplayName, fromAvatarUrl, convId }) => {
+    // Don't replace an existing incoming call unless it's for the same caller / different conv.
+    if (state._dmVoiceRinging) return;
+    state._dmVoiceRinging = { fromUserId, fromUsername, fromDisplayName, fromAvatarUrl, convId };
+    render();
+  });
+
+  s.on('dm-voice:cancelled', ({ fromUserId, convId }) => {
+    if (state._dmVoiceRinging && state._dmVoiceRinging.fromUserId === fromUserId && state._dmVoiceRinging.convId === convId) {
+      state._dmVoiceRinging = null;
+      render();
+    }
+  });
+
+  s.on('dm-voice:declined', () => {
+    state._dmVoiceRingingOutgoing = null;
+    showToast('Call declined');
+    render();
+  });
+
+  s.on('dm-voice:accepted', async ({ convId, by }) => {
+    if (!state._dmVoiceRingingOutgoing || state._dmVoiceRingingOutgoing.convId !== convId) return;
+    state._dmVoiceRingingOutgoing = null;
+    // Get mic, set joined, create peer as initiator.
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      state._dmVoiceLocalStream = stream;
+      stream.getAudioTracks().forEach(t => { t.enabled = true; });
+      state._dmVoiceMicOn = true;
+      state._dmVoiceConvId = convId;
+      state._dmVoiceJoined = true;
+      state._dmVoicePeerUserId = by;
+      dmVoiceCreatePeer(by, true);
+      render();
+    } catch (err) {
+      showToast('Could not access microphone: ' + (err.message || err));
+      dmVoiceLeave();
+    }
+  });
+
+  s.on('dm-voice:state', ({ convId, participants }) => {
+    if (state._dmVoiceConvId !== convId) return;
+    const peer = participants.find(p => p.id !== state.user?.id);
+    if (peer) {
+      state._dmVoicePeerUserId = peer.id;
+      state._dmVoicePeerMedia = peer.media || state._dmVoicePeerMedia;
+    }
+    render();
+  });
+
+  s.on('dm-voice:offer', async ({ from, convId, offer }) => {
+    if (state._dmVoiceConvId !== convId) return;
+    let pc = state._dmVoicePeer;
+    if (!pc) pc = dmVoiceCreatePeer(from, false);
+    state._dmVoicePeerUserId = from;
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      s.emit('dm-voice:answer', { to: from, convId, answer: pc.localDescription }, () => {});
+    } catch (_) {}
+  });
+
+  s.on('dm-voice:answer', async ({ from, convId, answer }) => {
+    if (state._dmVoiceConvId !== convId) return;
+    const pc = state._dmVoicePeer;
+    if (pc) {
+      try { await pc.setRemoteDescription(new RTCSessionDescription(answer)); } catch (_) {}
+    }
+  });
+
+  s.on('dm-voice:ice-candidate', async ({ from, convId, candidate }) => {
+    if (state._dmVoiceConvId !== convId) return;
+    const pc = state._dmVoicePeer;
+    if (pc) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (_) {}
+    }
+  });
+
+  s.on('dm-voice:media-state', ({ userId, audio, video, screen, convId }) => {
+    if (state._dmVoiceConvId !== convId) return;
+    state._dmVoicePeerMedia = { audio, video, screen };
+    render();
+  });
+
+  s.on('dm-voice:peer-left', ({ userId, convId }) => {
+    if (state._dmVoiceConvId !== convId) return;
+    // Peer hung up — close overlay, free streams.
+    if (state._dmVoicePeer) {
+      try { state._dmVoicePeer.close(); } catch (_) {}
+      state._dmVoicePeer = null;
+    }
+    const remote = document.getElementById('dm-voice-remote');
+    if (remote) remote.querySelectorAll('audio, video').forEach(el => { el.srcObject = null; });
+    state._dmVoiceJoined = false;
+    state._dmVoiceConvId = null;
+    state._dmVoiceLocalStream?.getTracks().forEach(t => t.stop());
+    state._dmVoiceScreenStream?.getTracks().forEach(t => t.stop());
+    state._dmVoiceLocalStream = null;
+    state._dmVoiceScreenStream = null;
+    showToast('Call ended');
+    render();
+  });
+
+  s.on('dm-voice:kicked', ({ convId }) => {
+    if (state._dmVoiceConvId && state._dmVoiceConvId !== convId) return;
+    showToast('Call ended (joined from another session)');
+    dmVoiceCleanup();
+    render();
   });
 }
 
@@ -4640,6 +5085,9 @@ function renderMain() {
         </div>
       </div>
 
+      ${renderDmVoiceOverlay()}
+      ${renderDmVoiceModals()}
+
       <div class="main-content">
         <div class="main-content-body">
           ${primaryNav === 'home' ? (state._voiceJoined && state.panel === 'voice_chat' ? renderVoiceChatArea() : isGroup && (state.panel === 'free_chat' || state.panel === 'support') ? renderChatArea() : isGroup && isDocPanel ? renderDocArea() : `<div class="empty-state">${t('selectPanel')}</div>`) : ''}
@@ -4927,6 +5375,150 @@ function renderVoiceChatArea() {
     </div>`;
 }
 
+function renderDmVoiceOverlay() {
+  if (!state._dmVoiceJoined) return '';
+  const peerId = state._dmVoicePeerUserId;
+  const peerName = peerId ? dmVoiceUserName(peerId) : '';
+  const defAv = peerId ? getDefaultAvatarUrl(peerId) : '';
+  const peerAvatar = peerId ? dmVoiceUserAvatar(peerId) : defAv;
+  const peerHasVideo = !!state._dmVoicePeerMedia?.video;
+  const peerHasScreen = !!state._dmVoicePeerMedia?.screen;
+  const peerHasMic = state._dmVoicePeerMedia?.audio !== false;
+  const sidePanel = state._dmVoiceSidePanel;
+  const chatMessages = state._dmVoiceChatMessages || [];
+  const meId = state.user?.id;
+
+  const chatPanel = sidePanel === 'chat' ? `
+    <div class="vc-side-panel vc-side-chat">
+      <div class="vc-side-header">
+        <span class="vc-side-title">In-call chat</span>
+        <button type="button" class="vc-side-close" id="dm-vc-side-close">${ICON_X_SM}</button>
+      </div>
+      <div class="vc-chat-messages" id="dm-voice-chat-messages">
+        ${chatMessages.map(m => `
+          <div class="vc-chat-msg">
+            <span class="vc-chat-sender">${escapeHtml(m.from === meId ? 'You' : (dmVoiceUserName(m.from) || 'Peer'))}</span>
+            <span class="vc-chat-text">${escapeHtml(m.text || '')}</span>
+          </div>`).join('') || '<div class="vc-chat-empty">No messages yet.</div>'}
+      </div>
+      <div class="vc-chat-composer">
+        <input type="text" id="dm-vc-chat-input" placeholder="Send a message…" autocomplete="off" />
+        <button type="button" id="dm-vc-chat-send">${ICON_SEND}</button>
+      </div>
+    </div>` : '';
+
+  const membersPanel = sidePanel === 'members' ? `
+    <div class="vc-side-panel vc-side-members">
+      <div class="vc-side-header">
+        <span class="vc-side-title">Participants (2)</span>
+        <button type="button" class="vc-side-close" id="dm-vc-side-close">${ICON_X_SM}</button>
+      </div>
+      <div class="vc-members-list">
+        <div class="vc-member">
+          <img src="${dmVoiceUserAvatar(meId)}" alt="" class="vc-member-avatar" />
+          <span class="vc-member-name">You</span>
+          <span class="vc-member-mic ${state._dmVoiceMicOn ? '' : 'vc-muted'}">${state._dmVoiceMicOn ? ICON_MIC_ON : ICON_MIC_OFF}</span>
+        </div>
+        <div class="vc-member">
+          <img src="${peerAvatar}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" class="vc-member-avatar" />
+          <span class="vc-member-name">${escapeHtml(peerName)}</span>
+          <span class="vc-member-mic ${peerHasMic ? '' : 'vc-muted'}">${peerHasMic ? ICON_MIC_ON : ICON_MIC_OFF}</span>
+        </div>
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="vc-area dm-voice-overlay">
+      <div class="vc-main ${sidePanel ? 'vc-main-with-panel' : ''}">
+        <div class="vc-grid" style="--vc-cols:1">
+          <div class="vc-tile ${peerHasScreen ? 'vc-tile-screen' : ''}" data-user-id="${escapeHtml(peerId || 'peer')}">
+            <div class="vc-tile-video-wrap" id="dm-voice-remote">
+              <video id="dm-voice-local-video" autoplay playsinline muted style="display:none"></video>
+            </div>
+            <div class="vc-tile-avatar" style="${peerHasVideo || peerHasScreen ? 'display:none' : ''}">
+              <img src="${peerAvatar}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
+            </div>
+            <div class="vc-tile-bar">
+              <span class="vc-tile-name">${escapeHtml(peerName)}</span>
+              <span class="vc-tile-mic ${peerHasMic ? '' : 'vc-muted'}" aria-label="${peerHasMic ? 'Mic on' : 'Mic off'}">${peerHasMic ? ICON_MIC_ON : ICON_MIC_OFF}</span>
+            </div>
+          </div>
+        </div>
+        <div class="vc-toolbar">
+          <button type="button" class="vc-btn ${state._dmVoiceMicOn ? '' : 'vc-btn-off'}" id="dm-vc-mic" title="${state._dmVoiceMicOn ? 'Mute' : 'Unmute'}">
+            <span class="vc-btn-icon">${state._dmVoiceMicOn ? ICON_MIC_ON : ICON_MIC_OFF}</span>
+            <span class="vc-btn-label">${state._dmVoiceMicOn ? 'Mute' : 'Unmute'}</span>
+          </button>
+          <button type="button" class="vc-btn ${state._dmVoiceCamOn ? '' : 'vc-btn-off'}" id="dm-vc-cam" title="${state._dmVoiceCamOn ? 'Stop camera' : 'Start camera'}">
+            <span class="vc-btn-icon">${state._dmVoiceCamOn ? ICON_CAM_ON : ICON_CAM_OFF}</span>
+            <span class="vc-btn-label">${state._dmVoiceCamOn ? 'Stop video' : 'Start video'}</span>
+          </button>
+          <div class="vc-btn-group">
+            <button type="button" class="vc-btn ${state._dmVoiceScreenOn ? 'vc-btn-active' : ''}" id="dm-vc-screen" title="${state._dmVoiceScreenOn ? 'Stop sharing' : 'Share screen'}">
+              <span class="vc-btn-icon">${state._dmVoiceScreenOn ? ICON_SCREEN_STOP : ICON_SCREEN_SHARE}</span>
+              <span class="vc-btn-label">${state._dmVoiceScreenOn ? 'Stop share' : 'Share'}</span>
+            </button>
+          </div>
+          <button type="button" class="vc-btn ${sidePanel === 'chat' ? 'vc-btn-active' : ''}" id="dm-vc-chat-toggle" title="Chat">
+            <span class="vc-btn-icon">${ICON_CHAT}</span>
+            <span class="vc-btn-label">Chat</span>
+          </button>
+          <button type="button" class="vc-btn ${sidePanel === 'members' ? 'vc-btn-active' : ''}" id="dm-vc-members-toggle" title="Participants">
+            <span class="vc-btn-icon">${ICON_USERS_SM}</span>
+            <span class="vc-btn-label">Participants</span>
+          </button>
+          <button type="button" class="vc-btn vc-btn-leave" id="dm-vc-leave" title="End call">
+            <span class="vc-btn-icon">${ICON_PHONE_OFF}</span>
+            <span class="vc-btn-label">End</span>
+          </button>
+        </div>
+      </div>
+      ${chatPanel}${membersPanel}
+    </div>`;
+}
+
+function renderDmVoiceModals() {
+  const incoming = state._dmVoiceRinging;
+  const outgoing = state._dmVoiceRingingOutgoing;
+  if (!incoming && !outgoing) return '';
+  if (incoming) {
+    const defAv = getDefaultAvatarUrl(incoming.fromUserId);
+    const av = incoming.fromAvatarUrl || defAv;
+    return `
+      <div class="dm-voice-modal-overlay" id="dm-voice-incoming-modal">
+        <div class="dm-voice-modal">
+          <div class="dm-voice-modal-avatar">
+            <img src="${av}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
+          </div>
+          <div class="dm-voice-modal-name">${escapeHtml(incoming.fromDisplayName || incoming.fromUsername || incoming.fromUserId)}</div>
+          <div class="dm-voice-modal-sub">is calling you…</div>
+          <div class="dm-voice-modal-actions">
+            <button type="button" class="dm-voice-modal-btn dm-voice-modal-decline" id="dm-voice-decline-btn">Decline</button>
+            <button type="button" class="dm-voice-modal-btn dm-voice-modal-accept" id="dm-voice-accept-btn">Accept</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  if (outgoing) {
+    const defAv = getDefaultAvatarUrl(outgoing.toUserId);
+    const av = dmVoiceUserAvatar(outgoing.toUserId);
+    return `
+      <div class="dm-voice-modal-overlay" id="dm-voice-outgoing-modal">
+        <div class="dm-voice-modal">
+          <div class="dm-voice-modal-avatar">
+            <img src="${av}" data-fallback="${defAv.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
+          </div>
+          <div class="dm-voice-modal-name">${escapeHtml(dmVoiceUserName(outgoing.toUserId))}</div>
+          <div class="dm-voice-modal-sub">Calling…</div>
+          <div class="dm-voice-modal-actions">
+            <button type="button" class="dm-voice-modal-btn dm-voice-modal-decline" id="dm-voice-cancel-btn">Cancel</button>
+          </div>
+        </div>
+      </div>`;
+  }
+  return '';
+}
+
 function renderChatArea() {
   const route = parseRoute();
   const isProfileView = route.dmUserId && route.view === 'profile';
@@ -5037,6 +5629,7 @@ function renderChatArea() {
         <div class="chat-header">
           <div class="chat-header-title">${escapeHtml(getChatHeaderTitle(roomType, roomId))}</div>
           ${headerSubtitle}
+          ${roomType === 'dm' && isFriend(state.dmUserId) ? `<button type="button" class="chat-header-menu-btn" id="dm-voice-call-btn" title="Start voice call" aria-label="Start voice call"><span class="icon" aria-hidden="true">${ICON_PHONE}</span></button>` : ''}
           <button type="button" class="chat-header-menu-btn" id="chat-header-menu-btn" title="${tx('more', 'More')}" aria-expanded="${sidePanelOpen}"><span class="icon" aria-hidden="true">${ICON_ELLIPSIS_V}</span></button>
         </div>
         ${pinnedBanner}
@@ -6423,6 +7016,84 @@ function bindMain() {
       if (input.value?.trim()) { voiceSendChatMessage(input.value); input.value = ''; }
     }
   });
+
+  // DM voice chat bindings
+  document.getElementById('dm-voice-call-btn')?.addEventListener('click', () => {
+    if (!state.dmUserId || !state.convIdToUserId || !state.convByUserId) return;
+    const convId = state.convByUserId[state.dmUserId];
+    if (!convId) { showToast('Open a conversation first'); return; }
+    if (state._dmVoiceJoined) { showToast('You are already in a call'); return; }
+    if (state._dmVoiceRingingOutgoing) { dmVoiceCancelInvite(); return; }
+    dmVoiceInvite(state.dmUserId, convId);
+  });
+  document.getElementById('dm-vc-mic')?.addEventListener('click', dmVoiceToggleMic);
+  document.getElementById('dm-vc-cam')?.addEventListener('click', dmVoiceToggleCam);
+  document.getElementById('dm-vc-screen')?.addEventListener('click', () => {
+    if (state._dmVoiceScreenOn) { dmVoiceStopScreenShare(); return; }
+    const existing = document.querySelector('.vc-screen-menu');
+    if (existing) { existing.remove(); return; }
+    const btn = document.getElementById('dm-vc-screen');
+    const rect = btn?.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.className = 'vc-screen-menu';
+    menu.style.left = (rect ? rect.left : 0) + 'px';
+    menu.style.bottom = (rect ? window.innerHeight - rect.top + 8 : 60) + 'px';
+    menu.innerHTML = `
+      <button data-surface="browser">Browser tab</button>
+      <button data-surface="window">Application window</button>
+      <button data-surface="monitor">Entire screen</button>
+      <label class="vc-screen-audio-opt"><input type="checkbox" id="dm-vc-screen-audio" /> Share system audio</label>`;
+    document.body.appendChild(menu);
+    menu.querySelectorAll('button[data-surface]').forEach(b => {
+      b.addEventListener('click', () => {
+        const systemAudio = document.getElementById('dm-vc-screen-audio')?.checked || false;
+        menu.remove();
+        dmVoiceShareScreen({ displaySurface: b.dataset.surface, systemAudio });
+      });
+    });
+    const closeMenu = (e) => { if (!menu.contains(e.target) && e.target !== btn) { menu.remove(); document.removeEventListener('click', closeMenu); } };
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+  });
+  document.getElementById('dm-vc-chat-toggle')?.addEventListener('click', () => {
+    state._dmVoiceSidePanel = state._dmVoiceSidePanel === 'chat' ? null : 'chat';
+    render();
+    if (state._dmVoiceSidePanel === 'chat') {
+      requestAnimationFrame(() => {
+        document.getElementById('dm-vc-chat-input')?.focus();
+        const wrap = document.getElementById('dm-voice-chat-messages');
+        if (wrap) wrap.scrollTop = wrap.scrollHeight;
+      });
+    }
+  });
+  document.getElementById('dm-vc-members-toggle')?.addEventListener('click', () => {
+    state._dmVoiceSidePanel = state._dmVoiceSidePanel === 'members' ? null : 'members';
+    render();
+  });
+  document.getElementById('dm-vc-side-close')?.addEventListener('click', () => {
+    state._dmVoiceSidePanel = null;
+    render();
+  });
+  document.getElementById('dm-vc-leave')?.addEventListener('click', dmVoiceLeave);
+  document.getElementById('dm-vc-chat-send')?.addEventListener('click', () => {
+    const input = document.getElementById('dm-vc-chat-input');
+    if (input?.value?.trim()) { dmVoiceSendChatMessage(input.value); input.value = ''; }
+  });
+  document.getElementById('dm-vc-chat-input')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const input = e.target;
+      if (input.value?.trim()) { dmVoiceSendChatMessage(input.value); input.value = ''; }
+    }
+  });
+  document.getElementById('dm-voice-accept-btn')?.addEventListener('click', () => {
+    const r = state._dmVoiceRinging;
+    if (r) dmVoiceAccept(r.fromUserId, r.convId);
+  });
+  document.getElementById('dm-voice-decline-btn')?.addEventListener('click', () => {
+    const r = state._dmVoiceRinging;
+    if (r) dmVoiceDecline(r.fromUserId, r.convId);
+  });
+  document.getElementById('dm-voice-cancel-btn')?.addEventListener('click', dmVoiceCancelInvite);
 
   function bindUserListSearch(inputId, listId) {
     const input = document.getElementById(inputId);

@@ -66,8 +66,8 @@ cd /app/schoology; \
 - 512 MB RAM, shared CPU. Memory is tight: Whisper `tiny` + CLIP + Playwright chromium + a per-user daemon pool all fight for it. Watch RSS.
 
 ### gunicorn: two workers, two roles
-- **Worker 0** runs a long-lived `run_tool.py` per authenticated user (the "daemon pool"). Each daemon holds a warm Playwright browser for that student. The pool is keyed by username, LRU-evicted at `DAEMON_POOL_MAX=5`. `GUNICORN_WORKER_INDEX` is set in the master env by `schoology/gunicorn.conf.py:pre_fork` so children know which role they're playing.
-- **Worker 1** runs per-request subprocesses (cold start, fallback) using the same env-var credential handoff. Use this for >5 concurrent students and accept the cold-start cost.
+- **Worker 0** runs a long-lived `run_tool.py` per authenticated user (the "daemon pool"). Each daemon holds a warm Playwright browser for that student. The pool is keyed by username, LRU-evicted at `DAEMON_POOL_MAX=100`. `GUNICORN_WORKER_INDEX` is set in the master env by `schoology/gunicorn.conf.py:pre_fork` so children know which role they're playing.
+- **Worker 1** runs per-request subprocesses (cold start, fallback) using the same env-var credential handoff. Use this for >100 concurrent students and accept the cold-start cost.
 - **Why per-user daemons:** upstream `schoology-mcp` is single-tenant — it reads `SCHOOLOGY_USERNAME`/`SCHOOLOGY_PASSWORD` from its own process env at spawn and keeps one headless browser per process. The pool is how we serve multiple students from one Flask worker.
 - **Why `/data/schoology_storage.json`:** image redeploys lose `/root/.cache/...`, so the storage state env-var points to the persistent volume.
 
@@ -77,13 +77,97 @@ Non-obvious bugs already fixed and worth not re-introducing:
 - Don't try to JSON-stringify a multipart body and forward it — you have to `req.pipe(proxyReq)` raw, and `return` before `proxyReq.end()`.
 The `proxyRequest` helper handles both. New `/schoology/api/*` endpoints are safer to add; the proxy just forwards.
 
+### Game Multiplayer — Zone No Light (`server/index.js` `/game` namespace)
+A real-time multiplayer FPS built on Socket.IO's `/game` namespace, unrelated to schoology. Lives entirely in `server/index.js` (~line 1749+).
+
+- **Room registry**: `globalRoomRegistry` (a `Map<roomKey, {mode, code, hostId, map, playerCount, createdAt, updatedAt}>`) plus the per-socket `gameRooms` Map. The registry expires rooms after 5 min of inactivity (`ROOM_EXPIRY_MS`).
+- **Room key format** encodes the room origin and mode:
+  - `qp:<mode>:<CODE>` — quickplay room
+  - `cr:<mode>:<CODE>` — user-created (private) room
+  - The mode prefix matters for matching: `quickplay(mode)` matches any `qp:<mode>:` room with the same mode, regardless of code.
+- **Per-mode player caps** (`ROOM_MAX_PLAYERS`): `crossfire: 2`, `arena-coop: 6`, `boss-coop: 4`, `training-coop: 4`. Rooms at cap are skipped by quickplay and rejected with `{error: 'Room is full'}` by `joinByCode`.
+- **Map field**: rooms carry an optional `map` string (capped at 64 chars by `normalizeCreateArgs`). Map is **not** used for matching (a quickplay player joins whatever map the host chose); the host's `map` is returned in the callback so the client loads the right map.
+- **`normalizeCreateArgs(arg)`** accepts both old (bare string mode) and new (`{mode, map}`) client shapes — preserves backward compat for older Zone No Light clients.
+- **Socket handlers** (`socket.on(...)` in the `/game` namespace):
+  - `quickplay(arg, cb)` → tries to join an open room in the mode; if none, creates one. Returns `{room, roomCode, roomKey, count, map}`.
+  - `createRoom(arg, cb)` → always creates a new `cr:<mode>:<CODE>` room. Returns `{code, roomCode, roomKey, map}`.
+  - `joinByCode({code, mode}, cb)` → mode-agnostic lookup by code across all rooms. Returns `{ok, code, roomCode, roomKey, map}`.
+  - `getRooms(cb)` → lists open rooms (for the lobby browser).
+  - `move(data)`, `chat(...)`, `shoot(...)`, etc. — gameplay events scoped to the current room.
+  - Server broadcasts `roomListUpdate` (via `io.emit`) on registry changes.
+- **Teleport command** (`/tp`): disabled in quickplay rooms (`!roomKey.startsWith('qp:')`). In private rooms, supports source selectors (`@s`, `@a`, `@e`, `@p`, `@r`, or player name) and destination selectors — see `parseTeleportCommand` and `executeTeleport` in `server/index.js`.
+
 ### AI Assistant architecture (`schoology/index.html` + `schoology/ai/`)
 - **Tool protocol** is bracket commands emitted by the model: `[CALC:expr]`, `[WIKI:topic]`, `[FILE:id|name|type|size]`, etc. A `TOOL_REGISTRY` at the top of `schoology/index.html` is the single source of truth: the system prompt, welcome message, `generateDemoResponse` help branch, and `handleAICommands` dispatcher all read from it. Adding a new tool = one registry entry.
-- **Tool results go into `state.chatHistory`** with `role: 'tool'` so the model sees them on the next turn. Cap each at 2,000 chars in history; the full result stays in the chat UI.
+- **Tool results go into `state.currentMessages`** with `role: 'tool'` so the model sees them on the next turn. Cap each at 2,000 chars in history; the full result stays in the chat UI.
 - **File upload** is real: `handleFileUpload` POSTs to `/api/file/ingest`, gets a `file_id`, and on send appends `[FILE:id|name|type|size]` markers. `/api/file/context` expands markers into extracted text (PDF, OCR, Whisper transcription, etc.) before the model sees the message. Files are stored in `/data/ai_uploads/<uuid>` and auto-purged after 1 hour.
 - **New AI routes** live in `schoology/ai/*.py` (math, geometry, knowledge, science, files, code, integrations, basics, web) and self-register via `register_routes(app)` from `schoology/ai/__init__.py`. `schoology/server.py` calls `register_ai_routes(app)` once near the bottom of its route block.
 - **Auth** for AI routes is the same `decode_auth_header()` Basic-auth pattern as the rest of the API.
 - **No rate limiting in v1**; most routes hit free public APIs with their own quotas (Wikipedia, Open-Meteo, MyMemory, arXiv). GitHub is 60/hr unauth.
+- **Multi-chat state** is server-persisted per user. See "Multi-chat AI assistant" below for storage layout, endpoints, and the heuristic remember/cross-chat context system.
+
+### Multi-chat AI assistant (`schoology/index.html` + `schoology/server.py`)
+A user can have many chats; each chat has its own history. A "global memory" of user-asked-to-remember facts is shared across all chats, and a short summary of every other chat is injected into context for cross-chat awareness.
+
+- **Storage layout** (on the `/data` volume, see `AI_CHATS_DIR` in `schoology/server.py`):
+  - `<DATA_DIR>/ai_chats/<username>/<chatId>.json` — one file per chat
+  - `<DATA_DIR>/ai_chats/<username>/_memory.json` — global memory items
+  - `<DATA_DIR>/ai_chats/<username>/_last_chat.json` — last opened chatId (restore-on-load)
+  - Writes go through `_atomic_write_json()` (`tmp` file + `os.replace`) so a partial write can't corrupt the persistent volume.
+
+- **Server endpoints** (all in `schoology/server.py`, all use `decode_auth_header()`):
+  - `GET /api/chats` — list metadata (id, title, summary, messageCount) sorted by `updatedAt` desc
+  - `POST /api/chats` — create new chat (cap 50 per user; oldest dropped)
+  - `GET /api/chats/<id>` — full chat or 404
+  - `PUT /api/chats/<id>` — update title and/or messages; re-summarizes via heuristic when `len(messages) >= 4`
+  - `DELETE /api/chats/<id>` — 204
+  - `POST /api/chats/context` body `{chatId}` — returns `{otherSummaries, globalMemory}` for context injection
+  - `GET/POST/DELETE /api/memory[/<id>]` — global memory CRUD (cap 50 items; oldest dropped)
+  - `GET/POST /api/chats/last` — persist and retrieve last-opened chat for restore-on-load
+
+- **Frontend state** (in `schoology/index.html`):
+  - `state.chats: []` — list of chat metadata
+  - `state.currentChatId: null` — open chat
+  - `state.currentMessages: []` — messages of the open chat (loaded lazily via `loadCurrentChat`)
+  - `state.globalMemory: []` — remembered facts
+  - `loadChats()` always ensures one default chat exists (creates one if list is empty) so the sidebar is never blank.
+  - `sendChatMessage()` POSTs `/api/chats` on first send to mint an id, then PUTs the updated messages on every reply. After the first assistant reply, `aiNameChat()` (model call) auto-titles the chat if the user hasn't renamed it.
+  - Saves are debounced 500ms via `scheduleSaveCurrentChat()` so rapid sends don't hammer the server.
+  - **Demo mode** (`state.demoMode === true`) bypasses all `/api/chats` and `/api/memory` calls and uses one localStorage chat under `schoology_chat_history_<username>`. The sidebar shows a "(demo mode)" notice in that case.
+
+- **Heuristic remember detection** (`detectRemember()` in `schoology/index.html`):
+  - Trigger keywords (case-insensitive, matched as substrings): `remember`, `don't forget`, `do not forget`, `note that`, `keep in mind`, `from now on`, `always remember`.
+  - If any keyword matches, the full user message is POSTed to `/api/memory` with `sourceChatId`, and the assistant reply gets a subtle "📌 Noted." inline.
+  - This is local, no LLM call — keeps latency/cost low for what runs on every send.
+
+- **Cross-chat context injection** (`buildContextMessages()` + `fetchChatContextExtras()`):
+  - On every send, the frontend fetches `POST /api/chats/context {chatId}` and prepends a second system message after the main prompt, capped at 20 memory items and 8 other-chat summaries (most recent first by `updatedAt`).
+  - The wording tells the model these summaries are "for awareness only — do NOT proactively reference unless the user asks", so the AI doesn't accidentally mention "yesterday's homework help" unprompted.
+
+- **Summarization** is intentionally a simple non-LLM heuristic (`_summarize_chat` in `server.py`): join user messages, truncate to ~400 chars. The same shape as the previous client-side `generateSummary()`. If the user later wants LLM-generated summaries, this is the place to add it.
+
+### Schoology basic-info pattern (`/api/basic-info`)
+`/api/basic-info` in `schoology/server.py` is the "first-paint identity" call. Upstream `schoology-mcp` removed the `get_profile` tool, so the route returns **HTTP 200 with `{"removed": true, "message": "..."}`** — NOT 410 Gone.
+- 410 logs as a "Failed to load resource" browser console error (no functional impact, but noisy and bad UX).
+- The frontend (`loadBasicInfo()` in `schoology/index.html`) checks `data.removed` and treats it as a soft skip: dashboard still loads using whatever `get_courses` / `get_grades` return. The identity strip is skipped; student name is unknown on first paint.
+- **Student header UI** is intentionally minimal: just "Welcome! {name}" — student ID and grade are NOT shown in the UI even when the data is present, but stay in `state.student` for the AI to use. The header element is `<div class="student-info" id="studentInfo" style="display: none;">` containing only `<span id="studentName">—</span>`; the surrounding `renderStudentHeader()` produces the "Welcome! {name}" line.
+
+### Auth-header gotcha (read this before adding any `/schoology/api/*` fetch)
+`getAuthHeader()` in `schoology/index.html` returns the **object** `{Authorization: 'Basic ...'}`, not the string value:
+```js
+return { 'Authorization': 'Basic ' + base64Encode(...) };
+```
+The correct call is:
+```js
+const auth = getAuthHeader();
+if (auth && auth.Authorization) headers['Authorization'] = auth.Authorization;
+```
+The **wrong** pattern (which has shipped before and produced silent 401s across `/api/chats`, `/api/memory`, AND pre-existing `/api/file/ingest` and the AI worker fetch):
+```js
+const auth = getAuthHeader();
+headers['Authorization'] = auth;  // coerces object to "[object Object]"
+```
+Flask's `decode_auth_header()` then sees no `Basic ` prefix and returns 401; the symptom also cascades to 500s on `/api/grades` etc. because the MCP daemon gets `None` credentials. Three call sites in `schoology/index.html` already use the correct pattern: `_apiFetch` (multi-chat), `aiFetch` (AI worker), and the file upload `fetch` — keep new code aligned with these.
 
 ### Theme system in `schoology/`
 CSS variables on `:root` / `[data-theme="light"]` / `[data-theme="dark"]`. `--surface` is used for chat message backgrounds. Toggle: `#darkModeToggle` checkbox; init: `initDarkMode()` reads localStorage or `prefers-color-scheme`.
@@ -102,15 +186,16 @@ Errors render as a red box with the exact message — no generic "something went
 | `SCHOOLOGY_STORAGE_STATE` | no | default `/data/schoology_storage.json` |
 | `SCHOOLOGY_HEADLESS` | no | default `true` |
 | `SCHOOLOGY_KEEPALIVE` | no | default `false` |
-| `DAEMON_POOL_MAX` | no | default `5`; cap on per-user daemons in worker 0 |
+| `DAEMON_POOL_MAX` | no | default `100`; cap on per-user daemons in worker 0 (set high for future scaling; current user base is ~8 people, 2 concurrent is typical) |
 | `JUDGE0_KEY` | no | enables `[RUN:lang code]` for C/C++/Rust/Go/Java |
 | `JUDGE0_URL` | no | default `https://judge0-ce.p.rapidapi.com` |
 
 ## Where to find what
 
 - **Chat app entry points**: `server/index.js` + `public/assets/js/main.js` + `server/db.js` (see README.md).
-- **Schoology dashboard UI**: `schoology/index.html` (single large file; `TOOL_REGISTRY` is at the top).
-- **Schoology Flask**: `schoology/server.py` (daemon pool, all `/api/*` routes, AI registration).
+- **Game (Zone No Light) multiplayer**: `server/index.js` `/game` namespace, ~line 1749+ (`globalRoomRegistry`, `quickplay`/`createRoom`/`joinByCode`, teleport, etc.).
+- **Schoology dashboard UI**: `schoology/index.html` (single large file; `TOOL_REGISTRY` is at the top; multi-chat sidebar + memory + cross-chat context live here).
+- **Schoology Flask**: `schoology/server.py` (daemon pool, all `/api/*` routes, AI registration, multi-chat + memory endpoints).
 - **Schoology AI routes**: `schoology/ai/__init__.py` (aggregator) + one file per tool family.
 - **gunicorn config**: `schoology/gunicorn.conf.py` (`pre_fork` sets `GUNICORN_WORKER_INDEX`).
 - **Project memory** (curated, persists across sessions): `~/.claude/projects/-Users-Benran-Documents-GitHub-chat/memory/` — `schoology-architecture.md` for the per-user daemon pool + upstream tool surface; `server-proxy-pitfalls.md` for the two non-obvious Node proxy bugs.
@@ -123,3 +208,5 @@ Errors render as a red box with the exact message — no generic "something went
 - Do not add `exec` to the Dockerfile `CMD` — `&` is the right pattern for running gunicorn and node in one container.
 - Do not assume the chat app can be suspended — `agent.md` says "this app cannot suspend - it powers other applications".
 - Do not use demo/placeholder data in production paths (e.g. schoology grades). The `generateDemoResponse` AI fallback is for the AI tab only, and even there, "DO NOT USE DEMO INFORMATION UNLESS IS IN THE DEMO MODE".
+- Do not write `headers['Authorization'] = auth` from `getAuthHeader()` — it returns an **object**, not a string. Use `auth.Authorization`. See "Auth-header gotcha" above; this bug shipped before and produced silent 401s across `/api/chats`, `/api/memory`, `/api/file/ingest`, and the AI worker fetch.
+- Do not return HTTP 410 for removed-upstream endpoints. 410 logs as a browser console error; return 200 with a `{"removed": true}` body and let the frontend soft-skip. See "Schoology basic-info pattern" above.

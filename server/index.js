@@ -1236,6 +1236,34 @@ app.get('/api/voice/participants', requireAuth, (req, res) => {
   res.json({ participants: getVoiceParticipantList() });
 });
 
+/** Returns the current user's state for a given DM conversation's voice call.
+ *  Used by the client to render the ringing modal or active-call overlay on load. */
+app.get('/api/dm-voice/state', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  const convId = req.query.conv;
+  if (!convId) return res.status(400).json({ error: 'conv required' });
+  const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(convId);
+  if (!conv || (conv.user1_id !== user.id && conv.user2_id !== user.id)) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  const otherId = conv.user1_id === user.id ? conv.user2_id : conv.user1_id;
+  const myEntry = dmVoiceParticipants.get(user.id);
+  const otherEntry = dmVoiceParticipants.get(otherId);
+  const ring = dmVoiceRinging.get(user.id);
+  const ringingFrom = ring
+    ? (() => {
+        const u = db.prepare('SELECT id, username, display_name, avatar_url FROM users WHERE id = ?').get(ring.fromUserId);
+        return u ? { userId: u.id, username: u.username, display_name: u.display_name, avatar_url: u.avatar_url, convId: ring.convId } : null;
+      })()
+    : null;
+  res.json({
+    in_call: !!(myEntry && myEntry.convId === convId),
+    peer_in_call: !!(otherEntry && otherEntry.convId === convId),
+    ringing_from: ringingFrom,
+    participants: (myEntry && myEntry.convId === convId) ? getDmVoiceParticipantsFor(convId) : [],
+  });
+});
+
 app.get('/api/rooms/:roomType/:roomId/pinned', requireAuth, (req, res) => {
   const { roomType, roomId } = req.params;
   const row = db.prepare(`
@@ -2289,6 +2317,9 @@ function blockedByDmTimeout(senderId, receiverId) {
 const PRESENCE_IDLE_MS = 5 * 60 * 1000;
 const TYPING_TTL_MS = 6 * 1000;
 const presenceState = new Map();
+// Most-recently-connected socket per user. Used for direct user-targeted emits
+// (e.g. DM voice call ringing) when we don't want to broadcast to every socket.
+const userSockets = new Map();
 // Typing: room key -> Map<userId, { expiresAt }>
 const typingByRoom = new Map();
 
@@ -2429,6 +2460,68 @@ function refreshUserSocketState(userId) {
 // Voice chat: in-memory participant tracking (userId → socketId)
 const voiceParticipants = new Map();
 
+// DM voice chat: per-conversation 1:1 calls. Map: userId -> { convId, socketId, media }.
+const dmVoiceParticipants = new Map();
+// Outgoing rings awaiting accept/decline. Map: calleeUserId -> { fromUserId, fromSocketId, convId, createdAt }.
+const dmVoiceRinging = new Map();
+
+/** True if `fromId` is allowed to call `toId` in a DM. Mirrors DM message-gating exceptions
+ *  (blacklist, dm-timeout, friendship) so the call is consistent with text/voice rules. */
+function canDmCall(fromId, toId) {
+  if (!fromId || !toId || fromId === toId) return { ok: false, error: 'Cannot call yourself' };
+  if (!areFriends(fromId, toId)) {
+    return { ok: false, error: 'You can only voice-call friends' };
+  }
+  if (isBlacklisted(fromId)) {
+    const other = db.prepare('SELECT id, is_allowed FROM users WHERE id = ?').get(toId);
+    if (!other || (other.id !== 'jimmyqrg' && !other.is_allowed)) {
+      return { ok: false, error: 'Access denied' };
+    }
+  }
+  if (blockedByDmTimeout(fromId, toId)) {
+    return { ok: false, error: 'You are timed out from private chat. You can still call jimmyqrg.' };
+  }
+  return { ok: true };
+}
+
+function getDmVoiceParticipantsFor(convId) {
+  const list = [];
+  for (const [userId, info] of dmVoiceParticipants) {
+    if (info.convId !== convId) continue;
+    const s = io.sockets.sockets.get(info.socketId);
+    if (!s) { dmVoiceParticipants.delete(userId); continue; }
+    const u = s.user || {};
+    list.push({ id: userId, username: u.username, display_name: u.display_name, avatar_url: u.avatar_url, media: info.media || { audio: false, video: false, screen: false } });
+  }
+  return list;
+}
+
+function dmVoiceLeave(socket) {
+  for (const [userId, info] of dmVoiceParticipants) {
+    if (info.socketId === socket.id) {
+      const convId = info.convId;
+      dmVoiceParticipants.delete(userId);
+      socket.leave(`dm-voice:${convId}`);
+      const otherId = (() => {
+        const conv = db.prepare('SELECT user1_id, user2_id FROM conversations WHERE id = ?').get(convId);
+        if (!conv) return null;
+        return conv.user1_id === userId ? conv.user2_id : conv.user1_id;
+      })();
+      const room = `dm-voice:${convId}`;
+      io.to(room).emit('dm-voice:participants', []);
+      io.to(room).emit('dm-voice:peer-left', { userId, convId });
+      if (otherId) io.to(`user:${otherId}`).emit('dm-voice:peer-left', { userId, convId });
+    }
+  }
+  // Also clear any rings originated by this socket.
+  for (const [callee, ring] of dmVoiceRinging) {
+    if (ring.fromSocketId === socket.id) {
+      dmVoiceRinging.delete(callee);
+      io.to(`user:${callee}`).emit('dm-voice:cancelled', { fromUserId: socket.userId, convId: ring.convId });
+    }
+  }
+}
+
 function getVoiceParticipantList() {
   const list = [];
   for (const [userId, socketId] of voiceParticipants) {
@@ -2461,6 +2554,8 @@ io.on('connection', (socket) => {
   const prev = presenceState.get(socket.userId) || { sockets: 0, state: 'offline', last_seen_at: null };
   setPresence(socket.userId, { sockets: (prev.sockets || 0) + 1, last_seen_at: Date.now() });
   recomputePresence(socket.userId, { explicitState: 'online' });
+  // Record this socket as the user's most-recent connection (used for direct user-targeted emits).
+  userSockets.set(socket.userId, socket.id);
   socket.emit('presence:snapshot', snapshotPresence());
 
   socket.on('presence:heartbeat', (payload) => {
@@ -2818,8 +2913,139 @@ io.on('connection', (socket) => {
     io.to('voice:room').emit('voice:media-state', { userId: socket.userId, audio: !!audio, video: !!video, screen: !!screen });
   });
 
+  // ── DM Voice Chat (1:1 WebRTC signaling, per-conversation room) ──
+
+  function dmConvPair(convId) {
+    const conv = db.prepare('SELECT user1_id, user2_id FROM conversations WHERE id = ?').get(convId);
+    if (!conv) return null;
+    return [conv.user1_id, conv.user2_id].sort();
+  }
+
+  socket.on('dm-voice:invite', ({ to, convId }, ack) => {
+    if (!to || !convId) return ack?.({ error: 'to and convId required' });
+    const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(convId);
+    if (!conv || (conv.user1_id !== socket.userId && conv.user2_id !== socket.userId)) {
+      return ack?.({ error: 'Forbidden' });
+    }
+    if (to !== conv.user1_id && to !== conv.user2_id) return ack?.({ error: 'Not in conversation' });
+    if (to === socket.userId) return ack?.({ error: 'Cannot call yourself' });
+    const guard = canDmCall(socket.userId, to);
+    if (!guard.ok) return ack?.({ error: guard.error });
+    if (dmVoiceParticipants.has(to)) return ack?.({ error: 'User is already in a call' });
+    if (dmVoiceParticipants.has(socket.userId)) return ack?.({ error: 'You are already in a call' });
+    if (dmVoiceRinging.has(to)) return ack?.({ error: 'A call is already ringing for that user' });
+    const calleeSockId = userSockets.get(to);
+    if (!calleeSockId) return ack?.({ error: 'User is offline' });
+    dmVoiceRinging.set(to, { fromUserId: socket.userId, fromSocketId: socket.id, convId, createdAt: Date.now() });
+    const me = socket.user || {};
+    io.to(`user:${to}`).emit('dm-voice:incoming', {
+      fromUserId: socket.userId,
+      fromUsername: me.username,
+      fromDisplayName: me.display_name,
+      fromAvatarUrl: me.avatar_url,
+      convId,
+    });
+    ack?.({ ok: true });
+  });
+
+  socket.on('dm-voice:cancel-invite', ({ to, convId }, ack) => {
+    const ring = dmVoiceRinging.get(to);
+    if (ring && ring.fromSocketId === socket.id) {
+      dmVoiceRinging.delete(to);
+      io.to(`user:${to}`).emit('dm-voice:cancelled', { fromUserId: socket.userId, convId: ring.convId });
+    }
+    ack?.({ ok: true });
+  });
+
+  socket.on('dm-voice:accept', ({ to, convId }, ack) => {
+    if (!to || !convId) return ack?.({ error: 'to and convId required' });
+    const ring = dmVoiceRinging.get(socket.userId);
+    if (!ring || ring.fromUserId !== to || ring.convId !== convId) {
+      return ack?.({ error: 'No pending call' });
+    }
+    if (dmVoiceParticipants.has(to)) return ack?.({ error: 'Caller is already in a call' });
+    if (dmVoiceParticipants.has(socket.userId)) return ack?.({ error: 'You are already in a call' });
+    const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(convId);
+    if (!conv || (conv.user1_id !== socket.userId && conv.user2_id !== socket.userId)) {
+      return ack?.({ error: 'Forbidden' });
+    }
+    if (to !== conv.user1_id && to !== conv.user2_id) return ack?.({ error: 'Not in conversation' });
+    dmVoiceRinging.delete(socket.userId);
+    // Evict older sockets for the same user (joined elsewhere).
+    for (const userId of [socket.userId, to]) {
+      const prev = dmVoiceParticipants.get(userId);
+      if (prev && prev.socketId !== socket.id) {
+        const prevSock = io.sockets.sockets.get(prev.socketId);
+        if (prevSock) prevSock.emit('dm-voice:kicked', { reason: 'joined_elsewhere', convId });
+      }
+    }
+    dmVoiceParticipants.set(socket.userId, { convId, socketId: socket.id, media: { audio: true, video: false, screen: false } });
+    // Find caller's current socket: prefer the socket that originated the ring; fall back to any active socket for `to`.
+    let callerSockId = ring.fromSocketId;
+    if (!io.sockets.sockets.get(callerSockId)) {
+      const liveId = userSockets.get(to);
+      if (liveId) callerSockId = liveId;
+    }
+    if (callerSockId) {
+      dmVoiceParticipants.set(to, { convId, socketId: callerSockId, media: { audio: true, video: false, screen: false } });
+      const callerSock = io.sockets.sockets.get(callerSockId);
+      if (callerSock) callerSock.join(`dm-voice:${convId}`);
+    }
+    socket.join(`dm-voice:${convId}`);
+    const participants = getDmVoiceParticipantsFor(convId);
+    io.to(`dm-voice:${convId}`).emit('dm-voice:state', { convId, participants });
+    io.to(`user:${to}`).emit('dm-voice:accepted', { convId, by: socket.userId });
+    ack?.({ ok: true, participants });
+  });
+
+  socket.on('dm-voice:decline', ({ to, convId }, ack) => {
+    const ring = dmVoiceRinging.get(socket.userId);
+    if (ring && ring.fromUserId === to) dmVoiceRinging.delete(socket.userId);
+    if (to) io.to(`user:${to}`).emit('dm-voice:declined', { byUserId: socket.userId, convId });
+    ack?.({ ok: true });
+  });
+
+  socket.on('dm-voice:leave', ({ convId }, ack) => {
+    dmVoiceLeave(socket);
+    ack?.({ ok: true });
+  });
+
+  function forwardDmVoiceSignal(eventName, payload, ack) {
+    const { to, convId } = payload || {};
+    if (!to || !convId) return ack?.({ error: 'to and convId required' });
+    const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(convId);
+    if (!conv || (conv.user1_id !== socket.userId && conv.user2_id !== socket.userId)) {
+      return ack?.({ error: 'Forbidden' });
+    }
+    if (to !== conv.user1_id && to !== conv.user2_id) return ack?.({ error: 'Not in conversation' });
+    const target = dmVoiceParticipants.get(to);
+    if (!target || target.convId !== convId) return ack?.({ error: 'Peer not in call' });
+    const targetSock = io.sockets.sockets.get(target.socketId);
+    if (!targetSock) return ack?.({ error: 'Peer offline' });
+    targetSock.emit(eventName, { from: socket.userId, convId, ...payload });
+    ack?.({ ok: true });
+  }
+
+  socket.on('dm-voice:offer', (payload, ack) => forwardDmVoiceSignal('dm-voice:offer', payload, ack));
+  socket.on('dm-voice:answer', (payload, ack) => forwardDmVoiceSignal('dm-voice:answer', payload, ack));
+  socket.on('dm-voice:ice-candidate', (payload, ack) => forwardDmVoiceSignal('dm-voice:ice-candidate', payload, ack));
+
+  socket.on('dm-voice:media-state', ({ convId, audio, video, screen }) => {
+    if (!convId) return;
+    const entry = dmVoiceParticipants.get(socket.userId);
+    if (!entry || entry.convId !== convId) return;
+    entry.media = { audio: !!audio, video: !!video, screen: !!screen };
+    socket._dmVoiceMedia = entry.media;
+    const conv = db.prepare('SELECT user1_id, user2_id FROM conversations WHERE id = ?').get(convId);
+    if (!conv) return;
+    const otherId = conv.user1_id === socket.userId ? conv.user2_id : conv.user1_id;
+    io.to(`user:${otherId}`).emit('dm-voice:media-state', { userId: socket.userId, audio: !!audio, video: !!video, screen: !!screen, convId });
+  });
+
   socket.on('disconnect', () => {
     voiceLeave(socket);
+    dmVoiceLeave(socket);
+    if (userSockets.get(socket.userId) === socket.id) userSockets.delete(socket.userId);
     const entry = presenceState.get(socket.userId) || { sockets: 0 };
     const remaining = Math.max(0, (entry.sockets || 0) - 1);
     setPresence(socket.userId, { sockets: remaining, last_seen_at: Date.now() });
