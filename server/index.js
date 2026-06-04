@@ -817,7 +817,16 @@ const httpServer = createServer(app);
 
 app.set('trust proxy', 1);
 
-app.use(express.json({ limit: '2mb' }));
+// JSON body limit. The default 2mb is too tight for the cloud-saves
+// endpoint: indiamonda.github.io's games library sends saves up to
+// ~12MB, and we'd rather see the server's own 413 (with the real per-
+// value cap message) than the body-parser's generic "entity too large".
+// 50mb is a generous upper bound -- the real per-value cap is still
+// MAX_VALUE_BYTES in routes/saves.js (512KB today).
+// Schoology routes go through /schoology/api/* and never send large
+// bodies (file uploads are multipart and bypass this middleware), so
+// the bump is safe for the rest of the app.
+app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
 
 /** CORS for cross-origin clients (game pages on indiamonda.github.io, etc.). Credentials are
