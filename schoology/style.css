@@ -1306,6 +1306,112 @@
     .chat-message .markdown-content pre { background: #1e1e2e; color: #cdd6f4; padding: 18px; border-radius: 12px; overflow-x: auto; margin: 12px 0; }
     .chat-message .markdown-content pre code { background: none; padding: 0; color: inherit; }
 
+    /* ── Message action toolbar (hover-revealed copy/edit) ── */
+    .chat-message { position: relative; }
+    .message-actions {
+      position: absolute;
+      top: -10px;
+      right: 10px;
+      display: flex;
+      gap: 4px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+      opacity: 0;
+      transform: translateY(4px);
+      pointer-events: none;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      z-index: 5;
+    }
+    .chat-message:hover .message-actions,
+    .message-actions:focus-within {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    .msg-action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      border-radius: 5px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .msg-action-btn:hover {
+      background: var(--primary-dim);
+      color: var(--primary);
+    }
+    .msg-action-btn.copied {
+      background: var(--primary);
+      color: white;
+    }
+
+    /* ── Inline edit form for user messages ── */
+    .chat-message.editing { padding: 0; background: transparent; border: none; align-self: stretch; max-width: 100%; }
+    .chat-message.editing .message-content { display: none !important; }
+    .chat-message.editing .message-actions { display: none !important; }
+    .edit-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+    .edit-textarea {
+      width: 100%;
+      min-height: 44px;
+      max-height: 360px;
+      padding: 12px 14px;
+      background: var(--surface);
+      border: 1.5px solid var(--primary);
+      border-radius: 14px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      resize: none;
+      box-shadow: 0 0 0 3px var(--primary-glow);
+      outline: none;
+    }
+    .edit-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .edit-cancel-btn, .edit-save-btn {
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      transition: all 0.15s ease;
+    }
+    .edit-cancel-btn {
+      background: var(--surface);
+      color: var(--text-secondary);
+    }
+    .edit-cancel-btn:hover {
+      background: var(--surface-elevated);
+      color: var(--text);
+    }
+    .edit-save-btn {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+    }
+    .edit-save-btn:hover {
+      background: var(--primary-bright, var(--primary));
+      filter: brightness(1.1);
+    }
+
     /* ── Code block ── */
     .code-block {
       background: #1e1e2e;
