@@ -3,14 +3,20 @@
 Schoology Frontend Server
 Bridges the web dashboard to the Schoology tool functions.
 
-Gunicorn worker 0 hosts a *pool* of long-lived run_tool.py daemons -- one
-per authenticated student -- so each user gets a warm browser (the schoology
--mcp server is single-tenant and reads its USERNAME/PASSWORD from the
-process env at spawn time). The pool is bounded by DAEMON_POOL_MAX (default
-5) and evicts the least-recently-used daemon when full. Worker 1 falls back
-to per-request subprocesses with the same env-var credential pattern, so we
-don't double Chromium memory on 512MB Fly machines. See gunicorn.conf.py
-and the `_should_use_daemon()` helper below.
+Gunicorn runs a single worker hosting a *pool* of long-lived run_tool.py
+daemons -- one per authenticated student -- so each user gets a warm
+browser (the schoology-mcp server is single-tenant and reads its
+USERNAME/PASSWORD from the process env at spawn time). The pool is bounded
+by DAEMON_POOL_MAX (default 100) and evicts the least-recently-used daemon
+when full.
+
+Why one worker: a per-user spawn lock coalesces simultaneous calls for the
+same student to a single daemon spawn, but that lock is per-process. With
+two gunicorn workers, requests round-robin across them and each worker
+spawns its own daemon for the same user -- 2 Chromium instances, which
+OOMs the 512MB Fly container. Running one worker keeps all schoology
+traffic in one process so the spawn lock works end-to-end. A concurrent
+user still gets their own daemon (different key in the pool).
 """
 
 import base64
@@ -130,13 +136,13 @@ _fetch_queue = FetchQueue()
 
 
 # ---------------------------------------------------------------------------
-# Long-lived MCP daemon (worker 0 only; worker 1 uses the subprocess path).
+# Long-lived MCP daemon (the only worker, runs the pool).
 # ---------------------------------------------------------------------------
-# Gunicorn config (gunicorn.conf.py) sets GUNICORN_WORKER_INDEX=0|1 in the
-# master's env before each fork, and the child inherits it. Worker 0 hosts
-# the daemon (warm browser across calls, ~3-5s per call after the first).
-# Worker 1 falls back to the per-request subprocess path so we don't double
-# the Chromium memory on 512MB Fly machines.
+# Gunicorn is launched with --workers 1. The single worker hosts the
+# daemon pool -- one daemon per authenticated user, warm browser across
+# calls (~3-5s per call after the first). The per-user spawn lock in
+# _get_daemon() coalesces simultaneous calls for the same student so we
+# never have more than one Chromium instance per user in flight.
 
 
 def _should_use_daemon() -> bool:
@@ -377,16 +383,13 @@ def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
 
 
 def call_mcp_tool(tool_name, username=None, password=None, timeout_seconds=180):
-    """Dispatcher: per-user daemon pool on every worker.
+    """Dispatcher: per-user daemon pool (single gunicorn worker).
 
-    Both gunicorn workers run the daemon pool now. Previously worker 1
-    fell back to per-request subprocesses, which spawns a fresh Chromium
-    per call -- when the dashboard fired 4 background sections in
-    parallel, worker 0 held 1 daemon and worker 1 held 3 subprocesses =
-    4 Chromium instances alive at once, OOMing the 512MB Fly container.
-    Routing everything through the daemon pool (with a per-user spawn
-    lock to coalesce simultaneous calls) caps Chromium at 2 per user
-    (1 per worker).
+    Gunicorn runs --workers 1, so all schoology traffic is handled in one
+    process. Combined with the per-user spawn lock in _get_daemon(), this
+    caps Chromium at 1 instance per student -- the dashboard's parallel
+    background loads coalesce to a single daemon spawn, instead of one
+    per request, which previously OOMed the 512MB Fly container.
     """
     return _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds)
 

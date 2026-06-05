@@ -1267,6 +1267,7 @@
       display: flex;
       flex-direction: column;
       align-items: flex-end;
+      align-self: flex-end;
       max-width: 82%;
       position: relative;
       opacity: 0;
@@ -1276,8 +1277,14 @@
     @keyframes messageAppear {
       to { opacity: 1; transform: translateY(0); }
     }
-    .chat-message.assistant { align-items: flex-start; }
-    .chat-message.error { align-items: flex-start; }
+    .chat-message.assistant {
+      align-items: flex-start;
+      align-self: flex-start;
+    }
+    .chat-message.error {
+      align-items: flex-start;
+      align-self: flex-start;
+    }
 
     /* The colored rounded box that holds the message text. The chat-message
        itself is just a flex column (bubble + actions below). */
@@ -1533,6 +1540,50 @@
       font-size: 0.85rem;
       line-height: 1.5;
     }
+
+    /* ── HTML preview frame ── */
+    /* A labeled box around rendered [HTML:...] tool output. The header
+       signals "this is a preview, not chat text" and the content area
+       stays white-on-black regardless of theme so HTML the user wrote
+       for one theme still renders predictably. */
+    .html-preview-frame {
+      margin: 12px 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+    .html-preview-frame-header {
+      padding: 8px 14px;
+      background: var(--surface-elevated);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Oxygen Mono', monospace;
+    }
+    .html-preview-frame-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 7px;
+      background: var(--primary-dim, rgba(99, 102, 241, 0.15));
+      border-radius: 4px;
+      color: var(--primary, #6366f1);
+      font-weight: 600;
+      font-size: 0.75rem;
+    }
+    .html-preview-frame-content {
+      padding: 16px;
+      background: #ffffff;
+      color: #111827;
+      min-height: 40px;
+      overflow: auto;
+    }
+    .html-preview-frame-content * { max-width: 100%; }
 
     .chat-message .markdown-content blockquote { border-left: 3px solid var(--primary); padding-left: 16px; margin: 12px 0; color: var(--text-secondary); font-style: italic; }
     .chat-message .markdown-content table { border-collapse: collapse; margin: 12px 0; width: 100%; }

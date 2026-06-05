@@ -2604,7 +2604,17 @@
         prompt: 'Render HTML in a sandboxed iframe with [HTML:code]. The result is shown visually in the chat.',
         userBlurb: 'render HTML in the browser',
         executor: async (_match, code) => {
-          const display = `**HTML preview**\n\n<div class="html-preview-frame">${code}</div>`;
+          // Frame the rendered HTML in a labeled box so it's clear this
+          // is a preview, not regular chat text. The white content
+          // background keeps the preview readable in both light and
+          // dark chat themes.
+          const display = `<div class="html-preview-frame">
+  <div class="html-preview-frame-header">
+    <span class="html-preview-frame-icon">&lt;/&gt;</span>
+    <span>HTML Preview</span>
+  </div>
+  <div class="html-preview-frame-content">${code}</div>
+</div>`;
           return { display, history: `Rendered HTML: ${code.slice(0, 200)}${code.length > 200 ? '...' : ''}` };
         },
       },
@@ -2974,8 +2984,13 @@
           if (!response.ok) throw new Error(await response.text());
           const data = await response.json();
           const reply = data.choices?.[0]?.message?.content || 'No response received.';
-          addChatMessage('assistant', reply, { msgIdx: state.currentMessages.length });
-          state.currentMessages.push({ role: 'assistant', content: reply });
+          // Strip tool brackets from the visible reply so [HTML:...],
+          // [CALC:...], etc. don't render as literal text. The tool
+          // executors still get the original (with brackets) to find
+          // their matches and emit visual output as separate messages.
+          const visibleReply = stripToolBrackets(reply);
+          addChatMessage('assistant', visibleReply, { msgIdx: state.currentMessages.length });
+          state.currentMessages.push({ role: 'assistant', content: visibleReply });
           scheduleSaveCurrentChat();
           handleAICommands(reply);
           // If this was the user's first message in a brand-new chat and
@@ -3065,6 +3080,19 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       out.push(...state.currentMessages.slice(-10));
       out.push({ role: 'user', content: currentMessage });
       return out;
+    }
+
+    // Remove every [TOOL:args] bracket from a chunk of assistant text
+    // so it doesn't render as literal text in the chat. The bracket
+    // commands themselves are processed by handleAICommands and turned
+    // into separate visual messages (HTML preview box, JS output, etc);
+    // showing the raw brackets alongside is noise.
+    function stripToolBrackets(text) {
+      if (!text) return text;
+      const names = Object.keys(TOOL_REGISTRY);
+      if (!names.length) return text;
+      const pattern = new RegExp(`\\[(${names.join('|')}):[^\\]]*\\]`, 'g');
+      return text.replace(pattern, '').replace(/\n{3,}/g, '\n\n').trim();
     }
 
     async function handleAICommands(text) {

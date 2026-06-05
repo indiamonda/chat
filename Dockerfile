@@ -46,4 +46,4 @@ ENV SCHOOLOGY_STORAGE_STATE=/data/schoology_storage.json
 # AI tool env (optional): JUDGE0_KEY enables [RUN:lang code] for C/C++/Rust/Go/Java/etc.
 # ENV JUDGE0_KEY=
 # ENV JUDGE0_URL=https://judge0-ce.p.rapidapi.com
-CMD ["sh", "-c", "cd /app/schoology; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 2 --threads 8 -c /app/schoology/gunicorn.conf.py server:app & node /app/server/index.js"]
+CMD ["sh", "-c", "cd /app/schoology; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 1 --threads 8 -c /app/schoology/gunicorn.conf.py server:app & node /app/server/index.js"]
