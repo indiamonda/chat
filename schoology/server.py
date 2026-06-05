@@ -272,26 +272,43 @@ _daemons_lock = threading.Lock()
 _daemon_total_calls = 0
 _daemon_total_respawns = 0
 
+# Per-user spawn lock: when N requests for the same user arrive
+# simultaneously (e.g. the dashboard's 4 background sections firing at
+# once on load), they must coalesce to ONE daemon spawn. Without this,
+# each request calls DaemonClient() independently and we'd briefly have
+# N Chromium instances alive during the spawn window, which OOMs the
+# 512MB Fly container. The first caller holds the spawn lock, the rest
+# wait, then find the daemon in the pool and reuse it.
+_spawn_locks: dict[str, threading.Lock] = {}
+_spawn_locks_guard = threading.Lock()
+
 
 def _get_daemon(username: str, password: str) -> "DaemonClient":
-    """Return a daemon for ``username``, spawning one (with eviction) on miss."""
+    """Return a daemon for ``username``, spawning one (with eviction) on miss.
+
+    Concurrent calls for the same user serialize on a per-user spawn lock
+    so we never have more than one in-flight spawn per (worker, user).
+    """
     global _daemon_total_calls
-    with _daemons_lock:
-        d = _daemons.get(username)
-        if d is not None and d.proc.poll() is None:
+    with _spawn_locks_guard:
+        spawn_lock = _spawn_locks.setdefault(username, threading.Lock())
+    with spawn_lock:
+        with _daemons_lock:
+            d = _daemons.get(username)
+            if d is not None and d.proc.poll() is None:
+                return d
+            # Spawn fresh; evict LRU if at cap.
+            if len(_daemons) >= _DAEMON_POOL_MAX:
+                lru_user, lru_daemon = next(iter(_daemons.items()))
+                try:
+                    lru_daemon.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                _daemons.pop(lru_user, None)
+                print(f"[MCP-DAEMON] evicted LRU daemon for user={lru_user} (pool cap {_DAEMON_POOL_MAX})", file=sys.stderr)
+            d = DaemonClient(username, password)
+            _daemons[username] = d
             return d
-        # Spawn fresh; evict LRU if at cap.
-        if len(_daemons) >= _DAEMON_POOL_MAX:
-            lru_user, lru_daemon = next(iter(_daemons.items()))
-            try:
-                lru_daemon.close()
-            except Exception:  # noqa: BLE001
-                pass
-            _daemons.pop(lru_user, None)
-            print(f"[MCP-DAEMON] evicted LRU daemon for user={lru_user} (pool cap {_DAEMON_POOL_MAX})", file=sys.stderr)
-        d = DaemonClient(username, password)
-        _daemons[username] = d
-        return d
 
 
 def _kill_daemon(username: str | None = None) -> None:
@@ -360,10 +377,18 @@ def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
 
 
 def call_mcp_tool(tool_name, username=None, password=None, timeout_seconds=180):
-    """Dispatcher: daemon (worker 0) or per-request subprocess (worker 1)."""
-    if _should_use_daemon():
-        return _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds)
-    return call_mcp_tool_subprocess(tool_name, username=username, password=password, timeout_seconds=timeout_seconds)
+    """Dispatcher: per-user daemon pool on every worker.
+
+    Both gunicorn workers run the daemon pool now. Previously worker 1
+    fell back to per-request subprocesses, which spawns a fresh Chromium
+    per call -- when the dashboard fired 4 background sections in
+    parallel, worker 0 held 1 daemon and worker 1 held 3 subprocesses =
+    4 Chromium instances alive at once, OOMing the 512MB Fly container.
+    Routing everything through the daemon pool (with a per-user spawn
+    lock to coalesce simultaneous calls) caps Chromium at 2 per user
+    (1 per worker).
+    """
+    return _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds)
 
 
 def call_mcp_tool_subprocess(tool_name, username=None, password=None, timeout_seconds=180):
