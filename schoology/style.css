@@ -1264,11 +1264,11 @@
     }
 
     .chat-message {
-      padding: 16px 20px;
-      border-radius: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
       max-width: 82%;
-      line-height: 1.7;
-      font-size: 0.95rem;
+      position: relative;
       opacity: 0;
       transform: translateY(20px);
       animation: messageAppear 0.5s ease-out forwards;
@@ -1276,20 +1276,30 @@
     @keyframes messageAppear {
       to { opacity: 1; transform: translateY(0); }
     }
-    .chat-message.user {
+    .chat-message.assistant { align-items: flex-start; }
+    .chat-message.error { align-items: flex-start; }
+
+    /* The colored rounded box that holds the message text. The chat-message
+       itself is just a flex column (bubble + actions below). */
+    .message-bubble {
+      padding: 16px 20px;
+      border-radius: 20px;
+      line-height: 1.7;
+      font-size: 0.95rem;
+      max-width: 100%;
+    }
+    .chat-message.user .message-bubble {
       background: var(--ai-gradient);
       color: white;
-      align-self: flex-end;
       border-bottom-right-radius: 6px;
     }
-    .chat-message.assistant {
+    .chat-message.assistant .message-bubble {
       background: var(--surface-elevated);
       color: var(--text);
-      align-self: flex-start;
       border: 1px solid var(--border);
       border-bottom-left-radius: 6px;
     }
-    .chat-message.error {
+    .chat-message.error .message-bubble {
       background: rgba(239, 68, 68, 0.1);
       border: 1px solid var(--error);
       color: var(--error);
@@ -1306,56 +1316,61 @@
     .chat-message .markdown-content pre { background: #1e1e2e; color: #cdd6f4; padding: 18px; border-radius: 12px; overflow-x: auto; margin: 12px 0; }
     .chat-message .markdown-content pre code { background: none; padding: 0; color: inherit; }
 
-    /* ── Message action toolbar (hover-revealed copy/edit) ── */
-    .chat-message { position: relative; }
+    /* ── Message action toolbar (below bubble, no background, color
+       matches the message it belongs to). ── */
     .message-actions {
-      position: absolute;
-      top: -10px;
-      right: 10px;
       display: flex;
-      gap: 4px;
-      background: var(--surface-elevated);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 3px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+      gap: 2px;
+      margin-top: 4px;
+      padding: 0 4px;
       opacity: 0;
-      transform: translateY(4px);
-      pointer-events: none;
-      transition: opacity 0.15s ease, transform 0.15s ease;
-      z-index: 5;
+      transition: opacity 0.15s ease;
     }
     .chat-message:hover .message-actions,
     .message-actions:focus-within {
       opacity: 1;
-      transform: translateY(0);
-      pointer-events: auto;
     }
     .msg-action-btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 26px;
-      height: 26px;
+      width: 28px;
+      height: 28px;
       padding: 0;
       background: transparent;
       border: none;
       border-radius: 5px;
-      color: var(--text-secondary);
       cursor: pointer;
-      transition: background 0.15s ease, color 0.15s ease;
+      transition: opacity 0.15s ease, color 0.15s ease;
     }
-    .msg-action-btn:hover {
-      background: var(--primary-dim);
-      color: var(--primary);
-    }
-    .msg-action-btn.copied {
-      background: var(--primary);
+    /* User bubble: white text on gradient. Buttons mirror that. */
+    .chat-message.user .msg-action-btn {
       color: white;
+      opacity: 0.65;
+    }
+    .chat-message.user .msg-action-btn:hover { opacity: 1; }
+    /* Assistant bubble: text on surface-elevated. Buttons use text-secondary. */
+    .chat-message.assistant .msg-action-btn {
+      color: var(--text-secondary);
+      opacity: 0.7;
+    }
+    .chat-message.assistant .msg-action-btn:hover {
+      color: var(--primary);
+      opacity: 1;
+    }
+    .chat-message.error .msg-action-btn { color: var(--error); opacity: 0.7; }
+    .msg-action-btn.copied {
+      color: var(--primary) !important;
+      opacity: 1 !important;
     }
 
     /* ── Inline edit form for user messages ── */
-    .chat-message.editing { padding: 0; background: transparent; border: none; align-self: stretch; max-width: 100%; }
+    .chat-message.editing {
+      align-self: stretch;
+      align-items: stretch;
+      max-width: 100%;
+    }
+    .chat-message.editing .message-bubble,
     .chat-message.editing .message-content { display: none !important; }
     .chat-message.editing .message-actions { display: none !important; }
     .edit-form {
@@ -1410,6 +1425,52 @@
     .edit-save-btn:hover {
       background: var(--primary-bright, var(--primary));
       filter: brightness(1.1);
+    }
+
+    /* ── Custom right-click context menu ── */
+    .context-menu {
+      position: fixed;
+      z-index: 10000;
+      min-width: 180px;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      font-size: 0.9rem;
+      animation: contextMenuAppear 0.1s ease-out;
+    }
+    @keyframes contextMenuAppear {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .context-menu-item {
+      background: transparent;
+      border: none;
+      text-align: left;
+      padding: 8px 12px;
+      border-radius: 6px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-family: inherit;
+      transition: background 0.1s ease, color 0.1s ease;
+    }
+    .context-menu-item:hover, .context-menu-item:focus {
+      background: var(--primary-dim);
+      color: var(--primary);
+      outline: none;
+    }
+    .context-menu-item.context-menu-more {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+    .context-menu-separator {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
     }
 
     /* ── Code block ── */

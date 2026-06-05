@@ -1145,8 +1145,10 @@
       if (!state.currentMessages || state.currentMessages.length === 0) {
         container.innerHTML = `
           <div class="chat-message assistant" id="welcomeBubble">
-            <div class="markdown-content">
-              <p>Hi! 👋 What can I help you with today?</p>
+            <div class="message-bubble">
+              <div class="markdown-content">
+                <p>Hi! 👋 What can I help you with today?</p>
+              </div>
             </div>
           </div>
         `;
@@ -1814,6 +1816,206 @@
     document.querySelectorAll('.nav-tab').forEach(tab => {
       tab.addEventListener('click', () => switchToTab(tab.dataset.tab));
     });
+
+    // ── Custom right-click context menu ───────────────────────────────
+    // Intercepts right-clicks app-wide, walks up the DOM to figure out
+    // what was clicked, and shows element-specific actions. Always
+    // appends a "More Options" item that re-fires a contextmenu event on
+    // the matched element so the browser's native menu appears for
+    // anything our custom menu doesn't cover (spell-check on inputs,
+    // image "save as", etc).
+    let _contextMenuEl = null;
+
+    function _hideContextMenu() {
+      if (_contextMenuEl) {
+        _contextMenuEl.remove();
+        _contextMenuEl = null;
+      }
+    }
+
+    function _showContextMenu(x, y, items, moreTarget, originalEvent) {
+      _hideContextMenu();
+      const menu = document.createElement('div');
+      menu.className = 'context-menu';
+      menu.setAttribute('role', 'menu');
+
+      for (const item of items) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'context-menu-item';
+        btn.textContent = item.label;
+        btn.setAttribute('role', 'menuitem');
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          _hideContextMenu();
+          try { item.action(); } catch (err) { showNotification('Action failed: ' + err.message, 'error'); }
+        };
+        menu.appendChild(btn);
+      }
+
+      if (items.length > 0) {
+        const sep = document.createElement('div');
+        sep.className = 'context-menu-separator';
+        menu.appendChild(sep);
+      }
+
+      // "More Options" -- re-fires contextmenu on the matched element so
+      // the browser's native menu shows up. Chrome/Firefox/Safari honor
+      // the click gesture that opened our menu, so the native menu will
+      // appear. If for any reason it doesn't, the user can fall back to
+      // the keyboard menu key.
+      const moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.className = 'context-menu-item context-menu-more';
+      moreBtn.textContent = 'More Options';
+      moreBtn.setAttribute('role', 'menuitem');
+      moreBtn.onclick = (e) => {
+        e.stopPropagation();
+        const target = moreTarget;
+        const ox = originalEvent ? originalEvent.clientX : x;
+        const oy = originalEvent ? originalEvent.clientY : y;
+        _hideContextMenu();
+        if (target && target.dispatchEvent) {
+          const evt = new MouseEvent('contextmenu', {
+            bubbles: true, cancelable: true, view: window,
+            button: 2, buttons: 2,
+            clientX: ox, clientY: oy, screenX: ox, screenY: oy,
+          });
+          target.dispatchEvent(evt);
+        }
+      };
+      menu.appendChild(moreBtn);
+
+      document.body.appendChild(menu);
+      _contextMenuEl = menu;
+
+      // Position with viewport clamping so the menu never spills off-screen.
+      const rect = menu.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      let left = x;
+      let top = y;
+      if (left + rect.width > vw - 4) left = Math.max(4, vw - rect.width - 4);
+      if (top + rect.height > vh - 4) top = Math.max(4, vh - rect.height - 4);
+      menu.style.left = left + 'px';
+      menu.style.top = top + 'px';
+
+      // Focus the first item so keyboard users can Tab/Enter through.
+      const firstBtn = menu.querySelector('.context-menu-item');
+      if (firstBtn) firstBtn.focus();
+    }
+
+    function _detectContextMenuTarget(target) {
+      let el = target;
+      while (el && el !== document.body) {
+        if (!el.classList) { el = el.parentElement; continue; }
+
+        // User message: Copy + Edit
+        if (el.classList.contains('chat-message') && el.classList.contains('user')) {
+          const msgEl = el;
+          return {
+            target: msgEl,
+            items: [
+              { label: 'Copy', action: () => { const t = _getMessageText(msgEl); if (t) _copyTextToClipboard(t); } },
+              { label: 'Edit', action: () => { const btn = msgEl.querySelector('.msg-action-edit'); if (btn) editUserMessage(btn); } },
+            ],
+          };
+        }
+
+        // Assistant message: Copy only (editing an AI reply doesn't make sense
+        // because the AI response is regenerated from the user message above).
+        if (el.classList.contains('chat-message') && el.classList.contains('assistant')) {
+          const msgEl = el;
+          return {
+            target: msgEl,
+            items: [
+              { label: 'Copy', action: () => { const t = _getMessageText(msgEl); if (t) _copyTextToClipboard(t); } },
+            ],
+          };
+        }
+
+        // Chat list item in the sidebar: Switch / Rename / Delete
+        if (el.classList.contains('chat-list-item')) {
+          const item = el;
+          const chatId = item.dataset.chatId;
+          const chat = state.chats.find(c => c.id === chatId);
+          const title = (chat && chat.title) ? chat.title : 'this chat';
+          return {
+            target: item,
+            items: [
+              { label: 'Switch to Chat', action: () => { if (chatId) loadCurrentChat(chatId); } },
+              { label: 'Rename', action: () => {
+                if (!chatId) return;
+                const newTitle = prompt('Rename chat:', title);
+                if (newTitle === null) return;
+                const trimmed = newTitle.trim();
+                if (!trimmed) return;
+                if (trimmed === title) return;
+                renameChat(chatId, trimmed);
+              }},
+              { label: 'Delete', action: () => {
+                if (!chatId) return;
+                if (confirm(`Delete "${title}"? This cannot be undone.`)) {
+                  deleteChat(chatId);
+                }
+              }},
+            ],
+          };
+        }
+
+        // "+" New Chat button: just trigger createNewChat
+        if (el.classList.contains('chat-sidebar-new-btn')) {
+          return {
+            target: el,
+            items: [
+              { label: 'New Chat', action: () => createNewChat() },
+            ],
+          };
+        }
+
+        // Nav tab: switch to it (label = the tab's own visible text)
+        if (el.classList.contains('nav-tab')) {
+          const tabName = el.dataset.tab;
+          const tabLabel = ((el.textContent || '') + '').trim() || (tabName || 'Tab');
+          return {
+            target: el,
+            items: [
+              { label: tabLabel, action: () => { if (tabName) switchToTab(tabName); } },
+            ],
+          };
+        }
+
+        el = el.parentElement;
+      }
+      // No match -- just show "More Options" via the original target so the
+      // user can still reach the native menu.
+      return { target: target, items: [] };
+    }
+
+    // Global right-click handler. Skips the landing page (no useful
+    // context) and lets the native menu show for input/textarea/contenteditable
+    // where the browser's spell-check and selection options are the right fit.
+    document.addEventListener('contextmenu', (e) => {
+      const appContainer = document.getElementById('appContainer');
+      if (!appContainer || !appContainer.classList.contains('visible')) return;
+      // Defer to the native menu for text-editing surfaces.
+      if (e.target && e.target.closest && e.target.closest('input, textarea, [contenteditable=""], [contenteditable="true"]')) {
+        return;
+      }
+      e.preventDefault();
+      const detection = _detectContextMenuTarget(e.target);
+      _showContextMenu(e.clientX, e.clientY, detection.items, detection.target, e);
+    }, true);
+
+    // Dismiss handlers: left-click outside, Escape, scroll, resize.
+    document.addEventListener('click', (e) => {
+      if (_contextMenuEl && !_contextMenuEl.contains(e.target)) _hideContextMenu();
+    }, true);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && _contextMenuEl) _hideContextMenu();
+    });
+    window.addEventListener('scroll', _hideContextMenu, true);
+    window.addEventListener('resize', _hideContextMenu);
 
     // Render functions
     function renderGradesOverview() {
@@ -2917,21 +3119,27 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       div.className = `chat-message ${type}`;
       if (opts.msgIdx !== undefined) div.dataset.msgIdx = String(opts.msgIdx);
 
+      // The colored rounded box that holds the message text. The
+      // chat-message itself is a flex column (bubble + actions below)
+      // so the action toolbar can sit OUTSIDE the bubble's visual area.
+      const bubble = document.createElement('div');
+      bubble.className = 'message-bubble';
       if (type === 'assistant') {
-        // For assistant messages, use typewriter animation
-        div.innerHTML = `<div class="markdown-content"></div>`;
+        bubble.innerHTML = `<div class="markdown-content"></div>`;
       } else if (type === 'user') {
         const contentEl = document.createElement('div');
         contentEl.className = 'message-content';
         contentEl.textContent = content;
-        div.appendChild(contentEl);
+        bubble.appendChild(contentEl);
       } else {
-        div.textContent = content;
+        bubble.textContent = content;
       }
+      div.appendChild(bubble);
 
-      // Action buttons (hover-revealed). Copy for every message; edit only
-      // for user messages (the AI's reply gets regenerated when its parent
-      // user message is edited, so editing assistant text doesn't make sense).
+      // Action buttons below the bubble. Copy for every message; edit
+      // only for user messages (the AI's reply gets regenerated when
+      // its parent user message is edited, so editing assistant text
+      // doesn't make sense).
       const actions = document.createElement('div');
       actions.className = 'message-actions';
       const copyBtn = document.createElement('button');
@@ -2956,7 +3164,7 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
 
       container.appendChild(div);
       if (type === 'assistant') {
-        typewriterEffect(div.querySelector('.markdown-content'), content);
+        typewriterEffect(bubble.querySelector('.markdown-content'), content);
       }
       container.scrollTop = container.scrollHeight;
       // Note: history pushing is handled by the caller (sendChatMessage
@@ -2970,18 +3178,30 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
     function copyMessage(btn) {
       const msg = btn.closest('.chat-message');
       if (!msg) return;
-      const clone = msg.cloneNode(true);
-      clone.querySelectorAll('.message-actions, .edit-textarea, .edit-actions').forEach(el => el.remove());
-      const text = (clone.textContent || '').trim();
+      const text = _getMessageText(msg);
       if (!text) return;
+      _copyTextToClipboard(text).then((ok) => {
+        if (ok) _flashCopyButton(btn);
+      });
+    }
+
+    // Extracted text of a message bubble, with the action toolbar / edit
+    // form stripped out so we don't copy the UI chrome along with the words.
+    function _getMessageText(msgEl) {
+      const clone = msgEl.cloneNode(true);
+      clone.querySelectorAll('.message-actions, .edit-textarea, .edit-actions').forEach(el => el.remove());
+      return (clone.textContent || '').trim();
+    }
+
+    function _copyTextToClipboard(text) {
+      if (!text) return Promise.resolve(false);
       if (!navigator.clipboard) {
         showNotification('Clipboard not available', 'error');
-        return;
+        return Promise.resolve(false);
       }
-      navigator.clipboard.writeText(text).then(() => {
-        _flashCopyButton(btn);
-      }).catch(() => {
+      return navigator.clipboard.writeText(text).then(() => true).catch(() => {
         showNotification('Copy failed', 'error');
+        return false;
       });
     }
 
