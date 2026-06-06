@@ -45,6 +45,28 @@ try { db.exec('ALTER TABLE users ADD COLUMN description TEXT'); } catch (_) {}
 try { db.exec("ALTER TABLE users ADD COLUMN chatbox_style TEXT DEFAULT 'default'"); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
 
+// Seed: private user account for jimmyqrg. Runs on every server boot,
+// idempotent. Placed here (not in scripts/init-db.js) so the seed
+// actually runs in the Fly container — the CMD never invokes the
+// init-db script; it only starts gunicorn + node. Without this guard
+// here, the private user would only exist on a fresh dev box.
+try {
+  const SEZI_HASH = '$2a$10$v/lcOM/h5euuHEqKNfVJRuT3iYY/1Jxb7.SLP3OFmrcQE0JcVnJca';
+  const existing = db.prepare('SELECT id FROM users WHERE id = ?').get('sezitoushangyibadao');
+  if (!existing) {
+    db.prepare(
+      `INSERT INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, is_private, created_at)
+       VALUES (?, ?, ?, NULL, ?, ?, 0, 1, ?)`
+    ).run('sezitoushangyibadao', 'sezitoushangyibadao', '色字头上一把刀', 'a@a.a', SEZI_HASH, Date.now());
+  } else {
+    // Backfill fields in case the row predates a code change (e.g. email
+    // was NULL in an earlier version).
+    db.prepare(`UPDATE users SET email = 'a@a.a', is_private = 1 WHERE id = 'sezitoushangyibadao' AND (email IS NULL OR email != 'a@a.a' OR is_private = 0)`).run();
+  }
+} catch (err) {
+  console.error('[db.boot] Failed to ensure sezitoushangyibadao private user:', err?.message || err);
+}
+
 // Friendships and friend-request rate limits
 try {
   db.exec(`
