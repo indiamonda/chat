@@ -207,14 +207,26 @@ class DaemonClient:
     def call(self, request, timeout_seconds):
         """Send one request, read one response, return the parsed JSON dict."""
         with self._lock:
+            # Pre-flight: the proc may be alive (reaped-pid check passes)
+            # but its stdin was already closed by Python because the
+            # child died and we never noticed. Detect both the dead
+            # process AND the closed-stdin file-object case.
             if self.proc.poll() is not None:
                 raise EOFError(f"daemon exited (rc={self.proc.returncode})")
+            if getattr(self.proc.stdin, "closed", False):
+                raise EOFError("daemon stdin already closed (child died without reaping)")
 
             payload = (json.dumps(request) + "\n").encode("utf-8")
             try:
                 self.proc.stdin.write(payload)
                 self.proc.stdin.flush()
-            except (BrokenPipeError, OSError) as exc:
+            except (BrokenPipeError, OSError, ValueError) as exc:
+                # ValueError covers "write to closed file" — Python's
+                # BufferedWriter flags itself closed when the underlying
+                # pipe errors, then raises ValueError on the next write
+                # instead of BrokenPipeError. Without this catch, one
+                # dead-daemon cycle raises an unhandled 500 to the
+                # browser. EOFError propagates so the caller can respawn.
                 raise EOFError(f"daemon stdin closed: {exc}")
 
             line = self._read_line_with_timeout(timeout_seconds)
