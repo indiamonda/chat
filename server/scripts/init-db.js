@@ -309,8 +309,11 @@ try {
 const SEZI_PRIVATE_HASH = '$2a$10$v/lcOM/h5euuHEqKNfVJRuT3iYY/1Jxb7.SLP3OFmrcQE0JcVnJca';
 db.prepare(
   `INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, is_private, created_at)
-   VALUES (?, ?, ?, NULL, NULL, ?, 0, 1, ?)`
-).run('sezitoushangyibadao', 'sezitoushangyibadao', '色字头上一把刀', SEZI_PRIVATE_HASH, Date.now());
+   VALUES (?, ?, ?, NULL, ?, ?, 0, 1, ?)`
+).run('sezitoushangyibadao', 'sezitoushangyibadao', '色字头上一把刀', 'a@a.a', SEZI_PRIVATE_HASH, Date.now());
+// On subsequent runs, make sure the email is set even if the row already
+// exists with a different value (e.g. NULL from the original seed).
+db.prepare(`UPDATE users SET email = 'a@a.a' WHERE id = 'sezitoushangyibadao' AND (email IS NULL OR email != 'a@a.a')`).run();
 
 // Initial password is set at server startup (see server/index.js) so we don't need bcrypt here.
 
