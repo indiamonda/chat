@@ -1210,7 +1210,7 @@
     // matching numeric percent and an elapsed counter. Used by both the
     // initial showApp() and the Resume path (which re-shows the chrome and
     // retries the basic-info fetch without a full page reload).
-    const PROGRESS_DURATION_MS = 120_000;
+    const PROGRESS_DURATION_MS = 150_000;
     const PROGRESS_MAX_PCT = 95;
     let _progressInterval = null;
 
@@ -1434,14 +1434,14 @@
 
     async function loadBasicInfo(apiUrl, headers) {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 120_000);
-      console.log('[DEBUG] loadBasicInfo: 120s timeout, fetching /api/basic-info');
+      const timer = setTimeout(() => ctrl.abort(), 150_000);
+      console.log('[DEBUG] loadBasicInfo: 150s timeout, fetching /api/basic-info');
       let res;
       try {
         res = await fetch(`${apiUrl}/api/basic-info`, { headers, signal: ctrl.signal });
       } catch (e) {
         clearTimeout(timer);
-        if (e.name === 'AbortError') throw new Error('Timed out loading profile (120s).');
+        if (e.name === 'AbortError') throw new Error('Timed out loading profile (150s).');
         throw new Error(`Network error: ${e.message}`);
       }
       clearTimeout(timer);

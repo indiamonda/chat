@@ -631,9 +631,9 @@ def get_basic_info():
     not log a "Failed to load resource" console error; the frontend
     reads ``removed`` and skips the identity strip, rendering the
     dashboard with whatever ``get_courses``/``get_grades`` returns.
-    Cold-start timeouts still benefit from the 120s budget (the
-    *first* tool call pays for Chromium + ClassLink login) but the
-    rest is now opportunistic.
+    Cold-start timeouts still benefit from the 150s budget the
+    frontend gives this route (the *first* tool call pays for
+    Chromium + ClassLink login) but the rest is now opportunistic.
     """
     return jsonify({
         "removed": True,
