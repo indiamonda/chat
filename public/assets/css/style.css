@@ -7162,4 +7162,29 @@ input[type="checkbox"]:checked::after {
 .dm-voice-modal-accept {
   background: #27ae60;
 }
+
+/* Private-user notice: shown when the server blocks a profile or DM
+   view because the target user is is_private=1. Centered, neutral
+   text — no avatar, no display name, no links. */
+.private-user-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 3rem 1.5rem;
+  color: var(--text-dim, #6b7280);
+  max-width: 360px;
+  margin: 0 auto;
+}
+.private-user-notice-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text, #111827);
+  margin-bottom: 0.4rem;
+}
+.private-user-notice-sub {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
 .dm-voice-modal-btn:hover { filter: brightness(1.1); }

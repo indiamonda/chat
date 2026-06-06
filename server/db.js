@@ -43,6 +43,7 @@ try { db.exec('ALTER TABLE users ADD COLUMN website TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN profile_links TEXT'); } catch (_) {} // JSON array of {label, url}
 try { db.exec('ALTER TABLE users ADD COLUMN description TEXT'); } catch (_) {}
 try { db.exec("ALTER TABLE users ADD COLUMN chatbox_style TEXT DEFAULT 'default'"); } catch (_) {}
+try { db.exec('ALTER TABLE users ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
 
 // Friendships and friend-request rate limits
 try {
@@ -704,3 +705,41 @@ export function decayUserModerationSeverity(userId, amount = 1) {
     return 0;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Private users
+// ---------------------------------------------------------------------------
+// A "private" user is hidden from everyone except jimmyqrg. Profile view,
+// search results, new DMs, friend adds, group @-mentions as clickable
+// links, and group member rosters all block unless the viewer is jimmyqrg.
+// Group message text is NOT filtered — if a private user posts in a group,
+// normal members still see the message (they just can't click through to
+// a profile). Helpers below enforce this at every gate.
+
+/** True if `userId` has is_private=1. */
+export function isPrivateUser(userId) {
+  if (!userId) return false;
+  try {
+    const row = db.prepare('SELECT is_private FROM users WHERE id = ?').get(userId);
+    return !!(row && row.is_private);
+  } catch {
+    return false;
+  }
+}
+
+/** True if `viewer` is allowed to see/interact with private user
+ *  `targetId`. jimmyqrg always sees. Everyone else never does. */
+export function canSeePrivateUser(viewer, targetId) {
+  if (!targetId) return true;
+  if (!isPrivateUser(targetId)) return true;
+  if (!viewer) return false;
+  return viewer.id === 'jimmyqrg';
+}
+
+/** Standard 403 payload for blocked private-user access. Routes should use
+ *  `res.status(403).json(PRIVATE_USER_BLOCKED)` to keep the message
+ *  identical everywhere. */
+export const PRIVATE_USER_BLOCKED = Object.freeze({
+  error: 'This user is private',
+  private_user: true,
+});

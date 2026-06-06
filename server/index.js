@@ -9,7 +9,7 @@ import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
 import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages, canTimeout, canUnlimitedEditRecall, tokenAuthMiddleware } from './auth.js';
-import { db, GROUP_ID, PANELS, HELPER_USER_ID, isBlacklisted, isUserDeleted } from './db.js';
+import { db, GROUP_ID, PANELS, HELPER_USER_ID, isBlacklisted, isUserDeleted, canSeePrivateUser, PRIVATE_USER_BLOCKED } from './db.js';
 import { moderateMessage } from './ai-moderation.js';
 import { upload } from './upload.js';
 import { getUploadUrl, getFileRef } from './upload.js';
@@ -1297,7 +1297,7 @@ app.get('/api/rooms/:roomType/:roomId/messages', requireAuth, (req, res) => {
   const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(user.id).map(r => r.blocked_id);
   const rows = db.prepare(`
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
-           u.username, u.display_name, u.avatar_url, u.chatbox_style
+           u.username, u.display_name, u.avatar_url, u.chatbox_style, u.is_private
     FROM messages m
     LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = ? AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
@@ -1497,7 +1497,7 @@ app.get('/api/search/messages', requireAuth, (req, res) => {
   const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(user.id).map(r => r.blocked_id);
   const rows = db.prepare(`
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
-           u.username, u.display_name, u.avatar_url, u.chatbox_style
+           u.username, u.display_name, u.avatar_url, u.chatbox_style, u.is_private
     FROM messages m
     LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = ? AND m.room_id = ? AND m.deleted_by_admin = 0
@@ -1553,6 +1553,9 @@ app.get('/api/conversations/with/:userId', requireAuth, (req, res) => {
   const me = getCurrentUser(req);
   const otherId = req.params.userId;
   if (me.id === otherId) return res.status(400).json({ error: 'Cannot chat with yourself' });
+  if (!canSeePrivateUser(me, otherId)) {
+    return res.status(403).json(PRIVATE_USER_BLOCKED);
+  }
   const [u1, u2] = [me.id, otherId].sort();
   let conv = db.prepare('SELECT id FROM conversations WHERE user1_id = ? AND user2_id = ?').get(u1, u2);
   if (!conv) {
@@ -1574,7 +1577,7 @@ app.get('/api/conversations/:convId/messages', requireAuth, (req, res) => {
   const before = req.query.before ? parseInt(req.query.before, 10) : Date.now();
   let rows = db.prepare(`
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
-           u.username, u.display_name, u.avatar_url, u.chatbox_style
+           u.username, u.display_name, u.avatar_url, u.chatbox_style, u.is_private
     FROM messages m
     LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = 'dm' AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
