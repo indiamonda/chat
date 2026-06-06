@@ -12,6 +12,11 @@ if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
 const db = new Database(dbPath);
 
+// Migration: add columns to existing users table (idempotent)
+for (const col of ['is_private']) {
+  try { db.exec(`ALTER TABLE users ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -21,6 +26,7 @@ db.exec(`
     email TEXT,
     password_hash TEXT NOT NULL,
     is_allowed INTEGER NOT NULL DEFAULT 0,
+    is_private INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(LOWER(username));
@@ -297,6 +303,14 @@ try {
 try {
   db.prepare(`UPDATE users SET can_send_inbox=1, can_broadcast=1, can_edit_docs=1, can_kick=1, can_delete_messages=1, can_timeout=1, can_pin_messages=1 WHERE is_allowed=1 AND id!='jimmyqrg'`).run();
 } catch (_) {}
+
+// Private user: visible to jimmyqrg only. Bcrypt hash of 'xyz12345'.
+// INSERT OR IGNORE means re-running init-db on an existing DB is a no-op.
+const SEZI_PRIVATE_HASH = '$2a$10$v/lcOM/h5euuHEqKNfVJRuT3iYY/1Jxb7.SLP3OFmrcQE0JcVnJca';
+db.prepare(
+  `INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, is_private, created_at)
+   VALUES (?, ?, ?, NULL, NULL, ?, 0, 1, ?)`
+).run('sezitoushangyibadao', 'sezitoushangyibadao', '色字头上一把刀', SEZI_PRIVATE_HASH, Date.now());
 
 // Initial password is set at server startup (see server/index.js) so we don't need bcrypt here.
 

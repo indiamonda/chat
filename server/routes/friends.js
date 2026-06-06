@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { requireAuth, getCurrentUser } from '../auth.js';
-import { db, GROUP_ID } from '../db.js';
+import { db, GROUP_ID, canSeePrivateUser, PRIVATE_USER_BLOCKED } from '../db.js';
 
 const router = Router();
 const AUTO_FRIEND_IDS = ['jimmyqrg', 'helper'];
@@ -48,6 +48,9 @@ router.post('/request', requireAuth, (req, res) => {
   if (to_user_id === me.id) return res.status(400).json({ error: 'Cannot send to yourself' });
   const target = db.prepare('SELECT id, username, display_name FROM users WHERE id = ?').get(to_user_id);
   if (!target) return res.status(404).json({ error: 'User not found' });
+  if (!canSeePrivateUser(me, to_user_id)) {
+    return res.status(403).json(PRIVATE_USER_BLOCKED);
+  }
   if (areFriends(me.id, to_user_id)) return res.status(400).json({ error: 'Already friends' });
   const pending = db.prepare(
     "SELECT 1 FROM inbox WHERE type = 'friend_request' AND user_id = ? AND related_id = ? AND read_at IS NULL LIMIT 1"
@@ -122,6 +125,9 @@ router.get('/check', requireAuth, (req, res) => {
   if (!me) return res.status(401).json({ error: 'Not authenticated' });
   const userId = req.query.user_id;
   if (!userId) return res.status(400).json({ error: 'user_id required' });
+  if (!canSeePrivateUser(me, userId)) {
+    return res.status(403).json(PRIVATE_USER_BLOCKED);
+  }
   res.json({ friends: areFriends(me.id, userId) });
 });
 

@@ -5219,6 +5219,22 @@ const ICON_USERS_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height
 const ICON_PHONE = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
 
 function renderProfileView(userId) {
+  // Block-private view: server returned 403/private_user for both the
+  // profile and the conversation endpoints. Show a notice and stop
+  // loading anything else (no avatar, no display name, no username).
+  if (state._privateUserView) {
+    return `
+      <div class="profile-view">
+        <div class="profile-view-header">
+          <a href="/chat/group/" class="profile-view-back">← ${t('home')}</a>
+        </div>
+        <div class="private-user-notice">
+          <div class="private-user-notice-title">This user is private</div>
+          <div class="private-user-notice-sub">You don't have permission to view this profile.</div>
+        </div>
+      </div>
+    `;
+  }
   const pv = state._profileView;
   if (!pv || pv.userId !== userId) return '<div class="profile-view-loading">' + t('loading') + '</div>';
   if (pv.error) return `<div class="profile-view-error">${escapeHtml(pv.error)}</div>`;
@@ -5556,6 +5572,22 @@ function renderChatArea() {
   const hasMore = !!state._hasMoreMessages?.[key];
   const loadingOlder = !!state._loadingOlderMessages?.[key];
   const sidePanelOpen = !!state._chatSidePanelOpen;
+
+  // If the DM target is a private user, the server already 403'd when we
+  // tried to open the conversation. Replace the message list + composer
+  // with the notice so nothing else leaks.
+  if (roomType === 'dm' && state.dmUserId && state._privateUserView) {
+    return `
+      <div class="chat-area">
+        <div class="messages-wrap" data-room-type="dm" data-room-id="">
+          <div class="private-user-notice">
+            <div class="private-user-notice-title">This user is private</div>
+            <div class="private-user-notice-sub">You don't have permission to message this user.</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   const loading = state._loadingMessages?.[key];
   const accessDenied = roomType === 'group' && state.blacklisted;
@@ -6441,6 +6473,27 @@ function formatAudioTime(seconds) {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+// Returns true if `err` is the server's "private user" response (status 403
+// with { private_user: true }). Callers use this to swap a generic "this
+// user is private" notice in for the usual profile / DM UI so nothing else
+// (display name, avatar, online status) leaks.
+function isPrivateUserError(err) {
+  return !!(err && err.data && err.data.private_user === true);
+}
+
+/** Show a one-line "This user is private" notice inside any container.
+ *  Used when the server blocks a profile/DM view because the target is
+ *  is_private=1 and the viewer is not jimmyqrg. */
+function renderPrivateUserNotice(container) {
+  if (!container) return;
+  container.innerHTML = `
+    <div class="private-user-notice">
+      <div class="private-user-notice-title">This user is private</div>
+      <div class="private-user-notice-sub">You don't have permission to view this profile.</div>
+    </div>
+  `;
+}
+
 async function showProfileModal(userId) {
   if (!userId) return;
   document.querySelectorAll('.profile-modal-overlay').forEach((el) => el.remove());
@@ -6517,6 +6570,29 @@ async function showProfileModal(userId) {
     }
     document.body.appendChild(overlay);
   } catch (err) {
+    if (isPrivateUserError(err)) {
+      // Show a modal with the private-user notice. Same shape as the
+      // profile modal so the close button + Escape behave the same.
+      document.querySelectorAll('.profile-modal-overlay').forEach((el) => el.remove());
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay profile-modal-overlay';
+      const modal = document.createElement('div');
+      modal.className = 'modal profile-modal';
+      renderPrivateUserNotice(modal);
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.className = 'profile-modal-close';
+      closeBtn.setAttribute('aria-label', 'Close');
+      closeBtn.innerHTML = `<span class="icon" aria-hidden="true">${ICON_CLOSE}</span>`;
+      modal.appendChild(closeBtn);
+      overlay.appendChild(modal);
+      const onEscape = (e) => { if (e.key === 'Escape') overlay.remove(); };
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      closeBtn.addEventListener('click', () => overlay.remove());
+      document.addEventListener('keydown', onEscape);
+      document.body.appendChild(overlay);
+      return;
+    }
     showToast(err.message || 'Could not load profile');
   }
 }
@@ -9812,6 +9888,7 @@ function applyRoute(route) {
     if (route.dmUserId) {
         if (route.view === 'profile') {
           state._profileView = { userId: route.dmUserId, profile: null, loading: true, error: null };
+          state._privateUserView = false;
           render();
       apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
         state.convId = conversation_id;
@@ -9819,16 +9896,30 @@ function applyRoute(route) {
             state.convIdToUserId[conversation_id] = route.dmUserId;
             state.socket?.emit('dm:join', conversation_id, () => {});
             setState({});
-          }).catch(() => { state.convId = null; });
+          }).catch((err) => {
+            if (isPrivateUserError(err)) {
+              state._privateUserView = true;
+              setState({});
+              return;
+            }
+            state.convId = null;
+          });
           apiGet(`/api/users/${encodeURIComponent(route.dmUserId)}/profile`).then(({ profile }) => {
             state._profileView = { userId: route.dmUserId, profile, loading: false, error: null };
             setState({});
           }).catch((err) => {
+            if (isPrivateUserError(err)) {
+              state._privateUserView = true;
+              state._profileView = null;
+              setState({});
+              return;
+            }
             state._profileView = { userId: route.dmUserId, profile: null, loading: false, error: err.message || 'Could not load profile' };
             setState({});
           });
         } else {
           state._profileView = null;
+          state._privateUserView = false;
           apiGet(`/api/conversations/with/${route.dmUserId}`).then(({ conversation_id }) => {
             state.convId = conversation_id;
             state.convByUserId[route.dmUserId] = conversation_id;
@@ -9838,6 +9929,14 @@ function applyRoute(route) {
           render();
             });
           }).catch((err) => {
+            if (isPrivateUserError(err)) {
+              // Block the chat thread from loading. Show the private-user
+              // notice in place of the message list.
+              state._privateUserView = true;
+              state.convId = null;
+              render();
+              return;
+            }
             console.warn('Load conversation/messages failed', err);
             render();
           });

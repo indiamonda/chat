@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, getCurrentUser, changePassword, canManageUsers } from '../auth.js';
-import { db, GROUP_ID, isEmailBanned } from '../db.js';
+import { db, GROUP_ID, isEmailBanned, isPrivateUser, canSeePrivateUser, PRIVATE_USER_BLOCKED } from '../db.js';
 import { upload } from '../upload.js';
 
 const router = Router();
@@ -16,7 +16,11 @@ router.get('/', requireAuth, (req, res) => {
     FROM users
     ORDER BY username
   `).all();
-  const users = list.map(u => {
+  // Drop private users unless the viewer is jimmyqrg. We do this in JS
+  // (not SQL) so the response shape and field-stripping logic below stay
+  // unchanged.
+  const visible = (me?.id === 'jimmyqrg') ? list : list.filter((u) => !isPrivateUser(u.id));
+  const users = visible.map(u => {
     const out = { ...u };
     out.deleted_at = u.deleted_at || null;
     if (!canSeeAllowed) delete out.is_allowed;
@@ -56,6 +60,8 @@ router.get('/mention-search', requireAuth, (req, res) => {
     WHERE deleted_at IS NULL AND id != ?
     ORDER BY username
   `).all(me?.id || '');
+  // Private users don't appear in @-mention autocomplete for anyone but jimmyqrg.
+  if (me?.id !== 'jimmyqrg') rows = rows.filter((u) => !isPrivateUser(u.id));
   if (q) {
     rows = rows.filter((u) => {
       const uname = String(u.username || '').toLowerCase();
@@ -78,6 +84,10 @@ router.get('/mention-search', requireAuth, (req, res) => {
 
 /** Public profile for viewing another user (id, username, display_name, avatar_url, website, profile_links). */
 router.get('/:id/profile', requireAuth, (req, res) => {
+  const me = getCurrentUser(req);
+  if (!canSeePrivateUser(me, req.params.id)) {
+    return res.status(403).json(PRIVATE_USER_BLOCKED);
+  }
   const target = db.prepare(
     'SELECT id, username, display_name, avatar_url, chatbox_style, website, profile_links, description FROM users WHERE id = ?'
   ).get(req.params.id);
