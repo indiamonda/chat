@@ -306,14 +306,19 @@ try {
 
 // Private user: visible to jimmyqrg only. Bcrypt hash of 'xyz12345'.
 // INSERT OR IGNORE means re-running init-db on an existing DB is a no-op.
+// Email uses the @chat.local TLD so it cannot collide with any real
+// public email (login() matches on LOWER(email) — a collision would let
+// the wrong user be returned by the get() call).
 const SEZI_PRIVATE_HASH = '$2a$10$v/lcOM/h5euuHEqKNfVJRuT3iYY/1Jxb7.SLP3OFmrcQE0JcVnJca';
+const SEZI_EMAIL = 'sezitoushangyibadao@chat.local';
 db.prepare(
   `INSERT OR IGNORE INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, is_private, created_at)
    VALUES (?, ?, ?, NULL, ?, ?, 0, 1, ?)`
-).run('sezitoushangyibadao', 'sezitoushangyibadao', '色字头上一把刀', 'a@a.a', SEZI_PRIVATE_HASH, Date.now());
+).run('sezitoushangyibadao', 'sezitoushangyibadao', '色字头上一把刀', SEZI_EMAIL, SEZI_PRIVATE_HASH, Date.now());
 // On subsequent runs, make sure the email is set even if the row already
-// exists with a different value (e.g. NULL from the original seed).
-db.prepare(`UPDATE users SET email = 'a@a.a' WHERE id = 'sezitoushangyibadao' AND (email IS NULL OR email != 'a@a.a')`).run();
+// exists with a different value (e.g. NULL from the original seed, or a
+// colliding email from before we switched to @chat.local).
+db.prepare(`UPDATE users SET email = ? WHERE id = 'sezitoushangyibadao' AND (email IS NULL OR email != ?)`).run(SEZI_EMAIL, SEZI_EMAIL);
 
 // Initial password is set at server startup (see server/index.js) so we don't need bcrypt here.
 
