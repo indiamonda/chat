@@ -52,16 +52,20 @@ try { db.exec('ALTER TABLE users ADD COLUMN is_private INTEGER NOT NULL DEFAULT 
 // here, the private user would only exist on a fresh dev box.
 try {
   const SEZI_HASH = '$2a$10$v/lcOM/h5euuHEqKNfVJRuT3iYY/1Jxb7.SLP3OFmrcQE0JcVnJca';
+  // Email must be unique across all users because the login() query
+  // matches on LOWER(email) — a collision would let someone log into the
+  // wrong account by email. The @chat.local suffix avoids colliding with
+  // real public emails.
+  const SEZI_EMAIL = 'sezitoushangyibadao@chat.local';
   const existing = db.prepare('SELECT id FROM users WHERE id = ?').get('sezitoushangyibadao');
   if (!existing) {
     db.prepare(
       `INSERT INTO users (id, username, display_name, avatar_url, email, password_hash, is_allowed, is_private, created_at)
        VALUES (?, ?, ?, NULL, ?, ?, 0, 1, ?)`
-    ).run('sezitoushangyibadao', 'sezitoushangyibadao', '色字头上一把刀', 'a@a.a', SEZI_HASH, Date.now());
+    ).run('sezitoushangyibadao', 'sezitoushangyibadao', '色字头上一把刀', SEZI_EMAIL, SEZI_HASH, Date.now());
   } else {
-    // Backfill fields in case the row predates a code change (e.g. email
-    // was NULL in an earlier version).
-    db.prepare(`UPDATE users SET email = 'a@a.a', is_private = 1 WHERE id = 'sezitoushangyibadao' AND (email IS NULL OR email != 'a@a.a' OR is_private = 0)`).run();
+    // Backfill / correct fields in case the row predates a code change.
+    db.prepare(`UPDATE users SET email = ?, is_private = 1 WHERE id = 'sezitoushangyibadao' AND (email IS NULL OR email != ? OR is_private = 0)`).run(SEZI_EMAIL, SEZI_EMAIL);
   }
 } catch (err) {
   console.error('[db.boot] Failed to ensure sezitoushangyibadao private user:', err?.message || err);

@@ -760,6 +760,32 @@ const DEFAULT_STRINGS = {
     mediaLoadError: 'Could not load media.',
     mediaKbHintImage: 'Esc close • ←/→ next • Wheel or +/- zoom • Drag/pinch to pan/zoom • 0 reset',
     mediaKbHintVideo: 'Esc close • ←/→ next • K/Space play/pause',
+    // Account Key settings
+    accountRecoveryKey: 'Account recovery key',
+    accountRecoveryKeyDesc: 'A living proof that this account is yours. Required to recover access if your password is changed by an attacker. We will email a one-time code to confirm before showing it.',
+    viewAccountKey: 'View account key',
+    akModalTitle: 'Your Account Recovery Key',
+    akWarnOnce: '⚠️ You will only see this key once.',
+    akIntro: 'This is your Account Key — a living proof that this account belongs to you. Save it somewhere safe right now.',
+    akWhatItDoes: 'What this key can do:',
+    akBenefit1: 'Recover a lost or stolen account — if your password is changed by an attacker, this key plus a code we email to you will let you reset the password and reclaim ownership.',
+    akBenefit2: 'Acts as your living identity proof — we trust this key as evidence that you are the original account owner.',
+    akRisk: 'Risk if leaked: If someone else gets your account key, they can almost take over your account. They will still need access to the email on file to finish recovery, but they would only need to phish or compromise that one email to get in. Treat this key like your password.',
+    akStore: 'Do not share this with anyone. Store it in a password manager, a secure note, or write it down somewhere private.',
+    akCopyBtn: 'Copy to clipboard',
+    akCopiedBtn: 'Copied!',
+    akSavedBtn: "I've saved my key",
+    akFooterDefault: 'You can view this key again from Account Settings (with email verification).',
+    viewAccountKeyTitle: 'View account key',
+    viewAccountKeyDesc: 'For your safety, we will email a 6-digit code to the address on file. Enter it to reveal your account key.',
+    viewAccountKeySendBtn: 'Send code to my email',
+    viewAccountKeySendingBtn: 'Sending…',
+    viewAccountKeySent: 'Code sent. Check your inbox (expires in 2 minutes).',
+    viewAccountKeyRevealBtn: 'Reveal my account key',
+    viewAccountKeyVerifyingBtn: 'Verifying…',
+    viewAccountKeyErrCode: 'Enter the 6-digit code.',
+    viewAccountKeyErrNetwork: 'Network error.',
+    viewAccountKeyFooter: 'You can request to view this key again from Account Settings.',
   }
 };
 let STRINGS = { ...DEFAULT_STRINGS };
@@ -4622,45 +4648,45 @@ function showAccountKeyModal(key, opts) {
     const box = document.createElement('div');
     box.style.cssText = 'background:#1a1028;border:1px solid rgba(136,65,214,.4);border-radius:16px;padding:28px 24px;max-width:520px;width:100%;color:#e0e0e8;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 12px 40px rgba(0,0,0,.6);max-height:90vh;overflow-y:auto';
     const title = document.createElement('h2');
-    title.textContent = opts.title || 'Your Account Recovery Key';
+    title.textContent = opts.title || t('akModalTitle');
     title.style.cssText = 'margin:0 0 12px;font-size:20px;font-weight:700;color:#a78bfa';
     box.appendChild(title);
     const warn = document.createElement('div');
     warn.style.cssText = 'margin:0 0 16px;font-size:13px;line-height:1.55;color:rgba(255,255,255,.85)';
-    warn.innerHTML = '<strong style="color:#ff7a7a;font-size:14px">\u26A0\uFE0F You will only see this key once.</strong>'
-      + '<p style="margin:10px 0 0">This is your <strong style="color:#c4b5fd">Account Key</strong> \u2014 a living proof that this account belongs to you. <strong>Save it somewhere safe right now.</strong></p>'
-      + '<p style="margin:8px 0 0"><strong>What this key can do:</strong></p>'
+    warn.innerHTML = '<strong style="color:#ff7a7a;font-size:14px">' + t('akWarnOnce') + '</strong>'
+      + '<p style="margin:10px 0 0">' + t('akIntro') + '</p>'
+      + '<p style="margin:8px 0 0"><strong>' + t('akWhatItDoes') + '</strong></p>'
       + '<ul style="margin:4px 0 0;padding-left:18px;color:rgba(255,255,255,.8)">'
-      + '<li style="margin-bottom:4px"><strong style="color:#e0e0e8">Recover a lost or stolen account</strong> \u2014 if your password is changed by an attacker, this key plus a code we email to you will let you reset the password and reclaim ownership.</li>'
-      + '<li style="margin-bottom:4px"><strong style="color:#e0e0e8">Acts as your living identity proof</strong> \u2014 we trust this key as evidence that you are the original account owner.</li>'
+      + '<li style="margin-bottom:4px">' + t('akBenefit1') + '</li>'
+      + '<li style="margin-bottom:4px">' + t('akBenefit2') + '</li>'
       + '</ul>'
-      + '<p style="margin:10px 0 0"><strong style="color:#fbbf24">Risk if leaked:</strong> If someone else gets your account key, they can <strong>almost</strong> take over your account. They will still need access to the email on file to finish recovery, but they would only need to phish or compromise that one email to get in. Treat this key like your password.</p>'
-      + '<p style="margin:10px 0 0;color:rgba(255,255,255,.55);font-size:12px">Do <strong>not</strong> share this with anyone. Store it in a password manager, a secure note, or write it down somewhere private.</p>';
+      + '<p style="margin:10px 0 0">' + t('akRisk') + '</p>'
+      + '<p style="margin:10px 0 0;color:rgba(255,255,255,.55);font-size:12px">' + t('akStore') + '</p>';
     box.appendChild(warn);
     const keyBox = document.createElement('div');
     keyBox.style.cssText = 'background:#0d0915;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:14px 16px;font-family:monospace;font-size:14px;word-break:break-all;line-height:1.6;color:#c4b5fd;user-select:all;cursor:text;letter-spacing:.02em';
     keyBox.textContent = key;
     box.appendChild(keyBox);
     const copyBtn = document.createElement('button');
-    copyBtn.textContent = 'Copy to clipboard';
+    copyBtn.textContent = t('akCopyBtn');
     copyBtn.style.cssText = 'margin-top:14px;width:100%;padding:10px;background:linear-gradient(135deg,#8841d6,#6d28d9);border:0;color:#fff;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit';
     copyBtn.onclick = () => {
       try {
         navigator.clipboard.writeText(key).then(() => {
-          copyBtn.textContent = 'Copied!';
-          setTimeout(() => { copyBtn.textContent = 'Copy to clipboard'; }, 2000);
+          copyBtn.textContent = t('akCopiedBtn');
+          setTimeout(() => { copyBtn.textContent = t('akCopyBtn'); }, 2000);
         });
       } catch (_) {}
     };
     box.appendChild(copyBtn);
     const closeBtn = document.createElement('button');
-    closeBtn.textContent = 'I\u2019ve saved my key';
+    closeBtn.textContent = t('akSavedBtn');
     closeBtn.style.cssText = 'margin-top:8px;width:100%;padding:10px;background:transparent;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.7);border-radius:10px;font-size:13px;cursor:pointer;font-family:inherit';
     closeBtn.onclick = () => { ov.remove(); resolve(); };
     box.appendChild(closeBtn);
     const footer = document.createElement('p');
     footer.style.cssText = 'margin:14px 0 0;font-size:11px;color:rgba(255,255,255,.4);text-align:center';
-    footer.textContent = opts.footer || 'You can view this key again from Account Settings (with email verification).';
+    footer.textContent = opts.footer || t('akFooterDefault');
     box.appendChild(footer);
     ov.appendChild(box);
     document.body.appendChild(ov);
@@ -4684,31 +4710,31 @@ function showViewAccountKeyModal() {
   box.appendChild(closeXBtn);
 
   const title = document.createElement('h2');
-  title.textContent = 'View account key';
+  title.textContent = t('viewAccountKeyTitle');
   title.style.cssText = 'margin:0 0 12px;font-size:19px;font-weight:700;color:#a78bfa';
   box.appendChild(title);
   const desc = document.createElement('p');
   desc.style.cssText = 'margin:0 0 12px;font-size:13px;line-height:1.5;color:rgba(255,255,255,.75)';
-  desc.textContent = 'For your safety, we will email a 6-digit code to the address on file. Enter it to reveal your account key.';
+  desc.textContent = t('viewAccountKeyDesc');
   box.appendChild(desc);
   const err = document.createElement('div');
   err.style.cssText = 'color:#ff7a7a;font-size:13px;min-height:18px;margin-bottom:8px';
   box.appendChild(err);
   const sendBtn = document.createElement('button');
-  sendBtn.textContent = 'Send code to my email';
+  sendBtn.textContent = t('viewAccountKeySendBtn');
   sendBtn.style.cssText = 'width:100%;padding:11px;background:linear-gradient(135deg,#8841d6,#6d28d9);border:0;color:#fff;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:8px';
   box.appendChild(sendBtn);
 
   let codeIn, viewBtn;
   sendBtn.onclick = async () => {
     err.textContent = '';
-    sendBtn.disabled = true; sendBtn.textContent = 'Sending\u2026';
+    sendBtn.disabled = true; sendBtn.textContent = t('viewAccountKeySendingBtn');
     try {
       const r = await fetch('/api/auth/account-key/request-view', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const d = await r.json();
       if (!r.ok) {
         err.textContent = d.error || 'Failed to send code.';
-        sendBtn.disabled = false; sendBtn.textContent = 'Send code to my email';
+        sendBtn.disabled = false; sendBtn.textContent = t('viewAccountKeySendBtn');
         return;
       }
       sendBtn.style.display = 'none';
@@ -4718,32 +4744,32 @@ function showViewAccountKeyModal() {
       codeIn.style.cssText = 'width:100%;padding:10px 12px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;border-radius:10px;font-size:18px;letter-spacing:.4em;text-align:center;font-weight:700;outline:none;box-sizing:border-box;margin-bottom:10px';
       box.insertBefore(codeIn, sendBtn);
       const sub = document.createElement('p');
-      sub.textContent = 'Code sent. Check your inbox (expires in 2 minutes).';
+      sub.textContent = t('viewAccountKeySent');
       sub.style.cssText = 'font-size:12px;color:rgba(255,255,255,.6);margin:-4px 0 8px';
       box.insertBefore(sub, codeIn);
       viewBtn = document.createElement('button');
-      viewBtn.textContent = 'Reveal my account key';
+      viewBtn.textContent = t('viewAccountKeyRevealBtn');
       viewBtn.style.cssText = sendBtn.style.cssText;
       viewBtn.style.display = '';
       box.insertBefore(viewBtn, sendBtn);
       viewBtn.onclick = async () => {
         err.textContent = '';
         const code = (codeIn.value || '').trim();
-        if (!/^\d{6}$/.test(code)) { err.textContent = 'Enter the 6-digit code.'; return; }
-        viewBtn.disabled = true; viewBtn.textContent = 'Verifying\u2026';
+        if (!/^\d{6}$/.test(code)) { err.textContent = t('viewAccountKeyErrCode'); return; }
+        viewBtn.disabled = true; viewBtn.textContent = t('viewAccountKeyVerifyingBtn');
         try {
           const r2 = await fetch('/api/auth/account-key/view', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
           const d2 = await r2.json();
-          if (!r2.ok) { err.textContent = d2.error || 'Failed.'; viewBtn.disabled = false; viewBtn.textContent = 'Reveal my account key'; return; }
+          if (!r2.ok) { err.textContent = d2.error || 'Failed.'; viewBtn.disabled = false; viewBtn.textContent = t('viewAccountKeyRevealBtn'); return; }
           ov.remove();
-          showAccountKeyModal(d2.account_key, { title: 'Your account key', footer: 'You can request to view this key again from Account Settings.' });
+          showAccountKeyModal(d2.account_key, { title: t('viewAccountKeyTitle'), footer: t('viewAccountKeyFooter') });
         } catch (e) {
-          err.textContent = 'Network error.'; viewBtn.disabled = false; viewBtn.textContent = 'Reveal my account key';
+          err.textContent = t('viewAccountKeyErrNetwork'); viewBtn.disabled = false; viewBtn.textContent = t('viewAccountKeyRevealBtn');
         }
       };
     } catch (e) {
-      err.textContent = 'Network error.';
-      sendBtn.disabled = false; sendBtn.textContent = 'Send code to my email';
+      err.textContent = t('viewAccountKeyErrNetwork');
+      sendBtn.disabled = false; sendBtn.textContent = t('viewAccountKeySendBtn');
     }
   };
 }
@@ -9490,9 +9516,9 @@ function renderSettingsContent() {
       ${tab === 'account' ? `
       <div class="settings-account">
         <div class="settings-account-block">
-          <h3 class="settings-section-title">Account recovery key</h3>
-          <p class="settings-account-desc">A living proof that this account is yours. Required to recover access if your password is changed by an attacker. We will email a one-time code to confirm before showing it.</p>
-          <button type="button" id="view-account-key-btn" class="btn-secondary"><span class="icon" aria-hidden="true">${ICON_KEY_SM}</span>View account key</button>
+          <h3 class="settings-section-title">${t('accountRecoveryKey')}</h3>
+          <p class="settings-account-desc">${t('accountRecoveryKeyDesc')}</p>
+          <button type="button" id="view-account-key-btn" class="btn-secondary"><span class="icon" aria-hidden="true">${ICON_KEY_SM}</span>${t('viewAccountKey')}</button>
         </div>
         <div class="settings-account-block">
           <h3 class="settings-section-title">${t('password')}</h3>
