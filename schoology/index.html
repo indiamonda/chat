@@ -118,6 +118,10 @@
 
   <div id="appLoading" class="app-loading hidden">
     <div class="loading-content">
+      <div class="loading-logo">
+        <img src="/icons/logo.png" alt="Logo" class="loading-logo-img loading-logo-dark" onerror="this.style.display='none'">
+        <img src="/icons/logo-light.png" alt="Logo" class="loading-logo-img loading-logo-light" onerror="this.style.display='none'">
+      </div>
       <div class="loading-spinner">
         <svg width="130" height="130" viewBox="0 0 130 130" fill="none" xmlns="http://www.w3.org/2000/svg" class="spinner-svg">
           <defs>
@@ -175,7 +179,8 @@
     <header class="dashboard-header" id="dashboardHeader">
       <div class="header-top">
         <div class="header-brand">
-          <img src="/icons/logo.png" alt="Logo" class="header-logo" onerror="this.style.display='none'">
+          <img src="/icons/logo.png" alt="Logo" class="header-logo header-logo-dark" onerror="this.style.display='none'">
+          <img src="/icons/logo-light.png" alt="Logo" class="header-logo header-logo-light" onerror="this.style.display='none'">
           <div class="header-title-group">
             <h1>Schoology Help</h1>
             <p class="subtitle" id="subtitle">Your academic dashboard, connected</p>
@@ -1230,36 +1235,56 @@
       state.posts = demoData.posts;
     }
 
-    // Loading-screen progress: bar fill (0% -> 95% over 120s linear) plus a
-    // matching numeric percent and an elapsed counter. Used by both the
-    // initial showApp() and the Resume path (which re-shows the chrome and
-    // retries the basic-info fetch without a full page reload).
-    const PROGRESS_DURATION_MS = 200_000;
-    const PROGRESS_MAX_PCT = 95;
+    // Loading-screen progress. PROGRESS_DURATION_MS is the *visual*
+    // estimate for the initial basic-info fetch (Chromium cold-start +
+    // ClassLink login), NOT the per-call timeout. Decoupling the two
+    // means a longer server-side timeout (200s) does NOT make the
+    // progress bar crawl at 1%/2s — it still moves at a human-feel
+    // pace (~1%/1.2s) until real sections complete. Step events from
+    // the section loaders (basic-info done, each section done) can
+    // also advance the bar past the timer so it lands ahead of the
+    // wall clock when the network is fast.
+    const PROGRESS_DURATION_MS = 120_000;
+    // No artificial cap: the bar must reach 100% when work finishes.
+    // A 95% cap left the user staring at a half-filled bar for the
+    // rest of the session. The timer also tops out at 100% (clamped
+    // to 1.0) so it can never exceed the visual boundary.
+    const PROGRESS_MAX_PCT = 100;
     let _progressInterval = null;
+    let _progressStartedAt = 0;
+    let _progressStep = 0; // 0..1, bumped by step events
+
+    function _paintProgress() {
+      const loadingPercent = document.getElementById('loadingPercent');
+      if (!loadingPercent) return;
+      const elapsed = Date.now() - _progressStartedAt;
+      const timerFrac = Math.min(1, elapsed / PROGRESS_DURATION_MS);
+      const frac = Math.min(1, Math.max(_progressStep, timerFrac));
+      const pct = frac * PROGRESS_MAX_PCT;
+      loadingPercent.textContent = `${Math.round(pct)}%`;
+      const fill = document.getElementById('loadingBarFill');
+      if (fill) fill.style.width = `${pct}%`;
+    }
 
     function setupLoadingUI() {
       const loadingElapsed = document.getElementById('loadingElapsed');
       const loadingPercent = document.getElementById('loadingPercent');
       const loadingBarFill = document.getElementById('loadingBarFill');
 
-      if (loadingElapsed) loadingElapsed.textContent = 'loading... 0s';
+      if (loadingElapsed) loadingElapsed.textContent = 'Loading your dashboard…';
       if (loadingPercent) loadingPercent.textContent = '0%';
-      if (loadingBarFill) loadingBarFill.classList.remove('done');
+      if (loadingBarFill) {
+        loadingBarFill.classList.remove('done');
+        loadingBarFill.style.width = '0%';
+      }
 
       if (_progressInterval) clearInterval(_progressInterval);
-      const startTime = Date.now();
+      _progressStartedAt = Date.now();
+      _progressStep = 0;
       _progressInterval = setInterval(() => {
-        const elapsedMs = Date.now() - startTime;
-        const elapsed = Math.round(elapsedMs / 1000);
-        if (loadingElapsed) loadingElapsed.textContent = `loading... ${elapsed}s`;
-        if (loadingPercent) {
-          const pct = Math.min(
-            PROGRESS_MAX_PCT,
-            (elapsedMs / PROGRESS_DURATION_MS) * PROGRESS_MAX_PCT,
-          );
-          loadingPercent.textContent = `${Math.round(pct)}%`;
-        }
+        const elapsed = Math.round((Date.now() - _progressStartedAt) / 1000);
+        if (loadingElapsed) loadingElapsed.textContent = `Loading your dashboard… ${elapsed}s`;
+        _paintProgress();
       }, 250);
 
       return {
@@ -1273,8 +1298,18 @@
             clearInterval(_progressInterval);
             _progressInterval = null;
           }
-          if (loadingBarFill) loadingBarFill.classList.add('done');
+          if (loadingBarFill) {
+            loadingBarFill.classList.add('done');
+            loadingBarFill.style.width = '100%';
+          }
           if (loadingPercent) loadingPercent.textContent = '100%';
+        },
+        // Allow callers to advance the bar to a specific fraction
+        // (e.g. "basic-info done" -> 0.3) so the bar reflects real
+        // progress instead of just the timer.
+        setProgress: (fraction) => {
+          _progressStep = Math.max(_progressStep, Math.min(1, fraction));
+          _paintProgress();
         },
       };
     }
@@ -1431,11 +1466,18 @@
       console.log('[DEBUG] fetchRealData starting, apiUrl:', apiUrl);
 
       const headers = getAuthHeader();
+      // Hook into the loading bar so the initial spinner reflects
+      // actual progress (basic-info done = 30%, each section bumps
+      // it). Without this, the bar crawls at ~1%/1.2s as a pure
+      // timer regardless of how fast sections actually return.
+      const loadingUI = setupLoadingUI();
 
-      // Step 1: basic info. 120s timeout -- cold browser launch + ClassLink
-      // login + first page load on 512MB can take ~90s end-to-end.
+      // Step 1: basic info. 200s timeout -- cold browser launch +
+      // ClassLink login + first page load on 512MB can take 90-180s
+      // end-to-end.
       try {
         await loadBasicInfo(apiUrl, headers);
+        loadingUI.setProgress(0.3); // 30% after basic-info done
       } catch (err) {
         console.error('[DEBUG] basic-info failed:', err);
         const msg = (err && err.message) || 'Could not load profile';
@@ -1445,7 +1487,7 @@
 
       // Step 2: shell up; then fire the 4 background loads in parallel.
       renderDashboardShell();
-      kickoffBackgroundLoads(apiUrl, headers);
+      kickoffBackgroundLoads(apiUrl, headers, loadingUI);
     }
 
     function getAuthHeader() {
@@ -1628,12 +1670,14 @@
       }
     }
 
-    function kickoffBackgroundLoads(apiUrl, headers) {
+    function kickoffBackgroundLoads(apiUrl, headers, loadingUI) {
       // Fire all 4 in parallel; each updates its own state.sectionStatus.
-      loadSection('grades',     `${apiUrl}/api/grades`,     headers, renderGradesOverview,         renderGradesList,         'low');
-      loadSection('courses',    `${apiUrl}/api/courses`,    headers, renderCoursesIntoGrades,       renderCoursesIntoGrades,  'low');
-      loadSection('assignments',`${apiUrl}/api/assignments`,headers, renderAssignmentsOverview,     renderAssignmentsList,    'low');
-      loadSection('posts',      `${apiUrl}/api/posts`,      headers, renderActivityList,            renderActivityList,       'low');
+      // Each completion also advances the initial loading bar so the
+      // user sees real progress, not a clock.
+      loadSection('grades',     `${apiUrl}/api/grades`,     headers, renderGradesOverview,         renderGradesList,         'low', loadingUI);
+      loadSection('courses',    `${apiUrl}/api/courses`,    headers, renderCoursesIntoGrades,       renderCoursesIntoGrades,  'low', loadingUI);
+      loadSection('assignments',`${apiUrl}/api/assignments`,headers, renderAssignmentsOverview,     renderAssignmentsList,    'low', loadingUI);
+      loadSection('posts',      `${apiUrl}/api/posts`,      headers, renderActivityList,            renderActivityList,       'low', loadingUI);
     }
 
     // Generic per-section fetcher. Updates state on success/error, re-renders
@@ -1645,11 +1689,11 @@
     // fetches -- tab backgrounded, page lost focus, low-power state -- and a
     // short retry almost always succeeds. If all retries fail, render the
     // error card with a "Retry" button that re-fires the same fetch.
-    async function loadSection(name, url, headers, renderOverview, renderList, priority) {
+    async function loadSection(name, url, headers, renderOverview, renderList, priority, loadingUI) {
       if (state.sectionStatus[name] === 'ready') return;
       // Stash args so the Retry button on the error card can re-fire the
       // same fetch without the caller having to re-supply them.
-      state.sectionLoaders[name] = { url, headers, renderOverview, renderList, priority };
+      state.sectionLoaders[name] = { url, headers, renderOverview, renderList, priority, loadingUI };
       state.sectionStatus[name] = 'loading';
       const finalUrl = priority === 'high' ? `${url}?priority=high` : url;
       const maxAttempts = 3;
@@ -1663,6 +1707,22 @@
           setSectionStatus(name, 'ready');
           renderOverview();
           renderList();
+          // Advance the initial loading bar past basic-info. Each of
+          // the 4 sections adds ~17% so the bar fills smoothly as
+          // real data lands instead of waiting for the timer. When
+          // the last section completes, snap to 100% via complete().
+          if (loadingUI && typeof loadingUI.setProgress === 'function') {
+            const current = parseFloat((document.getElementById('loadingPercent') || {}).textContent || '0') / 100;
+            const next = Math.min(1, Math.max(current, 0.3 + 0.17 * (1 + (state.loadedCount - 1))));
+            loadingUI.setProgress(next);
+          }
+          // If all 4 sections are now ready, complete the loading
+          // bar so it lands at 100% (not stuck at 95% indefinitely).
+          const allReady = ['grades', 'courses', 'assignments', 'posts']
+            .every((n) => state.sectionStatus[n] === 'ready' || state.sectionStatus[n] === 'cached');
+          if (allReady && loadingUI && typeof loadingUI.complete === 'function') {
+            loadingUI.complete();
+          }
           return;
         } catch (e) {
           const transient = e instanceof TypeError && /Failed to fetch/i.test(e.message);
