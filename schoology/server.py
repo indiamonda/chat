@@ -333,6 +333,12 @@ def _kill_daemon(username: str | None = None) -> None:
     """Tear down a daemon so the next call respawns it.
 
     If ``username`` is None, kill all daemons.
+
+    WARNING: this is keyed on username. If another caller just spawned a
+    fresh daemon for the same user, ``_kill_daemon`` will pop *that*
+    new daemon from the pool and kill it -- a TOCTOU race. Use
+    ``_kill_daemon_object`` whenever you have a specific DaemonClient
+    reference you want to kill.
     """
     global _daemon_total_respawns
     with _daemons_lock:
@@ -351,6 +357,31 @@ def _kill_daemon(username: str | None = None) -> None:
             _daemon_total_respawns += 1
 
 
+def _kill_daemon_object(target) -> None:
+    """Kill a specific DaemonClient and remove it from the pool iff it's
+    still the one stored there. Avoids the username-keyed TOCTOU race
+    where caller A spawns a fresh daemon, caller B's pre-flight fails
+    on the OLD daemon, and B's _kill_daemon kills A's brand-new one.
+    """
+    global _daemon_total_respawns
+    if target is None:
+        return
+    # Close the subprocess first so any in-flight call waiting on the
+    # lock wakes up and sees the dead proc.
+    try:
+        target.close()
+    except Exception:  # noqa: BLE001
+        pass
+    # Now pop from pool only if it's still us. If a different caller
+    # already replaced it, leave the new one alone.
+    with _daemons_lock:
+        for uname, d in list(_daemons.items()):
+            if d is target:
+                _daemons.pop(uname, None)
+                _daemon_total_respawns += 1
+                break
+
+
 def _eagerly_start_daemon():
     """No-op: with per-user daemons, we can't eagerly spawn without creds.
     The first real request will spawn the right daemon."""
@@ -363,6 +394,16 @@ def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
     Respawns and retries once on daemon death (EOFError / BrokenPipeError
     / OSError). On TimeoutError, the daemon is killed and respawned to
     keep the wire protocol in sync with the slow first-call response.
+
+    Concurrency note: the per-user spawn lock inside ``_get_daemon``
+    coalesces concurrent spawns, but the pool key is the *username*,
+    not the *DaemonClient object*. If caller A spawns a fresh daemon
+    and caller B's pre-flight check (against the OLD daemon) raises
+    EOFError, B's retry path used to call ``_kill_daemon(username)``
+    which would pop the NEW daemon from the pool and kill it -- a
+    classic TOCTOU race. We fix it by tracking the specific
+    ``DaemonClient`` we tried to use and only closing *that one*,
+    never whatever happens to be in the pool under the same key.
     """
     global _daemon_total_calls
     if not username or not password:
@@ -372,25 +413,32 @@ def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
         "username": username,
         "arguments": {},
     }
+    tried = None
     try:
-        result = _get_daemon(username, password).call(request, timeout_seconds)
+        tried = _get_daemon(username, password)
+        result = tried.call(request, timeout_seconds)
         _daemon_total_calls += 1
         return result
     except TimeoutError as exc:
         print(f"[MCP-DAEMON] {tool_name}: timed out after {timeout_seconds}s; killing daemon to keep protocol in sync", file=sys.stderr)
-        _kill_daemon(username)
+        if tried is not None:
+            _kill_daemon_object(tried)
     except (EOFError, BrokenPipeError, OSError) as exc:
         print(f"[MCP-DAEMON] {tool_name}: daemon for {username} died ({type(exc).__name__}: {exc}); respawning", file=sys.stderr)
-        _kill_daemon(username)
+        if tried is not None:
+            _kill_daemon_object(tried)
 
     # Retry once on a fresh daemon for the same user.
+    tried = None
     try:
-        result = _get_daemon(username, password).call(request, timeout_seconds)
+        tried = _get_daemon(username, password)
+        result = tried.call(request, timeout_seconds)
         _daemon_total_calls += 1
         return result
     except Exception as exc:  # noqa: BLE001
         print(f"[MCP-DAEMON] {tool_name}: retry after respawn failed ({type(exc).__name__}: {exc})", file=sys.stderr)
-        _kill_daemon(username)
+        if tried is not None:
+            _kill_daemon_object(tried)
         return None
 
 
