@@ -114,7 +114,7 @@ class FetchQueue:
 
     def _worker(self, item):
         with _subprocess_lock:
-            result = call_mcp_tool(item[2], item[3], item[4], timeout_seconds=180)
+            result = call_mcp_tool(item[2], item[3], item[4], timeout_seconds=200)
             item[6] = result
         item[5].set()
 
@@ -209,8 +209,11 @@ class DaemonClient:
         with self._lock:
             # Pre-flight: the proc may be alive (reaped-pid check passes)
             # but its stdin was already closed by Python because the
-            # child died and we never noticed. Detect both the dead
-            # process AND the closed-stdin file-object case.
+            # child died and we never noticed. Detect the dead
+            # process, the closed-stdin file-object case, AND the
+            # tombstoned (None) case that close() leaves behind.
+            if self.proc is None:
+                raise EOFError("daemon proc is None (close() was already called)")
             if self.proc.poll() is not None:
                 raise EOFError(f"daemon exited (rc={self.proc.returncode})")
             if getattr(self.proc.stdin, "closed", False):
@@ -229,8 +232,27 @@ class DaemonClient:
                 # browser. EOFError propagates so the caller can respawn.
                 raise EOFError(f"daemon stdin closed: {exc}")
 
-            line = self._read_line_with_timeout(timeout_seconds)
-            return json.loads(line.decode("utf-8"))
+            try:
+                line = self._read_line_with_timeout(timeout_seconds)
+                return json.loads(line.decode("utf-8"))
+            except TimeoutError:
+                # The daemon is still alive and processing the request,
+                # it just exceeded our per-call budget (cold-start
+                # Chromium + ClassLink on 512MB Fly can take >180s).
+                # Don't kill the daemon — the next caller wants the
+                # warm browser. Instead, drain the orphan response
+                # line in the background so the wire protocol stays in
+                # sync, and let the in-flight call complete on its own.
+                # The next caller holding the lock will then see a
+                # clean stdin/stdout and proceed.
+                #
+                # This requires the lock to be held until the drain
+                # finishes, otherwise the next caller would block on
+                # the lock AND we wouldn't drain in time. The drain
+                # uses a short read timeout (timeout_seconds) so a
+                # truly stuck daemon still gets killed.
+                self._drain_orphan_response(timeout_seconds)
+                raise
 
     def _read_line_with_timeout(self, timeout_seconds):
         """Read one newline-terminated line from the daemon's stdout.
@@ -259,6 +281,47 @@ class DaemonClient:
             if not chunk:
                 raise EOFError("daemon stdout closed")
             self._stdout_buffer += chunk
+
+    def _drain_orphan_response(self, timeout_seconds):
+        """Read and discard one response line from a call that already
+        exceeded its per-call budget. The daemon is still alive and
+        processing the request — we just gave up waiting. Without
+        draining, the next caller would consume this orphan line and
+        desync the FIFO protocol.
+
+        Called from inside self._lock so the next caller doesn't race
+        past us. The drain is bounded by `timeout_seconds`; if Chromium
+        is truly stuck the next caller (or _kill_daemon_object) will
+        still tear the daemon down.
+        """
+        import select
+        try:
+            fd = self.proc.stdout.fileno()
+            deadline = time.monotonic() + timeout_seconds
+            while True:
+                if b"\n" in self._stdout_buffer:
+                    _, self._stdout_buffer = self._stdout_buffer.split(b"\n", 1)
+                    return
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    print(f"[MCP-DAEMON] drain timeout; daemon is truly stuck", file=sys.stderr)
+                    # Force the daemon to die so the next caller gets a
+                    # fresh spawn rather than blocking forever.
+                    try:
+                        self.proc.kill()
+                    except Exception:
+                        pass
+                    return
+                ready, _, _ = select.select([fd], [], [], remaining)
+                if not ready:
+                    continue
+                chunk = os.read(fd, 4096)
+                if not chunk:
+                    # EOF — daemon is gone. Nothing to drain.
+                    return
+                self._stdout_buffer += chunk
+        except Exception as exc:  # noqa: BLE001 - best-effort
+            print(f"[MCP-DAEMON] drain failed: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     def close(self):
         if self.proc is None:
@@ -313,8 +376,15 @@ def _get_daemon(username: str, password: str) -> "DaemonClient":
     with spawn_lock:
         with _daemons_lock:
             d = _daemons.get(username)
-            if d is not None and d.proc.poll() is None:
+            # Reuse only if the daemon has a live proc. A tombstoned
+            # DaemonClient (proc is None after close()) looks alive to
+            # the pool but would AttributeError on next call.
+            if d is not None and d.proc is not None and d.proc.poll() is None:
                 return d
+            # Drop the tombstoned entry from the pool so the new spawn
+            # becomes the canonical one.
+            if d is not None and (d.proc is None or d.proc.poll() is not None):
+                _daemons.pop(username, None)
             # Spawn fresh; evict LRU if at cap.
             if len(_daemons) >= _DAEMON_POOL_MAX:
                 lru_user, lru_daemon = next(iter(_daemons.items()))
@@ -420,9 +490,15 @@ def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
         _daemon_total_calls += 1
         return result
     except TimeoutError as exc:
-        print(f"[MCP-DAEMON] {tool_name}: timed out after {timeout_seconds}s; killing daemon to keep protocol in sync", file=sys.stderr)
-        if tried is not None:
-            _kill_daemon_object(tried)
+        # Daemon.call() has already drained the orphan response inside
+        # its lock, so the wire protocol is back in sync. The daemon
+        # is still alive and warm. We just need to tell the caller
+        # that this specific call timed out (the Chromium/ClassLink
+        # cold-start path can exceed the per-call budget on 512MB Fly).
+        # Don't kill the daemon -- the next caller wants the warm
+        # browser. The drain inside DaemonClient.call() handles the
+        # FIFO desync risk.
+        print(f"[MCP-DAEMON] {tool_name}: timed out after {timeout_seconds}s; daemon kept warm", file=sys.stderr)
     except (EOFError, BrokenPipeError, OSError) as exc:
         print(f"[MCP-DAEMON] {tool_name}: daemon for {username} died ({type(exc).__name__}: {exc}); respawning", file=sys.stderr)
         if tried is not None:
@@ -442,7 +518,7 @@ def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
         return None
 
 
-def call_mcp_tool(tool_name, username=None, password=None, timeout_seconds=180):
+def call_mcp_tool(tool_name, username=None, password=None, timeout_seconds=200):
     """Dispatcher: per-user daemon pool (single gunicorn worker).
 
     Gunicorn runs --workers 1, so all schoology traffic is handled in one
@@ -454,7 +530,7 @@ def call_mcp_tool(tool_name, username=None, password=None, timeout_seconds=180):
     return _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds)
 
 
-def call_mcp_tool_subprocess(tool_name, username=None, password=None, timeout_seconds=180):
+def call_mcp_tool_subprocess(tool_name, username=None, password=None, timeout_seconds=200):
     """Call a tool by running run_tool.py in a fresh subprocess.
 
     The schoology-mcp server reads USERNAME/PASSWORD from its env, so
@@ -585,7 +661,7 @@ def get_mock_data():
     }
 
 
-def get_data_from_mcp_or_mock(tool_name, username=None, password=None, timeout_seconds=180, priority=10):
+def get_data_from_mcp_or_mock(tool_name, username=None, password=None, timeout_seconds=200, priority=10):
     """Try MCP first, fall back to error response (no mock data).
 
     Args:

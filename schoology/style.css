@@ -154,6 +154,31 @@
       transition: width 0.4s ease;
     }
     .global-progress-text { display: none; }
+    /* Small "refreshing" indicator shown when the dashboard was
+       hydrated from localStorage cache and a fresh fetch is in flight. */
+    .refreshing-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      padding: 4px 10px;
+      background: var(--primary-dim, rgba(99, 102, 241, 0.1));
+      color: var(--primary, #4f46e5);
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .refreshing-pill::before {
+      content: '';
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: refresh-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes refresh-pulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 1; }
+    }
 
     .loading-text {
       font-size: 1rem;
@@ -2246,4 +2271,100 @@
     max-height: 40vh;
   }
   .ai-container { flex-direction: column; }
+}
+
+/* ── Confirm modal ── */
+/* A small, focused dialog used to confirm destructive actions like
+   chat deletion. Replaces window.confirm() with a styled overlay that
+   matches the rest of the app. */
+.confirm-modal-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; animation: confirm-fade-in 0.15s ease-out;
+}
+@keyframes confirm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.confirm-modal {
+  background: var(--surface, #ffffff);
+  color: var(--text, #1a1a2e);
+  border: 1px solid var(--border, #e2e4ea);
+  border-radius: 16px;
+  padding: 28px 28px 22px;
+  max-width: 420px; width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  text-align: center;
+  animation: confirm-pop-in 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes confirm-pop-in {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.confirm-modal-icon {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+  line-height: 1;
+}
+.confirm-modal-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  color: var(--text, #1a1a2e);
+}
+.confirm-modal-message {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-secondary, #6b6b80);
+  margin: 0 0 1.25rem;
+}
+.confirm-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.confirm-modal-actions .btn-primary,
+.confirm-modal-actions .btn-secondary {
+  padding: 9px 20px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  border: 1px solid var(--border, #e2e4ea);
+  background: var(--surface-elevated, #f8f9fc);
+  color: var(--text, #1a1a2e);
+  transition: all 0.15s ease;
+  min-width: 88px;
+}
+.confirm-modal-actions .btn-primary:hover,
+.confirm-modal-actions .btn-secondary:hover {
+  background: var(--surface-hover, #f0f2f5);
+  border-color: var(--border-bright, #d0d2da);
+}
+.confirm-modal-actions .btn-primary {
+  background: var(--ai-gradient, linear-gradient(135deg, #6366f1, #8b5cf6));
+  color: white;
+  border: none;
+}
+.confirm-modal-actions .btn-primary:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+}
+.confirm-modal-actions .btn-danger {
+  background: var(--error, #dc2626);
+  color: white;
+  border: none;
+}
+.confirm-modal-actions .btn-danger:hover {
+  background: var(--error, #dc2626);
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.35);
+}
+.confirm-modal-danger {
+  border-top: 3px solid var(--error, #dc2626);
 }
