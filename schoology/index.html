@@ -1143,15 +1143,31 @@
       const container = document.getElementById('chatMessages');
       if (!container) return;
       if (!state.currentMessages || state.currentMessages.length === 0) {
-        container.innerHTML = `
-          <div class="chat-message assistant" id="welcomeBubble">
-            <div class="message-bubble">
-              <div class="markdown-content">
-                <p>Hi! 👋 What can I help you with today?</p>
+        // Two distinct empty states:
+        //  1. No chat open (currentChatId is null) → show a neutral
+        //     "select or start a chat" placeholder. Don't leak the
+        //     last chat's content into the message area.
+        //  2. Chat is open but empty (e.g. brand new chat the user
+        //     just created) → show the welcome bubble.
+        if (!state.currentChatId) {
+          container.innerHTML = `
+            <div class="chat-empty-placeholder">
+              <div class="chat-empty-placeholder-icon">💬</div>
+              <div class="chat-empty-placeholder-title">No chat selected</div>
+              <div class="chat-empty-placeholder-sub">Pick a chat from the left, or start a new one.</div>
+            </div>
+          `;
+        } else {
+          container.innerHTML = `
+            <div class="chat-message assistant" id="welcomeBubble">
+              <div class="message-bubble">
+                <div class="markdown-content">
+                  <p>Hi! 👋 What can I help you with today?</p>
+                </div>
               </div>
             </div>
-          </div>
-        `;
+          `;
+        }
         return;
       }
       // Rebuild from state.currentMessages. We don't try to preserve the
