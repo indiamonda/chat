@@ -118,10 +118,6 @@
 
   <div id="appLoading" class="app-loading hidden">
     <div class="loading-content">
-      <div class="loading-logo">
-        <img src="/icons/logo.png" alt="Logo" class="loading-logo-img loading-logo-dark" onerror="this.style.display='none'">
-        <img src="/icons/logo-light.png" alt="Logo" class="loading-logo-img loading-logo-light" onerror="this.style.display='none'">
-      </div>
       <div class="loading-spinner">
         <svg width="130" height="130" viewBox="0 0 130 130" fill="none" xmlns="http://www.w3.org/2000/svg" class="spinner-svg">
           <defs>
@@ -1474,10 +1470,13 @@
 
       // Step 1: basic info. 200s timeout -- cold browser launch +
       // ClassLink login + first page load on 512MB can take 90-180s
-      // end-to-end.
+      // end-to-end. Upstream schoology-mcp removed get_profile, so
+      // this returns {removed: true} essentially instantly. We do
+      // NOT bump the loading bar here -- basic-info isn't real
+      // work, and a fake 20% would lie about progress before any
+      // data has actually loaded.
       try {
         await loadBasicInfo(apiUrl, headers);
-        loadingUI.setProgress(0.3); // 30% after basic-info done
       } catch (err) {
         console.error('[DEBUG] basic-info failed:', err);
         const msg = (err && err.message) || 'Could not load profile';
@@ -1707,21 +1706,17 @@
           setSectionStatus(name, 'ready');
           renderOverview();
           renderList();
-          // Advance the initial loading bar past basic-info. Each of
-          // the 4 sections adds ~17% so the bar fills smoothly as
-          // real data lands instead of waiting for the timer. When
-          // the last section completes, snap to 100% via complete().
+          // Advance the initial loading bar ONLY on real data landing.
+          // Bar = completed_sections / 4. 0% means "no real data yet";
+          // 25/50/75% as each of the 4 sections returns; 100% when
+          // all 4 have real fresh data. Basic-info is intentionally
+          // NOT counted — it returns {removed: true} instantly and
+          // would otherwise inflate the bar from 0 to a fake "in
+          // progress" value before any real work has happened.
           if (loadingUI && typeof loadingUI.setProgress === 'function') {
-            const current = parseFloat((document.getElementById('loadingPercent') || {}).textContent || '0') / 100;
-            const next = Math.min(1, Math.max(current, 0.3 + 0.17 * (1 + (state.loadedCount - 1))));
-            loadingUI.setProgress(next);
-          }
-          // If all 4 sections are now ready, complete the loading
-          // bar so it lands at 100% (not stuck at 95% indefinitely).
-          const allReady = ['grades', 'courses', 'assignments', 'posts']
-            .every((n) => state.sectionStatus[n] === 'ready' || state.sectionStatus[n] === 'cached');
-          if (allReady && loadingUI && typeof loadingUI.complete === 'function') {
-            loadingUI.complete();
+            const realDone = ['grades', 'courses', 'assignments', 'posts']
+              .filter((n) => state.sectionStatus[n] === 'ready').length;
+            loadingUI.setProgress(realDone / 4);
           }
           return;
         } catch (e) {
@@ -2161,6 +2156,16 @@
     // Dismiss handlers: left-click outside, Escape, scroll, resize.
     document.addEventListener('click', (e) => {
       if (_contextMenuEl && !_contextMenuEl.contains(e.target)) _hideContextMenu();
+      // Data-loader stop button (in the AI assistant message
+      // bubble while we wait for grades/courses/assignments/posts).
+      // Cancels the in-flight wait so the AI can answer with
+      // whatever data has already arrived.
+      const stopBtn = e.target.closest && e.target.closest('.data-loader-stop');
+      if (stopBtn) {
+        if (state._dataLoaderContext) {
+          state._dataLoaderContext.cancelled = true;
+        }
+      }
     }, true);
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && _contextMenuEl) _hideContextMenu();
@@ -3098,15 +3103,155 @@
       input.value = '';
       clearFilePreviews();
 
-      // Don't block the AI on dashboard data. The 4 background sections
-      // (grades/courses/assignments/posts) load in parallel after the
-      // dashboard shell renders; on cold start they can take ~30-60s for
-      // the daemon pool to spin up. Greetings, "what can you do?", math
-      // questions, etc. don't need that data, so the AI responds now and
-      // the data joins the system prompt on the NEXT message if it has
-      // arrived by then.
+      // Decide whether the user's question needs dashboard data. If
+      // so AND the relevant sections aren't loaded yet, fire a
+      // priority load and wait (with a visible "loading data..."
+      // indicator inside the AI message bubble). The user can hit
+      // the stop button to cancel; on cancel, we proceed with
+      // whatever data has arrived (which may be empty, in which
+      // case the AI will tell the user the data isn't loaded).
+      //
+      // Why we don't just answer immediately: the user explicitly
+      // asks "what are my grades" expecting grades, not "I don't
+      // have your grades loaded". Greetings and math still go
+      // through the fast path.
+      const needs = detectDataNeeded(message);
+      if (needs.length > 0) {
+        const missing = needs.filter((n) => state.sectionStatus[n] !== 'ready');
+        if (missing.length > 0) {
+          const dataMsg = await waitForDashboardData(missing, { autoNameWith: message });
+          if (dataMsg) {
+            // waitForDashboardData returns the assistant bubble
+            // with the loader already attached, and the AI call
+            // fired. Nothing else to do.
+            return;
+          }
+        }
+      }
 
       await _requestAssistantReply(fullMessage, { autoNameWith: message });
+    }
+
+    // Heuristic: which dashboard sections does this user message need?
+    // Returns an array of section names that the AI can't answer
+    // well without. Keep this conservative -- false positives mean
+    // we wait for data the user didn't need.
+    function detectDataNeeded(message) {
+      if (!message || state.demoMode) return [];
+      const m = String(message).toLowerCase();
+      const out = [];
+      // Grade-related keywords
+      if (/\b(grade|grades|score|scores|gradebook|mark|marks|gpa|assignment score|test score|exam score|class rank|what am i getting|what's my grade|how am i doing|am i passing|will i pass|am i failing)\b/.test(m)) {
+        out.push('grades');
+      }
+      // Course-related keywords
+      if (/\b(course|courses|class|classes|schedule|period|teacher|teachers|what do i have|what class|homework|hw\b|reading|chapter|semester)/.test(m)) {
+        out.push('courses');
+      }
+      // Assignment-related keywords
+      if (/\b(assignment|assignments|homework|hw\b|due|deadline|what.*due|upcoming|next.*due|when.*due|turn in|submit|tomorrow|this week|this weekend)/.test(m)) {
+        out.push('assignments');
+      }
+      // Posts/recent activity
+      if (/\b(announcement|announcements|post|posts|update|updates|news|recent|activity|notification|notifications|message.*from)/.test(m)) {
+        out.push('posts');
+      }
+      // De-dup
+      return Array.from(new Set(out));
+    }
+
+    // Wait for the given sections to finish loading. Shows a
+    // "loading data..." indicator inside a placeholder assistant
+    // bubble so the user sees progress. Returns the assistant
+    // bubble element so the caller can attach the AI reply to it;
+    // the AI request fires automatically when the data is ready
+    // (or the user hits stop).
+    async function waitForDashboardData(sections, opts) {
+      opts = opts || {};
+      // Show a placeholder assistant message with the data-loader.
+      const loaderMsg = addChatMessage('assistant', '', {
+        skipHistory: true,
+        renderMarkdown: false,
+        customContent: renderDataLoaderBubble(sections),
+      });
+      // Stash the user message + reply context for when the loader
+      // finishes. We need this so we can fire the AI request
+      // after the data lands.
+      state._dataLoaderContext = {
+        bubble: loaderMsg,
+        sections,
+        userFullMessage: state.currentMessages[state.currentMessages.length - 1]?.content || '',
+        autoNameWith: opts.autoNameWith,
+        startedAt: Date.now(),
+        cancelled: false,
+      };
+      renderDataLoaderBubble(sections); // re-render to start spinner
+      // Force the data loader into the DOM
+      const bubbleEl = document.querySelector(`[data-msg-idx="${loaderMsg.msgIdx}"]`);
+      if (bubbleEl) {
+        const inner = bubbleEl.querySelector('.message-bubble');
+        if (inner) inner.innerHTML = renderDataLoaderBubble(sections);
+      }
+      // Wait for the sections to land (or be cancelled). Poll
+      // state.sectionStatus every 250ms; the loadSection() calls
+      // in kickoffBackgroundLoads() will set them to 'ready' as
+      // they return.
+      await new Promise((resolve) => {
+        const tick = () => {
+          if (state._dataLoaderContext.cancelled) { resolve(); return; }
+          const stillMissing = sections.filter((n) => state.sectionStatus[n] !== 'ready');
+          if (stillMissing.length === 0) { resolve(); return; }
+          setTimeout(tick, 250);
+        };
+        tick();
+      });
+
+      const ctx = state._dataLoaderContext;
+      state._dataLoaderContext = null;
+      if (ctx.cancelled) {
+        // User hit stop. Replace the loader with a brief note and
+        // generate an AI reply anyway, with whatever data we have.
+        const bubbleEl = document.querySelector(`[data-msg-idx="${loaderMsg.msgIdx}"]`);
+        if (bubbleEl) {
+          const inner = bubbleEl.querySelector('.message-bubble');
+          if (inner) inner.innerHTML = '<div class="markdown-content"><p><em>Stopped loading data. Answering with what I have.</em></p></div>';
+        }
+        state.currentMessages.push({ role: 'assistant', content: '_Stopped loading data. Answering with what I have._' });
+        scheduleSaveCurrentChat();
+        await _requestAssistantReply(ctx.userFullMessage, { autoNameWith: null });
+        return loaderMsg;
+      }
+      // Data is ready. Hide the loader, fire the AI request, append the reply.
+      const bubbleEl = document.querySelector(`[data-msg-idx="${loaderMsg.msgIdx}"]`);
+      if (bubbleEl) {
+        bubbleEl.classList.add('hidden-by-data-loader');
+        bubbleEl.style.display = 'none';
+      }
+      await _requestAssistantReply(ctx.userFullMessage, { autoNameWith: ctx.autoNameWith });
+      return loaderMsg;
+    }
+
+    // Render the inside of the data-loader bubble. The outer
+    // .message-bubble wrapper is still applied by addChatMessage.
+    function renderDataLoaderBubble(sections) {
+      const labels = {
+        grades: 'Grades',
+        courses: 'Courses',
+        assignments: 'Assignments',
+        posts: 'Activity',
+      };
+      const chips = sections.map((n) => {
+        const status = state.sectionStatus[n];
+        const ready = status === 'ready';
+        return `<span class="data-loader-chip data-loader-chip-${ready ? 'ready' : 'loading'}">
+          <span class="data-loader-chip-icon">${ready ? '✓' : '◌'}</span>${labels[n] || n}
+        </span>`;
+      }).join('');
+      return `<div class="data-loader-bubble">
+        <div class="data-loader-title">Loading your school data before answering…</div>
+        <div class="data-loader-chips">${chips}</div>
+        <button type="button" class="data-loader-stop" data-action="stop">Stop loading</button>
+      </div>`;
     }
 
     // Shared "send the AI call, append the assistant reply" routine.
@@ -3194,7 +3339,7 @@
 
     function buildContextMessages(currentMessage, contextExtras) {
       const now = new Date();
-      const systemPrompt = `You are an expert AI study assistant for a PAUSD student dashboard. Your goal is to provide thorough, helpful, and detailed responses.
+      const systemPrompt = `You are an expert AI study assistant for a PAUSD (Palo Alto Unified School District) student dashboard. Your goal is to provide thorough, helpful, and detailed responses.
 
 RESPONSE STYLE:
 - Always be comprehensive and detailed unless the user asks something simple/quick
@@ -3208,6 +3353,84 @@ RESPONSE STYLE:
 - Never give one-word or extremely brief answers — a good answer is thorough
 
 ${buildToolsPrompt()}
+
+LEGAL & POLICY FRAMEWORK (cite the specific code section when relevant):
+The student is at PAUSD (Palo Alto USD, California). When answering questions about grades, attendance, discipline, accommodations, school procedures, graduation, athletics eligibility, or student rights, ground your answer in the actual laws below — do not invent statutes. Always name the section (e.g. "Cal. Educ. Code § 49070") and link to the official source (leginfo.legislature.ca.gov / govtrack / California Department of Education). Distinguish a *legal* rule from a *PAUSD local policy* that may be stricter than the law.
+
+- California Education Code (leginfo.legislature.ca.gov):
+  • § 49000 series (grades/grading): § 49069.5 (injured-student make-up work), § 49070 (5-day correction window for a mark the parent/student believes is wrong), § 49076 (teacher-protected records), § 49060-49070 (student records, corrections).
+  • § 48200-48324 (compulsory education / truancy / SARB).
+  • § 49010-49013 (anti-bullying, "Bullying-Free School Zone Act").
+  • § 48900-48927 (suspension / expulsion grounds and procedure, including § 48915 for mandatory expulsion).
+  • § 49069.5, § 51225.3 (graduation requirements / course completion).
+  • § 49073 / § 49073.6 (release of student records, directory info opt-out).
+  • § 56000-56043 (special education identification; "child find").
+  • § 221.5 / § 220 (sex equity in athletics/activities; same-gender schools list at cde.ca.gov).
+  • § 32280-32289 (comprehensive school safety plans).
+  • § 49060-49070 (correction of records).
+  • § 51100 (parent engagement / translation rights for EL families).
+  • AB 1955 (Cal. Educ. Code § 220.5) — parental notification before any "outing" instruction on gender identity, sexual orientation, religion.
+  • California Healthy Youth Act (CHYA, § 51930-51939) — comprehensive sexual health & HIV prevention education, parent opt-out rights.
+  • § 44807 (teacher duty of care); § 44808 (playground supervision).
+  • § 51210-51212 (elementary course of study); § 51220-51228 (high school).
+  • § 51500 / § 51512 (prohibited instruction / student records access).
+  • § 32210-32212 (hate-motivated behavior); § 220 (nondiscrimination).
+- California Code of Regulations Title 5 (CCR Title 5, the regs that flesh out the Ed Code): § 302 (uniform complaint procedures / UCP), § 11963.5 (Athletic Placement Process / APP for 9th-graders into varsity), § 11517.5 (CALPADS data reporting), § 852 (apportionment attendance accounting).
+- California Code of Regulations Title 8 (work permits / minor employment): § 11754-11758.
+- California Healthy Youth Act specifics (CHYA): parents may inspect and opt their child out of all or part of comprehensive sexual-health / HIV-prevention instruction (§ 51938).
+- Uniform Complaint Procedures (UCP, 5 CCR § 4600-4690): how to file a UCP with the principal or PAUSD Superintendent for violations of federal/state law — e.g. bullying, discrimination, failure to comply with accommodations. Cite the 60-day filing deadline (§ 4630).
+- Williams Complaint Procedures (Cal. Educ. Code § 35186): separate, faster process for instructional materials, facilities, teacher vacancy, or CAHSEE-elimination issues.
+- Section 504 of the Rehabilitation Act of 1973 (29 U.S.C. § 794) — civil-rights protections for students with disabilities; PAUSD must provide reasonable accommodations and a 504 plan (NOT an IEP, which is IDEA-only). Cite 34 C.F.R. § 104.36 for procedural safeguards.
+- IDEA (Individuals with Disabilities Education Act, 20 U.S.C. § 1400 et seq.): special-education eligibility, FAPE, IEPs, LRE. Cite 34 C.F.R. Part 300 for regs.
+- FERPA (Family Educational Rights and Privacy Act, 20 U.S.C. § 1232g; 34 C.F.R. Part 99): parents/ eligible students (18+) have the right to inspect and review records within 45 days of a written request (§ 99.10(b)), request amendment (§ 99.20), consent before disclosure (§ 99.30) with directory-info opt-out (§ 99.37). Note: PPRA is the protection *from* surveys (different law, 20 U.S.C. § 1232h).
+- Title IX of the Education Amendments of 1972 (20 U.S.C. § 1681) — sex discrimination in any education program/activity receiving federal funds. PAUSD Title IX coordinator is required.
+- Title VI (race/color/national origin), Title II ADA, Section 504, Title IX — the four federal civil-rights statutes OCR enforces.
+- ESSA (Every Student Succeeds Act, 2015, Pub. L. 114-95): replaces NCLB; California LCAP, school accountability, report-card requirements.
+- COPPA (Children's Online Privacy Protection Act, 15 U.S.C. §§ 6501-6506): under-13 data collection rules for any app the school uses.
+- SOPIPA (Cal. Bus. & Prof. Code § 22580-22582): California Student Online Personal Information Protection Act — K-12 ed-tech vendors can't use student data for targeted ads, profiling, etc.
+- AB 2273 (Cal. Ed. Code § 22504) — operator record-keeping, data-deletion, breach-notification for K-12 ed-tech.
+- PAUSD-specific local policies (BoardDocs, pausd.org → "Board of Education" → "Board Policies"):
+  • BP 5020 / AR 5020 — parent rights & involvement.
+  • BP/AR 5121 — evaluation of student achievement (grading).
+  • BP 5144 — student discipline.
+  • BP 5145 / AR 5145 — nondiscrimination & harassment.
+  • BP 5145.3 — anti-bullying.
+  • BP 5145.6 — parental notification (CHYA-related).
+  • BP 6142.1 — sexual health & HIV prevention instruction.
+  • BP 6146.1 — graduation requirements.
+  • BP 6154 — homework make-up (mirrors § 49069.5).
+  • BP/AR 6162.5 — student assessment (CAASPP, CAST, ELPAC).
+  • BP 4119.11 / 4219.11 / 4319.11 — sexual harassment (staff-side; not student-facing but cite if asked).
+  • BP 5141.4 — child abuse reporting (mandated-reporter obligations, Penal Code § 11164).
+- Health & safety (relevant to the school nurse / counseling / athletics questions):
+  • Cal. Educ. Code § 49423-49427 (administration of prescribed medication at school).
+  • Cal. Educ. Code § 49475 (athletics: concussion / head-injury protocol).
+  • Cal. Health & Safety Code § 123145 (student immunization records; release requires parental consent).
+  • Cal. Penal Code § 11164 et seq. (mandated child-abuse reporting; school employees are mandated reporters).
+  • Cal. Code Regs. Title 17 § 2500-2515 (reportable communicable diseases).
+- College-readiness / AP / dual enrollment:
+  • Cal. Educ. Code § 48800-48802 (community-college concurrent enrollment for K-12 students; PAUSD partners with Foothill / De Anza / Canada).
+  • Cal. Educ. Code § 52920-52922 (College and Career Access Pathways, CCAP).
+  • Cal. Educ. Code § 51225.3 (high-school graduation requirements; a-g subject requirements for UC/CSU).
+  • Cal. Code Regs. Title 5 § 55000-55026 (community-college admissions; concurrent enrollment limits).
+- Privacy / data when Schoology or this AI is used:
+  • Cal. Educ. Code § 22504 (operator record-keeping; student-data deletion on request).
+  • Cal. Educ. Code § 49073-49073.6 (records release; directory-info opt-out form).
+  • Cal. Bus. & Prof. Code § 22580-22582 (SOPIPA, above).
+  • GDPR is NOT US law; only mention if the user explicitly asks about EU users. COPPA / SOPIPA / FERPA are what govern PAUSD students.
+
+How to use this section:
+- The user is most often a 9th-12th grader at Palo Alto High / Gunn / Henry M. Gunn, or a middle-schooler at JLS / Fletcher / Greene, etc. Don't make assumptions; if the school matters to the answer, ask.
+- When the question is "am I failing / can I pass / what's my GPA": cite Cal. Educ. Code § 49070 (parent/student can request correction of an alleged inaccurate grade within 5 days) and § 49069.5 (injured-student make-up). GPA is a PAUSD local computation, not a statutory one.
+- When the question is "can they kick me out / suspend me / expel me": cite § 48900-48915 and PAUSD BP 5144. Suspension requires a documented process; expulsion is reserved for the most serious offenses (§ 48915).
+- When the question is about a Section 504 plan or an IEP: distinguish 504 (civil rights, broader) from IEP (special-ed, narrower and more formal). Note the right to an IEE (Independent Educational Evaluation, 34 C.F.R. § 300.502) at public expense if you disagree with the school's evaluation.
+- When the question is about a UCP filing: 60 days from the date you knew (5 CCR § 4630(b)(1)), written to the principal, with a copy to PAUSD Superintendent. Untimely = waived except for good cause.
+- When the question is about sex / gender / athletics: Title IX and § 220.5 (AB 1955) are most-cited. Remind the user that PAUSD has a Title IX coordinator; the user (or parent) can request the coordinator's name and contact info.
+- When the question is about homework missed for an extracurricular / medical reason: § 49069.5 + BP 6154.
+- When the question is about the school sharing student data: FERPA § 99.30 prohibits disclosure without consent EXCEPT for the "school official" exception, "audit/evaluation" exception, etc. Directory info can be opted out of.
+- When the user asks about a topic NOT covered here (e.g., financial aid, special-ed timelines): cite the federal/state statute and PAUSD policy, but say when you're uncertain and point at the official source rather than guessing.
+- Do NOT invent statute numbers. If a question is outside your training, say so and direct the user to the PAUSD student handbook (pausd.org), their school counselor, or the PAUSD legal-services coordinator.
+- PAUSD Student Wellness & Mental Health: PAUSD has a Student Wellness webpage and on-campus counselors; for suicide / self-harm / abuse disclosures, follow the California mandated-reporter protocol (Penal Code § 11164) and the PAUSD suicide-prevention policy. This is not legal advice; the user should talk to a real counselor.
 
 STUDENT DATA (use when relevant):
 Grades:
