@@ -24,6 +24,22 @@
       align-items: center;
       gap: 24px;
     }
+    /* Logo above the spinner, themed. Same dual-img pattern as the
+       header: dark variant shown in dark mode, light variant in light. */
+    .loading-logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 56px;
+    }
+    .loading-logo-img {
+      width: 56px;
+      height: 56px;
+      object-fit: contain;
+    }
+    .loading-logo-light { display: none; }
+    [data-theme="light"] .loading-logo-dark { display: none; }
+    [data-theme="light"] .loading-logo-light { display: block; }
     .loading-spinner {
       width: 100px;
       height: 100px;
@@ -238,6 +254,40 @@
          gradient. Dark text for legibility on a light background. */
       --user-bubble-bg: linear-gradient(135deg, #eef0fb 0%, #e3e6f7 50%, #eef0fb 100%);
       --user-bubble-text: #1a1a2e;
+    }
+
+    /* Loading-screen light-mode overrides. The dark defaults above
+       already work (var(--bg)/var(--text)/var(--border)/var(--ai-gradient)),
+       but the loading page sits on top of plain --bg with no card
+       chrome, so it needs explicit tuning to read well in light mode:
+       a slightly tinted card surface behind the spinner, a soft
+       border on the progress bar, and a more saturated progress fill
+       so it stands out against the lighter background. */
+    [data-theme="light"] .app-loading {
+      /* Subtle vertical wash so the loading screen doesn't look
+         identical to the dashboard below it -- still the same
+         --bg family, just slightly more luminous. */
+      background: linear-gradient(180deg, #f6f7fc 0%, #eef0f7 100%);
+    }
+    [data-theme="light"] .loading-content {
+      padding: 32px 36px;
+      background: var(--surface, #ffffff);
+      border: 1px solid var(--border, #e2e4ea);
+      border-radius: 20px;
+      box-shadow: 0 10px 40px rgba(79, 70, 229, 0.08);
+    }
+    [data-theme="light"] .loading-bar {
+      background: var(--border, #e2e4ea);
+    }
+    [data-theme="light"] .loading-bar-fill {
+      background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 50%, #4f46e5 100%);
+      box-shadow: 0 0 8px rgba(79, 70, 229, 0.4);
+    }
+    [data-theme="light"] .loading-percent {
+      color: var(--text, #1a1a2e);
+    }
+    [data-theme="light"] .loading-elapsed {
+      color: var(--text-secondary, #6b6b80);
     }
 
     [data-theme="light"] .header-title-group h1 {
@@ -756,6 +806,12 @@
       height: 48px;
       object-fit: contain;
     }
+    /* Two logo <img> tags stacked; CSS shows the right one per theme.
+       Dark variant hidden in light mode, light variant hidden in dark
+       mode. The favicon stays the same single file (no light variant). */
+    .header-logo-light { display: none; }
+    [data-theme="light"] .header-logo-dark { display: none; }
+    [data-theme="light"] .header-logo-light { display: block; }
 
     .ai-brain-icon {
       width: 48px;
