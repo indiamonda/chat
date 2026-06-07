@@ -1,832 +1,7 @@
-# Schoology MCP - Agent Working Notes
-**Last Updated**: 2026-05-25
-**App Version**: 2026-05-25.15
-
-## Project Overview
-**App URL**: https://jchat.fly.dev/schoology/
-**Client Repo**: github.com/indiamonda/schoologyhelp (frontend that sends student credentials)
-**Stack**: Express proxy (port 8080) → Flask (port 8081) → MCP/Python/Playwright → Schoology
-
-## Architecture
-```
-Frontend → Express Proxy (8080) → Flask (8081) → MCP server.py → Playwright → Schoology
-```
-
-## Implementation Status
-
-### ✅ Per-Student Authentication
-- **schoology/server.py**: Decodes Basic Auth, passes credentials via env vars to MCP subprocess
-- **schoology-mcp/server.py**: Uses `_get_username_from_config()` to resolve username from env or config
-- **schoology-mcp/browser.py**: Per-student `BrowserContext` keyed by username, username-specific storage state files
-- **schoology-mcp/config.py**: Runtime credentials via `_runtime_credentials` dict
-- **schoology-mcp/auth.py**: `login()` accepts username/password parameters
-
-### ✅ Error Display Fix
-- Frontend shows red error box with exact error message instead of "Contact administrator"
-
-### ✅ Debug Logging
-- Added extensive debug prints in `call_mcp_tool_async()` and `get_data_from_mcp_or_mock()`
-
-### ✅ AI Chat Theme Colors (2026-05-24)
-- Added `--surface` CSS variable for chat message backgrounds
-- `.chat-message.assistant` now uses `var(--surface)` instead of hardcoded `#e5e5ea`
-- Light and dark themes both define `--surface` appropriately
-- **Fixed**: `.chat-input-row input` now has `color: var(--text)` for visibility in both themes
-
-### ✅ AI Chat Improvements (2026-05-24)
-- Welcome message no longer shows LaTeX/markdown help line
-- Replaced typewriter animation with smooth fade-in effect
-- `typewriterEffect()` now renders markdown immediately then fades in
-
-### ✅ Emoji Picker (2026-05-24)
-- Emoji picker positioned above input button with viewport boundary detection
-- Flips right if would go off left edge, flips up if would go off bottom
-- `max-height: 300px` with scroll for small screens
-
-### ✅ Playwright Browser Launch Fix (2026-05-24)
-- **Root Cause**: Missing `--no-sandbox` flag when running as non-root user (USER nodejs in Dockerfile). Also `--single-process` flag caused crashes in certain containerized environments.
-- **Fix**: Replaced `--single-process` with a set of Chromium stability flags in `browser.py` launch args.
-- **File**: `/workspaces/chat/schoology-mcp/schoology_mcp/browser.py` lines 64-85
-
-### ✅ AI Chat Fix (2026-05-24)
-- **Problem**: AI chat always returned same greeting regardless of user input
-- **Root Cause**: DeepSeek proxy worker returns SSE by default; code expected JSON
-- **Fix**: Added `stream: false` to API request body in `schoology/index.html`
-- **Also**: Added proper error message when AI Worker URL not configured instead of silently falling into demo mode
-
-### ✅ Pre-configured DeepSeek Proxy URL (2026-05-24)
-- `loadSettings()` now pre-configures `https://deepseek-proxy.ikunbeautiful.workers.dev` if no custom URL is stored
-- No longer requires manual configuration in settings tab
-
-### ✅ Remove DeepSeek URL from Settings Tab (2026-05-24)
-- Removed the DeepSeek AI Proxy Worker URL input field from the Settings UI
-- URL is now hardcoded/pre-configured in `loadSettings()` - no user-facing configuration needed
-
-### ✅ Fix marked.js "str.replace is not a function" Error (2026-05-24)
-- Added `if (typeof text !== 'string') text = String(text || '')` guard in `renderMarkdown()` to ensure text is always a string before calling `.replace()`
-
-### ✅ Local Copies of CDN Dependencies (2026-05-24)
-- **marked.js**: Local copy at `schoology/assets/marked.min.js` (v15.0.12)
-- **KaTeX**: Local copies at `schoology/assets/katex.min.js` and `katex.min.css`
-- No longer rely on cdn.jsdelivr.net - fully self-contained
-
-### ✅ Chat History Persistence (2026-05-24)
-- Chat history now stored in localStorage per student ID: `schoology_chat_history_{username}`
-- `loadChatHistory()` called on app load for non-demo users
-- `saveChatHistory()` called after every user/assistant message
-- Demo mode does NOT persist chat history
-
-### ✅ Clear All Data Button (2026-05-24)
-- Added "Clear All Data" button in Settings tab
-- Clears all `schoology_*` localStorage keys, resets state, and reloads page
-- Requires user confirmation before clearing
-
-### ✅ Improved renderMarkdown() Safety (2026-05-24)
-- Added `if (text == null) return ''` guard at start
-- Added `if (!text) return ''` check
-- Added `if (typeof result !== 'string') return String(result)` after marked.parse()
-- Prevents "str.replace is not a function" error from marked.js when given non-string input
-
-### ✅ Fix "Cannot set properties of null (setting 'value')" Error (2026-05-24)
-- Removed DeepSeek URL input from Settings tab DOM
-- Simplified `loadSettings()` to not reference removed DOM elements (`workerUrlInput`, `apiUrlInput`)
-
-### ✅ Playwright Browser Launch Fix (2026-05-24)
-- **Root Cause**: `--single-process` flag caused crashes in containerized environments; browser context was being closed unexpectedly
-- **Fix**: Replaced `--single-process` with stability flags (`--disable-extensions`, `--disable-background-networking`, etc.) in `browser.py` chromium.launch()
-- **File**: `/workspaces/chat/schoology-mcp/schoology_mcp/browser.py` lines 64-85
-
-## File Locations
-- **Flask server**: `/app/schoology/server.py`
-- **MCP server**: `/app/schoology-mcp/server.py`
-- **MCP config**: `/app/schoology-mcp/schoology_mcp/config.py`
-- **MCP browser**: `/app/schoology-mcp/schoology_mcp/browser.py`
-- **Express proxy**: `/app/server/index.js`
-- **Venv Python**: `/app/.schoology-venv/bin/python` (MCP uses the shared schoology-venv, NOT a separate schoology-mcp/.venv)
-
-## Dockerfile CMD
-```dockerfile
-CMD ["sh", "-c", "cd /app/schoology; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 2 --threads 8 server:app & node /app/server/index.js"]
-```
-
-## Deploy Commands (MUST do both steps)
-```bash
-# Step 1: Build and push image
-export FLYCTL_INSTALL="$HOME/.fly" && export PATH="$FLYCTL_INSTALL/bin:$PATH"
-flyctl deploy --build-only --push -a jchat --config fly.toml
-
-# Step 2: Deploy the pushed image (image tag from step 1 output, format: registry.fly.io/jchat:deployment-XXXXXXXXXXXXX)
-flyctl deploy -a jchat --image registry.fly.io/jchat:deployment-<TAG>
-```
-
-## Debug Commands
-- Check logs: `flyctl logs -a jchat --tail 100`
-- SSH to machine: `flyctl ssh console -a jchat`
-
-## MCP Debug Log Prefixes
-- `[MCP DEBUG] VENV_PYTHON=` - shows Python path
-- `[MCP DEBUG] Starting MCP with cmd:` - shows command
-- `[MCP DEBUG] MCP session initialized` - session ready
-- `[MCP DEBUG] MCP tool X returned: Y` - tool result
-
-## Known Gotchas
-1. **No `exec`** in CMD - use `&` to run both gunicorn and node in foreground
-2. **Use `cd /app/schoology`** before gunicorn because gunicorn needs to find the module
-3. **MCP first call is slow** - Playwright browser launches on first use (~30s)
-4. **Credentials in env vars** - SCHOOLOGY_USERNAME and SCHOOLOGY_PASSWORD passed to subprocess
-5. **localStorage stores credentials** - frontend restores them on session restore
-
-## User Preferences
-- "Don't write fallbacks, write show error messages and fix the thing properly"
-- "Use agent.md to store memory so nothing is lost"
-- "This app cannot suspend - it powers other applications"
-- Error messages should NOT say "contact administrator" - personal project
-- Error display: red box with exact error message
-
-## Schoology App (schoology/index.html) Theme System
-
-### CSS Variable Defaults (`:root`)
-```css
---bg: #f5f5f7;
---surface: #e5e5ea;        /* Chat message backgrounds */
---text: #1d1d1f;
---text-secondary: #86868b;
---primary: #0070f0;
---success: #34c759;
---warning: #ff9500;
---error: #ff3b30;
-```
-
-### Light Theme `[data-theme="light"]`
-```css
---bg: #f5f5f7;
---surface: #e5e5ea;
---border: #d1d1d6;
---text: #1d1d1f;
---text-secondary: #86868b;
-```
-
-### Dark Theme `[data-theme="dark"]`
-```css
---bg: #000000;
---surface: #2c2c2e;
---border: #38383a;
---text: #f5f5f7;
---text-secondary: #98989d;
-```
-
-### Theme Toggle
-- Toggle element: `#darkModeToggle` checkbox
-- Applied via: `document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')`
-- Init: `initDarkMode()` reads localStorage or `prefers-color-scheme`
-
-### Chat Message Colors
-- `.chat-message.user`: uses `var(--primary)` with white text
-- `.chat-message.assistant`: uses `var(--surface)` for background, `var(--text)` for text
-- `.chat-message.error`: uses `rgba(255,59,48,0.1)` background with `var(--error)` text
-
-## Known Issues
-
-### MCP Browser Launch (FIXED)
-**Symptom**: `BrowserType.launch: Target page, context or browser has been closed`
-**Root Cause**: Missing `--no-sandbox` flag when running as non-root user (uid 1001)
-**Fix**: Added `args=["--no-sandbox", "--disable-setuid-sandbox"]` to browser launch in `browser.py`
-
-### AI Demo Mode
-- Location: `generateDemoResponse()` function, line ~1321
-- When no AI worker URL is configured (localStorage `schoology-ai-worker-url`), demo mode is used
-- Demo greeting is hardcoded and always the same
-- To enable real AI: Set a Cloudflare Worker URL with DeepSeek API in the settings
-
-## Chat App (/public/) Features
-
-### ✅ Emoji Picker in Chat Input (2026-05-24)
-- Added emoji button (😊) next to chat input in `game.html` and `game-self-hosted.html`
-- Emoji picker appears above input, showing 30 common emojis
-- Click emoji to insert at cursor position in input field
-- Viewport boundary detection: flips position if picker would go off screen
-- Closes when clicking outside
-- Input width reduced from 280px to 240px to accommodate emoji button
-
-## DeepSeek Proxy Worker (deepseek-proxy.ikunbeautiful.workers.dev/) Source Code
-
-```js
-
-const ALLOWED_ORIGINS = [
-  'https://tintly555.github.io',
-  'https://indiamonda.github.io',
-  'https://chat.jimmyqrg.com',
-  'https://lausd.schoology.com',
-  'https://unlinewize.jimmyqrg.com',
-  'https://abs-unlinewize.jimmyqrg.com',
-  'https://mcraft.fly.dev',
-  'https://rammerhead.fly.dev',
-  'https://ulw-app.fly.dev',
-  'https://jchat.fly.dev',
-];
-
-/* Local dev origins — anything on localhost / 127.0.0.1 (any port). */
-const LOCALHOST_RE = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/;
-
-function isAllowedOrigin(origin) {
-  if (!origin) return false;
-  if (ALLOWED_ORIGINS.includes(origin)) return true;
-  return LOCALHOST_RE.test(origin);
-}
-
-const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
-const AUTH_SERVER = 'https://chat.jimmyqrg.com';
-const ALLOWED_MODELS = new Set(['deepseek-chat', 'deepseek-reasoner']);
-const MAX_INPUT_MESSAGES = 64;
-const MAX_INPUT_CHARS = 60_000;
-const MAX_MAX_TOKENS = 4_096;
-const RATE_WINDOW_SEC = 60;
-const RATE_MAX = 30;
-
-const ATTACHMENT_MARKERS = [
-  '\n\n--- ',
-  '\n\n[Image attached:',
-];
-
-function corsHeaders(origin) {
-  const allow = isAllowedOrigin(origin) ? origin : ALLOWED_ORIGINS[0];
-  return {
-    'Access-Control-Allow-Origin':  allow,
-    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Turnstile-Token, X-Recaptcha-Token, X-Sync-Key',
-    'Access-Control-Max-Age': '86400',
-    'Vary': 'Origin',
-  };
-}
-
-function jsonResponse(body, status, origin) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
-  });
-}
-
-async function checkRateLimit(env, ip) {
-  if (!env.RATE_KV) return { ok: true };
-  const key = 'rl:' + ip;
-  const now = Math.floor(Date.now() / 1000);
-  const raw = await env.RATE_KV.get(key);
-  let bucket = raw ? JSON.parse(raw) : { ts: now, n: 0 };
-  if (now - bucket.ts >= RATE_WINDOW_SEC) bucket = { ts: now, n: 0 };
-  bucket.n += 1;
-  await env.RATE_KV.put(key, JSON.stringify(bucket), { expirationTtl: RATE_WINDOW_SEC * 2 });
-  if (bucket.n > RATE_MAX) return { ok: false, retryAfter: RATE_WINDOW_SEC - (now - bucket.ts) };
-  return { ok: true };
-}
-
-function validateBody(body) {
-  if (!body || typeof body !== 'object') return 'Body must be JSON object';
-  if (!Array.isArray(body.messages)) return 'messages must be array';
-  if (body.messages.length === 0) return 'messages cannot be empty';
-  if (body.messages.length > MAX_INPUT_MESSAGES) return 'Too many messages';
-  let totalChars = 0;
-  for (const m of body.messages) {
-    if (!m || typeof m !== 'object') return 'Each message must be object';
-    if (!['system','user','assistant'].includes(m.role)) return 'Bad role';
-    if (typeof m.content !== 'string') return 'content must be string';
-    totalChars += m.content.length;
-    if (totalChars > MAX_INPUT_CHARS) return 'Input too large';
-  }
-  if (body.model && !ALLOWED_MODELS.has(body.model)) return 'Unsupported model';
-  if (body.max_tokens && (typeof body.max_tokens !== 'number' || body.max_tokens < 1 || body.max_tokens > MAX_MAX_TOKENS)) return 'Invalid max_tokens';
-  return null;
-}
-
-function getBearer(request) {
-  const h = request.headers.get('Authorization') || '';
-  const m = /^Bearer\s+(.+)$/i.exec(h);
-  return m ? m[1].trim() : null;
-}
-
-async function resolveUser(token) {
-  if (!token) return null;
-  let res;
-  try {
-    res = await fetch(AUTH_SERVER + '/api/auth/me', { method: 'GET', headers: { 'Authorization': 'Bearer ' + token } });
-  } catch (_) { return null; }
-  if (!res.ok) return null;
-  let data;
-  try { data = await res.json(); } catch (_) { return null; }
-  const u = data && data.user;
-  if (!u || !u.id) return null;
-  return { id: String(u.id), username: u.username || '', email: u.email || '' };
-}
-
-const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
-
-async function verifyTurnstile(token, ip, env) {
-  if (!env.TURNSTILE_SECRET) return { ok: true, skipped: true };
-  if (!token) return { ok: true, skipped: true, reason: 'missing_token' };
-  const form = new URLSearchParams();
-  form.set('secret', env.TURNSTILE_SECRET);
-  form.set('response', token);
-  if (ip) form.set('remoteip', ip);
-  let res;
-  try { res = await fetch(TURNSTILE_VERIFY_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form.toString() }); }
-  catch (_) { return { ok: true, skipped: true, reason: 'siteverify_unreachable' }; }
-  let data;
-  try { data = await res.json(); } catch (_) { return { ok: false, reason: 'bad_json' }; }
-  if (data && data.success === true) return { ok: true };
-  return { ok: false, reason: (data && data['error-codes']) || 'verify_failed' };
-}
-
-const RECAPTCHA_VERIFY_URL = 'https://www.google.com/recaptcha/api/siteverify';
-
-async function verifyRecaptcha(token, ip, env) {
-  if (!env.RECAPTCHA_SECRET_KEY) return { ok: true, skipped: true };
-  if (!token) return { ok: true, skipped: true };
-  const form = new URLSearchParams();
-  form.set('secret', env.RECAPTCHA_SECRET_KEY);
-  form.set('response', token);
-  if (ip) form.set('remoteip', ip);
-  let res;
-  try { res = await fetch(RECAPTCHA_VERIFY_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form.toString() }); }
-  catch (_) { return { ok: true, skipped: true }; }
-  let data;
-  try { data = await res.json(); } catch (_) { return { ok: true, skipped: true }; }
-  if (data && data.success === true && (data.score === undefined || data.score >= 0.3)) return { ok: true, score: data.score };
-  return { ok: false, reason: 'low_score', score: data && data.score };
-}
-
-const ACTIVE_STATUSES = new Set(['active', 'trialing']);
-const ADMIN_USERNAMES = new Set(['jimmyqrg', 'jeko1107', 'glaeesas']);
-const COMPLIMENTARY_PREMIUM_USERNAMES = new Set(['tianqiansheng9']);
-const COMPLIMENTARY_PLUS_USERNAMES = new Set(['kyle', 'glaeesas', 'glaxyias']);
-const BANNED_EMAILS = new Set(['weeee@outlook.com']);
-
-function complimentaryTier(user) {
-  if (!user) return null;
-  const u = (user.username || '').toLowerCase();
-  if (COMPLIMENTARY_PLUS_USERNAMES.has(u)) return 'plus';
-  if (COMPLIMENTARY_PREMIUM_USERNAMES.has(u)) return 'premium';
-  return null;
-}
-
-async function hasPremiumAccess(env, user) {
-  if (!user) return false;
-  if (ADMIN_USERNAMES.has((user.username || '').toLowerCase())) return true;
-  if (complimentaryTier(user)) return true;
-  const sub = await readSubscription(env, user.id);
-  return isSubscriptionActive(sub);
-}
-
-function isUserBanned(user) {
-  if (!user) return false;
-  if (user.email && BANNED_EMAILS.has(user.email.toLowerCase())) return true;
-  return false;
-}
-
-function bannedResponse(origin) {
-  return jsonResponse({ error: 'banned', message: 'YOU ARE BANNED FROM JIMMYQRG.' }, 403, origin);
-}
-
-async function readSubscription(env, userId) {
-  if (!env.SUB_KV || !userId) return null;
-  const raw = await env.SUB_KV.get('sub:' + userId);
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch (_) { return null; }
-}
-
-async function writeSubscription(env, userId, record) {
-  if (!env.SUB_KV || !userId) return;
-  const merged = { ...record, updated_at: Math.floor(Date.now() / 1000) };
-  await env.SUB_KV.put('sub:' + userId, JSON.stringify(merged));
-  if (merged.stripe_customer_id) await env.SUB_KV.put('cust:' + merged.stripe_customer_id, userId);
-}
-
-function generateRecoveryKey() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  const arr = new Uint8Array(40);
-  crypto.getRandomValues(arr);
-  let key = '';
-  for (let i = 0; i < arr.length; i++) {
-    if (i > 0 && i % 8 === 0) key += '-';
-    key += chars[arr[i] % chars.length];
-  }
-  return key;
-}
-
-async function storeReceiptKey(env, userId, key, tier, sessionId) {
-  if (!env.SUB_KV || !userId) return;
-  const record = { key, tier, session_id: sessionId, created_at: Math.floor(Date.now() / 1000), revealed: false };
-  await env.SUB_KV.put('receipt:' + userId + ':latest', JSON.stringify(record));
-  await env.SUB_KV.put('paykey:' + key, userId);
-  const historyKey = 'receipts:' + userId;
-  let history = [];
-  try { const raw = await env.SUB_KV.get(historyKey); if (raw) history = JSON.parse(raw); } catch (_) {}
-  history.push({ key, tier, session_id: sessionId, created_at: record.created_at });
-  await env.SUB_KV.put(historyKey, JSON.stringify(history));
-}
-
-async function lookupPaymentKey(env, key) {
-  if (!env.SUB_KV || !key) return null;
-  const userId = await env.SUB_KV.get('paykey:' + key);
-  return userId || null;
-}
-
-function isSubscriptionActive(rec) {
-  if (!rec) return false;
-  if (!ACTIVE_STATUSES.has(rec.status)) return false;
-  const now = Math.floor(Date.now() / 1000);
-  if (rec.current_period_end && rec.current_period_end + 86400 < now) return false;
-  return true;
-}
-
-function stripeForm(obj, prefix) {
-  const parts = [];
-  for (const [k, v] of Object.entries(obj)) {
-    const key = prefix ? `${prefix}[${k}]` : k;
-    if (v === undefined || v === null) continue;
-    if (Array.isArray(v)) {
-      v.forEach((item, i) => {
-        if (item && typeof item === 'object') parts.push(stripeForm(item, `${key}[${i}]`));
-        else parts.push(encodeURIComponent(`${key}[${i}]`) + '=' + encodeURIComponent(String(item)));
-      });
-    } else if (typeof v === 'object') {
-      parts.push(stripeForm(v, key));
-    } else {
-      parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(String(v)));
-    }
-  }
-  return parts.join('&');
-}
-
-async function stripeRequest(env, path, body, method = 'POST') {
-  const res = await fetch('https://api.stripe.com/v1' + path, {
-    method,
-    headers: { 'Authorization': 'Bearer ' + env.STRIPE_SECRET_KEY, 'Content-Type': 'application/x-www-form-urlencoded', 'Stripe-Version': '2024-06-20' },
-    body: body ? stripeForm(body) : undefined,
-  });
-  let data = null;
-  try { data = await res.json(); } catch (_) {}
-  if (!res.ok) {
-    const msg = (data && data.error && data.error.message) || `Stripe ${res.status}`;
-    const err = new Error(msg);
-    err.status = res.status;
-    err.detail = data;
-    throw err;
-  }
-  return data;
-}
-
-async function verifyStripeSignature(rawBody, header, secret) {
-  if (!header || !secret) return false;
-  const parts = Object.fromEntries(header.split(',').map(p => { const i = p.indexOf('='); return i === -1 ? [p, ''] : [p.slice(0, i).trim(), p.slice(i + 1).trim()]; }));
-  const ts = parts.t;
-  const sig = parts.v1;
-  if (!ts || !sig) return false;
-  if (Math.abs(Math.floor(Date.now() / 1000) - Number(ts)) > 300) return false;
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const mac = await crypto.subtle.sign('HMAC', key, enc.encode(`${ts}.${rawBody}`));
-  const hex = Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, '0')).join('');
-  if (hex.length !== sig.length) return false;
-  let mismatch = 0;
-  for (let i = 0; i < hex.length; i++) mismatch |= hex.charCodeAt(i) ^ sig.charCodeAt(i);
-  return mismatch === 0;
-}
-
-function messageHasAttachments(msg) {
-  if (!msg || msg.role !== 'user') return false;
-  const c = String(msg.content || '');
-  return ATTACHMENT_MARKERS.some(marker => c.includes(marker));
-}
-
-async function handleChat(request, env, origin) {
-  if (!env.DEEPSEEK_KEY) return jsonResponse({ error: 'Server not configured: DEEPSEEK_KEY missing' }, 500, origin);
-  if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: 'Forbidden origin' }, 403, origin);
-
-  const syncKey = request.headers.get('X-Sync-Key');
-  const isServerCall = env.SYNC_KEY && syncKey === env.SYNC_KEY;
-
-  if (!isServerCall) {
-    const tsToken = request.headers.get('X-Turnstile-Token');
-    const rcToken = request.headers.get('X-Recaptcha-Token');
-    const tsIp = request.headers.get('CF-Connecting-IP') || '';
-    const tsResult = await verifyTurnstile(tsToken, tsIp, env);
-    if (!tsResult.ok) return jsonResponse({ error: 'captcha_failed', message: 'Bot check failed — please refresh the page.' }, 403, origin);
-    const rcResult = await verifyRecaptcha(rcToken, tsIp, env);
-    if (!rcResult.ok) return jsonResponse({ error: 'captcha_failed', message: 'Bot check failed — please refresh the page.' }, 403, origin);
-  }
-
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const rl = await checkRateLimit(env, ip);
-  if (!rl.ok) return new Response(JSON.stringify({ error: 'rate_limited', retry_after: rl.retryAfter }), { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': String(rl.retryAfter), ...corsHeaders(origin) } });
-
-  const banToken = getBearer(request);
-  if (banToken) {
-    const banUser = await resolveUser(banToken);
-    if (isUserBanned(banUser)) return bannedResponse(origin);
-  }
-
-  let body;
-  try { body = await request.json(); } catch (_) { return jsonResponse({ error: 'Invalid JSON' }, 400, origin); }
-  const err = validateBody(body);
-  if (err) return jsonResponse({ error: err }, 400, origin);
-
-  const latestUserMsg = [...body.messages].reverse().find(m => m.role === 'user');
-  if (latestUserMsg && messageHasAttachments(latestUserMsg)) {
-    const token = getBearer(request);
-    const user = await resolveUser(token);
-    if (!user) return jsonResponse({ error: 'auth_required', message: 'Please sign in to upload files.' }, 401, origin);
-    if (isUserBanned(user)) return bannedResponse(origin);
-    if (!ADMIN_USERNAMES.has((user.username || '').toLowerCase())) {
-      const ok = await hasPremiumAccess(env, user);
-      if (!ok) return jsonResponse({ error: 'subscription_required', message: 'File uploads require an active subscription.', feature: 'file_uploads' }, 402, origin);
-    }
-  }
-
-  const payload = {
-    model: body.model || 'deepseek-chat',
-    messages: body.messages,
-    stream: body.stream !== false,
-    temperature: typeof body.temperature === 'number' ? body.temperature : 0.7,
-    max_tokens: typeof body.max_tokens === 'number' ? body.max_tokens : 2048,
-  };
-
-  let upstream;
-  try {
-    upstream = await fetch(DEEPSEEK_URL, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${env.DEEPSEEK_KEY}`, 'Content-Type': 'application/json', 'Accept': payload.stream ? 'text/event-stream' : 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } catch (e) { return jsonResponse({ error: 'Upstream fetch failed', detail: String(e) }, 502, origin); }
-
-  if (!upstream.ok) {
-    const text = await upstream.text();
-    return new Response(text, { status: upstream.status, headers: { 'Content-Type': upstream.headers.get('Content-Type') || 'application/json', ...corsHeaders(origin) } });
-  }
-
-  return new Response(upstream.body, {
-    status: 200,
-    headers: { 'Content-Type': payload.stream ? 'text/event-stream; charset=utf-8' : (upstream.headers.get('Content-Type') || 'application/json'), 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no', ...corsHeaders(origin) },
-  });
-}
-
-async function handleSubStatus(request, env, origin) {
-  if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: 'Forbidden origin' }, 403, origin);
-  const token = getBearer(request);
-  const user = await resolveUser(token);
-  if (!user) return jsonResponse({ active: false, anonymous: true }, 200, origin);
-  if (isUserBanned(user)) return bannedResponse(origin);
-  if (ADMIN_USERNAMES.has((user.username || '').toLowerCase())) return jsonResponse({ active: true, status: 'admin', current_period_end: null, cancel_at_period_end: false, user: { id: user.id, username: user.username } }, 200, origin);
-  const comp = complimentaryTier(user);
-  if (comp) return jsonResponse({ active: true, status: 'complimentary', tier: comp, current_period_end: null, cancel_at_period_end: false, user: { id: user.id, username: user.username } }, 200, origin);
-  const sub = await readSubscription(env, user.id);
-  return jsonResponse({ active: isSubscriptionActive(sub), status: sub ? sub.status : 'none', tier: sub ? (sub.tier || 'premium') : null, current_period_end: sub ? sub.current_period_end : null, cancel_at_period_end: sub ? !!sub.cancel_at_period_end : false, user: { id: user.id, username: user.username } }, 200, origin);
-}
-
-async function handleCheckout(request, env, origin) {
-  if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: 'Forbidden origin' }, 403, origin);
-  const tsToken = request.headers.get('X-Turnstile-Token');
-  const rcToken = request.headers.get('X-Recaptcha-Token');
-  const tsIp = request.headers.get('CF-Connecting-IP') || '';
-  const tsResult = await verifyTurnstile(tsToken, tsIp, env);
-  if (!tsResult.ok) return jsonResponse({ error: 'captcha_failed', message: 'Bot check failed — please refresh the page.' }, 403, origin);
-  const rcResult = await verifyRecaptcha(rcToken, tsIp, env);
-  if (!rcResult.ok) return jsonResponse({ error: 'captcha_failed', message: 'Bot check failed — please refresh the page.' }, 403, origin);
-  if (!env.STRIPE_SECRET_KEY) return jsonResponse({ error: 'Stripe not configured on server' }, 500, origin);
-  const token = getBearer(request);
-  const user = await resolveUser(token);
-  if (!user) return jsonResponse({ error: 'auth_required', message: 'Sign in first.' }, 401, origin);
-  if (isUserBanned(user)) return bannedResponse(origin);
-  let body;
-  try { body = await request.json().catch(() => ({})); } catch (_) { body = {}; }
-  const returnUrl = (body && body.return_url) || env.SUB_RETURN_URL || (origin ? origin + '/?upgraded=1' : 'https://jimmyqrg.com/?upgraded=1');
-  const plan = (body && body.plan === 'yearly') ? 'yearly' : 'monthly';
-  const tier = (body && body.tier === 'plus') ? 'plus' : 'premium';
-  const PRICE_MAP = { 'premium-monthly': env.STRIPE_PRICE_ID_MONTHLY, 'premium-yearly': env.STRIPE_PRICE_ID_YEARLY, 'plus-monthly': env.STRIPE_PRICE_ID_PLUS_MONTHLY, 'plus-yearly': env.STRIPE_PRICE_ID_PLUS_YEARLY };
-  const priceId = PRICE_MAP[tier + '-' + plan];
-  if (!priceId) return jsonResponse({ error: 'Price not configured for ' + tier + ' ' + plan }, 500, origin);
-  const existing = await readSubscription(env, user.id);
-  const params = { mode: 'subscription', ui_mode: 'embedded', 'line_items[0][price]': priceId, 'line_items[0][quantity]': 1, return_url: returnUrl + (returnUrl.includes('?') ? '&' : '?') + 'session_id={CHECKOUT_SESSION_ID}', 'metadata[jqrg_user_id]': user.id, 'metadata[jqrg_tier]': tier, 'subscription_data[metadata][jqrg_user_id]': user.id, 'subscription_data[metadata][jqrg_tier]': tier, 'client_reference_id': user.id };
-  if (existing && existing.stripe_customer_id) params.customer = existing.stripe_customer_id;
-  else if (user.email) params.customer_email = user.email;
-  let session;
-  try { session = await stripeRequest(env, '/checkout/sessions', params); } catch (e) { return jsonResponse({ error: 'stripe_error', message: e.message }, 502, origin); }
-  return jsonResponse({ clientSecret: session.client_secret, id: session.id }, 200, origin);
-}
-
-async function handleConfig(request, env, origin) {
-  if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: 'Forbidden origin' }, 403, origin);
-  return jsonResponse({ stripe_publishable_key: env.STRIPE_PUBLISHABLE_KEY || null, tiers: { premium: { name: 'Premium', monthly: { price: '$5.99/mo', available: !!env.STRIPE_PRICE_ID_MONTHLY }, yearly: { price: '$59.99/yr', available: !!env.STRIPE_PRICE_ID_YEARLY } }, plus: { name: 'Premium Plus', monthly: { price: '$10.99/mo', available: !!env.STRIPE_PRICE_ID_PLUS_MONTHLY }, yearly: { price: '$80.99/yr', available: !!env.STRIPE_PRICE_ID_PLUS_YEARLY } } } }, 200, origin);
-}
-
-async function handleBillingPortal(request, env, origin) {
-  if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: 'Forbidden origin' }, 403, origin);
-  const token = getBearer(request);
-  const user = await resolveUser(token);
-  if (!user) return jsonResponse({ error: 'auth_required' }, 401, origin);
-  if (isUserBanned(user)) return bannedResponse(origin);
-  const sub = await readSubscription(env, user.id);
-  if (!sub || !sub.stripe_customer_id) return jsonResponse({ error: 'no_subscription' }, 404, origin);
-  let returnUrl;
-  try { const body = await request.json().catch(() => ({})); returnUrl = (body && body.return_url) || env.SUB_RETURN_URL || (origin ? origin + '/' : 'https://jimmyqrg.com/'); } catch (_) { returnUrl = env.SUB_RETURN_URL || (origin ? origin + '/' : 'https://jimmyqrg.com/'); }
-  let session;
-  try { session = await stripeRequest(env, '/billing_portal/sessions', { customer: sub.stripe_customer_id, return_url: returnUrl }); } catch (e) { return jsonResponse({ error: 'stripe_error', message: e.message }, 502, origin); }
-  return jsonResponse({ url: session.url }, 200, origin);
-}
-
-async function handlePaymentKeyVerify(request, env, origin) {
-  if (!env.WORKER_RECOVERY_SECRET) return jsonResponse({ error: 'recovery_disabled' }, 503, origin);
-  const presented = request.headers.get('X-Recovery-Secret') || '';
-  if (presented !== env.WORKER_RECOVERY_SECRET) return jsonResponse({ error: 'forbidden' }, 403, origin);
-  let body;
-  try { body = await request.json(); } catch (_) { body = null; }
-  const key = body && typeof body.key === 'string' ? body.key.trim() : '';
-  if (!key || key.length < 20 || key.length > 80) return jsonResponse({ valid: false, reason: 'bad_key_format' }, 200, origin);
-  const userId = await lookupPaymentKey(env, key);
-  if (!userId) return jsonResponse({ valid: false }, 200, origin);
-  return jsonResponse({ valid: true, user_id: userId }, 200, origin);
-}
-
-async function handleReceiptKey(request, env, origin) {
-  if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: 'Forbidden origin' }, 403, origin);
-  const token = getBearer(request);
-  const user = await resolveUser(token);
-  if (!user) return jsonResponse({ error: 'auth_required' }, 401, origin);
-  if (isUserBanned(user)) return bannedResponse(origin);
-  const kvKey = 'receipt:' + user.id + ':latest';
-  const raw = env.SUB_KV ? await env.SUB_KV.get(kvKey) : null;
-  if (!raw) return jsonResponse({ error: 'no_receipt', message: 'No pending receipt key found.' }, 404, origin);
-  let record;
-  try { record = JSON.parse(raw); } catch (_) { return jsonResponse({ error: 'no_receipt' }, 404, origin); }
-  if (record.revealed) return jsonResponse({ error: 'already_revealed', message: 'This recovery key has already been shown. It cannot be displayed again.' }, 410, origin);
-  record.revealed = true;
-  await env.SUB_KV.put(kvKey, JSON.stringify(record));
-  return jsonResponse({ key: record.key, tier: record.tier, created_at: record.created_at }, 200, origin);
-}
-
-async function handleStripeWebhook(request, env, origin) {
-  if (!env.STRIPE_WEBHOOK_SECRET) return jsonResponse({ error: 'Webhook secret not configured' }, 500, origin);
-  const sigHeader = request.headers.get('Stripe-Signature') || '';
-  const raw = await request.text();
-  const ok = await verifyStripeSignature(raw, sigHeader, env.STRIPE_WEBHOOK_SECRET);
-  if (!ok) return jsonResponse({ error: 'invalid_signature' }, 400, origin);
-  let event;
-  try { event = JSON.parse(raw); } catch (_) { return jsonResponse({ error: 'bad_json' }, 400, origin); }
-  const obj = event && event.data && event.data.object;
-  if (!obj) return jsonResponse({ received: true }, 200, origin);
-
-  async function findUserId() {
-    if (obj.metadata && obj.metadata.jqrg_user_id) return obj.metadata.jqrg_user_id;
-    if (obj.client_reference_id) return obj.client_reference_id;
-    const customerId = obj.customer;
-    if (customerId && env.SUB_KV) { const u = await env.SUB_KV.get('cust:' + customerId); if (u) return u; }
-    return null;
-  }
-
-  switch (event.type) {
-    case 'checkout.session.completed': {
-      const userId = await findUserId();
-      if (!userId) break;
-      const subId = obj.subscription;
-      const tier = (obj.metadata && obj.metadata.jqrg_tier) || 'premium';
-      let subStatus = 'active', periodEnd = null, cancelAtEnd = false;
-      if (subId) { try { const s = await stripeRequest(env, '/subscriptions/' + subId, null, 'GET'); subStatus = s.status; periodEnd = s.current_period_end; cancelAtEnd = !!s.cancel_at_period_end; } catch (_) {} }
-      await writeSubscription(env, userId, { status: subStatus, tier, stripe_customer_id: obj.customer || null, stripe_subscription_id: subId || null, current_period_end: periodEnd, cancel_at_period_end: cancelAtEnd });
-      const receiptKey = generateRecoveryKey();
-      await storeReceiptKey(env, userId, receiptKey, tier, obj.id || '');
-      break;
-    }
-    case 'customer.subscription.updated':
-    case 'customer.subscription.created': {
-      const userId = await findUserId();
-      if (!userId) break;
-      const tier = (obj.metadata && obj.metadata.jqrg_tier) || 'premium';
-      await writeSubscription(env, userId, { status: obj.status, tier, stripe_customer_id: obj.customer || null, stripe_subscription_id: obj.id || null, current_period_end: obj.current_period_end || null, cancel_at_period_end: !!obj.cancel_at_period_end });
-      break;
-    }
-    case 'customer.subscription.deleted': {
-      const userId = await findUserId();
-      if (!userId) break;
-      await writeSubscription(env, userId, { status: 'canceled', stripe_customer_id: obj.customer || null, stripe_subscription_id: obj.id || null, current_period_end: obj.current_period_end || null, cancel_at_period_end: !!obj.cancel_at_period_end });
-      break;
-    }
-  }
-  return jsonResponse({ received: true }, 200, origin);
-}
-
-async function handlePortalAnnouncements(request, env, origin) {
-  if (!env.SYNC_KEY) return jsonResponse({ error: 'SYNC_KEY not configured' }, 500, origin);
-  const syncKey = request.headers.get('X-Sync-Key');
-  if (!syncKey || syncKey !== env.SYNC_KEY) return jsonResponse({ error: 'forbidden' }, 403, origin);
-  const ua = request.headers.get('User-Agent') || '';
-  const SYNC_UA_RE = /^JimmyQrg-Chat-Sync\//;
-  if (!SYNC_UA_RE.test(ua)) return jsonResponse({ error: 'forbidden' }, 403, origin);
-  const PORTAL_URL = 'https://indiamonda.github.io';
-  let resp;
-  try { resp = await fetch(PORTAL_URL, { headers: { 'User-Agent': 'JimmyQrg-Chat-Sync/1' } }); } catch (e) { return jsonResponse({ error: 'upstream_failed', detail: String(e) }, 502, origin); }
-  if (!resp.ok) return new Response(resp.body, { status: resp.status, headers: { 'Content-Type': resp.headers.get('Content-Type') || 'text/html' } });
-  return new Response(resp.body, { status: 200, headers: { 'Content-Type': resp.headers.get('Content-Type') || 'text/html', 'Cache-Control': 'no-cache' } });
-}
-
-async function handleBotReport(request, env, origin) {
-  if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: 'Forbidden origin' }, 403, origin);
-  let body;
-  try { body = await request.json(); } catch (_) { body = {}; }
-  if (env.RATE_KV) {
-    const today = new Date().toISOString().slice(0, 10);
-    const key = 'botlog:' + today;
-    const raw = await env.RATE_KV.get(key);
-    let entries = [];
-    try { entries = raw ? JSON.parse(raw) : []; } catch (_) { entries = []; }
-    if (entries.length < 1000) {
-      entries.push({ score: body.score, hits: body.hits, ua: (body.ua || '').slice(0, 300), ip: request.headers.get('CF-Connecting-IP') || '', ts: body.ts || Date.now() });
-      await env.RATE_KV.put(key, JSON.stringify(entries), { expirationTtl: 7 * 86400 });
-    }
-  }
-  return jsonResponse({ received: true }, 200, origin);
-}
-
-async function handleProxySessionCreate(request, env, origin) {
-  if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: 'Forbidden origin' }, 403, origin);
-  const token = getBearer(request);
-  const user = await resolveUser(token);
-  if (!user) return jsonResponse({ error: 'auth_required' }, 401, origin);
-  if (isUserBanned(user)) return bannedResponse(origin);
-  const isAdmin = ADMIN_USERNAMES.has((user.username || '').toLowerCase());
-  if (!isAdmin && !complimentaryTier(user)) {
-    const sub = await readSubscription(env, user.id);
-    if (!isSubscriptionActive(sub)) return jsonResponse({ error: 'subscription_required' }, 403, origin);
-  }
-  let body;
-  try { body = await request.json(); } catch (_) { return jsonResponse({ error: 'Invalid JSON body' }, 400, origin); }
-  const targetUrl = (body && body.url) || '';
-  if (!targetUrl || typeof targetUrl !== 'string') return jsonResponse({ error: 'url is required' }, 400, origin);
-  const sid = generateSessionId();
-  if (env.RATE_KV) await env.RATE_KV.put(PROXY_SESSION_PREFIX + sid, JSON.stringify({ url: targetUrl, userId: user.id, createdAt: Date.now() }), { expirationTtl: PROXY_SESSION_TTL });
-  return jsonResponse({ session_id: sid, expires_in: PROXY_SESSION_TTL }, 200, origin);
-}
-
-async function handleProxySessionVerify(request, env, origin, sessionId) {
-  if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: 'Forbidden origin' }, 403, origin);
-  if (!sessionId || !env.RATE_KV) return jsonResponse({ valid: false }, 200, origin);
-  const key = PROXY_SESSION_PREFIX + sessionId;
-  const raw = await env.RATE_KV.get(key);
-  if (!raw) return jsonResponse({ valid: false }, 200, origin);
-  await env.RATE_KV.delete(key);
-  let data;
-  try { data = JSON.parse(raw); } catch (_) { return jsonResponse({ valid: false }, 200, origin); }
-  return jsonResponse({ valid: true, url: data.url }, 200, origin);
-}
-
-async function handleUlwGate(request, env, origin) {
-  if (origin && !isAllowedOrigin(origin)) return jsonResponse({ error: 'Forbidden origin' }, 403, origin);
-  const token = getBearer(request);
-  const user = await resolveUser(token);
-  if (!user) return jsonResponse({ allowed: true, tier: 'free', reason: 'no_auth_required' }, 200, origin);
-  if (isUserBanned(user)) return jsonResponse({ allowed: false, reason: 'banned' }, 200, origin);
-  return jsonResponse({ allowed: true, tier: 'free', user: { id: user.id, username: user.username } }, 200, origin);
-}
-
-const BAD_UA = /headlesschrome|phantomjs|puppeteer|playwright|selenium|cypress|goguardian|securly|lightspeed|iboss|bluecoat|forcepoint|fortiguard|barracuda|webroot|kaspersky|sophos|cisco[\s-]?umbrella|mcafee|paloalto|zscaler|crawler|spider|scraper|bot\//i;
-
-export default {
-  async fetch(request, env) {
-    const cookies = request.headers.get('Cookie') || '';
-    if (cookies.includes('__sb_blocked=1')) {
-      return new Response('<!doctype html><title>StudyBoard — Online Learning Platform</title><body><h1>StudyBoard Learning Platform</h1><p>Educational workspace for K-12 and higher education learners.</p></body>', { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-    }
-    const ua = (request.headers.get('User-Agent') || '').toLowerCase();
-    if (BAD_UA.test(ua)) {
-      return new Response('<!doctype html><title>StudyBoard — Online Learning Platform</title><body><h1>StudyBoard Learning Platform</h1><p>Educational workspace for K-12 and higher education learners.</p></body>', { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-    }
-    const url = new URL(request.url);
-    const origin = request.headers.get('Origin') || '';
-    if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(origin) });
-    if (url.pathname === '/health' || url.pathname === '/') return jsonResponse({ ok: true, service: 'deepseek-proxy', ts: Date.now() }, 200, origin);
-    if (url.pathname === '/v1/chat' && request.method === 'POST') return handleChat(request, env, origin);
-    if (url.pathname === '/v1/subscription-status' && request.method === 'GET') return handleSubStatus(request, env, origin);
-    if (url.pathname === '/v1/config' && request.method === 'GET') return handleConfig(request, env, origin);
-    if (url.pathname === '/v1/checkout' && request.method === 'POST') return handleCheckout(request, env, origin);
-    if (url.pathname === '/v1/billing-portal' && request.method === 'POST') return handleBillingPortal(request, env, origin);
-    if (url.pathname === '/v1/receipt-key' && request.method === 'POST') return handleReceiptKey(request, env, origin);
-    if (url.pathname === '/v1/payment-key/verify' && request.method === 'POST') return handlePaymentKeyVerify(request, env, origin);
-    if (url.pathname === '/v1/stripe-webhook' && request.method === 'POST') return handleStripeWebhook(request, env, origin);
-    if (url.pathname === '/v1/proxy-session' && request.method === 'POST') return handleProxySessionCreate(request, env, origin);
-    if (url.pathname.startsWith('/v1/proxy-session/') && request.method === 'GET') { const sid = url.pathname.slice('/v1/proxy-session/'.length); return handleProxySessionVerify(request, env, origin, sid); }
-    if (url.pathname === '/v1/ulw-gate' && request.method === 'GET') return handleUlwGate(request, env, origin);
-    if (url.pathname === '/v1/bot-report' && request.method === 'POST') return handleBotReport(request, env, origin);
-    if (url.pathname === '/v1/portal-announcements' && request.method === 'GET') return handlePortalAnnouncements(request, env, origin);
-    if (url.pathname === '/__healthz') return jsonResponse({ ok: true, ts: Date.now() }, 200, origin);
-    return jsonResponse({ error: 'Not found' }, 404, origin);
-  },
-};
-```
-
-
-# Additional Memories
-
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 
 ## What this repo is
 
@@ -884,18 +59,25 @@ cd schoology
 ### Container layout (Dockerfile `CMD`)
 ```sh
 cd /app/schoology; \
-  /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 2 --threads 8 -c /app/schoology/gunicorn.conf.py server:app \
+  /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 1 --threads 8 -c /app/schoology/gunicorn.conf.py server:app \
   & node /app/server/index.js
 ```
 - One container, two processes. The Node app on **8080** is public; the Flask app on **8081** is internal-only and reached only through the Node proxy.
 - Persistent volume `/data` is mounted for SQLite (`chat.db`), schoology session cookies, and AI assistant file uploads. 1 GB volume in `sjc` region.
 - 512 MB RAM, shared CPU. Memory is tight: Whisper `tiny` + CLIP + Playwright chromium + a per-user daemon pool all fight for it. Watch RSS.
 
-### gunicorn: two workers, two roles
-- **Worker 0** runs a long-lived `run_tool.py` per authenticated user (the "daemon pool"). Each daemon holds a warm Playwright browser for that student. The pool is keyed by username, LRU-evicted at `DAEMON_POOL_MAX=5`. `GUNICORN_WORKER_INDEX` is set in the master env by `schoology/gunicorn.conf.py:pre_fork` so children know which role they're playing.
-- **Worker 1** runs per-request subprocesses (cold start, fallback) using the same env-var credential handoff. Use this for >5 concurrent students and accept the cold-start cost.
+### gunicorn: single worker, per-user daemon pool
+- **Single worker** (`--workers 1`, `--threads 8`) — previously 2 workers, but each gunicorn worker is its own daemon pool, so 2 workers × 4 parallel dashboard sections = up to 8 Chromium instances on 512MB Fly → OOM. One worker is enough for the current user base (~8 people, 2 concurrent typical). The per-user spawn lock inside `_get_daemon()` coalesces concurrent requests for the same user so we never have more than one in-flight Chromium spawn per (worker, user).
+- **Long-lived `run_tool.py` per authenticated user**. Each daemon holds a warm Playwright browser for that student. The pool is keyed by username, LRU-evicted at `DAEMON_POOL_MAX=100`. `GUNICORN_WORKER_INDEX` is set in the master env by `schoology/gunicorn.conf.py:pre_fork` (still useful for telemetry/logging).
 - **Why per-user daemons:** upstream `schoology-mcp` is single-tenant — it reads `SCHOOLOGY_USERNAME`/`SCHOOLOGY_PASSWORD` from its own process env at spawn and keeps one headless browser per process. The pool is how we serve multiple students from one Flask worker.
 - **Why `/data/schoology_storage.json`:** image redeploys lose `/root/.cache/...`, so the storage state env-var points to the persistent volume.
+
+### Schoology daemon pool subtleties (read this before editing `schoology/server.py`)
+- **Per-user spawn lock** (`_spawn_locks` + `spawn_lock` in `_get_daemon`): without it, 4 parallel dashboard sections for the same user would each spawn their own daemon → 4 Chromium instances during the spawn window → OOM. The first caller holds the lock, the rest wait, then find the daemon in the pool.
+- **TOCTOU race** in `_kill_daemon(username)`: the pool is keyed by username, not by `DaemonClient` object. If caller A spawns a fresh daemon and caller B's pre-flight fails on the *old* daemon, B's `_kill_daemon(username)` would pop A's brand-new daemon from the pool. Always prefer `_kill_daemon_object(target)` which only kills a specific instance and verifies it's still in the pool before popping.
+- **Daemon stdin "closed file" check** in `DaemonClient.call()`: when Chromium dies, Python's `BufferedWriter` flags its `stdin` closed and subsequent writes raise `ValueError` (not `BrokenPipeError`). The pre-flight checks `proc.poll() is None` AND `stdin.closed` AND catches `ValueError` on write — without all three, dead-daemon cycles surface as 500s.
+- **Drain-on-timeout** in `DaemonClient.call()`: when the per-call timeout (200s) fires on a slow cold-start, the daemon is NOT killed. Instead the orphan response line is drained inside the lock so the next caller can use the warm daemon. Killing on timeout was the cause of cascading 500s across the 4 dashboard sections.
+- **Tombstoned daemons**: `close()` sets `proc = None`. The next caller holding a tombstoned `DaemonClient` would crash on `proc.poll()`. `_get_daemon` re-spawns if it finds `proc is None`; `call()` raises EOFError as a safety net.
 
 ### Node → Flask proxy (`server/index.js`)
 Non-obvious bugs already fixed and worth not re-introducing:
@@ -903,13 +85,99 @@ Non-obvious bugs already fixed and worth not re-introducing:
 - Don't try to JSON-stringify a multipart body and forward it — you have to `req.pipe(proxyReq)` raw, and `return` before `proxyReq.end()`.
 The `proxyRequest` helper handles both. New `/schoology/api/*` endpoints are safer to add; the proxy just forwards.
 
+### Game Multiplayer — Zone No Light (`server/index.js` `/game` namespace)
+A real-time multiplayer FPS built on Socket.IO's `/game` namespace, unrelated to schoology. Lives entirely in `server/index.js` (~line 1749+).
+
+- **Room registry**: `globalRoomRegistry` (a `Map<roomKey, {mode, code, hostId, map, playerCount, createdAt, updatedAt}>`) plus the per-socket `gameRooms` Map. The registry expires rooms after 5 min of inactivity (`ROOM_EXPIRY_MS`).
+- **Room key format** encodes the room origin and mode:
+  - `qp:<mode>:<CODE>` — quickplay room
+  - `cr:<mode>:<CODE>` — user-created (private) room
+  - The mode prefix matters for matching: `quickplay(mode)` matches any `qp:<mode>:` room with the same mode, regardless of code.
+- **Per-mode player caps** (`ROOM_MAX_PLAYERS`): `crossfire: 2`, `arena-coop: 6`, `boss-coop: 4`, `training-coop: 4`. Rooms at cap are skipped by quickplay and rejected with `{error: 'Room is full'}` by `joinByCode`.
+- **Map field**: rooms carry an optional `map` string (capped at 64 chars by `normalizeCreateArgs`). Map is **not** used for matching (a quickplay player joins whatever map the host chose); the host's `map` is returned in the callback so the client loads the right map.
+- **`normalizeCreateArgs(arg)`** accepts both old (bare string mode) and new (`{mode, map}`) client shapes — preserves backward compat for older Zone No Light clients.
+- **Socket handlers** (`socket.on(...)` in the `/game` namespace):
+  - `quickplay(arg, cb)` → tries to join an open room in the mode; if none, creates one. Returns `{room, roomCode, roomKey, count, map}`.
+  - `createRoom(arg, cb)` → always creates a new `cr:<mode>:<CODE>` room. Returns `{code, roomCode, roomKey, map}`.
+  - `joinByCode({code, mode}, cb)` → mode-agnostic lookup by code across all rooms. Returns `{ok, code, roomCode, roomKey, map}`.
+  - `getRooms(cb)` → lists open rooms (for the lobby browser).
+  - `move(data)`, `chat(...)`, `shoot(...)`, etc. — gameplay events scoped to the current room.
+  - Server broadcasts `roomListUpdate` (via `io.emit`) on registry changes.
+- **Teleport command** (`/tp`): disabled in quickplay rooms (`!roomKey.startsWith('qp:')`). In private rooms, supports source selectors (`@s`, `@a`, `@e`, `@p`, `@r`, or player name) and destination selectors — see `parseTeleportCommand` and `executeTeleport` in `server/index.js`.
+
 ### AI Assistant architecture (`schoology/index.html` + `schoology/ai/`)
 - **Tool protocol** is bracket commands emitted by the model: `[CALC:expr]`, `[WIKI:topic]`, `[FILE:id|name|type|size]`, etc. A `TOOL_REGISTRY` at the top of `schoology/index.html` is the single source of truth: the system prompt, welcome message, `generateDemoResponse` help branch, and `handleAICommands` dispatcher all read from it. Adding a new tool = one registry entry.
-- **Tool results go into `state.chatHistory`** with `role: 'tool'` so the model sees them on the next turn. Cap each at 2,000 chars in history; the full result stays in the chat UI.
+- **Tool results go into `state.currentMessages`** with `role: 'tool'` so the model sees them on the next turn. Cap each at 2,000 chars in history; the full result stays in the chat UI.
 - **File upload** is real: `handleFileUpload` POSTs to `/api/file/ingest`, gets a `file_id`, and on send appends `[FILE:id|name|type|size]` markers. `/api/file/context` expands markers into extracted text (PDF, OCR, Whisper transcription, etc.) before the model sees the message. Files are stored in `/data/ai_uploads/<uuid>` and auto-purged after 1 hour.
 - **New AI routes** live in `schoology/ai/*.py` (math, geometry, knowledge, science, files, code, integrations, basics, web) and self-register via `register_routes(app)` from `schoology/ai/__init__.py`. `schoology/server.py` calls `register_ai_routes(app)` once near the bottom of its route block.
 - **Auth** for AI routes is the same `decode_auth_header()` Basic-auth pattern as the rest of the API.
 - **No rate limiting in v1**; most routes hit free public APIs with their own quotas (Wikipedia, Open-Meteo, MyMemory, arXiv). GitHub is 60/hr unauth.
+- **Adding a new tool = one `TOOL_REGISTRY` entry** (at the top of `schoology/index.html`). The system prompt, welcome message, `generateDemoResponse` help branch, and `handleAICommands` dispatcher all read from it. Then add the implementation in `schoology/ai/<family>.py` and register it via `register_routes(app)`. Don't sprinkle the tool name across files — it's a single source of truth.
+- **Multi-chat state** is server-persisted per user. See "Multi-chat AI assistant" below for storage layout, endpoints, and the heuristic remember/cross-chat context system.
+- **Dashboard section cache** (`localStorage`): each section's last successful response is persisted under `schoology_section_cache_<username>_<section>`. `hydrateFromCache()` reads it on dashboard open and renders instantly while `loadSection()` runs in the background — without this, the user stares at skeletons for 60-90s on every cold start. The cache is per-user; don't surface another user's data.
+
+### Multi-chat AI assistant (`schoology/index.html` + `schoology/server.py`)
+A user can have many chats; each chat has its own history. A "global memory" of user-asked-to-remember facts is shared across all chats, and a short summary of every other chat is injected into context for cross-chat awareness.
+
+- **Storage layout** (on the `/data` volume, see `AI_CHATS_DIR` in `schoology/server.py`):
+  - `<DATA_DIR>/ai_chats/<username>/<chatId>.json` — one file per chat
+  - `<DATA_DIR>/ai_chats/<username>/_memory.json` — global memory items
+  - `<DATA_DIR>/ai_chats/<username>/_last_chat.json` — last opened chatId (restore-on-load)
+  - Writes go through `_atomic_write_json()` (`tmp` file + `os.replace`) so a partial write can't corrupt the persistent volume.
+
+- **Server endpoints** (all in `schoology/server.py`, all use `decode_auth_header()`):
+  - `GET /api/chats` — list metadata (id, title, summary, messageCount) sorted by `updatedAt` desc
+  - `POST /api/chats` — create new chat (cap 50 per user; oldest dropped)
+  - `GET /api/chats/<id>` — full chat or 404
+  - `PUT /api/chats/<id>` — update title and/or messages; re-summarizes via heuristic when `len(messages) >= 4`
+  - `DELETE /api/chats/<id>` — 204
+  - `POST /api/chats/context` body `{chatId}` — returns `{otherSummaries, globalMemory}` for context injection
+  - `GET/POST/DELETE /api/memory[/<id>]` — global memory CRUD (cap 50 items; oldest dropped)
+  - `GET/POST /api/chats/last` — persist and retrieve last-opened chat for restore-on-load
+
+- **Frontend state** (in `schoology/index.html`):
+  - `state.chats: []` — list of chat metadata
+  - `state.currentChatId: null` — open chat
+  - `state.currentMessages: []` — messages of the open chat (loaded lazily via `loadCurrentChat`)
+  - `state.globalMemory: []` — remembered facts
+  - `loadChats()` always ensures one default chat exists (creates one if list is empty) so the sidebar is never blank.
+  - `sendChatMessage()` POSTs `/api/chats` on first send to mint an id, then PUTs the updated messages on every reply. After the first assistant reply, `aiNameChat()` (model call) auto-titles the chat if the user hasn't renamed it.
+  - Saves are debounced 500ms via `scheduleSaveCurrentChat()` so rapid sends don't hammer the server.
+  - **Demo mode** (`state.demoMode === true`) bypasses all `/api/chats` and `/api/memory` calls and uses one localStorage chat under `schoology_chat_history_<username>`. The sidebar shows a "(demo mode)" notice in that case.
+
+- **Heuristic remember detection** (`detectRemember()` in `schoology/index.html`):
+  - Trigger keywords (case-insensitive, matched as substrings): `remember`, `don't forget`, `do not forget`, `note that`, `keep in mind`, `from now on`, `always remember`.
+  - If any keyword matches, the full user message is POSTed to `/api/memory` with `sourceChatId`, and the assistant reply gets a subtle "📌 Noted." inline.
+  - This is local, no LLM call — keeps latency/cost low for what runs on every send.
+
+- **Cross-chat context injection** (`buildContextMessages()` + `fetchChatContextExtras()`):
+  - On every send, the frontend fetches `POST /api/chats/context {chatId}` and prepends a second system message after the main prompt, capped at 20 memory items and 8 other-chat summaries (most recent first by `updatedAt`).
+  - The wording tells the model these summaries are "for awareness only — do NOT proactively reference unless the user asks", so the AI doesn't accidentally mention "yesterday's homework help" unprompted.
+
+- **Summarization** is intentionally a simple non-LLM heuristic (`_summarize_chat` in `server.py`): join user messages, truncate to ~400 chars. The same shape as the previous client-side `generateSummary()`. If the user later wants LLM-generated summaries, this is the place to add it.
+
+### Schoology basic-info pattern (`/api/basic-info`)
+`/api/basic-info` in `schoology/server.py` is the "first-paint identity" call. Upstream `schoology-mcp` removed the `get_profile` tool, so the route returns **HTTP 200 with `{"removed": true, "message": "..."}`** — NOT 410 Gone.
+- 410 logs as a "Failed to load resource" browser console error (no functional impact, but noisy and bad UX).
+- The frontend (`loadBasicInfo()` in `schoology/index.html`) checks `data.removed` and treats it as a soft skip: dashboard still loads using whatever `get_courses` / `get_grades` return. The identity strip is skipped; student name is unknown on first paint.
+- **Student header UI** is intentionally minimal: just "Welcome! {name}" — student ID and grade are NOT shown in the UI even when the data is present, but stay in `state.student` for the AI to use. The header element is `<div class="student-info" id="studentInfo" style="display: none;">` containing only `<span id="studentName">—</span>`; the surrounding `renderStudentHeader()` produces the "Welcome! {name}" line.
+
+### Auth-header gotcha (read this before adding any `/schoology/api/*` fetch)
+`getAuthHeader()` in `schoology/index.html` returns the **object** `{Authorization: 'Basic ...'}`, not the string value:
+```js
+return { 'Authorization': 'Basic ' + base64Encode(...) };
+```
+The correct call is:
+```js
+const auth = getAuthHeader();
+if (auth && auth.Authorization) headers['Authorization'] = auth.Authorization;
+```
+The **wrong** pattern (which has shipped before and produced silent 401s across `/api/chats`, `/api/memory`, AND pre-existing `/api/file/ingest` and the AI worker fetch):
+```js
+const auth = getAuthHeader();
+headers['Authorization'] = auth;  // coerces object to "[object Object]"
+```
+Flask's `decode_auth_header()` then sees no `Basic ` prefix and returns 401; the symptom also cascades to 500s on `/api/grades` etc. because the MCP daemon gets `None` credentials. Three call sites in `schoology/index.html` already use the correct pattern: `_apiFetch` (multi-chat), `aiFetch` (AI worker), and the file upload `fetch` — keep new code aligned with these.
 
 ### Theme system in `schoology/`
 CSS variables on `:root` / `[data-theme="light"]` / `[data-theme="dark"]`. `--surface` is used for chat message backgrounds. Toggle: `#darkModeToggle` checkbox; init: `initDarkMode()` reads localStorage or `prefers-color-scheme`.
@@ -928,18 +196,30 @@ Errors render as a red box with the exact message — no generic "something went
 | `SCHOOLOGY_STORAGE_STATE` | no | default `/data/schoology_storage.json` |
 | `SCHOOLOGY_HEADLESS` | no | default `true` |
 | `SCHOOLOGY_KEEPALIVE` | no | default `false` |
-| `DAEMON_POOL_MAX` | no | default `5`; cap on per-user daemons in worker 0 |
+| `DAEMON_POOL_MAX` | no | default `100`; per-user daemon pool cap (set high; current user base is ~8 people, 2 concurrent is typical) |
+| `JUDGE0_KEY` | no | enables `[RUN:lang code]` for C/C++/Rust/Go/Java |
+| `JUDGE0_URL` | no | default `https://judge0-ce.rapidapi.com` |
+
+## Translation system (`public/assets/translation/data.json`)
+- 39 languages (en, zh, zh-Hans, zh-Hant, ja, ko, es, fr, de, hi, ar, bn, pt, ru, ur, id, sw, tr, vi, it, th, pl, uk, nl, ro, sv, hu, el, he, fa, am, ta, te, mr, pa, gu, kn, ml, jv).
+- Source of truth at runtime: `data.json`. The inline `STRINGS` in `main.js` only has `en` + `zh` (and is what `scripts/build-translations.cjs` extracts). `t(key)` falls back to `en`, then the key itself.
+- **`build-translations.cjs` overwrites the inline en+zh and the zh-Hant fallback table only** — it does NOT preserve the other 37 languages in data.json. If you re-run it, all non-{en, zh, zh-Hant} translations in data.json get lost. To keep them, either edit data.json directly (don't re-run the build) or modify the build script to merge.
+- Translation keys are contextually chosen, not literally translated: e.g. "key" in the security/recovery sense maps to 凭证/証拠/증거/Key, not the literal 键/キー/키.
 | `JUDGE0_KEY` | no | enables `[RUN:lang code]` for C/C++/Rust/Go/Java |
 | `JUDGE0_URL` | no | default `https://judge0-ce.p.rapidapi.com` |
 
 ## Where to find what
 
 - **Chat app entry points**: `server/index.js` + `public/assets/js/main.js` + `server/db.js` (see README.md).
-- **Schoology dashboard UI**: `schoology/index.html` (single large file; `TOOL_REGISTRY` is at the top).
-- **Schoology Flask**: `schoology/server.py` (daemon pool, all `/api/*` routes, AI registration).
+- **Game (Zone No Light) multiplayer**: `server/index.js` `/game` namespace, ~line 1749+ (`globalRoomRegistry`, `quickplay`/`createRoom`/`joinByCode`, teleport, etc.).
+- **Schoology dashboard UI**: `schoology/index.html` (single large file; `TOOL_REGISTRY` is at the top; multi-chat sidebar + memory + cross-chat context live here).
+- **Schoology Flask**: `schoology/server.py` (daemon pool, all `/api/*` routes, AI registration, multi-chat + memory endpoints).
 - **Schoology AI routes**: `schoology/ai/__init__.py` (aggregator) + one file per tool family.
 - **gunicorn config**: `schoology/gunicorn.conf.py` (`pre_fork` sets `GUNICORN_WORKER_INDEX`).
-- **Project memory** (curated, persists across sessions): `~/.claude/projects/-Users-Benran-Documents-GitHub-chat/memory/` — `schoology-architecture.md` for the per-user daemon pool + upstream tool surface; `server-proxy-pitfalls.md` for the two non-obvious Node proxy bugs.
+- **Project memory** (curated, persists across sessions): `~/.claude/projects/-Users-Benran-Documents-GitHub-chat/memory/` — `schoology-architecture.md` for the per-user daemon pool + upstream tool surface; `server-proxy-pitfalls.md` for the two non-obvious Node proxy bugs; `dm-voice-architecture.md` for the 1:1 WebRTC voice implementation.
+- **Seeded accounts** (auto-created on every server boot, idempotent — see `server/db.js` and `schoology/index.html`): the `jimmyqrg` admin (placeholder password, claimed on first signup), the `helper` bot, and the `sezitoushangyibadao` private account (display name `色字头上一把刀`, password `xyz12345`, email `sezitoushangyibadao@chat.local`, `is_private=1`). Private users are hidden from everyone except `jimmyqrg` on profile / DM / mention-search / friend paths; groups still display their messages.
+- **Private-user enforcement** (`server/db.js` + `server/index.js`): `is_private=1` rows are filtered from `/api/users` list, `/api/users/mention-search`, and from the DM-open gate (`/api/conversations/with/:userId`). The frontend shows a `private-user-notice` placeholder when the server returns `{ private_user: true, error: 'This user is private' }`. `canSeePrivateUser(viewer, targetId)` is the single helper; add it to any new endpoint that exposes a user.
+- **Theme-aware logos** (`schoology/index.html`): two stacked `<img>` tags per logo, dark variant + `logo-light` variant, swapped via CSS `[data-theme="light"] .header-logo-dark { display: none }`. The favicon is intentionally NOT theme-swapped.
 - **Working notes** (free-form, session-scratch): `agent.md` at repo root.
 
 ## Do not
@@ -949,11 +229,6 @@ Errors render as a red box with the exact message — no generic "something went
 - Do not add `exec` to the Dockerfile `CMD` — `&` is the right pattern for running gunicorn and node in one container.
 - Do not assume the chat app can be suspended — `agent.md` says "this app cannot suspend - it powers other applications".
 - Do not use demo/placeholder data in production paths (e.g. schoology grades). The `generateDemoResponse` AI fallback is for the AI tab only, and even there, "DO NOT USE DEMO INFORMATION UNLESS IS IN THE DEMO MODE".
-
-
-
-
-
-# User inserted memory
-
-When failing to reach for schoology data, DO NOT USE DEMO INFORMATION UNLESS IS IN THE DEMO MODE!!!!!!!!
+- Do not write `headers['Authorization'] = auth` from `getAuthHeader()` — it returns an **object**, not a string. Use `auth.Authorization`. See "Auth-header gotcha" above; this bug shipped before and produced silent 401s across `/api/chats`, `/api/memory`, `/api/file/ingest`, and the AI worker fetch.
+- Do not return HTTP 410 for removed-upstream endpoints. 410 logs as a browser console error; return 200 with a `{"removed": true}` body and let the frontend soft-skip. See "Schoology basic-info pattern" above.
+、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、、

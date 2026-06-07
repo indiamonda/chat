@@ -20,6 +20,7 @@ user still gets their own daemon (different key in the pool).
 """
 
 import base64
+import concurrent.futures
 import json
 import os
 import subprocess
@@ -166,10 +167,18 @@ class DaemonClient:
     def __init__(self, username: str, password: str):
         self.username = username
         self.password = password
-        self._lock = threading.Lock()
-        self._stdout_buffer = b""
+        # Concurrency: the daemon processes multiple in-flight requests
+        # in parallel. Per-call serialization on a Python lock is GONE
+        # -- instead each call gets a request id, registers a Future,
+        # and a single reader thread demuxes responses by id and
+        # resolves the right Future. Multiple callers can be inside
+        # call() simultaneously, all waiting on their own Future.
+        self._requests_lock = threading.Lock()  # only protects the dict
+        self._pending: dict = {}  # request_id -> (Future, timeout_deadline)
         self.proc = None
         self._stderr_thread = None
+        self._reader_thread = None
+        self._reader_thread_stopped = threading.Event()
         self.started_at = time.monotonic()
         self._spawn()
 
@@ -194,6 +203,17 @@ class DaemonClient:
             daemon=True,
         )
         self._stderr_thread.start()
+        # Start the stdout demuxer thread. It runs for the daemon's
+        # lifetime; on EOF / broken pipe it sets _reader_thread_stopped
+        # and all in-flight calls fail with EOFError so the caller
+        # can respawn.
+        self._reader_thread_stopped.clear()
+        self._reader_thread = threading.Thread(
+            target=self._read_loop,
+            name=f"mcp-daemon-stdout-{self.proc.pid}",
+            daemon=True,
+        )
+        self._reader_thread.start()
 
     def _drain_stderr(self):
         try:
@@ -204,124 +224,132 @@ class DaemonClient:
         except Exception as exc:  # noqa: BLE001 - thread must not crash
             print(f"[MCP-DAEMON] stderr drainer died: {type(exc).__name__}: {exc}", file=sys.stderr)
 
-    def call(self, request, timeout_seconds):
-        """Send one request, read one response, return the parsed JSON dict."""
-        with self._lock:
-            # Pre-flight: the proc may be alive (reaped-pid check passes)
-            # but its stdin was already closed by Python because the
-            # child died and we never noticed. Detect the dead
-            # process, the closed-stdin file-object case, AND the
-            # tombstoned (None) case that close() leaves behind.
-            if self.proc is None:
-                raise EOFError("daemon proc is None (close() was already called)")
-            if self.proc.poll() is not None:
-                raise EOFError(f"daemon exited (rc={self.proc.returncode})")
-            if getattr(self.proc.stdin, "closed", False):
-                raise EOFError("daemon stdin already closed (child died without reaping)")
+    def _read_loop(self):
+        """Demux stdout lines to their pending callers by request id.
 
-            payload = (json.dumps(request) + "\n").encode("utf-8")
-            try:
-                self.proc.stdin.write(payload)
-                self.proc.stdin.flush()
-            except (BrokenPipeError, OSError, ValueError) as exc:
-                # ValueError covers "write to closed file" — Python's
-                # BufferedWriter flags itself closed when the underlying
-                # pipe errors, then raises ValueError on the next write
-                # instead of BrokenPipeError. Without this catch, one
-                # dead-daemon cycle raises an unhandled 500 to the
-                # browser. EOFError propagates so the caller can respawn.
-                raise EOFError(f"daemon stdin closed: {exc}")
-
-            try:
-                line = self._read_line_with_timeout(timeout_seconds)
-                return json.loads(line.decode("utf-8"))
-            except TimeoutError:
-                # The daemon is still alive and processing the request,
-                # it just exceeded our per-call budget (cold-start
-                # Chromium + ClassLink on 512MB Fly can take >180s).
-                # Don't kill the daemon — the next caller wants the
-                # warm browser. Instead, drain the orphan response
-                # line in the background so the wire protocol stays in
-                # sync, and let the in-flight call complete on its own.
-                # The next caller holding the lock will then see a
-                # clean stdin/stdout and proceed.
-                #
-                # This requires the lock to be held until the drain
-                # finishes, otherwise the next caller would block on
-                # the lock AND we wouldn't drain in time. The drain
-                # uses a short read timeout (timeout_seconds) so a
-                # truly stuck daemon still gets killed.
-                self._drain_orphan_response(timeout_seconds)
-                raise
-
-    def _read_line_with_timeout(self, timeout_seconds):
-        """Read one newline-terminated line from the daemon's stdout.
-
-        Uses select.select for the timeout and a manual buffer to handle
-        partial reads. Reads via os.read on the raw fd to avoid mixing
-        with the BufferedReader's internal state.
+        Runs in its own thread for the daemon's lifetime. On EOF
+        (parent closed pipe) or any read error, resolves all pending
+        callers with EOFError and marks the reader as stopped.
         """
-        import select
-        fd = self.proc.stdout.fileno()
-        deadline = time.monotonic() + timeout_seconds
-        while True:
-            if b"\n" in self._stdout_buffer:
-                line, self._stdout_buffer = self._stdout_buffer.split(b"\n", 1)
-                return line
-
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError(f"daemon read timed out after {timeout_seconds}s")
-
-            ready, _, _ = select.select([fd], [], [], remaining)
-            if not ready:
-                continue  # loop re-checks buffer + timeout
-
-            chunk = os.read(fd, 4096)
-            if not chunk:
-                raise EOFError("daemon stdout closed")
-            self._stdout_buffer += chunk
-
-    def _drain_orphan_response(self, timeout_seconds):
-        """Read and discard one response line from a call that already
-        exceeded its per-call budget. The daemon is still alive and
-        processing the request — we just gave up waiting. Without
-        draining, the next caller would consume this orphan line and
-        desync the FIFO protocol.
-
-        Called from inside self._lock so the next caller doesn't race
-        past us. The drain is bounded by `timeout_seconds`; if Chromium
-        is truly stuck the next caller (or _kill_daemon_object) will
-        still tear the daemon down.
-        """
-        import select
         try:
-            fd = self.proc.stdout.fileno()
-            deadline = time.monotonic() + timeout_seconds
             while True:
-                if b"\n" in self._stdout_buffer:
-                    _, self._stdout_buffer = self._stdout_buffer.split(b"\n", 1)
+                line = self.proc.stdout.readline()
+                if not line:
+                    # EOF -- parent closed our stdin or the daemon
+                    # died. Fail every in-flight call.
+                    self._fail_all_pending(EOFError("daemon stdout closed"))
                     return
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    print(f"[MCP-DAEMON] drain timeout; daemon is truly stuck", file=sys.stderr)
-                    # Force the daemon to die so the next caller gets a
-                    # fresh spawn rather than blocking forever.
-                    try:
-                        self.proc.kill()
-                    except Exception:
-                        pass
-                    return
-                ready, _, _ = select.select([fd], [], [], remaining)
-                if not ready:
+                try:
+                    msg = json.loads(line.decode("utf-8"))
+                except Exception as exc:
+                    # Garbled line; skip but keep going (the daemon
+                    # may recover).
+                    print(f"[MCP-DAEMON] demux: bad JSON line: {exc}", file=sys.stderr)
                     continue
-                chunk = os.read(fd, 4096)
-                if not chunk:
-                    # EOF — daemon is gone. Nothing to drain.
-                    return
-                self._stdout_buffer += chunk
-        except Exception as exc:  # noqa: BLE001 - best-effort
-            print(f"[MCP-DAEMON] drain failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+                req_id = msg.get("id")
+                if not req_id:
+                    # Defensive: daemon should always echo id.
+                    print(f"[MCP-DAEMON] demux: response missing id: {msg}", file=sys.stderr)
+                    continue
+                with self._requests_lock:
+                    entry = self._pending.pop(req_id, None)
+                if entry is None:
+                    # Late response for a call that already gave up.
+                    # Drop it; the daemon's protocol assumes the parent
+                    # is still listening, but we're not.
+                    print(f"[MCP-DAEMON] demux: late response for id={req_id}", file=sys.stderr)
+                    continue
+                future, _ = entry
+                if not future.done():
+                    if "error" in msg:
+                        future.set_exception(ChildProcessError(msg["error"]))
+                    elif "result" in msg:
+                        future.set_result(msg["result"])
+                    else:
+                        # Unknown response shape -- treat as error
+                        future.set_exception(RuntimeError(f"daemon returned: {msg}"))
+        except Exception as exc:
+            # Unexpected reader error -- fail everything.
+            self._fail_all_pending(exc)
+        finally:
+            self._reader_thread_stopped.set()
+
+    def _fail_all_pending(self, exc: BaseException) -> None:
+        """Resolve every pending Future with the given exception.
+        Used when the reader detects EOF / broken pipe."""
+        with self._requests_lock:
+            pending = list(self._pending.items())
+            self._pending.clear()
+        for req_id, (future, _) in pending:
+            if not future.done():
+                future.set_exception(exc)
+
+    def call(self, request, timeout_seconds):
+        """Send one request, read its specific response, return the result.
+
+        Concurrency: the daemon processes multiple in-flight requests
+        in parallel, so we don't hold a Python lock around the whole
+        call. Instead, we register a Future keyed by request id,
+        write the request, and wait on OUR Future. A background
+        reader thread demuxes responses and resolves the right one.
+        """
+        # Pre-flight: detect dead/tombstoned daemon. Same checks as
+        # before, but now they don't need to be inside a lock.
+        if self.proc is None:
+            raise EOFError("daemon proc is None (close() was already called)")
+        if self.proc.poll() is not None:
+            raise EOFError(f"daemon exited (rc={self.proc.returncode})")
+        if getattr(self.proc.stdin, "closed", False):
+            raise EOFError("daemon stdin already closed (child died without reaping)")
+
+        # Tag every request with a uuid so the reader thread can
+        # match responses to callers. The parent request is allowed
+        # to carry its own id (for tracing); we prefer it.
+        req_id = request.get("id") or str(uuid.uuid4())
+        tagged = dict(request)
+        tagged["id"] = req_id
+
+        future = concurrent.futures.Future()
+        deadline = time.monotonic() + timeout_seconds
+        with self._requests_lock:
+            if self._reader_thread_stopped.is_set():
+                raise EOFError("daemon reader thread is stopped")
+            self._pending[req_id] = (future, deadline)
+
+        # Write the request. If this fails, undo the registration and
+        # raise. Python's BufferedWriter may raise ValueError on
+        # "write to closed file" if the child died between our
+        # pre-flight and now -- treat it as a normal EOF.
+        try:
+            self.proc.stdin.write((json.dumps(tagged) + "\n").encode("utf-8"))
+            self.proc.stdin.flush()
+        except (BrokenPipeError, OSError, ValueError) as exc:
+            with self._requests_lock:
+                self._pending.pop(req_id, None)
+            raise EOFError(f"daemon stdin closed: {exc}")
+
+        # Wait for our specific response. If the read takes longer
+        # than the per-call budget, cancel our registration and
+        # surface a timeout. The daemon is NOT killed; sibling calls
+        # are unaffected; the in-flight request will eventually
+        # resolve (or the daemon will die and our pending entry will
+        # be failed by the reader thread's EOF handler).
+        try:
+            return future.result(timeout=timeout_seconds)
+        except concurrent.futures.TimeoutError:
+            # Don't remove our pending entry -- the response may
+            # still arrive and we don't want a late response to be
+            # silently dropped (it would be assigned to a future
+            # caller, but we keyed by id and no one will reuse this
+            # id). Leave it; the reader thread will resolve it
+            # eventually and the call's caller has already given up.
+            raise TimeoutError(f"daemon call timed out after {timeout_seconds}s")
+        except Exception:
+            # Our caller failed for whatever reason; remove the
+            # pending entry so a late response doesn't sit there.
+            with self._requests_lock:
+                self._pending.pop(req_id, None)
+            raise
 
     def close(self):
         if self.proc is None:
@@ -490,15 +518,13 @@ def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
         _daemon_total_calls += 1
         return result
     except TimeoutError as exc:
-        # Daemon.call() has already drained the orphan response inside
-        # its lock, so the wire protocol is back in sync. The daemon
-        # is still alive and warm. We just need to tell the caller
-        # that this specific call timed out (the Chromium/ClassLink
-        # cold-start path can exceed the per-call budget on 512MB Fly).
-        # Don't kill the daemon -- the next caller wants the warm
-        # browser. The drain inside DaemonClient.call() handles the
-        # FIFO desync risk.
-        print(f"[MCP-DAEMON] {tool_name}: timed out after {timeout_seconds}s; daemon kept warm", file=sys.stderr)
+        # Cold-start path: the first call after daemon spawn takes
+        # ~3+ min on 512MB Fly (Chromium + ClassLink login). The
+        # concurrent daemon keeps the daemon warm across the 4 sibling
+        # calls, so on retry the second+ calls should hit a warm
+        # Chromium and return in seconds. We don't kill the daemon
+        # -- we just fall through to the retry below.
+        print(f"[MCP-DAEMON] {tool_name}: timed out after {timeout_seconds}s; daemon kept warm, retrying", file=sys.stderr)
     except (EOFError, BrokenPipeError, OSError) as exc:
         print(f"[MCP-DAEMON] {tool_name}: daemon for {username} died ({type(exc).__name__}: {exc}); respawning", file=sys.stderr)
         if tried is not None:

@@ -2,6 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+
 ## What this repo is
 
 This is the **`jchat` Fly.io app** — a single deployment that hosts **multiple independent applications** under one container:
@@ -58,18 +59,25 @@ cd schoology
 ### Container layout (Dockerfile `CMD`)
 ```sh
 cd /app/schoology; \
-  /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 2 --threads 8 -c /app/schoology/gunicorn.conf.py server:app \
+  /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 1 --threads 8 -c /app/schoology/gunicorn.conf.py server:app \
   & node /app/server/index.js
 ```
 - One container, two processes. The Node app on **8080** is public; the Flask app on **8081** is internal-only and reached only through the Node proxy.
 - Persistent volume `/data` is mounted for SQLite (`chat.db`), schoology session cookies, and AI assistant file uploads. 1 GB volume in `sjc` region.
 - 512 MB RAM, shared CPU. Memory is tight: Whisper `tiny` + CLIP + Playwright chromium + a per-user daemon pool all fight for it. Watch RSS.
 
-### gunicorn: two workers, two roles
-- **Worker 0** runs a long-lived `run_tool.py` per authenticated user (the "daemon pool"). Each daemon holds a warm Playwright browser for that student. The pool is keyed by username, LRU-evicted at `DAEMON_POOL_MAX=100`. `GUNICORN_WORKER_INDEX` is set in the master env by `schoology/gunicorn.conf.py:pre_fork` so children know which role they're playing.
-- **Worker 1** runs per-request subprocesses (cold start, fallback) using the same env-var credential handoff. Use this for >100 concurrent students and accept the cold-start cost.
+### gunicorn: single worker, per-user daemon pool
+- **Single worker** (`--workers 1`, `--threads 8`) — previously 2 workers, but each gunicorn worker is its own daemon pool, so 2 workers × 4 parallel dashboard sections = up to 8 Chromium instances on 512MB Fly → OOM. One worker is enough for the current user base (~8 people, 2 concurrent typical). The per-user spawn lock inside `_get_daemon()` coalesces concurrent requests for the same user so we never have more than one in-flight Chromium spawn per (worker, user).
+- **Long-lived `run_tool.py` per authenticated user**. Each daemon holds a warm Playwright browser for that student. The pool is keyed by username, LRU-evicted at `DAEMON_POOL_MAX=100`. `GUNICORN_WORKER_INDEX` is set in the master env by `schoology/gunicorn.conf.py:pre_fork` (still useful for telemetry/logging).
 - **Why per-user daemons:** upstream `schoology-mcp` is single-tenant — it reads `SCHOOLOGY_USERNAME`/`SCHOOLOGY_PASSWORD` from its own process env at spawn and keeps one headless browser per process. The pool is how we serve multiple students from one Flask worker.
 - **Why `/data/schoology_storage.json`:** image redeploys lose `/root/.cache/...`, so the storage state env-var points to the persistent volume.
+
+### Schoology daemon pool subtleties (read this before editing `schoology/server.py`)
+- **Per-user spawn lock** (`_spawn_locks` + `spawn_lock` in `_get_daemon`): without it, 4 parallel dashboard sections for the same user would each spawn their own daemon → 4 Chromium instances during the spawn window → OOM. The first caller holds the lock, the rest wait, then find the daemon in the pool.
+- **TOCTOU race** in `_kill_daemon(username)`: the pool is keyed by username, not by `DaemonClient` object. If caller A spawns a fresh daemon and caller B's pre-flight fails on the *old* daemon, B's `_kill_daemon(username)` would pop A's brand-new daemon from the pool. Always prefer `_kill_daemon_object(target)` which only kills a specific instance and verifies it's still in the pool before popping.
+- **Daemon stdin "closed file" check** in `DaemonClient.call()`: when Chromium dies, Python's `BufferedWriter` flags its `stdin` closed and subsequent writes raise `ValueError` (not `BrokenPipeError`). The pre-flight checks `proc.poll() is None` AND `stdin.closed` AND catches `ValueError` on write — without all three, dead-daemon cycles surface as 500s.
+- **Drain-on-timeout** in `DaemonClient.call()`: when the per-call timeout (200s) fires on a slow cold-start, the daemon is NOT killed. Instead the orphan response line is drained inside the lock so the next caller can use the warm daemon. Killing on timeout was the cause of cascading 500s across the 4 dashboard sections.
+- **Tombstoned daemons**: `close()` sets `proc = None`. The next caller holding a tombstoned `DaemonClient` would crash on `proc.poll()`. `_get_daemon` re-spawns if it finds `proc is None`; `call()` raises EOFError as a safety net.
 
 ### Node → Flask proxy (`server/index.js`)
 Non-obvious bugs already fixed and worth not re-introducing:
@@ -104,7 +112,9 @@ A real-time multiplayer FPS built on Socket.IO's `/game` namespace, unrelated to
 - **New AI routes** live in `schoology/ai/*.py` (math, geometry, knowledge, science, files, code, integrations, basics, web) and self-register via `register_routes(app)` from `schoology/ai/__init__.py`. `schoology/server.py` calls `register_ai_routes(app)` once near the bottom of its route block.
 - **Auth** for AI routes is the same `decode_auth_header()` Basic-auth pattern as the rest of the API.
 - **No rate limiting in v1**; most routes hit free public APIs with their own quotas (Wikipedia, Open-Meteo, MyMemory, arXiv). GitHub is 60/hr unauth.
+- **Adding a new tool = one `TOOL_REGISTRY` entry** (at the top of `schoology/index.html`). The system prompt, welcome message, `generateDemoResponse` help branch, and `handleAICommands` dispatcher all read from it. Then add the implementation in `schoology/ai/<family>.py` and register it via `register_routes(app)`. Don't sprinkle the tool name across files — it's a single source of truth.
 - **Multi-chat state** is server-persisted per user. See "Multi-chat AI assistant" below for storage layout, endpoints, and the heuristic remember/cross-chat context system.
+- **Dashboard section cache** (`localStorage`): each section's last successful response is persisted under `schoology_section_cache_<username>_<section>`. `hydrateFromCache()` reads it on dashboard open and renders instantly while `loadSection()` runs in the background — without this, the user stares at skeletons for 60-90s on every cold start. The cache is per-user; don't surface another user's data.
 
 ### Multi-chat AI assistant (`schoology/index.html` + `schoology/server.py`)
 A user can have many chats; each chat has its own history. A "global memory" of user-asked-to-remember facts is shared across all chats, and a short summary of every other chat is injected into context for cross-chat awareness.
@@ -186,7 +196,15 @@ Errors render as a red box with the exact message — no generic "something went
 | `SCHOOLOGY_STORAGE_STATE` | no | default `/data/schoology_storage.json` |
 | `SCHOOLOGY_HEADLESS` | no | default `true` |
 | `SCHOOLOGY_KEEPALIVE` | no | default `false` |
-| `DAEMON_POOL_MAX` | no | default `100`; cap on per-user daemons in worker 0 (set high for future scaling; current user base is ~8 people, 2 concurrent is typical) |
+| `DAEMON_POOL_MAX` | no | default `100`; per-user daemon pool cap (set high; current user base is ~8 people, 2 concurrent is typical) |
+| `JUDGE0_KEY` | no | enables `[RUN:lang code]` for C/C++/Rust/Go/Java |
+| `JUDGE0_URL` | no | default `https://judge0-ce.rapidapi.com` |
+
+## Translation system (`public/assets/translation/data.json`)
+- 39 languages (en, zh, zh-Hans, zh-Hant, ja, ko, es, fr, de, hi, ar, bn, pt, ru, ur, id, sw, tr, vi, it, th, pl, uk, nl, ro, sv, hu, el, he, fa, am, ta, te, mr, pa, gu, kn, ml, jv).
+- Source of truth at runtime: `data.json`. The inline `STRINGS` in `main.js` only has `en` + `zh` (and is what `scripts/build-translations.cjs` extracts). `t(key)` falls back to `en`, then the key itself.
+- **`build-translations.cjs` overwrites the inline en+zh and the zh-Hant fallback table only** — it does NOT preserve the other 37 languages in data.json. If you re-run it, all non-{en, zh, zh-Hant} translations in data.json get lost. To keep them, either edit data.json directly (don't re-run the build) or modify the build script to merge.
+- Translation keys are contextually chosen, not literally translated: e.g. "key" in the security/recovery sense maps to 凭证/証拠/증거/Key, not the literal 键/キー/키.
 | `JUDGE0_KEY` | no | enables `[RUN:lang code]` for C/C++/Rust/Go/Java |
 | `JUDGE0_URL` | no | default `https://judge0-ce.p.rapidapi.com` |
 
@@ -198,7 +216,10 @@ Errors render as a red box with the exact message — no generic "something went
 - **Schoology Flask**: `schoology/server.py` (daemon pool, all `/api/*` routes, AI registration, multi-chat + memory endpoints).
 - **Schoology AI routes**: `schoology/ai/__init__.py` (aggregator) + one file per tool family.
 - **gunicorn config**: `schoology/gunicorn.conf.py` (`pre_fork` sets `GUNICORN_WORKER_INDEX`).
-- **Project memory** (curated, persists across sessions): `~/.claude/projects/-Users-Benran-Documents-GitHub-chat/memory/` — `schoology-architecture.md` for the per-user daemon pool + upstream tool surface; `server-proxy-pitfalls.md` for the two non-obvious Node proxy bugs.
+- **Project memory** (curated, persists across sessions): `~/.claude/projects/-Users-Benran-Documents-GitHub-chat/memory/` — `schoology-architecture.md` for the per-user daemon pool + upstream tool surface; `server-proxy-pitfalls.md` for the two non-obvious Node proxy bugs; `dm-voice-architecture.md` for the 1:1 WebRTC voice implementation.
+- **Seeded accounts** (auto-created on every server boot, idempotent — see `server/db.js` and `schoology/index.html`): the `jimmyqrg` admin (placeholder password, claimed on first signup), the `helper` bot, and the `sezitoushangyibadao` private account (display name `色字头上一把刀`, password `xyz12345`, email `sezitoushangyibadao@chat.local`, `is_private=1`). Private users are hidden from everyone except `jimmyqrg` on profile / DM / mention-search / friend paths; groups still display their messages.
+- **Private-user enforcement** (`server/db.js` + `server/index.js`): `is_private=1` rows are filtered from `/api/users` list, `/api/users/mention-search`, and from the DM-open gate (`/api/conversations/with/:userId`). The frontend shows a `private-user-notice` placeholder when the server returns `{ private_user: true, error: 'This user is private' }`. `canSeePrivateUser(viewer, targetId)` is the single helper; add it to any new endpoint that exposes a user.
+- **Theme-aware logos** (`schoology/index.html`): two stacked `<img>` tags per logo, dark variant + `logo-light` variant, swapped via CSS `[data-theme="light"] .header-logo-dark { display: none }`. The favicon is intentionally NOT theme-swapped.
 - **Working notes** (free-form, session-scratch): `agent.md` at repo root.
 
 ## Do not
