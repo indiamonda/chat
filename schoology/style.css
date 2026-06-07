@@ -209,6 +209,10 @@
       --ai-gradient: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #4f46e5 100%);
       --ai-glow: rgba(79, 70, 229, 0.4);
       --accent-glow: rgba(124, 58, 237, 0.2);
+      /* User-sent bubble: a soft pastel tint, not the saturated dark
+         gradient. Dark text for legibility on a light background. */
+      --user-bubble-bg: linear-gradient(135deg, #eef0fb 0%, #e3e6f7 50%, #eef0fb 100%);
+      --user-bubble-text: #1a1a2e;
     }
 
     [data-theme="light"] .header-title-group h1 {
@@ -1296,8 +1300,8 @@
       max-width: 100%;
     }
     .chat-message.user .message-bubble {
-      background: var(--ai-gradient);
-      color: white;
+      background: var(--user-bubble-bg, var(--ai-gradient));
+      color: var(--user-bubble-text, white);
       border-bottom-right-radius: 6px;
     }
     .chat-message.assistant .message-bubble {
@@ -1350,9 +1354,11 @@
       cursor: pointer;
       transition: opacity 0.15s ease, color 0.15s ease;
     }
-    /* User bubble: white text on gradient. Buttons mirror that. */
+    /* User bubble: text color is var(--user-bubble-text) so the
+       buttons stay legible in both light (dark text on pastel) and
+       dark (white text on saturated gradient) themes. */
     .chat-message.user .msg-action-btn {
-      color: white;
+      color: var(--user-bubble-text, white);
       opacity: 0.65;
     }
     .chat-message.user .msg-action-btn:hover { opacity: 1; }
