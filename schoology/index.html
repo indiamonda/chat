@@ -3078,8 +3078,19 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       // per-turn context bounded; the server's stored summary covers
       // the long tail.
       out.push(...state.currentMessages.slice(-10));
-      out.push({ role: 'user', content: currentMessage });
-      return out;
+      // Drop any roles DeepSeek doesn't accept (tool / system). The
+      // display layer already filters these, but they were leaking
+      // into the API payload and producing 400 "Bad role" errors.
+      // `out` already contains the system messages we want, so we
+      // just drop tool/anything-else.
+      const trimmed = out.filter(m => m.role === 'system' || m.role === 'user' || m.role === 'assistant');
+      // Make sure the last message in the array is the user's current
+      // message — if it got dropped by the filter we still need to
+      // re-add it.
+      if (trimmed[trimmed.length - 1]?.content !== currentMessage || trimmed[trimmed.length - 1]?.role !== 'user') {
+        trimmed.push({ role: 'user', content: currentMessage });
+      }
+      return trimmed;
     }
 
     // Remove every [TOOL:args] bracket from a chunk of assistant text
@@ -3176,7 +3187,7 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       copyBtn.title = 'Copy';
       copyBtn.setAttribute('aria-label', 'Copy message');
       copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-      copyBtn.onclick = copyMessage;
+      copyBtn.onclick = (e) => copyMessage(copyBtn);
       actions.appendChild(copyBtn);
       if (type === 'user') {
         const editBtn = document.createElement('button');
@@ -3185,7 +3196,7 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
         editBtn.title = 'Edit & resend';
         editBtn.setAttribute('aria-label', 'Edit message');
         editBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-        editBtn.onclick = editUserMessage;
+        editBtn.onclick = (e) => editUserMessage(editBtn);
         actions.appendChild(editBtn);
       }
       div.appendChild(actions);
