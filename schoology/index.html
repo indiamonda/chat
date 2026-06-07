@@ -168,6 +168,7 @@
         <div class="global-progress-bar-fill" id="globalProgressFill"></div>
       </div>
       <div class="global-progress-text" id="globalProgressText">Loading your data… 0/4</div>
+      <div class="refreshing-pill hidden" id="refreshingPill">Refreshing in background…</div>
     </div>
 
     <!-- Dashboard Header -->
@@ -794,7 +795,14 @@
     }
 
     async function deleteChat(chatId) {
-      if (!confirm('Delete this chat? This cannot be undone.')) return;
+      const ok = await showConfirmModal({
+        title: 'Delete this chat?',
+        message: 'This cannot be undone. The chat and all its messages will be permanently removed.',
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        danger: true,
+      });
+      if (!ok) return;
       if (state.demoMode) {
         if (state.currentChatId === '__demo__') {
           state.currentMessages = [];
@@ -1226,7 +1234,7 @@
     // matching numeric percent and an elapsed counter. Used by both the
     // initial showApp() and the Resume path (which re-shows the chrome and
     // retries the basic-info fetch without a full page reload).
-    const PROGRESS_DURATION_MS = 150_000;
+    const PROGRESS_DURATION_MS = 200_000;
     const PROGRESS_MAX_PCT = 95;
     let _progressInterval = null;
 
@@ -1450,14 +1458,14 @@
 
     async function loadBasicInfo(apiUrl, headers) {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 150_000);
-      console.log('[DEBUG] loadBasicInfo: 150s timeout, fetching /api/basic-info');
+      const timer = setTimeout(() => ctrl.abort(), 200_000);
+      console.log('[DEBUG] loadBasicInfo: 200s timeout, fetching /api/basic-info');
       let res;
       try {
         res = await fetch(`${apiUrl}/api/basic-info`, { headers, signal: ctrl.signal });
       } catch (e) {
         clearTimeout(timer);
-        if (e.name === 'AbortError') throw new Error('Timed out loading profile (150s).');
+        if (e.name === 'AbortError') throw new Error('Timed out loading profile (200s).');
         throw new Error(`Network error: ${e.message}`);
       }
       clearTimeout(timer);
@@ -1533,6 +1541,14 @@
       renderSkeletonFor('assignmentsList');
       renderSkeletonFor('activityList');
 
+      // Try to hydrate from last-successful-fetch cache so the first
+      // paint after a cold start doesn't show only skeletons while the
+      // daemon does its 60-90s Chromium + ClassLink boot. The cache is
+      // background-refreshed by the normal loadSection() call below,
+      // so the user sees data immediately and a fresh refresh a few
+      // seconds later.
+      const cached = !state.demoMode ? hydrateFromCache() : 0;
+
       // Global progress bar (1 = basic-info + 4 background = 5 total) — basic-info
       // counts as 1, so we start at 1/5 and go up to 5/5.
       state.loadedCount = 1;
@@ -1540,6 +1556,13 @@
 
       const gp = document.getElementById('globalProgress');
       if (gp) gp.classList.remove('hidden');
+
+      // If we're showing cached data, surface a small "refreshing" pill
+      // on the progress bar so the user knows a fresh fetch is in flight.
+      if (cached > 0) {
+        const pill = document.getElementById('refreshingPill');
+        if (pill) pill.classList.remove('hidden');
+      }
     }
 
     function renderStudentHeader() {
@@ -1659,15 +1682,62 @@
     function applySectionData(name, data) {
       // /api/grades, /api/courses, /api/assignments, /api/posts all return the
       // array directly (per get_data_from_mcp_or_mock in server.py).
+      let normalized;
       if (name === 'grades') {
-        state.grades = Array.isArray(data) ? data : (data.grades || data.courses || []);
+        normalized = Array.isArray(data) ? data : (data.grades || data.courses || []);
+        state.grades = normalized;
       } else if (name === 'courses') {
-        state.courses = Array.isArray(data) ? data : (data.courses || []);
+        normalized = Array.isArray(data) ? data : (data.courses || []);
+        state.courses = normalized;
       } else if (name === 'assignments') {
-        state.assignments = Array.isArray(data) ? data : (data.assignments || []);
+        normalized = Array.isArray(data) ? data : (data.assignments || []);
+        state.assignments = normalized;
       } else if (name === 'posts') {
-        state.posts = Array.isArray(data) ? data : (data.posts || []);
+        normalized = Array.isArray(data) ? data : (data.posts || []);
+        state.posts = normalized;
       }
+      // Persist the last successful payload to localStorage so the next
+      // dashboard open can render instantly from cache while the daemon
+      // does its cold-start (Chromium launch + ClassLink login, ~60-90s
+      // on 512MB Fly). Without this, every cold load feels blank.
+      try {
+        const cacheKey = `schoology_section_cache_${state.username || '_'}_${name}`;
+        localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data: normalized }));
+      } catch (_) {}
+    }
+
+    // Read cached section data for instant first paint. Returns the
+    // cached payload (or null) and applies it to state + re-renders the
+    // relevant section so the dashboard doesn't show skeletons for the
+    // first 60-90s on cold start.
+    function hydrateFromCache() {
+      const u = state.username || '_';
+      const sections = ['grades', 'courses', 'assignments', 'posts'];
+      const renderMap = {
+        grades: [renderGradesOverview, renderGradesList],
+        courses: [renderCoursesIntoGrades, renderCoursesIntoGrades],
+        assignments: [renderAssignmentsOverview, renderAssignmentsList],
+        posts: [renderActivityList, renderActivityList],
+      };
+      let hydrated = 0;
+      for (const name of sections) {
+        try {
+          const raw = localStorage.getItem(`schoology_section_cache_${u}_${name}`);
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          if (!parsed || !parsed.data) continue;
+          if (name === 'grades') state.grades = parsed.data;
+          else if (name === 'courses') state.courses = parsed.data;
+          else if (name === 'assignments') state.assignments = parsed.data;
+          else if (name === 'posts') state.posts = parsed.data;
+          state.sectionStatus[name] = 'cached';
+          const [overviewFn, listFn] = renderMap[name] || [];
+          if (overviewFn) overviewFn();
+          if (listFn) listFn();
+          hydrated += 1;
+        } catch (_) {}
+      }
+      return hydrated;
     }
 
     function renderSectionError(name, message, showRetry) {
@@ -1969,11 +2039,16 @@
                 if (trimmed === title) return;
                 renameChat(chatId, trimmed);
               }},
-              { label: 'Delete', action: () => {
+              { label: 'Delete', action: async () => {
                 if (!chatId) return;
-                if (confirm(`Delete "${title}"? This cannot be undone.`)) {
-                  deleteChat(chatId);
-                }
+                const ok = await showConfirmModal({
+                  title: `Delete "${title}"?`,
+                  message: 'This cannot be undone. The chat and all its messages will be permanently removed.',
+                  confirmText: 'Delete',
+                  cancelText: 'Cancel',
+                  danger: true,
+                });
+                if (ok) await deleteChat(chatId);
               }},
             ],
           };
@@ -3590,6 +3665,39 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
       notification.textContent = message;
       document.body.appendChild(notification);
       setTimeout(() => notification.remove(), 4000);
+    }
+
+    // Styled confirm dialog. Replaces the ugly browser `confirm()` with a
+    // modal that matches the rest of the app's design. Resolves to true
+    // when the user confirms, false on cancel / Escape / backdrop click.
+    function showConfirmModal({ title, message, confirmText = 'Confirm', cancelText = 'Cancel', danger = false } = {}) {
+      return new Promise((resolve) => {
+        const ov = document.createElement('div');
+        ov.className = 'modal-overlay confirm-modal-overlay';
+        ov.innerHTML = `
+          <div class="modal confirm-modal ${danger ? 'confirm-modal-danger' : ''}" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+            <div class="confirm-modal-icon" aria-hidden="true">${danger ? '⚠️' : '❓'}</div>
+            <h2 class="confirm-modal-title" id="confirmModalTitle">${escapeHtml(title || 'Are you sure?')}</h2>
+            ${message ? `<p class="confirm-modal-message">${escapeHtml(message)}</p>` : ''}
+            <div class="confirm-modal-actions">
+              <button type="button" class="btn-secondary confirm-modal-cancel">${escapeHtml(cancelText)}</button>
+              <button type="button" class="btn-primary confirm-modal-confirm ${danger ? 'btn-danger' : ''}">${escapeHtml(confirmText)}</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(ov);
+        const close = (result) => { ov.remove(); document.removeEventListener('keydown', onKey); resolve(result); };
+        const onKey = (e) => {
+          if (e.key === 'Escape') close(false);
+          else if (e.key === 'Enter') close(true);
+        };
+        ov.addEventListener('click', (e) => { if (e.target === ov) close(false); });
+        ov.querySelector('.confirm-modal-cancel').addEventListener('click', () => close(false));
+        ov.querySelector('.confirm-modal-confirm').addEventListener('click', () => close(true));
+        document.addEventListener('keydown', onKey);
+        // Focus the confirm button so Enter immediately confirms.
+        setTimeout(() => ov.querySelector('.confirm-modal-confirm').focus(), 0);
+      });
     }
 
     // Helpers
