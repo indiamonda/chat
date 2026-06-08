@@ -14,21 +14,21 @@
 <stop offset="1" stop-color="#003322"/>
 </linearGradient>
 <linearGradient id="paint1_linear_1_6" x1="285" y1="266.5" x2="285" y2="765" gradientUnits="userSpaceOnUse">
-<stop stop-opacity="0"/>
+<stop stop-opacity="1"/>
 <stop offset="0.254808" stop-opacity="0.644231"/>
 <stop offset="1"/>
 </linearGradient>
 <radialGradient id="paint2_radial_1_6" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(81.4212 232.987) rotate(-22.0495) scale(247.695 148.68)">
 <stop stop-color="white"/>
-<stop offset="1" stop-color="white" stop-opacity="0"/>
+<stop offset="1" stop-color="white" stop-opacity="1"/>
 </radialGradient>
 <linearGradient id="paint3_linear_1_6" x1="483.5" y1="183.5" x2="596" y2="404" gradientUnits="userSpaceOnUse">
 <stop stop-color="white"/>
-<stop offset="1" stop-color="white" stop-opacity="0"/>
+<stop offset="1" stop-color="white" stop-opacity="1"/>
 </linearGradient>
 <linearGradient id="paint4_linear_1_6" x1="516.5" y1="54.2934" x2="651.613" y2="-180.946" gradientUnits="userSpaceOnUse">
 <stop stop-color="white"/>
-<stop offset="1" stop-color="white" stop-opacity="0"/>
+<stop offset="1" stop-color="white" stop-opacity="1"/>
 </linearGradient>
 <clipPath id="clip0_1_6">
 <rect width="569" height="765" fill="white"/>
