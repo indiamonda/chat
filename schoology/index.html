@@ -537,10 +537,29 @@
         timestamp: Date.now()
       }));
 
-      // Now prompt for agent password
-      const agentPass = prompt('Enter agent password to access the dashboard:');
+      // Now prompt for agent password. Use the styled modal instead
+      // of window.prompt() -- prompt() is blocked in cross-origin
+      // iframes (the schoology dashboard is typically embedded in
+      // one), which would silently lock the user out with an
+      // "Invalid agent password" alert. The modal works in any
+      // context. We use async/await here, so handleLogin is now
+      // declared async at the call sites that need it.
+      const agentPass = await showPromptModal({
+        title: 'Agent password',
+        message: 'Enter the agent password to access the dashboard.',
+        defaultValue: '',
+        confirmText: 'Sign in',
+        cancelText: 'Cancel',
+      });
+      if (agentPass == null) {
+        // User cancelled -- do nothing, stay on the login page.
+        document.getElementById('loginError').textContent = 'Sign-in cancelled.';
+        document.getElementById('loginError').style.display = 'block';
+        return;
+      }
       if (!AgentPassword.verify(agentPass)) {
-        alert('Invalid agent password. Access denied.');
+        document.getElementById('loginError').textContent = 'Invalid agent password. Access denied.';
+        document.getElementById('loginError').style.display = 'block';
         return;
       }
 
