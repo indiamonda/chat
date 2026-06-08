@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Schoology Help</title>
-  <link rel="icon" type="image/x-icon" href="/icons/favicon.ico">
-  <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="/schoology/assets/icons/favicon.ico">
+  <link rel="icon" type="image/svg+xml" href="/schoology/assets/icons/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Didact+Gothic&family=Oxygen+Mono&display=swap" rel="stylesheet">
@@ -57,32 +57,68 @@
             <div class="features-bg-shape"></div>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">📊</div>
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10"/>
+                <line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+            </div>
             <h3>Real-time Grades</h3>
             <p>Track your academic progress with detailed category breakdowns and trends.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">🤖</div>
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="10" rx="2"/>
+                <circle cx="12" cy="5" r="2"/>
+                <line x1="12" y1="7" x2="12" y2="11"/>
+                <line x1="8" y1="16" x2="8" y2="16"/>
+                <line x1="16" y1="16" x2="16" y2="16"/>
+              </svg>
+            </div>
             <h3>AI Study Assistant</h3>
             <p>Get instant help with assignments, explanations, and personalized study plans.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">📅</div>
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+            </div>
             <h3>Assignment Tracking</h3>
             <p>Never miss a deadline with smart due date tracking and reminders.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">🔍</div>
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </div>
             <h3>Smart Search</h3>
             <p>Search the web and Wikipedia directly through your AI assistant.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">📷</div>
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+            </div>
             <h3>Image Analysis</h3>
             <p>Upload images of worksheets or notes and get AI-powered text extraction.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">📚</div>
+            <div class="feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              </svg>
+            </div>
             <h3>Course Overview</h3>
             <p>View all your courses, teachers, and schedules in one organized dashboard.</p>
           </div>
@@ -100,7 +136,7 @@
         <form class="login-form" id="loginForm">
           <input type="text" id="loginUsername" placeholder="PAUSD Student ID" required>
           <input type="password" id="loginPassword" placeholder="Schoology Password" required>
-          <button type="button" class="login-btn" onclick="handleLogin({preventDefault:()=>{}})">Sign In</button>
+          <button type="button" class="login-btn" data-label="Sign In" onclick="handleLogin({preventDefault:()=>{}})"><span>Sign In</span></button>
         </form>
 
         <div class="login-divider"><span>or</span></div>
@@ -175,8 +211,8 @@
     <header class="dashboard-header" id="dashboardHeader">
       <div class="header-top">
         <div class="header-brand">
-          <img src="/icons/logo.png" alt="Logo" class="header-logo header-logo-dark" onerror="this.style.display='none'">
-          <img src="/icons/logo-light.png" alt="Logo" class="header-logo header-logo-light" onerror="this.style.display='none'">
+          <img src="/schoology/assets/icons/logo.png" alt="Logo" class="header-logo header-logo-dark" onerror="this.style.display='none'">
+          <img src="/schoology/assets/icons/logo-light.png" alt="Logo" class="header-logo header-logo-light" onerror="this.style.display='none'">
           <div class="header-title-group">
             <h1>Schoology Help</h1>
             <p class="subtitle" id="subtitle">Your academic dashboard, connected</p>
@@ -221,7 +257,16 @@
           <div id="ocrProgress" class="ocr-progress" style="display: none;"></div>
           <div class="chat-input-area">
             <div class="chat-input-row">
-              <input type="text" id="chatInput" placeholder="Ask anything about your courses, grades, or assignments..." onkeydown="handleChatKeydown(event)">
+              <input type="text" id="chatInput" placeholder="Ask anything about your courses, grades, or assignments..." onkeydown="handleChatKeydown(event)" oninput="updateSendButtonEnabled()">
+              <button type="button" id="chatSendBtn" class="chat-send-btn" onclick="if (state._aiBusy) { stopAiGeneration(); } else { sendChatMessage(); }" aria-label="Send message" title="Send message" disabled>
+                <svg class="chat-send-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+                <svg class="chat-stop-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                  <rect x="6" y="6" width="12" height="12" rx="2"/>
+                </svg>
+              </button>
               <div class="emoji-btn">
                 <svg onclick="toggleEmojiPicker()" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" style="cursor: pointer;">
                   <circle cx="12" cy="12" r="10"/>
@@ -1084,15 +1129,6 @@
       const initial = (firstName[0] || '?').toUpperCase();
       return `
         <div class="chat-sidebar-footer">
-          <button class="chat-sidebar-mem-btn" onclick="openMemoryPanel()" title="View remembered facts">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 17v5"/>
-              <path d="M9 10.76V6h6v4.76l3 3.34V16H6v-1.9l3-3.34z"/>
-              <line x1="9" y1="16" x2="15" y2="16"/>
-            </svg>
-            <span>Memory</span>
-            ${memCount ? `<span class="mem-count">${memCount}</span>` : ''}
-          </button>
           <div class="chat-sidebar-user" onclick="openSettings()" title="Open settings">
             <span class="avatar">${escapeHtml(initial)}</span>
             <span class="name">${escapeHtml(firstName)}</span>
@@ -1113,13 +1149,22 @@
       });
     }
 
-    function startRenameChat(chatId, titleEl) {
+    async function startRenameChat(chatId, titleEl) {
       const chat = state.chats.find(c => c.id === chatId);
       if (!chat) return;
       const current = chat.title || 'New chat';
-      const next = prompt('Rename chat:', current);
+      // Use a styled modal instead of window.prompt() -- prompt() is
+      // blocked in cross-origin iframes (the schoology dashboard is
+      // usually embedded in one), so the rename would silently do
+      // nothing. The modal works in any context.
+      const next = await showPromptModal({
+        title: 'Rename chat',
+        defaultValue: current,
+        confirmText: 'Save',
+        cancelText: 'Cancel',
+      });
       if (next != null && next.trim() && next.trim() !== current) {
-        renameChat(chatId, next.trim());
+        await renameChat(chatId, next.trim());
       }
     }
 
@@ -1161,7 +1206,13 @@
         if (!state.currentChatId) {
           container.innerHTML = `
             <div class="chat-empty-placeholder">
-              <div class="chat-empty-placeholder-icon">💬</div>
+              <div class="chat-empty-placeholder-icon">
+                <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  <line x1="8" y1="9" x2="16" y2="9"/>
+                  <line x1="8" y1="13" x2="13" y2="13"/>
+                </svg>
+              </div>
               <div class="chat-empty-placeholder-title">No chat selected</div>
               <div class="chat-empty-placeholder-sub">Pick a chat from the left, or start a new one.</div>
             </div>
@@ -1428,6 +1479,11 @@
       document.getElementById('connectionStatus').textContent = state.demoMode ? 'Demo Mode' : 'Connected';
       document.getElementById('settingsUsername').textContent = state.username;
 
+      // Initialize the send button to disabled (empty input). The
+      // user starts with no text -> button is dim. As they type,
+      // `oninput="updateSendButtonEnabled()"` lights it up.
+      updateSendButtonEnabled();
+
       // Only render data sections if there's no connection error
       if (!state.connectionError) {
         // Render all sections
@@ -1584,11 +1640,17 @@
 
       // Try to hydrate from last-successful-fetch cache so the first
       // paint after a cold start doesn't show only skeletons while the
-      // daemon does its 60-90s Chromium + ClassLink boot. The cache is
-      // background-refreshed by the normal loadSection() call below,
-      // so the user sees data immediately and a fresh refresh a few
-      // seconds later.
-      const cached = !state.demoMode ? hydrateFromCache() : 0;
+      // We deliberately do NOT hydrate from localStorage cache here.
+      // The cache was added to mask cold-start latency, but it also
+      // masked real load failures — the user would see stale or
+      // empty data with a 100% bar and assume the dashboard was
+      // hardcoded fake. Show skeletons, surface real errors, and
+      // let the user see actual data land as it arrives. (The
+      // persistent volume on /data holds schoology session cookies
+      // so the daemon's cold start is shorter than the 6+ minutes
+      // the old serial daemon took; the concurrent daemon keeps the
+      // 4 sibling sections warm-pipelined.)
+      const cached = 0;
 
       // Global progress bar (1 = basic-info + 4 background = 5 total) — basic-info
       // counts as 1, so we start at 1/5 and go up to 5/5.
@@ -1751,49 +1813,17 @@
         normalized = Array.isArray(data) ? data : (data.posts || []);
         state.posts = normalized;
       }
-      // Persist the last successful payload to localStorage so the next
-      // dashboard open can render instantly from cache while the daemon
-      // does its cold-start (Chromium launch + ClassLink login, ~60-90s
-      // on 512MB Fly). Without this, every cold load feels blank.
-      try {
-        const cacheKey = `schoology_section_cache_${state.username || '_'}_${name}`;
-        localStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data: normalized }));
-      } catch (_) {}
+      // Cache hydration was disabled: the cache was masking real load
+      // failures and the user could not tell whether data was fresh
+      // or fake. We don't write to localStorage here anymore. (If
+      // you want to re-enable it, do so BEHIND a clear UI indicator
+      // so the user can never mistake cached data for live data.)
     }
 
-    // Read cached section data for instant first paint. Returns the
-    // cached payload (or null) and applies it to state + re-renders the
-    // relevant section so the dashboard doesn't show skeletons for the
-    // first 60-90s on cold start.
-    function hydrateFromCache() {
-      const u = state.username || '_';
-      const sections = ['grades', 'courses', 'assignments', 'posts'];
-      const renderMap = {
-        grades: [renderGradesOverview, renderGradesList],
-        courses: [renderCoursesIntoGrades, renderCoursesIntoGrades],
-        assignments: [renderAssignmentsOverview, renderAssignmentsList],
-        posts: [renderActivityList, renderActivityList],
-      };
-      let hydrated = 0;
-      for (const name of sections) {
-        try {
-          const raw = localStorage.getItem(`schoology_section_cache_${u}_${name}`);
-          if (!raw) continue;
-          const parsed = JSON.parse(raw);
-          if (!parsed || !parsed.data) continue;
-          if (name === 'grades') state.grades = parsed.data;
-          else if (name === 'courses') state.courses = parsed.data;
-          else if (name === 'assignments') state.assignments = parsed.data;
-          else if (name === 'posts') state.posts = parsed.data;
-          state.sectionStatus[name] = 'cached';
-          const [overviewFn, listFn] = renderMap[name] || [];
-          if (overviewFn) overviewFn();
-          if (listFn) listFn();
-          hydrated += 1;
-        } catch (_) {}
-      }
-      return hydrated;
-    }
+    // Cache hydration removed. The localStorage section cache was
+    // masking real load failures -- the user would see stale or
+    // empty data with a 100% bar and assume the dashboard was
+    // hardcoded fake. Real data only, no cache lie.
 
     function renderSectionError(name, message, showRetry) {
       const map = {
@@ -2085,14 +2115,19 @@
             target: item,
             items: [
               { label: 'Switch to Chat', action: () => { if (chatId) loadCurrentChat(chatId); } },
-              { label: 'Rename', action: () => {
+              { label: 'Rename', action: async () => {
                 if (!chatId) return;
-                const newTitle = prompt('Rename chat:', title);
+                const newTitle = await showPromptModal({
+                  title: 'Rename chat',
+                  defaultValue: title,
+                  confirmText: 'Save',
+                  cancelText: 'Cancel',
+                });
                 if (newTitle === null) return;
                 const trimmed = newTitle.trim();
                 if (!trimmed) return;
                 if (trimmed === title) return;
-                renameChat(chatId, trimmed);
+                await renameChat(chatId, trimmed);
               }},
               { label: 'Delete', action: async () => {
                 if (!chatId) return;
@@ -3038,6 +3073,11 @@
     async function sendChatMessage() {
       const input = document.getElementById('chatInput');
       const message = input.value.trim();
+      // While a previous AI response is still being generated, do
+      // not send another. The Stop button (or abort) is the only way
+      // to cancel the in-flight request. This guard makes the send
+      // button + Enter both safe even if a click sneaks through.
+      if (state._aiBusy) return;
       if (!message && !state.uploadedFiles.length) return;
 
       const workerUrl = localStorage.getItem('schoology-ai-worker-url');
@@ -3102,6 +3142,7 @@
 
       input.value = '';
       clearFilePreviews();
+      updateSendButtonEnabled();
 
       // Decide whether the user's question needs dashboard data. If
       // so AND the relevant sections aren't loaded yet, fire a
@@ -3187,7 +3228,7 @@
       };
       renderDataLoaderBubble(sections); // re-render to start spinner
       // Force the data loader into the DOM
-      const bubbleEl = document.querySelector(`[data-msg-idx="${loaderMsg.msgIdx}"]`);
+      let bubbleEl = document.querySelector(`[data-msg-idx="${loaderMsg.msgIdx}"]`);
       if (bubbleEl) {
         const inner = bubbleEl.querySelector('.message-bubble');
         if (inner) inner.innerHTML = renderDataLoaderBubble(sections);
@@ -3208,12 +3249,17 @@
 
       const ctx = state._dataLoaderContext;
       state._dataLoaderContext = null;
+      // Re-find the bubble -- the original ref might be stale if the
+      // DOM was re-rendered. We look it up by msgIdx each time.
+      function findLoaderBubble() {
+        return document.querySelector(`[data-msg-idx="${loaderMsg.msgIdx}"]`);
+      }
       if (ctx.cancelled) {
         // User hit stop. Replace the loader with a brief note and
         // generate an AI reply anyway, with whatever data we have.
-        const bubbleEl = document.querySelector(`[data-msg-idx="${loaderMsg.msgIdx}"]`);
-        if (bubbleEl) {
-          const inner = bubbleEl.querySelector('.message-bubble');
+        const el = findLoaderBubble();
+        if (el) {
+          const inner = el.querySelector('.message-bubble');
           if (inner) inner.innerHTML = '<div class="markdown-content"><p><em>Stopped loading data. Answering with what I have.</em></p></div>';
         }
         state.currentMessages.push({ role: 'assistant', content: '_Stopped loading data. Answering with what I have._' });
@@ -3222,10 +3268,10 @@
         return loaderMsg;
       }
       // Data is ready. Hide the loader, fire the AI request, append the reply.
-      const bubbleEl = document.querySelector(`[data-msg-idx="${loaderMsg.msgIdx}"]`);
-      if (bubbleEl) {
-        bubbleEl.classList.add('hidden-by-data-loader');
-        bubbleEl.style.display = 'none';
+      const el = findLoaderBubble();
+      if (el) {
+        el.classList.add('hidden-by-data-loader');
+        el.style.display = 'none';
       }
       await _requestAssistantReply(ctx.userFullMessage, { autoNameWith: ctx.autoNameWith });
       return loaderMsg;
@@ -3269,12 +3315,21 @@
       // "other chats" list automatically.
       const extras = await fetchChatContextExtras(state.currentChatId);
 
+      // AbortController so the Stop button can cancel an in-flight
+      // AI request. Only one request is in flight at a time (the
+      // send button is disabled while state._aiBusy is true) but we
+      // still want a handle to abort.
+      const abortController = new AbortController();
+      state._aiAbortController = abortController;
+      setAiBusy(true);
+
       try {
         if (workerUrl) {
           const response = await fetch(`${workerUrl}/v1/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(userFullMessage, extras), max_tokens: 1024, temperature: 0.6, stream: false })
+            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(userFullMessage, extras), max_tokens: 1024, temperature: 0.6, stream: false }),
+            signal: abortController.signal,
           });
           hideTypingIndicator();
           if (!response.ok) throw new Error(await response.text());
@@ -3314,7 +3369,21 @@
         }
       } catch (e) {
         hideTypingIndicator();
-        addChatMessage('error', `Error: ${e.message}`);
+        // AbortError is expected when the user hits Stop -- the message
+        // they sent stays in the chat history; we just don't append a
+        // partial AI reply.
+        if (e && (e.name === 'AbortError' || /aborted/i.test(e.message || ''))) {
+          addChatMessage('assistant', '_Stopped. (AI request cancelled.)_', { msgIdx: state.currentMessages.length });
+          state.currentMessages.push({ role: 'assistant', content: '_Stopped. (AI request cancelled.)_' });
+          scheduleSaveCurrentChat();
+        } else {
+          addChatMessage('error', `Error: ${e.message}`);
+        }
+      } finally {
+        // Always clear the busy flag + drop the abort controller so
+        // the input row can become a Send button again.
+        state._aiAbortController = null;
+        setAiBusy(false);
       }
     }
 
@@ -3754,7 +3823,64 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
     }
 
     function handleChatKeydown(e) {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        // While a previous AI response is still being generated, do
+        // not let Enter queue another message. The Stop button is the
+        // only way to cancel the in-flight request.
+        if (state._aiBusy) return;
+        sendChatMessage();
+      }
+    }
+
+    // Toggle the input-row send button between "Send" and "Stop", and
+    // also disable the Enter keyboard shortcut while busy. Called from
+    // the start of _requestAssistantReply and from the finally block.
+    function setAiBusy(busy) {
+      state._aiBusy = !!busy;
+      const btn = document.getElementById('chatSendBtn');
+      const input = document.getElementById('chatInput');
+      if (btn) {
+        btn.classList.toggle('is-stop', busy);
+        btn.setAttribute('aria-label', busy ? 'Stop generating' : 'Send message');
+        btn.title = busy ? 'Stop generating' : 'Send message';
+        btn.disabled = false; // stop button stays clickable to cancel
+      }
+      if (input) {
+        // Visually show the input is "locked" while a request is in
+        // flight. The user can still edit the text but cannot submit.
+        input.classList.toggle('is-busy', busy);
+        input.setAttribute('aria-busy', busy ? 'true' : 'false');
+      }
+      updateSendButtonEnabled();
+    }
+
+    // Recompute the send button's disabled state based on input text
+    // length and AI busy flag. Called on every input event so the
+    // user gets immediate feedback that an empty input can't be sent.
+    function updateSendButtonEnabled() {
+      const btn = document.getElementById('chatSendBtn');
+      const input = document.getElementById('chatInput');
+      if (!btn || !input) return;
+      // While busy, the button shows "stop" and stays enabled (so the
+      // user can click to cancel). The Enter shortcut is disabled in
+      // handleChatKeydown().
+      if (state._aiBusy) {
+        btn.disabled = false;
+        return;
+      }
+      const empty = !input.value.trim() && !state.uploadedFiles.length;
+      btn.disabled = empty;
+    }
+
+    // Cancel the in-flight AI request. Called from the Stop button
+    // (and indirectly from Enter while busy, which we no-op).
+    function stopAiGeneration() {
+      if (state._aiAbortController) {
+        try { state._aiAbortController.abort(); } catch (_) {}
+      }
+      // The finally{} in _requestAssistantReply will reset the busy
+      // state and button.
     }
 
     // Emoji picker
@@ -3980,6 +4106,46 @@ ${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join(
         document.addEventListener('keydown', onKey);
         // Focus the confirm button so Enter immediately confirms.
         setTimeout(() => ov.querySelector('.confirm-modal-confirm').focus(), 0);
+      });
+    }
+
+    // Styled prompt dialog. Replaces the ugly browser `prompt()` with
+    // a modal that matches the rest of the app's design. Resolves to
+    // the entered string (trimmed) when the user confirms, or null on
+    // cancel / Escape / backdrop click. The default action (Enter) is
+    // confirm; Escape is cancel. Used for chat rename -- prompt() is
+    // blocked in cross-origin iframes which is what the schoology
+    // dashboard is typically embedded in.
+    function showPromptModal({ title, message, defaultValue = '', confirmText = 'Save', cancelText = 'Cancel' } = {}) {
+      return new Promise((resolve) => {
+        const ov = document.createElement('div');
+        ov.className = 'modal-overlay prompt-modal-overlay';
+        ov.innerHTML = `
+          <div class="modal prompt-modal" role="dialog" aria-modal="true" aria-labelledby="promptModalTitle">
+            <div class="prompt-modal-icon" aria-hidden="true">✏️</div>
+            <h2 class="prompt-modal-title" id="promptModalTitle">${escapeHtml(title || 'Enter value')}</h2>
+            ${message ? `<p class="prompt-modal-message">${escapeHtml(message)}</p>` : ''}
+            <input type="text" class="prompt-modal-input" value="${escapeHtml(defaultValue)}" maxlength="80" autocomplete="off" />
+            <div class="prompt-modal-actions">
+              <button type="button" class="btn-secondary prompt-modal-cancel">${escapeHtml(cancelText)}</button>
+              <button type="button" class="btn-primary prompt-modal-confirm">${escapeHtml(confirmText)}</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(ov);
+        const input = ov.querySelector('.prompt-modal-input');
+        const close = (result) => { ov.remove(); document.removeEventListener('keydown', onKey); resolve(result); };
+        const onKey = (e) => {
+          if (e.key === 'Escape') close(null);
+          else if (e.key === 'Enter') close(input.value.trim());
+        };
+        ov.addEventListener('click', (e) => { if (e.target === ov) close(null); });
+        ov.querySelector('.prompt-modal-cancel').addEventListener('click', () => close(null));
+        ov.querySelector('.prompt-modal-confirm').addEventListener('click', () => close(input.value.trim()));
+        document.addEventListener('keydown', onKey);
+        // Focus the input + select existing text so the user can
+        // immediately type to overwrite, or press Enter to keep.
+        setTimeout(() => { input.focus(); input.select(); }, 0);
       });
     }
 

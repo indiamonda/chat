@@ -158,7 +158,7 @@
     .global-progress-bar-fill {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, #6366f1, #a855f7);
+      background: linear-gradient(90deg, #00bbff, #00ffbb);
       transition: width 0.4s ease;
     }
     .global-progress-text { display: none; }
@@ -204,18 +204,18 @@
       --text: #e8e8f0;
       --text-secondary: #8888a0;
       --text-muted: #555566;
-      --primary: #6366f1;
-      --primary-glow: rgba(99, 102, 241, 0.4);
-      --primary-dim: rgba(99, 102, 241, 0.15);
-      --success: #22c55e;
-      --success-glow: rgba(34, 197, 94, 0.3);
+      --primary: #00bbff;
+      --primary-glow: rgba(0, 187, 255, 0.4);
+      --primary-dim: rgba(0, 187, 255, 0.15);
+      --success: #00ffbb;
+      --success-glow: rgba(0, 255, 187, 0.3);
       --warning: #f59e0b;
       --warning-glow: rgba(245, 158, 11, 0.3);
       --error: #ef4444;
       --error-glow: rgba(239, 68, 68, 0.3);
-      --accent: #8b5cf6;
-      --accent-glow: rgba(139, 92, 246, 0.4);
-      --ai-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
+      --accent: #00ffbb;
+      --accent-glow: rgba(0, 255, 187, 0.4);
+      --ai-gradient: linear-gradient(135deg, #00bbff 0%, #00ffbb 50%, #00bbff 100%);
       --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
       --transition-slower: 0.7s cubic-bezier(0.4, 0, 0.2, 1);
       --transition-slowest: 0.9s cubic-bezier(0.4, 0, 0.2, 1);
@@ -231,17 +231,17 @@
       --text: #1a1a2e;
       --text-secondary: #6b6b80;
       --text-muted: #9999aa;
-      --primary: #4f46e5;
-      --primary-glow: rgba(79, 70, 229, 0.2);
-      --primary-dim: rgba(79, 70, 229, 0.08);
-      --success: #16a34a;
+      --primary: #00a8e8;
+      --primary-glow: rgba(0, 168, 232, 0.2);
+      --primary-dim: rgba(0, 168, 232, 0.08);
+      --success: #00cc99;
       --warning: #d97706;
       --error: #dc2626;
-      --accent: #7c3aed;
-      --accent-glow: rgba(124, 58, 237, 0.2);
-      --ai-gradient: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #4f46e5 100%);
-      --ai-glow: rgba(79, 70, 229, 0.4);
-      --accent-glow: rgba(124, 58, 237, 0.2);
+      --accent: #00e6a8;
+      --accent-glow: rgba(0, 230, 168, 0.2);
+      --ai-gradient: linear-gradient(135deg, #00a8e8 0%, #00e6a8 50%, #00a8e8 100%);
+      --ai-glow: rgba(0, 168, 232, 0.4);
+      --accent-glow: rgba(0, 230, 168, 0.2);
       /* User-sent bubble: a soft pastel tint, not the saturated dark
          gradient. Dark text for legibility on a light background. */
       --user-bubble-bg: linear-gradient(135deg, #eef0fb 0%, #e3e6f7 50%, #eef0fb 100%);
@@ -272,8 +272,8 @@
       background: var(--border, #e2e4ea);
     }
     [data-theme="light"] .loading-bar-fill {
-      background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 50%, #4f46e5 100%);
-      box-shadow: 0 0 8px rgba(79, 70, 229, 0.4);
+      background: linear-gradient(90deg, #00a8e8 0%, #00e6a8 50%, #00a8e8 100%);
+      box-shadow: 0 0 8px rgba(0, 168, 232, 0.4);
     }
     [data-theme="light"] .loading-percent {
       color: var(--text, #1a1a2e);
@@ -283,7 +283,7 @@
     }
 
     [data-theme="light"] .header-title-group h1 {
-      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      background: linear-gradient(135deg, #00a8e8 0%, #00e6a8 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -294,7 +294,7 @@
     }
     [data-theme="light"] .ai-header-info h3,
     [data-theme="light"] .nav-tab.active {
-      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      background: linear-gradient(135deg, #00a8e8 0%, #00e6a8 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -443,14 +443,16 @@
       font-size: 2.5rem;
       font-weight: 400;
       letter-spacing: 2px;
-      text-shadow: 0 0 30px rgba(96, 165, 250, 0.6), 0 0 60px rgba(96, 165, 250, 0.4);
+      /* Subtle glow tinted to the palette but dim enough that it
+         doesn't wash out the white text on the landing background. */
+      text-shadow: 0 0 20px rgba(0, 187, 255, 0.35), 0 0 40px rgba(0, 255, 187, 0.25);
       min-height: 3.5rem;
       display: inline-flex;
       align-items: center;
       white-space: pre;
     }
 
-    .typewriter-text .blue { color: #60a5fa; display: inline; margin: 0 8px; }
+    .typewriter-text .blue { color: #4dd0ff; display: inline; margin: 0 8px; }
     .typewriter-text .white { color: #ffffff; display: inline; }
 
     .typewriter-cursor {
@@ -661,22 +663,49 @@
       color: rgba(255, 255, 255, 0.5);
     }
 
+    /* Sign In button: HOLLOW inside, with a gradient border and
+       gradient-colored text (per the user's button.svg reference).
+       Layered background: solid --bg (interior = hollow) + gradient
+       on the border-box mask. Text uses a SEPARATE background-clip:
+       text so the gradient shows through the letters. */
     .login-btn {
-      padding: 18px 36px;
-      background: var(--ai-gradient);
-      color: white;
-      border: none;
-      border-radius: 14px;
+      position: relative;
+      padding: 16px 36px;
       font-size: 1.1rem;
+      font-weight: 600;
       font-family: 'Didact Gothic', sans-serif;
       cursor: pointer;
+      border-radius: 14px;
+      /* Layered backgrounds: the inner solid color (--bg = hollow
+         interior), and the gradient on the border via the
+         padding-box/border-box trick. */
+      border: 2px solid transparent;
+      background:
+        linear-gradient(var(--bg, #000), var(--bg, #000)) padding-box,
+        var(--ai-gradient) border-box;
       transition: all var(--transition-slower);
-      box-shadow: 0 4px 20px var(--primary-dim);
+      filter: drop-shadow(0 0 12px var(--primary-dim, rgba(0, 187, 255, 0.35)));
+    }
+    /* The text itself is rendered with the gradient via a separate
+       ::before overlay. We use content: attr(data-label) so the
+       button keeps its real <button> element (form submit, focus,
+       a11y) but we can style the label separately. */
+    .login-btn {
+      color: transparent;
+    }
+    .login-btn::before {
+      content: attr(data-label);
+      display: inline-block;
+      background: var(--ai-gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      color: transparent;
     }
 
     .login-btn:hover {
       transform: translateY(-3px) scale(1.02);
-      box-shadow: 0 8px 30px var(--primary-glow);
+      filter: drop-shadow(0 0 20px var(--primary-glow, rgba(0, 187, 255, 0.55)));
     }
 
     .login-btn:active {
@@ -1165,7 +1194,10 @@
     /* ── Grade Cards ── */
     .grade-card {
       background: var(--surface-elevated);
-      border: 1px solid var(--border);
+      /* Borders between dashboard contents removed per request --
+         the cards now flow together visually, separated by
+         margin-bottom + background contrast only. */
+      border: none;
       border-radius: 16px;
       padding: 20px;
       margin-bottom: 12px;
@@ -1393,9 +1425,14 @@
       height: 100%;
     }
     .chat-empty-placeholder-icon {
-      font-size: 2.5rem;
+      width: 56px;
+      height: 56px;
       margin-bottom: 0.5rem;
-      opacity: 0.7;
+      opacity: 0.55;
+      color: var(--text-secondary, #6b6b80);
+    }
+    .chat-empty-placeholder-icon svg {
+      display: block;
     }
     .chat-empty-placeholder-title {
       font-size: 1.05rem;
@@ -1795,6 +1832,49 @@
       box-shadow: 0 0 0 4px var(--primary-dim);
     }
     .chat-input-row input::placeholder { color: var(--text-muted); }
+    /* Locked state while a request is in flight -- subtle dim so the
+       user can still see they're typing but understands the previous
+       message hasn't been answered yet. */
+    .chat-input-row input.is-busy { opacity: 0.7; }
+    /* Send / Stop button. The two SVGs inside (send-icon, stop-icon)
+       are swapped by the .is-stop class on the parent. */
+    .chat-send-btn {
+      flex-shrink: 0;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: none;
+      background: var(--ai-gradient, linear-gradient(135deg, #00bbff, #00ffbb));
+      /* Dark navy on the light gradient for high contrast. */
+      color: #0a1828;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+      box-shadow: 0 2px 12px var(--primary-dim, rgba(0, 187, 255, 0.25));
+    }
+    .chat-send-btn:hover:not(:disabled) {
+      transform: translateY(-1px) scale(1.04);
+      box-shadow: 0 4px 16px var(--primary-glow, rgba(0, 187, 255, 0.4));
+    }
+    .chat-send-btn:active:not(:disabled) { transform: translateY(0) scale(0.98); }
+    .chat-send-btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+    /* Stop state -- red so it visually screams "cancel" (yellow/red
+       are kept out of the new blue/green palette per the user's
+       color directive). The dark icon contrasts well on the red. */
+    .chat-send-btn.is-stop {
+      background: var(--error, #dc2626);
+      color: #ffffff;
+      box-shadow: 0 2px 12px rgba(220, 38, 38, 0.35);
+    }
+    .chat-send-btn.is-stop:hover {
+      box-shadow: 0 4px 20px rgba(220, 38, 38, 0.55);
+    }
+    /* Toggle which icon is visible based on the busy state. */
+    .chat-send-btn .chat-stop-icon { display: none; }
+    .chat-send-btn.is-stop .chat-send-icon { display: none; }
+    .chat-send-btn.is-stop .chat-stop-icon { display: block; }
 
     .chat-tools {
       display: flex;
@@ -2173,6 +2253,10 @@
   background: transparent;
   color: var(--text);
   font-size: 13px;
+  /* Use the system UI font for the chat search so it doesn't pick
+     up the body 'Didact Gothic' which can look heavy at small
+     sizes and renders inconsistently across platforms. */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   outline: none;
   min-width: 0;
 }
@@ -2455,7 +2539,7 @@
   border-color: var(--border-bright, #d0d2da);
 }
 .confirm-modal-actions .btn-primary {
-  background: var(--ai-gradient, linear-gradient(135deg, #6366f1, #8b5cf6));
+  background: var(--ai-gradient, linear-gradient(135deg, #00bbff, #00ffbb));
   color: white;
   border: none;
 }
@@ -2477,4 +2561,96 @@
 }
 .confirm-modal-danger {
   border-top: 3px solid var(--error, #dc2626);
+}
+
+/* ── Prompt modal ── */
+/* A single-input modal for chat rename and other text-input dialogs.
+   Mirrors the confirm-modal design so they feel like a family. */
+.prompt-modal-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; animation: confirm-fade-in 0.15s ease-out;
+}
+.prompt-modal {
+  background: var(--surface, #ffffff);
+  color: var(--text, #1a1a2e);
+  border: 1px solid var(--border, #e2e4ea);
+  border-radius: 16px;
+  padding: 28px 28px 22px;
+  max-width: 420px; width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  text-align: center;
+  animation: confirm-pop-in 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.prompt-modal-icon {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+  line-height: 1;
+}
+.prompt-modal-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  color: var(--text, #1a1a2e);
+}
+.prompt-modal-message {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-secondary, #6b6b80);
+  margin: 0 0 1rem;
+}
+.prompt-modal-input {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  margin: 0 0 1.25rem;
+  font-family: inherit;
+  font-size: 0.95rem;
+  color: var(--text, #1a1a2e);
+  background: var(--surface-elevated, #f8f9fc);
+  border: 1px solid var(--border, #e2e4ea);
+  border-radius: 10px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.prompt-modal-input:focus {
+  border-color: var(--primary, #4f46e5);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+}
+.prompt-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.prompt-modal-actions .btn-secondary,
+.prompt-modal-actions .btn-primary {
+  padding: 9px 20px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  border: 1px solid var(--border, #e2e4ea);
+  background: var(--surface-elevated, #f8f9fc);
+  color: var(--text, #1a1a2e);
+  transition: all 0.15s ease;
+  min-width: 88px;
+}
+.prompt-modal-actions .btn-secondary:hover,
+.prompt-modal-actions .btn-primary:hover {
+  background: var(--surface-hover, #f0f2f5);
+  border-color: var(--border-bright, #d0d2da);
+}
+.prompt-modal-actions .btn-primary {
+  background: var(--ai-gradient, linear-gradient(135deg, #00bbff, #00ffbb));
+  color: white;
+  border: none;
+}
+.prompt-modal-actions .btn-primary:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
 }
