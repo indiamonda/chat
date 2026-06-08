@@ -180,6 +180,11 @@ class DaemonClient:
         self._reader_thread = None
         self._reader_thread_stopped = threading.Event()
         self.started_at = time.monotonic()
+        # Bumped to True after the first tool call completes
+        # successfully. Used to give the cold-start (Chromium launch +
+        # ClassLink login, ~3-6 min on 512MB Fly) a much longer
+        # budget than subsequent warm calls (~5-30s).
+        self._warmed = False
         self._spawn()
 
     def _spawn(self):
@@ -334,8 +339,18 @@ class DaemonClient:
         # are unaffected; the in-flight request will eventually
         # resolve (or the daemon will die and our pending entry will
         # be failed by the reader thread's EOF handler).
+        #
+        # Cold-start budget: the FIRST successful call (per daemon
+        # lifetime) gets a much longer timeout because Chromium +
+        # ClassLink login can take 3-6 min on 512MB Fly. Subsequent
+        # warm calls use the normal per-call budget (200s). This
+        # gives the user 1 slow call + 3 fast ones instead of 4
+        # all timing out at 200s.
+        effective_timeout = 600 if not self._warmed else timeout_seconds
         try:
-            return future.result(timeout=timeout_seconds)
+            result = future.result(timeout=effective_timeout)
+            self._warmed = True  # mark warm for the next call
+            return result
         except concurrent.futures.TimeoutError:
             # Don't remove our pending entry -- the response may
             # still arrive and we don't want a late response to be

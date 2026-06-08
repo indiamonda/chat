@@ -51,11 +51,6 @@
         <p class="typewriter-hint">Your intelligent study companion for PAUSD Schoology</p>
 
         <div class="features-grid">
-          <div class="features-bg">
-            <div class="features-bg-shape"></div>
-            <div class="features-bg-shape"></div>
-            <div class="features-bg-shape"></div>
-          </div>
           <div class="feature-card">
             <div class="feature-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -517,7 +512,7 @@
     }
 
     // Login - Step 1: Store Schoology credentials, then prompt for agent password
-    function handleLogin(e) {
+    async function handleLogin(e) {
       if (e && e.preventDefault) e.preventDefault();
       const username = document.getElementById('loginUsername').value.trim();
       const password = document.getElementById('loginPassword').value;
@@ -1310,7 +1305,12 @@
     // the section loaders (basic-info done, each section done) can
     // also advance the bar past the timer so it lands ahead of the
     // wall clock when the network is fast.
-    const PROGRESS_DURATION_MS = 120_000;
+    // Short visual estimate. We only use the timer as a *fallback*
+    // for when the actual fetch never completes (it then reaches 100%
+    // in 30s and the user sees the bar stuck at 100% with a real error
+    // card from the section-error path). Real progress comes from
+    // setProgress() called when each section lands.
+    const PROGRESS_DURATION_MS = 30_000;
     // No artificial cap: the bar must reach 100% when work finishes.
     // A 95% cap left the user staring at a half-filled bar for the
     // rest of the session. The timer also tops out at 100% (clamped
@@ -1406,7 +1406,7 @@
       const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
       const headers = getAuthHeader();
 
-      fetchRealData().then(() => {
+      fetchRealData(ui).then(() => {
         console.log('[DEBUG] resume: fetchRealData resolved');
         ui.complete();
       }).catch((e) => {
@@ -1470,7 +1470,7 @@
         // card). The .then()/.catch() below only clean up the elapsed
         // counter; we don't re-render the app here because the staged
         // loader is already in flight.
-        fetchRealData().then(() => {
+        fetchRealData(loadingUI).then(() => {
           console.log('[DEBUG] fetchRealData resolved');
           loadingUI.complete();
         }).catch((e) => {
@@ -1529,19 +1529,18 @@
       }
     }
 
-    // Staged loader: 1) basic-info (60s, name+grade+school) → shell + background loads
+    // Staged loader: 1) basic-info (instant: {removed: true}) → shell + background loads
     //                 2) /api/grades + /api/courses + /api/assignments + /api/posts in parallel
     //                 3) on basic-info failure: show error card, do not render dashboard
-    async function fetchRealData() {
+    async function fetchRealData(loadingUI) {
       const apiUrl = localStorage.getItem('schoology-api-url') || 'https://jchat.fly.dev/schoology';
       console.log('[DEBUG] fetchRealData starting, apiUrl:', apiUrl);
 
       const headers = getAuthHeader();
-      // Hook into the loading bar so the initial spinner reflects
-      // actual progress (basic-info done = 30%, each section bumps
-      // it). Without this, the bar crawls at ~1%/1.2s as a pure
-      // timer regardless of how fast sections actually return.
-      const loadingUI = setupLoadingUI();
+      // Reuse the loadingUI that showApp() set up. We do NOT call
+      // setupLoadingUI() again -- that would reset the bar interval
+      // and clear the progress counter, producing the "stuck on
+      // 100% with missing elements" symptom.
 
       // Step 1: basic info. 200s timeout -- cold browser launch +
       // ClassLink login + first page load on 512MB can take 90-180s
@@ -1561,6 +1560,12 @@
 
       // Step 2: shell up; then fire the 4 background loads in parallel.
       renderDashboardShell();
+      // The initial loading bar is no longer needed -- the dashboard
+      // shell is up, and the global bar inside the shell now tracks
+      // per-section progress. Without this, the user sees the initial
+      // bar (which only has a 30s timer fallback) and the global bar
+      // at the same time, producing the "stuck at 100%" symptom.
+      if (loadingUI) loadingUI.complete();
       kickoffBackgroundLoads(apiUrl, headers, loadingUI);
     }
 

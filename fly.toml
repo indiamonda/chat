@@ -28,4 +28,8 @@ primary_region = 'sjc'
 [[vm]]
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 512
+  # 1GB is the minimum that runs Chromium + the per-user daemon pool
+  # without constant OOMs. 512MB caused the daemon to die mid-call
+  # whenever a second user hit the dashboard, which made cold-start
+  # fetches 4x slower (each section had to wait for Chromium to relaunch).
+  memory_mb = 1024
