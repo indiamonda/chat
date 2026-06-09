@@ -1175,17 +1175,33 @@
     }
 
     .section-title {
-      font-size: 1.1rem;
-      font-weight: 400;
+      font-size: 1.35rem;
+      font-weight: 700;
       color: var(--text);
-      letter-spacing: -0.01em;
-      margin-bottom: 20px;
+      letter-spacing: -0.015em;
+      margin: 0 0 18px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 22px;
+      border-radius: 3px;
+      background: var(--ai-gradient, var(--primary));
+      flex-shrink: 0;
     }
     .tab-content .section {
-      background: var(--bg);
-      border-radius: 0;
-      padding: 24px 40px;
-      margin: 0;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 32px;
+      margin: 0 0 24px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
     }
     .tab-content .section:first-child { padding-top: 32px; }
     .section-subtitle {
@@ -1198,18 +1214,16 @@
 
     /* ── Grade Cards ── */
     .grade-card {
-      background: var(--surface-elevated);
-      /* Borders between dashboard contents removed per request --
-         the cards now flow together visually, separated by
-         margin-bottom + background contrast only. */
-      border: none;
-      border-radius: 16px;
-      padding: 20px;
-      margin-bottom: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px 22px;
+      margin-bottom: 14px;
       cursor: pointer;
       position: relative;
       overflow: hidden;
       transition: all var(--transition-slower);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
     }
     .grade-card::after {
       content: '';
@@ -1235,12 +1249,12 @@
       justify-content: space-between;
       align-items: center;
     }
-    .course-name { font-weight: 400; font-size: 1.05rem; }
+    .course-name { font-weight: 600; font-size: 1.05rem; color: var(--text); }
     .grade-badge {
       padding: 6px 14px;
       border-radius: 20px;
       font-size: 1.1rem;
-      font-weight: 500;
+      font-weight: 600;
       transition: all var(--transition-slow);
     }
     .grade-card:hover .grade-badge {
@@ -1252,10 +1266,23 @@
     .grade-c { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
     .grade-f { background: rgba(239, 68, 68, 0.15); color: var(--error); }
 
+    .grade-value {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      background: var(--surface-elevated);
+      color: var(--text);
+    }
+
     .grade-details {
-      margin-top: 16px;
-      padding-top: 16px;
+      margin-top: 18px;
+      padding-top: 18px;
       border-top: 1px solid var(--border);
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 16px;
       display: none;
       animation: expandOpen 0.4s ease-out;
     }
@@ -1268,51 +1295,107 @@
     .detail-row {
       display: flex;
       justify-content: space-between;
-      padding: 8px 0;
+      align-items: center;
+      padding: 10px 12px;
       font-size: 0.9rem;
       border-bottom: 1px solid var(--border);
+      border-radius: 6px;
       transition: background var(--transition-slow);
     }
     .detail-row:last-child { border-bottom: none; }
-    .detail-row:hover { background: var(--surface-hover); padding: 8px 12px; margin: 0 -12px; border-radius: 8px; }
-    .detail-label { color: var(--text-secondary); }
+    .detail-row:hover { background: var(--surface-hover); }
+    .detail-label { color: var(--text-secondary); font-weight: 500; }
+    .detail-value { color: var(--text); font-weight: 600; }
 
     /* ── Assignment Items ── */
     .assignment-item {
-      padding: 18px 0;
-      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 12px;
       cursor: pointer;
       position: relative;
       transition: all var(--transition-slower);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     }
     .assignment-item::before {
       content: '';
       position: absolute;
-      left: -20px;
-      top: 50%;
-      width: 0;
-      height: 2px;
-      background: var(--ai-gradient);
-      transition: width var(--transition-slower), left var(--transition-slower);
+      left: 0;
+      top: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--ai-gradient, var(--primary));
+      opacity: 0;
+      transition: opacity var(--transition-slow);
     }
     .assignment-item:hover {
       background: var(--surface-elevated);
-      padding: 18px 16px;
-      margin: 0 -16px;
-      border-radius: 12px;
+      border-color: var(--primary);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
-    .assignment-item:hover::before {
-      width: 30px;
-      left: -16px;
-    }
+    .assignment-item:hover::before { opacity: 1; }
     .assignment-item:active { transform: scale(0.99); }
-    .assignment-item:last-child { border-bottom: none; }
+    .assignment-item:last-child { margin-bottom: 0; }
 
-    .assignment-title { font-weight: 400; margin-bottom: 6px; font-size: 1rem; }
-    .assignment-meta { font-size: 0.85rem; color: var(--text-secondary); display: flex; gap: 16px; }
-    .assignment-due { display: flex; align-items: center; gap: 6px; }
-    .assignment-due.overdue { color: var(--error); }
-    .assignment-due.soon { color: var(--warning); }
+    .assignment-title { font-weight: 600; margin-bottom: 8px; font-size: 1rem; color: var(--text); }
+    .assignment-meta { font-size: 0.85rem; color: var(--text-secondary); display: flex; gap: 16px; flex-wrap: wrap; }
+    .assignment-due { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 12px; font-weight: 500; font-size: 0.82rem; background: var(--surface-elevated); }
+    .assignment-due.overdue { background: rgba(239, 68, 68, 0.15); color: var(--error); }
+    .assignment-due.soon { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+
+    /* ── Post Items ── */
+    .post-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 12px;
+      transition: all var(--transition-slow);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+    .post-item:hover {
+      background: var(--surface-elevated);
+      border-color: var(--primary);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .post-item:last-child { margin-bottom: 0; }
+    .post-author {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .post-author::before {
+      content: '';
+      display: inline-block;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--ai-gradient, var(--primary));
+      flex-shrink: 0;
+    }
+    .post-time {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+      margin-bottom: 10px;
+      padding-left: 36px;
+    }
+    .post-content {
+      font-size: 0.95rem;
+      color: var(--text);
+      line-height: 1.55;
+      padding: 12px 14px;
+      background: var(--bg);
+      border-left: 3px solid var(--primary);
+      border-radius: 0 8px 8px 0;
+      padding-left: 36px;
+    }
 
     /* ── AI Chat ── */
     .ai-chat-wrapper {
