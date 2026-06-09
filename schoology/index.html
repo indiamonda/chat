@@ -221,19 +221,19 @@
       <div class="student-info" id="studentInfo" style="display: none;">
         <span id="studentName">—</span>
       </div>
-    </header>
-
-    <!-- Navigation -->
-    <div class="nav-tabs-container">
-      <div class="nav-tabs">
-        <div class="nav-tab active" data-tab="ai" id="aiTab">AI Assistant</div>
-        <div class="nav-tab" data-tab="overview">Overview</div>
-        <div class="nav-tab" data-tab="grades">Grades</div>
-        <div class="nav-tab" data-tab="assignments">Assignments</div>
-        <div class="nav-tab" data-tab="activity">Activity</div>
-        <div class="nav-tab" data-tab="settings">Settings</div>
+      <!-- Navigation: tabs are part of the header so the strip sits flush
+           against the bottom of the header chrome, not as a separate row. -->
+      <div class="nav-tabs-container">
+        <div class="nav-tabs">
+          <div class="nav-tab active" data-tab="ai" id="aiTab">AI Assistant</div>
+          <div class="nav-tab" data-tab="overview">Overview</div>
+          <div class="nav-tab" data-tab="grades">Grades</div>
+          <div class="nav-tab" data-tab="assignments">Assignments</div>
+          <div class="nav-tab" data-tab="activity">Activity</div>
+          <div class="nav-tab" data-tab="settings">Settings</div>
+        </div>
       </div>
-    </div>
+    </header>
 
     <!-- AI Tab (Default, auto-selected on dashboard entry) -->
     <div class="tab-content active" id="tab-ai">
@@ -1511,6 +1511,7 @@
         renderGradesList();
         renderAssignmentsList();
         renderActivityList();
+        bindAssignmentCards();
       }
     }
 
@@ -1820,22 +1821,83 @@
       }
     }
 
+    /**
+     * Normalize the new schoology-mcp response shape to the field names
+     * the dashboard render code + AI system prompt expect.
+     *
+     * Upstream shape (per `get_grades` / `get_upcoming_assignments` /
+     * `get_recent_posts` debug logs):
+     *   grade:        { title, course_grade, ... }    -> { courseName, percentage, letterGrade, ... }
+     *   assignment:   { title, course, due, due_iso, url, ... }   -> { title, courseName, dueDate, points, url }
+     *   post:         { author, text, posted, posted_to, url, ... } -> { author, content, timestamp, ... }
+     *
+     * course_grade is a string like "B ( 82.62% )" or "N/A"; we split
+     * out the letter and the numeric percentage.
+     */
+    function normalizeGradeItem(g) {
+      if (!g) return g;
+      // If already in the old shape, pass through.
+      if (g.courseName !== undefined || g.percentage !== undefined) return g;
+      const raw = String(g.course_grade || '').trim();
+      let letterGrade = raw;
+      let percentage = null;
+      const pctMatch = raw.match(/([0-9]+(?:\.[0-9]+)?)\s*%/);
+      if (pctMatch) percentage = Number(pctMatch[1]);
+      const letterMatch = raw.match(/^([A-F][+-]?)\s*\(/);
+      if (letterMatch) letterGrade = letterMatch[1];
+      else if (raw === 'N/A' || raw === '') letterGrade = raw || 'N/A';
+      return {
+        ...g,
+        courseName: g.title || g.courseName || '',
+        percentage,
+        letterGrade,
+      };
+    }
+
+    function normalizeAssignmentItem(a) {
+      if (!a) return a;
+      if (a.courseName !== undefined || a.dueDate !== undefined) return a;
+      return {
+        ...a,
+        courseName: a.course || a.courseName || '',
+        // The MCP already returns ISO in due_iso. formatDueDate handles
+        // both a timestamp and an ISO string, so feed the ISO if present
+        // (more accurate for the "overdue / due today" math).
+        dueDate: a.due_iso || a.due || a.dueDate || null,
+        // points aren't on the assignment anymore; we deliberately
+        // don't fabricate one. Render code already handles a.points falsy.
+        points: a.points,
+      };
+    }
+
+    function normalizePostItem(p) {
+      if (!p) return p;
+      if (p.content !== undefined) return p;
+      return {
+        ...p,
+        content: p.text ?? p.content ?? '',
+        timestamp: p.timestamp ? new Date(p.timestamp * 1000).getTime() : (p.posted ? Date.parse(p.posted) || null : null),
+      };
+    }
+
     function applySectionData(name, data) {
       // /api/grades, /api/courses, /api/assignments, /api/posts all return the
       // array directly (per get_data_from_mcp_or_mock in server.py).
       let normalized;
       if (name === 'grades') {
         normalized = Array.isArray(data) ? data : (data.grades || data.courses || []);
-        state.grades = normalized;
+        state.grades = normalized.map(normalizeGradeItem);
       } else if (name === 'courses') {
         normalized = Array.isArray(data) ? data : (data.courses || []);
-        state.courses = normalized;
+        // Course shape is {title, url}; expose courseName so existing
+        // render code (which reads .courseName) keeps working.
+        state.courses = normalized.map(c => ({ ...c, courseName: c.title || c.courseName || '' }));
       } else if (name === 'assignments') {
         normalized = Array.isArray(data) ? data : (data.assignments || []);
-        state.assignments = normalized;
+        state.assignments = normalized.map(normalizeAssignmentItem);
       } else if (name === 'posts') {
         normalized = Array.isArray(data) ? data : (data.posts || []);
-        state.posts = normalized;
+        state.posts = normalized.map(normalizePostItem);
       }
       // Cache hydration was disabled: the cache was masking real load
       // failures and the user could not tell whether data was fresh
@@ -2000,7 +2062,10 @@
       targetTab.classList.add('active');
       if (isFirstVisit) targetTab.classList.add('animate-in');
       if (tabName === 'grades') renderGradesList();
-      if (tabName === 'assignments') renderAssignmentsList();
+      if (tabName === 'assignments') {
+      renderAssignmentsList();
+      bindAssignmentCards();
+    }
       if (tabName === 'activity') renderActivityList();
     }
 
@@ -2020,6 +2085,10 @@
     // anything our custom menu doesn't cover (spell-check on inputs,
     // image "save as", etc).
     let _contextMenuEl = null;
+    // Set briefly by the "More Options" handler so the re-dispatched
+    // contextmenu event skips our global handler and the browser's
+    // native menu shows up instead of re-opening our custom menu.
+    let _suppressNextContextMenu = false;
 
     function _hideContextMenu() {
       if (_contextMenuEl) {
@@ -2071,12 +2140,19 @@
         const oy = originalEvent ? originalEvent.clientY : y;
         _hideContextMenu();
         if (target && target.dispatchEvent) {
+          // Re-dispatch contextmenu so the BROWSER's native menu appears.
+          // We suppress our own global handler for the next event so we
+          // don't re-open this custom menu on top of the native one.
+          _suppressNextContextMenu = true;
           const evt = new MouseEvent('contextmenu', {
             bubbles: true, cancelable: true, view: window,
             button: 2, buttons: 2,
             clientX: ox, clientY: oy, screenX: ox, screenY: oy,
           });
           target.dispatchEvent(evt);
+          // Safety: clear the flag on the next tick in case the browser
+          // doesn't fire a contextmenu for the synthetic click.
+          setTimeout(() => { _suppressNextContextMenu = false; }, 50);
         }
       };
       menu.appendChild(moreBtn);
@@ -2095,9 +2171,10 @@
       menu.style.left = left + 'px';
       menu.style.top = top + 'px';
 
-      // Focus the first item so keyboard users can Tab/Enter through.
-      const firstBtn = menu.querySelector('.context-menu-item');
-      if (firstBtn) firstBtn.focus();
+      // Intentionally do NOT auto-focus the first item. Auto-focus made
+      // the first option look "selected" on open, which the user reported
+      // as bad UX. The menu is small and mouse-driven; keyboard users can
+      // tab into it from the trigger element if needed.
     }
 
     function _detectContextMenuTarget(target) {
@@ -2201,6 +2278,10 @@
     // context) and lets the native menu show for input/textarea/contenteditable
     // where the browser's spell-check and selection options are the right fit.
     document.addEventListener('contextmenu', (e) => {
+      // "More Options" re-dispatches contextmenu on the target so the
+      // browser's native menu opens. We honor that by letting this event
+      // pass through unsuppressed.
+      if (_suppressNextContextMenu) { _suppressNextContextMenu = false; return; }
       const appContainer = document.getElementById('appContainer');
       if (!appContainer || !appContainer.classList.contains('visible')) return;
       // Defer to the native menu for text-editing surfaces.
@@ -2253,13 +2334,30 @@
 
     function renderAssignmentsOverview() {
       const container = document.getElementById('assignmentsOverview');
-      container.innerHTML = state.assignments.slice(0, 4).map(a => `
-        <div class="assignment-item">
-          <div class="assignment-title">${escapeHtml(a.title)}</div>
-          <div class="assignment-meta">${escapeHtml(a.courseName)}${a.points ? ` · ${a.points} pts` : ''}</div>
-          <div class="assignment-due ${getDueClass(a.dueDate)}">${formatDueDate(a.dueDate)}</div>
-        </div>
-      `).join('');
+      container.innerHTML = state.assignments.slice(0, 4).map(a => renderAssignmentCard(a, 'overview')).join('');
+    }
+
+    /** Shared template for a single assignment card. The `variant`
+     *  is 'overview' (overview tab) or 'list' (assignments tab). The
+     *  same expand-on-click handler is wired up identically in both
+     *  views via the data-* attribute. */
+    function renderAssignmentCard(a, variant) {
+      const dataUrl = a.url ? `data-url="${escapeHtml(a.url)}"` : '';
+      const dataId = `data-assignment-card="${variant}-${escapeHtml(a.url || a.title || '')}"`;
+      return `
+        <div class="assignment-item" ${dataId} ${dataUrl}>
+          <div class="assignment-item-main">
+            <div class="assignment-title">${escapeHtml(a.title)}</div>
+            <div class="assignment-meta">${escapeHtml(a.courseName || '')}${a.points ? ` · ${a.points} pts` : ''}</div>
+            <div class="assignment-due-row">
+              <span class="assignment-due ${getDueClass(a.dueDate)}">${formatDueDate(a.dueDate)}</span>
+              ${a.url ? `<button type="button" class="assignment-expand-btn" title="Show details">▾ Details</button>` : ''}
+            </div>
+          </div>
+          <div class="assignment-details" style="display: none;">
+            <div class="assignment-details-loading">Loading details…</div>
+          </div>
+        </div>`;
     }
 
     function renderGradesList() {
@@ -2311,16 +2409,131 @@
           </div>`;
         return;
       }
-      container.innerHTML = state.assignments.map(a => `
-        <div class="assignment-item">
-          <div class="assignment-title">${escapeHtml(a.title)}</div>
-          <div class="assignment-meta">${escapeHtml(a.courseName)}</div>
-          <div style="display: flex; justify-content: space-between; margin-top: 4px;">
-            <span class="assignment-due ${getDueClass(a.dueDate)}">${formatDueDate(a.dueDate)}</span>
-            ${a.points ? `<span style="font-size: 0.85rem; color: var(--text-secondary);">${a.points} pts</span>` : ''}
-          </div>
-        </div>
-      `).join('');
+      container.innerHTML = state.assignments.map(a => renderAssignmentCard(a, 'list')).join('');
+    }
+
+    /**
+     * Wire up expand-on-click for assignment cards. Each card has a
+     * data-url attribute; on first click we fetch the full
+     * assignment body from /api/assignment-info, then toggle the
+     * details panel. Second click collapses.
+     *
+     * We do NOT click the card itself — that would make the whole
+     * card feel like a button. Instead the "▾ Details" button is
+     * the explicit affordance.
+     */
+    function bindAssignmentCards(root) {
+      const scope = root || document;
+      scope.querySelectorAll('.assignment-expand-btn').forEach((btn) => {
+        if (btn._bound) return;
+        btn._bound = true;
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const card = btn.closest('.assignment-item');
+          if (!card) return;
+          const details = card.querySelector('.assignment-details');
+          const isExpanded = card.classList.contains('expanded');
+          if (isExpanded) {
+            card.classList.remove('expanded');
+            if (details) details.style.display = 'none';
+            btn.textContent = '▾ Details';
+            return;
+          }
+          card.classList.add('expanded');
+          if (details) details.style.display = '';
+          btn.textContent = '▴ Hide';
+          // Lazy-load: only fetch the first time the card is opened.
+          if (card.dataset.loaded === '1') return;
+          card.dataset.loaded = '1';
+          const url = card.dataset.url;
+          if (!url) {
+            if (details) details.innerHTML = '<div class="assignment-details-error">No link to fetch details from.</div>';
+            return;
+          }
+          try {
+            const res = await _apiFetch('/api/assignment-info?url=' + encodeURIComponent(url));
+            if (!res.ok) {
+              const msg = (res.body && res.body.error) || `HTTP ${res.status}`;
+              if (details) details.innerHTML = `<div class="assignment-details-error">Couldn't load details: ${escapeHtml(msg)}</div>`;
+              return;
+            }
+            renderAssignmentDetails(details, res.body);
+          } catch (err) {
+            if (details) details.innerHTML = `<div class="assignment-details-error">Couldn't load details: ${escapeHtml(err.message || 'fetch failed')}</div>`;
+          }
+        });
+      });
+    }
+
+    function renderAssignmentDetails(container, data) {
+      if (!container) return;
+      if (!data || (data._error)) {
+        container.innerHTML = `<div class="assignment-details-error">${escapeHtml((data && data.message) || 'No details available.')}</div>`;
+        return;
+      }
+      const title = data.title ? `<div class="assignment-details-title">${escapeHtml(data.title)}</div>` : '';
+      const meta = (data.course || data.due || data.due_iso) ? `<div class="assignment-details-meta">
+        ${data.course ? `<span>📚 ${escapeHtml(data.course)}</span>` : ''}
+        ${data.due || data.due_iso ? `<span>📅 ${escapeHtml(data.due || data.due_iso)}</span>` : ''}
+      </div>` : '';
+      // Description may be HTML (MCP returns both text + HTML for the body).
+      // We trust the schoology-mcp parser to have stripped it to safe
+      // markup; render it with a light sanitizer.
+      const desc = data.description_html
+        ? `<div class="assignment-details-body">${sanitizeLightHtml(data.description_html)}</div>`
+        : (data.description ? `<div class="assignment-details-body">${escapeHtml(data.description)}</div>` : '');
+      const attachments = Array.isArray(data.attachments) && data.attachments.length
+        ? `<div class="assignment-details-attachments">
+            <div class="assignment-details-subtitle">Attachments</div>
+            <ul>${data.attachments.map(at => `<li><a href="${escapeHtml(at.url || '#')}" target="_blank" rel="noopener">${escapeHtml(at.name || at.url || 'attachment')}</a>${at.size ? ` <span class="assignment-details-att-size">(${escapeHtml(at.size)})</span>` : ''}</li>`).join('')}</ul>
+          </div>`
+        : '';
+      const open = data.url
+        ? `<div class="assignment-details-actions"><a href="${escapeHtml(data.url)}" target="_blank" rel="noopener" class="assignment-details-open">Open in Schoology ↗</a></div>`
+        : '';
+      container.innerHTML = title + meta + desc + attachments + open;
+    }
+
+    /**
+     * Lightweight HTML sanitizer for schoology assignment descriptions.
+     * The MCP already returns server-stripped HTML, but we still
+     * re-sanitize because the body is rendered into the page.
+     * Allows: p, br, strong, em, b, i, ul, ol, li, a, code, pre, h1-h6, blockquote, img, span, div.
+     * Strips: scripts, event handlers, style.
+     */
+    function sanitizeLightHtml(html) {
+      try {
+        const tpl = document.createElement('template');
+        tpl.innerHTML = String(html || '');
+        const allowed = new Set(['P','BR','STRONG','EM','B','I','UL','OL','LI','A','CODE','PRE','H1','H2','H3','H4','H5','H6','BLOCKQUOTE','IMG','SPAN','DIV']);
+        const walk = (node) => {
+          const children = Array.from(node.childNodes);
+          for (const c of children) {
+            if (c.nodeType === 1) {
+              if (!allowed.has(c.tagName)) {
+                c.remove();
+                continue;
+              }
+              for (const attr of Array.from(c.attributes)) {
+                const n = attr.name.toLowerCase();
+                if (n.startsWith('on') || n === 'style') c.removeAttribute(attr.name);
+                if (n === 'href' && /^javascript:/i.test(attr.value)) c.removeAttribute(attr.name);
+              }
+              if (c.tagName === 'A') {
+                c.setAttribute('target', '_blank');
+                c.setAttribute('rel', 'noopener noreferrer');
+              }
+              walk(c);
+            } else if (c.nodeType === 8) {
+              c.remove();
+            }
+          }
+        };
+        walk(tpl.content);
+        return tpl.innerHTML;
+      } catch {
+        return escapeHtml(String(html || ''));
+      }
     }
 
     function renderActivityList() {
