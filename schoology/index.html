@@ -3533,7 +3533,7 @@ Upcoming Assignments:
 ${state.assignments.map(a => `- ${a.title} (${a.courseName}) - Due: ${a.dueDate || 'TBD'}`).join('\n')}
 
 Recent Posts:
-${state.posts.map(p => `- ${p.author}: ${p.content.substring(0, 100)}...`).join('\n')}`;
+${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 100)}${p.content && p.content.length > 100 ? '...' : ''}`).join('\n')}`;
 
       const out = [{ role: 'system', content: systemPrompt }];
       // Second system message: global memory + cross-chat summaries.
