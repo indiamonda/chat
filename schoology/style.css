@@ -915,25 +915,28 @@
     }
 
     /* ── Navigation ── */
+    /* Tabs now live INSIDE .dashboard-header (moved there so the strip
+       sits flush against the header chrome, not as a separate row).
+       Tabs are flat against the bottom border, no top radius, so the
+       whole header looks like one piece. */
     .nav-tabs-container {
       flex-shrink: 0;
-      padding: 16px 40px 0;
+      padding: 14px 40px 0;
       background: var(--surface);
+      border-top: 1px solid var(--border);
       border-bottom: 1px solid var(--border);
       transition: padding var(--transition-slow);
     }
-    .dashboard-header.scrolled ~ .nav-tabs-container {
-      padding-top: 8px;
-    }
+    .dashboard-header.scrolled .nav-tabs-container { padding-top: 8px; }
 
     .nav-tabs {
       display: flex;
-      gap: 6px;
+      gap: 4px;
       padding-bottom: 0;
     }
     .nav-tab {
-      padding: 12px 22px;
-      border-radius: 12px 12px 0 0;
+      padding: 10px 20px;
+      border-radius: 0;
       font-size: 0.9rem;
       color: var(--text-secondary);
       cursor: pointer;
@@ -941,14 +944,13 @@
       position: relative;
       transition: all var(--transition-slow);
       border: 1px solid transparent;
-      border-bottom: none;
     }
     .nav-tab::after {
       content: '';
       position: absolute;
       bottom: -1px;
-      left: 6px;
-      right: 6px;
+      left: 4px;
+      right: 4px;
       height: 2px;
       background: var(--ai-gradient);
       transform: scaleX(0);
@@ -1007,7 +1009,7 @@
       flex-direction: column;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 24px 24px 0 0;
+      border-radius: 0;
       overflow: hidden;
       position: relative;
       transition: all var(--transition-slower);
@@ -1345,6 +1347,103 @@
     .assignment-due { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 10px; font-weight: 500; font-size: 0.76rem; background: var(--surface-elevated); }
     .assignment-due.overdue { background: rgba(239, 68, 68, 0.15); color: var(--error); }
     .assignment-due.soon { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+    .assignment-due-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 2px;
+      flex-wrap: wrap;
+    }
+    .assignment-expand-btn {
+      margin-left: auto;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px 10px;
+      font-size: 0.72rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-family: inherit;
+      transition: all var(--transition-slow);
+    }
+    .assignment-expand-btn:hover {
+      background: var(--surface-elevated);
+      color: var(--text);
+      border-color: var(--primary);
+    }
+    .assignment-details {
+      margin-top: 12px;
+      padding: 14px 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.82rem;
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .assignment-details-title {
+      font-weight: 600;
+      font-size: 0.92rem;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .assignment-details-meta {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+    .assignment-details-body {
+      margin-top: 4px;
+    }
+    .assignment-details-body p { margin: 6px 0; }
+    .assignment-details-body ul, .assignment-details-body ol { margin: 6px 0; padding-left: 20px; }
+    .assignment-details-subtitle {
+      font-weight: 600;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .assignment-details-attachments ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .assignment-details-attachments li {
+      padding: 4px 0;
+      font-size: 0.78rem;
+    }
+    .assignment-details-attachments a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+    .assignment-details-attachments a:hover { text-decoration: underline; }
+    .assignment-details-att-size { color: var(--text-muted); font-size: 0.7rem; }
+    .assignment-details-actions {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .assignment-details-open {
+      color: var(--primary);
+      text-decoration: none;
+      font-size: 0.78rem;
+      font-weight: 500;
+    }
+    .assignment-details-open:hover { text-decoration: underline; }
+    .assignment-details-loading {
+      color: var(--text-muted);
+      font-style: italic;
+      font-size: 0.8rem;
+    }
+    .assignment-details-error {
+      color: var(--error);
+      font-size: 0.8rem;
+    }
 
     /* ── Post Items ── */
     .post-item {
@@ -1404,7 +1503,7 @@
       flex-direction: column;
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 24px 24px 0 0;
+      border-radius: 0;
       overflow: hidden;
       position: relative;
       transition: all var(--transition-slower);
@@ -1493,9 +1592,28 @@
       max-width: 100%;
     }
     .chat-message.user .message-bubble {
-      background: var(--user-bubble-bg, var(--ai-gradient));
-      color: var(--user-bubble-text, white);
+      background:
+        linear-gradient(var(--bg, #000), var(--bg, #000))) padding-box,
+        var(--ai-gradient) border-box;
+      border: 2px solid transparent;
+      color: transparent;
       border-bottom-right-radius: 6px;
+      filter: drop-shadow(0 0 12px var(--primary-dim, rgba(0, 187, 255, 0.25)));
+    }
+    /* Apply the gradient directly to the user-bubble text. The user
+       bubble's content is always plain text (no markdown / links /
+       code blocks — those are assistant-only), so we can safely
+       gradient-fill the text without breaking selection or copy.
+       This is the same visual effect as the Sign In button's
+       ::before gradient overlay, just implemented via
+       background-clip: text on the actual content element. */
+    .chat-message.user .message-bubble .message-content {
+      background: var(--ai-gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      color: transparent;
+      font-weight: 500;
     }
     /* Empty state when no chat is selected — distinct from the
        "welcome bubble" shown for an open-but-empty chat. Centered,
@@ -2239,7 +2357,7 @@
       .header-status { display: none; }
       #tab-ai { height: calc(100dvh - 180px); }
       .ai-container { margin: 0 20px; }
-      .ai-chat-wrapper { border-radius: 16px 16px 0 0; }
+      .ai-chat-wrapper { border-radius: 0; }
     }
 
     @media (max-width: 480px) {

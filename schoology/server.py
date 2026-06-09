@@ -851,6 +851,35 @@ def refresh_data():
     return jsonify({'status': 'ok', 'last_updated': datetime.now().isoformat()})
 
 
+@app.route('/api/assignment-info')
+def get_assignment_info_route():
+    """Fetch a single assignment's full details from the MCP daemon.
+
+    The dashboard's assignment list shows just title + course + due
+    date. Clicking a card calls this endpoint to get the rest of what
+    Schoology has: the description body (text + HTML), attachments,
+    and any in-line links. Used by the frontend's expand-on-click
+    handler to surface the info that's normally hidden behind two
+    clicks in the Schoology web UI.
+
+    Query params: `url` (required) — the assignment's Schoology URL,
+    `/assignment/<id>` path, or bare numeric id. The MCP tool
+    normalizes all three forms.
+    """
+    username, password = decode_auth_header()
+    if not username or not password:
+        return jsonify({'error': 'auth_required'}), 401
+    url = (request.args.get('url') or '').strip()
+    if not url:
+        return jsonify({'error': 'url is required'}), 400
+    # Use the per-user daemon pool (same path as grades/assignments).
+    # 200s per-call; cold-start path retries on its own.
+    data = get_data_from_mcp_or_mock('get_assignment_info', username, password, priority=_priority_from_request())
+    if data is None or (isinstance(data, dict) and data.get('_error')):
+        return jsonify(data or {'_error': True, 'message': 'MCP call failed'}), 502
+    return jsonify(data)
+
+
 @app.route('/api/reprioritize', methods=['POST'])
 def reprioritize_queue():
     """Demote all queued high-priority (AI) fetches back to background priority.
