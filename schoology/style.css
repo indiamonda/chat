@@ -1619,7 +1619,7 @@
     }
     .chat-message.user .message-bubble {
       background:
-        linear-gradient(var(--bg, #000), var(--bg, #000))) padding-box,
+        linear-gradient(var(--bg, #000), var(--bg, #000)) padding-box,
         var(--ai-gradient) border-box;
       border: 2px solid transparent;
       color: transparent;
