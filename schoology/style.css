@@ -1759,6 +1759,20 @@
     .chat-message .markdown-content ul, .chat-message .markdown-content ol { margin: 8px 0; padding-left: 24px; }
     .chat-message .markdown-content li { margin: 5px 0; }
     .chat-message .markdown-content code { background: rgba(0, 0, 0, 0.25); padding: 3px 8px; border-radius: 6px; font-family: 'Oxygen Mono', monospace; font-size: 0.85rem; }
+    /* Per-character fade for streaming AI messages. Each new token is
+       wrapped in <span class="streaming-char"> and gets a 0.3s opacity
+       fade-in (matches the existing fadeInApp duration). The animation
+       handler in main.js collapses the span to a text node on
+       animationend so the final DOM is clean. */
+    .chat-message .markdown-content .streaming-char {
+      opacity: 0;
+      animation: streamingCharFade 0.3s ease-out forwards;
+      display: inline;
+    }
+    @keyframes streamingCharFade {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
     .chat-message .markdown-content pre { background: #1e1e2e; color: #cdd6f4; padding: 18px; border-radius: 12px; overflow-x: auto; margin: 12px 0; }
     .chat-message .markdown-content pre code { background: none; padding: 0; color: inherit; }
 
