@@ -781,10 +781,17 @@
       width: 100%;
       height: 100vh;
       height: 100dvh;
-      animation: fadeInApp 0.8s ease-out;
+      /* No fadeInApp here on purpose: the loading screen (#appLoading)
+         already provides a smooth visual transition, and an 0.8s
+         opacity ramp on the dashboard itself made the UI look
+         "broken" right after the loading screen disappeared --
+         elements were present but at low opacity over the dark
+         background, so they looked missing for the duration of
+         the animation. Snapping to fully visible is the cleaner
+         UX. */
       flex-direction: column;
     }
-    .app-container.visible { display: flex; }
+    .app-container.visible { display: flex; opacity: 1; }
     @keyframes fadeInApp { from { opacity: 0; } to { opacity: 1; } }
 
     /* ── Header ── */
