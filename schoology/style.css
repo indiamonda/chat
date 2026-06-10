@@ -664,12 +664,14 @@
       font-family: 'Didact Gothic', sans-serif;
       cursor: pointer;
       border-radius: 14px;
-      /* Layered backgrounds: the inner solid color (--bg = hollow
-         interior), and the gradient on the border via the
-         padding-box/border-box trick. */
+      /* TRULY hollow: the interior is fully transparent so the
+         page's background.svg shows through, with the gradient
+         on the border via the padding-box/border-box trick.
+         (Previously the interior was --bg which made the button
+         look like a solid rectangle on the gradient page bg.) */
       border: 2px solid transparent;
       background:
-        linear-gradient(var(--bg, #000), var(--bg, #000)) padding-box,
+        linear-gradient(transparent, transparent) padding-box,
         var(--ai-gradient) border-box;
       transition: all var(--transition-slower);
       filter: drop-shadow(0 0 12px var(--primary-dim, rgba(0, 187, 255, 0.35)));
@@ -735,11 +737,13 @@
        border is the only visible chrome. */
     .demo-btn {
       padding: 16px 36px;
+      /* TRULY hollow: fully transparent interior (the page's
+         background.svg shows through), gradient on the border. */
       background: transparent;
       color: #ffffff;
       border: 2px solid transparent;
       background:
-        linear-gradient(var(--bg, #000), var(--bg, #000)) padding-box,
+        linear-gradient(transparent, transparent) padding-box,
         var(--ai-gradient) border-box;
       border-radius: 14px;
       font-size: 1rem;
