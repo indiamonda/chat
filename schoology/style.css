@@ -45,6 +45,16 @@
       width: 120px;
       height: 120px;
       display: block;
+      /* Brightness pulse + cyan glow underneath. Pairs with the
+         spin animations to make the loading logo feel "alive"
+         and bright instead of dim. Filter brightness goes from
+         1.0 -> 1.5 -> 1.0 over the 2s cycle; the glow's spread
+         (40px) keeps it from looking like a halo. */
+      animation: spinBright 2s ease-in-out infinite;
+      filter:
+        brightness(1)
+        drop-shadow(0 0 12px rgba(0, 187, 255, 0.45))
+        drop-shadow(0 0 28px rgba(0, 187, 255, 0.25));
     }
     .spinner-rotate-cw {
       animation: spinCW 4s linear infinite;
@@ -53,6 +63,11 @@
     .spinner-rotate-ccw {
       animation: spinCCW 4s linear infinite;
       transform-origin: center;
+    }
+    @keyframes spinBright {
+      0%   { filter: brightness(1)    drop-shadow(0 0 10px rgba(0, 187, 255, 0.4))  drop-shadow(0 0 22px rgba(0, 187, 255, 0.2)); }
+      50%  { filter: brightness(1.55) drop-shadow(0 0 18px rgba(0, 187, 255, 0.7))  drop-shadow(0 0 40px rgba(0, 187, 255, 0.45)); }
+      100% { filter: brightness(1)    drop-shadow(0 0 10px rgba(0, 187, 255, 0.4))  drop-shadow(0 0 22px rgba(0, 187, 255, 0.2)); }
     }
     @keyframes spinCW {
       from { transform: rotate(0deg); }
