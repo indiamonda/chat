@@ -406,7 +406,13 @@
       // Saved args for each section so the Retry button on the error card
       // can re-fire the same fetch (url, headers, renderers, priority).
       sectionLoaders: {},
-      loadedCount: 0
+      loadedCount: 0,
+      // AI tab loading state -- true while loadChats() is in flight,
+      // cleared in its finally block. While true, the chat sidebar
+      // and chat messages area render skeleton placeholders so the
+      // user doesn't see an empty "No chats yet" + "How can I help
+      // you today?" for several seconds.
+      aiLoading: false
     };
 
     // Demo data
@@ -649,47 +655,66 @@
     }
 
     async function loadChats() {
-      if (state.demoMode) {
-        // Restore one localStorage chat (old behavior) so demo users
-        // aren't left with an empty UI.
-        const saved = localStorage.getItem(_LOCAL_CHAT_KEY(state.username || 'demo'));
-        state.currentMessages = saved ? (JSON.parse(saved) || []) : [];
-        state.currentChatId = '__demo__';
-        renderChatMessages();
-        renderChatSidebar();
-        return;
-      }
-      const res = await _apiFetch('/api/chats');
-      if (!res.ok) {
-        // Fall back to localStorage if the server is unavailable so the
-        // user isn't locked out.
-        const saved = localStorage.getItem(_LOCAL_CHAT_KEY(state.username || ''));
-        state.currentMessages = saved ? (JSON.parse(saved) || []) : [];
-        renderChatMessages();
-        renderChatSidebar();
-        return;
-      }
-      state.chats = Array.isArray(res.body) ? res.body : [];
-
-      if (state.chats.length > 0) {
-        // Open an existing chat: prefer the last-opened one, else the most
-        // recent by updatedAt (which is how the server sorted the list).
-        let openId = null;
-        const last = await _apiFetch('/api/chats/last');
-        if (last.ok && last.body && last.body.chatId
-            && state.chats.some(c => c.id === last.body.chatId)) {
-          openId = last.body.chatId;
-        } else {
-          openId = state.chats[0].id;
+      // Mark the AI tab as loading so renderChatSidebar /
+      // renderChatMessages can show skeleton placeholders instead of
+      // a blank "No chats yet" or "No chat selected" message while
+      // the /api/chats request is in flight. Without this, the user
+      // sees an empty sidebar + a single welcome bubble for several
+      // seconds after page load -- the AI tab looks broken until
+      // data lands. Loading state clears at the end (success + failure).
+      state.aiLoading = true;
+      renderChatSidebar();
+      renderChatMessages();
+      try {
+        if (state.demoMode) {
+          // Restore one localStorage chat (old behavior) so demo users
+          // aren't left with an empty UI.
+          const saved = localStorage.getItem(_LOCAL_CHAT_KEY(state.username || 'demo'));
+          state.currentMessages = saved ? (JSON.parse(saved) || []) : [];
+          state.currentChatId = '__demo__';
+          renderChatMessages();
+          renderChatSidebar();
+          return;
         }
-        await loadCurrentChat(openId, { recordLast: false });
-        return;
-      }
+        const res = await _apiFetch('/api/chats');
+        if (!res.ok) {
+          // Fall back to localStorage if the server is unavailable so the
+          // user isn't locked out.
+          const saved = localStorage.getItem(_LOCAL_CHAT_KEY(state.username || ''));
+          state.currentMessages = saved ? (JSON.parse(saved) || []) : [];
+          renderChatMessages();
+          renderChatSidebar();
+          return;
+        }
+        state.chats = Array.isArray(res.body) ? res.body : [];
 
-      // No chats on the server yet — mint a default empty one so the
-      // sidebar isn't a lonely "+ New" button. The user (or the AI, after
-      // the first message) can rename it.
-      await _createDefaultChat();
+        if (state.chats.length > 0) {
+          // Open an existing chat: prefer the last-opened one, else the most
+          // recent by updatedAt (which is how the server sorted the list).
+          let openId = null;
+          const last = await _apiFetch('/api/chats/last');
+          if (last.ok && last.body && last.body.chatId
+              && state.chats.some(c => c.id === last.body.chatId)) {
+            openId = last.body.chatId;
+          } else {
+            openId = state.chats[0].id;
+          }
+          await loadCurrentChat(openId, { recordLast: false });
+          return;
+        }
+
+        // No chats on the server yet — mint a default empty one so the
+        // sidebar isn't a lonely "+ New" button. The user (or the AI, after
+        // the first message) can rename it.
+        await _createDefaultChat();
+      } finally {
+        // Clear the AI loading flag in all cases (success, failure,
+        // demo) so the chat sidebar / messages renderers fall back to
+        // their normal "empty / no chat" states instead of skeletons.
+        state.aiLoading = false;
+        renderChatSidebar();
+        renderChatMessages();
+      }
     }
 
     async function _createDefaultChat() {
@@ -1028,6 +1053,52 @@
     function renderChatSidebar() {
       const el = document.getElementById('chatSidebar');
       if (!el) return;
+      // While the /api/chats request is in flight, render skeleton
+      // placeholders that look like the shape of the real chat list.
+      // This is what the dashboard sections already do for grades /
+      // assignments / activity; the AI tab was missing this and the
+      // user saw an empty list for a few seconds.
+      if (state.aiLoading) {
+        el.innerHTML = `
+          <div class="chat-sidebar-top">
+            <div class="chat-sidebar-search">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" placeholder="Search chats" disabled>
+            </div>
+            <button class="chat-sidebar-new-btn" title="New chat" aria-label="New chat" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            </button>
+          </div>
+          <div class="chat-list" aria-busy="true">
+            <div class="chat-list-section">
+              <div class="chat-list-section-header"><span class="skeleton-line short"></span></div>
+              ${[1, 2, 3, 4].map(() => `
+                <div class="chat-list-item chat-list-item-skeleton">
+                  <span class="skeleton-avatar"></span>
+                  <div class="skeleton-lines">
+                    <span class="skeleton-line" style="width: 70%;"></span>
+                    <span class="skeleton-line short" style="width: 40%;"></span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+            <div class="chat-list-section" style="margin-top: 12px;">
+              <div class="chat-list-section-header"><span class="skeleton-line short" style="width: 30%;"></span></div>
+              ${[1, 2].map(() => `
+                <div class="chat-list-item chat-list-item-skeleton">
+                  <span class="skeleton-avatar"></span>
+                  <div class="skeleton-lines">
+                    <span class="skeleton-line" style="width: 60%;"></span>
+                    <span class="skeleton-line short" style="width: 30%;"></span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ${_sidebarFooterHtml()}
+        `;
+        return;
+      }
       if (state.demoMode) {
         el.innerHTML = `
           <div class="chat-sidebar-top">
@@ -1210,6 +1281,42 @@
     function renderChatMessages() {
       const container = document.getElementById('chatMessages');
       if (!container) return;
+      // While the AI tab is loading, render bubble-shaped skeletons
+      // instead of either the "no chat" placeholder or the welcome
+      // bubble. The user should see the shape of messages landing,
+      // not a single static "Hi! 👋 What can I help you with today?"
+      // for several seconds.
+      if (state.aiLoading) {
+        container.innerHTML = `
+          <div class="chat-message assistant" aria-busy="true">
+            <div class="message-bubble">
+              <div class="markdown-content">
+                <div class="skeleton-line title" style="width: 55%;"></div>
+                <div class="skeleton-line medium" style="width: 80%;"></div>
+                <div class="skeleton-line short" style="width: 35%;"></div>
+              </div>
+            </div>
+          </div>
+          <div class="chat-message user" aria-busy="true">
+            <div class="message-bubble">
+              <div class="markdown-content">
+                <div class="skeleton-line" style="width: 60%;"></div>
+              </div>
+            </div>
+          </div>
+          <div class="chat-message assistant" aria-busy="true">
+            <div class="message-bubble">
+              <div class="markdown-content">
+                <div class="skeleton-line medium" style="width: 90%;"></div>
+                <div class="skeleton-line" style="width: 70%;"></div>
+                <div class="skeleton-line short" style="width: 45%;"></div>
+              </div>
+            </div>
+          </div>
+        `;
+        container.scrollTop = container.scrollHeight;
+        return;
+      }
       if (!state.currentMessages || state.currentMessages.length === 0) {
         // Two distinct empty states:
         //  1. No chat open (currentChatId is null) → show a neutral
