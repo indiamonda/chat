@@ -930,7 +930,6 @@ function proxyRequest(req, res, targetPort, basePath) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     if (req.body && Object.keys(req.body).length > 0) {
       const body = JSON.stringify(req.body);
-      options.headers['Content-Length'] = Buffer.byteLength(body);
       proxyReq.setHeader('Content-Length', Buffer.byteLength(body));
       proxyReq.write(body);
     } else if (Number(req.headers['content-length'] || 0) > 0 && !isJsonContentType(req.headers['content-type'])) {
@@ -944,7 +943,7 @@ function proxyRequest(req, res, targetPort, basePath) {
       // to empty (e.g. JSON.stringify({}) from the dashboard). The
       // keep-alive socket would otherwise wait for those bytes
       // forever. Force Content-Length: 0 so gunicorn doesn't hang.
-      options.headers['Content-Length'] = '0';
+      proxyReq.setHeader('Content-Length', '0');
     }
   }
   proxyReq.end();
