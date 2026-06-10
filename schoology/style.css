@@ -2039,7 +2039,11 @@
       border-radius: 50px;
       font-size: 1rem;
       font-family: inherit;
-      background: var(--surface-elevated);
+      /* Use --bg (darker page bg) so the input has a visible surface
+         against the .chat-input-area's --surface-elevated container.
+         Previously this was also --surface-elevated, which made the
+         input box invisible (same color as its own container). */
+      background: var(--bg);
       color: var(--text);
       transition: all var(--transition-slow);
     }
@@ -2791,13 +2795,18 @@
   padding: 24px; animation: confirm-fade-in 0.15s ease-out;
 }
 .prompt-modal {
-  background: var(--surface, #ffffff);
-  color: var(--text, #1a1a2e);
-  border: 1px solid var(--border, #e2e4ea);
+  /* Force dark-mode values for the prompt modal regardless of the
+     app's data-theme attribute. The schoology dashboard is dark-only
+     by design (see intro page), so the agent-password modal and
+     other system prompts should never fall back to the light
+     defaults in the var(...) fallbacks below. */
+  background: var(--surface, #1a1225);
+  color: var(--text, #e9e0f5);
+  border: 1px solid var(--border, #2d2240);
   border-radius: 16px;
   padding: 28px 28px 22px;
   max-width: 420px; width: 100%;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
   text-align: center;
   animation: confirm-pop-in 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -2810,12 +2819,12 @@
   font-size: 1.1rem;
   font-weight: 600;
   margin: 0 0 0.5rem;
-  color: var(--text, #1a1a2e);
+  color: var(--text, #e9e0f5);
 }
 .prompt-modal-message {
   font-size: 0.9rem;
   line-height: 1.5;
-  color: var(--text-secondary, #6b6b80);
+  color: var(--text-secondary, #a78bb8);
   margin: 0 0 1rem;
 }
 .prompt-modal-input {
@@ -2825,17 +2834,17 @@
   margin: 0 0 1.25rem;
   font-family: inherit;
   font-size: 0.95rem;
-  color: var(--text, #1a1a2e);
-  background: var(--surface-elevated, #f8f9fc);
-  border: 1px solid var(--border, #e2e4ea);
+  color: var(--text, #e9e0f5);
+  background: var(--bg, #120c1a);
+  border: 1px solid var(--border, #2d2240);
   border-radius: 10px;
   outline: none;
   box-sizing: border-box;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .prompt-modal-input:focus {
-  border-color: var(--primary, #4f46e5);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  border-color: var(--primary, #8b5cf6);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
 }
 .prompt-modal-actions {
   display: flex;
@@ -2850,16 +2859,16 @@
   font-weight: 500;
   cursor: pointer;
   font-family: inherit;
-  border: 1px solid var(--border, #e2e4ea);
-  background: var(--surface-elevated, #f8f9fc);
-  color: var(--text, #1a1a2e);
+  border: 1px solid var(--border, #2d2240);
+  background: var(--surface-elevated, #251a35);
+  color: var(--text, #e9e0f5);
   transition: all 0.15s ease;
   min-width: 88px;
 }
 .prompt-modal-actions .btn-secondary:hover,
 .prompt-modal-actions .btn-primary:hover {
-  background: var(--surface-hover, #f0f2f5);
-  border-color: var(--border-bright, #d0d2da);
+  background: var(--surface-hover, #2d2240);
+  border-color: var(--border-bright, #3d325a);
 }
 .prompt-modal-actions .btn-primary {
   background: var(--ai-gradient, linear-gradient(135deg, #00bbff, #00ffbb));
@@ -2869,5 +2878,5 @@
 .prompt-modal-actions .btn-primary:hover {
   filter: brightness(1.05);
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.5);
 }
