@@ -2313,6 +2313,19 @@
     window.addEventListener('scroll', _hideContextMenu, true);
     window.addEventListener('resize', _hideContextMenu);
 
+    // Streaming AI: collapse each .streaming-char span back to a plain
+    // text node once its fade-in animation completes. Delegated to
+    // document so newly added spans (during the stream) are caught.
+    // We do this so the final DOM is clean text + <br> -- no span
+    // soup -- and so the per-char fade is a one-shot effect.
+    document.addEventListener('animationend', (e) => {
+      const el = e.target;
+      if (!el || !el.classList || !el.classList.contains('streaming-char')) return;
+      if (e.animationName !== 'streamingCharFade') return;
+      const text = el.textContent;
+      el.replaceWith(document.createTextNode(text));
+    }, true);
+
     // Render functions
     function renderGradesOverview() {
       const container = document.getElementById('gradesOverview');
@@ -3583,22 +3596,56 @@
 
       try {
         if (workerUrl) {
-          const response = await fetch(`${workerUrl}/v1/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: 'deepseek-chat', messages: buildContextMessages(userFullMessage, extras), max_tokens: 1024, temperature: 0.6, stream: false }),
-            signal: abortController.signal,
+          // Streaming path: open the bubble FIRST (with empty content)
+          // and append tokens to it as they arrive from the SSE
+          // response. The non-streaming path below is the fallback
+          // for demo mode + the "AI not configured" error.
+          const streamBubble = addChatMessage('assistant', '', {
+            skipHistory: true,
+            renderMarkdown: false,
           });
+          const streamContentEl = streamBubble ? streamBubble.querySelector('.markdown-content') : null;
+
+          let reply = '';
+          try {
+            reply = await streamChatReply({
+              workerUrl,
+              messages: buildContextMessages(userFullMessage, extras),
+              abortSignal: abortController.signal,
+              onToken: (token) => {
+                if (!streamContentEl) return;
+                appendStreamingToken(streamContentEl, token);
+                reply += token;
+              },
+            });
+          } catch (streamErr) {
+            // If the stream itself errored (network, 5xx, parse), we
+            // need to surface it. Re-throw so the outer catch handles
+            // it the same way as a non-streaming error.
+            hideTypingIndicator();
+            // If the bubble is empty (nothing streamed), remove it
+            // so we don't leave an empty bubble in the chat.
+            if (streamBubble && streamContentEl && !streamContentEl.textContent) {
+              streamBubble.remove();
+            }
+            throw streamErr;
+          }
           hideTypingIndicator();
-          if (!response.ok) throw new Error(await response.text());
-          const data = await response.json();
-          const reply = data.choices?.[0]?.message?.content || 'No response received.';
-          // Strip tool brackets from the visible reply so [HTML:...],
-          // [CALC:...], etc. don't render as literal text. The tool
-          // executors still get the original (with brackets) to find
-          // their matches and emit visual output as separate messages.
+          if (!reply) reply = 'No response received.';
+          // Finalize: swap the streamed plain-text view for the full
+          // markdown render. Tool-bracket stripping still happens on
+          // the full reply so the visible content reads cleanly.
           const visibleReply = stripToolBrackets(reply);
-          addChatMessage('assistant', visibleReply, { msgIdx: state.currentMessages.length });
+          if (streamContentEl) {
+            streamContentEl.innerHTML = renderMarkdown(visibleReply);
+            // Re-apply the bubble-level fade so the final render
+            // doesn't pop in jarringly.
+            streamContentEl.style.transition = 'opacity 0.3s ease-out';
+            streamContentEl.style.opacity = '0';
+            // Trigger reflow then fade in.
+            void streamContentEl.offsetHeight;
+            streamContentEl.style.opacity = '1';
+          }
           state.currentMessages.push({ role: 'assistant', content: visibleReply });
           scheduleSaveCurrentChat();
           handleAICommands(reply);
@@ -4075,6 +4122,112 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
 
       element.style.opacity = '1';
       container.scrollTop = container.scrollHeight;
+    }
+
+    /**
+     * Append a token (string, usually a few characters) to the streaming
+     * bubble. Each individual character is wrapped in a span with a
+     * 0.3s opacity fade-in matching the existing fadeInApp animation,
+     * so the AI's text appears to type in. After the animation
+     * completes, the span is collapsed back to a plain text node so
+     * the final DOM stays clean (no span soup).
+     *
+     * Newlines in the token are converted to <br> for now (the bubble
+     * is plain text during streaming; markdown is applied only when
+     * the stream ends, see _requestAssistantReply).
+     */
+    function appendStreamingToken(contentEl, token) {
+      if (!contentEl || !token) return;
+      const container = document.getElementById('chatMessages');
+      // Token may include newlines or spaces; iterate code points so
+      // multi-byte characters don't get split mid-grapheme.
+      const chars = Array.from(token);
+      const frag = document.createDocumentFragment();
+      for (const ch of chars) {
+        if (ch === '\n') {
+          frag.appendChild(document.createElement('br'));
+        } else {
+          const span = document.createElement('span');
+          span.className = 'streaming-char';
+          span.textContent = ch;
+          frag.appendChild(span);
+        }
+      }
+      contentEl.appendChild(frag);
+      // Trigger the fade-in for each newly added char via the .streaming-char
+      // class. CSS handles the rest. The animation cleanup (collapsing
+      // the span to text) happens in the animationend handler.
+      if (container) container.scrollTop = container.scrollHeight;
+    }
+
+    /**
+     * Open a streaming SSE connection to the worker proxy and call
+     * onToken with each `choices[0].delta.content` chunk. Resolves
+     * with the full assembled reply text on `data: [DONE]`, or
+     * rejects on network/HTTP/parse errors or on abort.
+     *
+     * Wire format (per OpenAI / DeepSeek):
+     *   data: {"choices":[{"delta":{"content":"hello"}}]}\n\n
+     *   data: {"choices":[{"delta":{"content":" world"}}]}\n\n
+     *   ...
+     *   data: [DONE]\n\n
+     *
+     * We tolerate comments (lines starting with `:`), keep-alive
+     * frames, and missing-`delta` frames (some chunks only carry
+     * `finish_reason` or role info).
+     */
+    async function streamChatReply({ workerUrl, messages, abortSignal, onToken }) {
+      const response = await fetch(`${workerUrl}/v1/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          messages,
+          max_tokens: 1024,
+          temperature: 0.6,
+          stream: true,
+        }),
+        signal: abortSignal,
+      });
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        throw new Error(`AI worker error ${response.status}: ${errText.slice(0, 200)}`);
+      }
+      if (!response.body) {
+        throw new Error('AI worker response had no body to stream');
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let fullReply = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE messages are separated by a blank line (\n\n).
+        // Split on \n\n and process each complete message; keep the
+        // trailing partial in the buffer for the next chunk.
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          const lines = part.split('\n');
+          for (const line of lines) {
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === '[DONE]') continue;
+            // Comment / keep-alive lines start with `:` -- ignore.
+            if (payload.startsWith(':')) continue;
+            let parsed;
+            try { parsed = JSON.parse(payload); } catch (_) { continue; }
+            const token = parsed?.choices?.[0]?.delta?.content;
+            if (token) {
+              fullReply += token;
+              try { onToken(token); } catch (_) { /* listener errors shouldn't abort the stream */ }
+            }
+          }
+        }
+      }
+      return fullReply;
     }
 
     function showTypingIndicator() {
