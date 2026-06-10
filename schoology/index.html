@@ -3686,7 +3686,6 @@
     async function _requestAssistantReply(userFullMessage, opts) {
       opts = opts || {};
       const workerUrl = localStorage.getItem('schoology-ai-worker-url');
-      showTypingIndicator();
 
       // Pull cross-chat summaries + memory for context injection. The
       // /api/chats/context call excludes the current chat from the
@@ -3714,11 +3713,11 @@
             renderMarkdown: false,
           });
           const streamContentEl = streamBubble ? streamBubble.querySelector('.markdown-content') : null;
-          // Put 3 dots inside the bubble. They get removed the moment
-          // the first token arrives (see below).
+          // Empty bubble -- tokens land directly. No dots / no spinner;
+          // the user wanted a quiet start so the first character "types in"
+          // immediately.
           if (streamContentEl) {
-            streamContentEl.classList.add('is-streaming-loading');
-            streamContentEl.innerHTML = '<div class="streaming-dots"><span></span><span></span><span></span></div>';
+            streamContentEl.innerHTML = '';
           }
           // Smart auto-scroll: only follow the stream while the user
           // is already at the bottom of the chat. If they scroll up
@@ -3737,11 +3736,6 @@
               abortSignal: abortController.signal,
               onToken: (token) => {
                 if (!streamContentEl) return;
-                // First token: swap the 3 dots for the real content.
-                if (streamContentEl.classList.contains('is-streaming-loading')) {
-                  streamContentEl.classList.remove('is-streaming-loading');
-                  streamContentEl.innerHTML = '';
-                }
                 appendStreamingToken(streamContentEl, token);
                 reply += token;
                 // Re-evaluate whether the user is still at the bottom.
@@ -3761,7 +3755,6 @@
             // If the stream itself errored (network, 5xx, parse), we
             // need to surface it. Re-throw so the outer catch handles
             // it the same way as a non-streaming error.
-            hideTypingIndicator();
             // If the bubble is empty (nothing streamed), remove it
             // so we don't leave an empty bubble in the chat.
             if (streamBubble && streamContentEl && !streamContentEl.textContent) {
@@ -3769,7 +3762,6 @@
             }
             throw streamErr;
           }
-          hideTypingIndicator();
           if (!reply) reply = 'No response received.';
           // Finalize: swap the streamed plain-text view for the full
           // markdown render. Tool-bracket stripping still happens on
@@ -3779,7 +3771,6 @@
             // Strip the loading-state class if the stream errored
             // before any token arrived (in which case the dots
             // never got replaced).
-            streamContentEl.classList.remove('is-streaming-loading');
             if (!visibleReply) {
               // No content at all -- show the fallback inside the
               // bubble so it isn't empty.
@@ -3810,19 +3801,16 @@
             }
           }
         } else if (state.demoMode) {
-          hideTypingIndicator();
           const demoResponse = generateDemoResponse(userFullMessage);
           addChatMessage('assistant', demoResponse, { msgIdx: state.currentMessages.length });
           state.currentMessages.push({ role: 'assistant', content: demoResponse });
           scheduleSaveCurrentChat();
         } else {
-          hideTypingIndicator();
           addChatMessage('error', 'AI Worker URL not configured. Please add your DeepSeek proxy worker URL in Settings.');
           state.currentMessages.push({ role: 'assistant', content: '[Error: AI not configured]' });
           scheduleSaveCurrentChat();
         }
       } catch (e) {
-        hideTypingIndicator();
         // AbortError is expected when the user hits Stop -- the message
         // they sent stays in the chat history; we just don't append a
         // partial AI reply.
@@ -4394,20 +4382,6 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
       return fullReply;
     }
 
-    function showTypingIndicator() {
-      const container = document.getElementById('chatMessages');
-      const indicator = document.createElement('div');
-      indicator.className = 'typing-indicator';
-      indicator.id = 'typingIndicator';
-      indicator.innerHTML = '<span></span><span></span><span></span>';
-      container.appendChild(indicator);
-      container.scrollTop = container.scrollHeight;
-    }
-
-    function hideTypingIndicator() {
-      const indicator = document.getElementById('typingIndicator');
-      if (indicator) indicator.remove();
-    }
 
     function handleChatKeydown(e) {
       if (e.key === 'Enter' && !e.shiftKey) {
