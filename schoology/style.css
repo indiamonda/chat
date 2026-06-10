@@ -1293,6 +1293,7 @@
     .grade-b { background: rgba(99, 102, 241, 0.15); color: var(--primary); }
     .grade-c { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
     .grade-f { background: rgba(239, 68, 68, 0.15); color: var(--error); }
+    .grade-na { background: var(--surface-elevated); color: var(--text-muted); }
 
     .grade-value {
       display: inline-block;
