@@ -866,6 +866,11 @@ app.use((req, res, next) => {
 });
 
 // Schoology proxy - forward /schoology/* requests to the Flask app on port 8081
+function isJsonContentType(ct) {
+  if (!ct) return false;
+  return String(ct).toLowerCase().indexOf('application/json') !== -1;
+}
+
 function proxyRequest(req, res, targetPort, basePath) {
   const parsedUrl = urlParse(req.url, true);
   const targetPath = basePath + (parsedUrl.pathname || '');
@@ -907,19 +912,28 @@ function proxyRequest(req, res, targetPort, basePath) {
     }
   });
 
-  // Body forwarding. Two cases:
-  //   1. express.json() parsed a JSON body into req.body -- the raw stream
-  //      is already consumed, so re-serialize.
+  // Body forwarding. Three cases:
+  //   1. express.json() parsed a JSON body with actual keys into
+  //      req.body -- the raw stream is already consumed, so re-serialize.
   //   2. Non-JSON body (multipart, etc.) -- express.json() left req.body
-  //      empty and the raw stream is still readable, so pipe it through.
-  // Skip entirely for GET/HEAD and for empty bodies -- otherwise gunicorn
-  // sees a stray `{}` on a keep-alive connection and 400s the next request.
+  //      empty AND the raw stream is still readable, so pipe it through.
+  //   3. Body parses to an empty object `{}` but Content-Length > 0
+  //      (the dashboard sends `JSON.stringify({})` for create-chat).
+  //      Treat as "no body" so we don't enter the pipe branch --
+  //      which can hang on keep-alive when the server expects a body
+  //      boundary the proxy never sent. The schoology server's
+  //      `request.get_json(silent=True) or {}` falls through to its
+  //      default value, so this is semantically a no-op for it.
+  //      (See CLAUDE.md "server-proxy-pitfalls" for the history.)
+  // Skip entirely for GET/HEAD -- otherwise gunicorn sees a stray `{}`
+  // on a keep-alive connection and 400s the next request.
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     if (req.body && Object.keys(req.body).length > 0) {
       const body = JSON.stringify(req.body);
       proxyReq.setHeader('Content-Length', Buffer.byteLength(body));
       proxyReq.write(body);
-    } else if (Number(req.headers['content-length'] || 0) > 0) {
+    } else if (Number(req.headers['content-length'] || 0) > 0 && !isJsonContentType(req.headers['content-type'])) {
+      // Non-JSON body with actual content (multipart, raw text) -- pipe.
       req.pipe(proxyReq);
       // req.pipe will call end() when the source stream closes; don't call
       // proxyReq.end() again or the connection will hang up early.
