@@ -3596,15 +3596,31 @@
 
       try {
         if (workerUrl) {
-          // Streaming path: open the bubble FIRST (with empty content)
-          // and append tokens to it as they arrive from the SSE
-          // response. The non-streaming path below is the fallback
-          // for demo mode + the "AI not configured" error.
+          // Streaming path: open the bubble FIRST (with the typing
+          // dots inside it) and append tokens to it as they arrive
+          // from the SSE response. The typing dots live INSIDE the
+          // future assistant bubble so the user sees the "where the
+          // AI reply will appear" indicator in the same place as
+          // the final text.
           const streamBubble = addChatMessage('assistant', '', {
             skipHistory: true,
             renderMarkdown: false,
           });
           const streamContentEl = streamBubble ? streamBubble.querySelector('.markdown-content') : null;
+          // Put 3 dots inside the bubble. They get removed the moment
+          // the first token arrives (see below).
+          if (streamContentEl) {
+            streamContentEl.classList.add('is-streaming-loading');
+            streamContentEl.innerHTML = '<div class="streaming-dots"><span></span><span></span><span></span></div>';
+          }
+          // Smart auto-scroll: only follow the stream while the user
+          // is already at the bottom of the chat. If they scroll up
+          // mid-stream to read something, we leave their scroll alone
+          // (sticky behavior). Re-checked on every token.
+          const chatScrollEl = document.getElementById('chatMessages');
+          const SCROLL_BOTTOM_TOLERANCE = 32; // px
+          let autoScroll = isScrolledToBottom(chatScrollEl, SCROLL_BOTTOM_TOLERANCE);
+          if (autoScroll && chatScrollEl) chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
 
           let reply = '';
           try {
@@ -3614,8 +3630,24 @@
               abortSignal: abortController.signal,
               onToken: (token) => {
                 if (!streamContentEl) return;
+                // First token: swap the 3 dots for the real content.
+                if (streamContentEl.classList.contains('is-streaming-loading')) {
+                  streamContentEl.classList.remove('is-streaming-loading');
+                  streamContentEl.innerHTML = '';
+                }
                 appendStreamingToken(streamContentEl, token);
                 reply += token;
+                // Re-evaluate whether the user is still at the bottom.
+                // If yes, keep them glued to the latest text; if no,
+                // leave their scroll position alone.
+                if (autoScroll) {
+                  const stillAtBottom = isScrolledToBottom(chatScrollEl, SCROLL_BOTTOM_TOLERANCE);
+                  if (stillAtBottom && chatScrollEl) {
+                    chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
+                  } else {
+                    autoScroll = false; // user scrolled up -- stop following
+                  }
+                }
               },
             });
           } catch (streamErr) {
@@ -3637,14 +3669,24 @@
           // the full reply so the visible content reads cleanly.
           const visibleReply = stripToolBrackets(reply);
           if (streamContentEl) {
-            streamContentEl.innerHTML = renderMarkdown(visibleReply);
-            // Re-apply the bubble-level fade so the final render
-            // doesn't pop in jarringly.
-            streamContentEl.style.transition = 'opacity 0.3s ease-out';
-            streamContentEl.style.opacity = '0';
-            // Trigger reflow then fade in.
-            void streamContentEl.offsetHeight;
-            streamContentEl.style.opacity = '1';
+            // Strip the loading-state class if the stream errored
+            // before any token arrived (in which case the dots
+            // never got replaced).
+            streamContentEl.classList.remove('is-streaming-loading');
+            if (!visibleReply) {
+              // No content at all -- show the fallback inside the
+              // bubble so it isn't empty.
+              streamContentEl.innerHTML = '<em>(no response)</em>';
+            } else {
+              streamContentEl.innerHTML = renderMarkdown(visibleReply);
+              // Re-apply the bubble-level fade so the final render
+              // doesn't pop in jarringly.
+              streamContentEl.style.transition = 'opacity 0.3s ease-out';
+              streamContentEl.style.opacity = '0';
+              // Trigger reflow then fade in.
+              void streamContentEl.offsetHeight;
+              streamContentEl.style.opacity = '1';
+            }
           }
           state.currentMessages.push({ role: 'assistant', content: visibleReply });
           scheduleSaveCurrentChat();
@@ -4138,7 +4180,6 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
      */
     function appendStreamingToken(contentEl, token) {
       if (!contentEl || !token) return;
-      const container = document.getElementById('chatMessages');
       // Token may include newlines or spaces; iterate code points so
       // multi-byte characters don't get split mid-grapheme.
       const chars = Array.from(token);
@@ -4157,7 +4198,23 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
       // Trigger the fade-in for each newly added char via the .streaming-char
       // class. CSS handles the rest. The animation cleanup (collapsing
       // the span to text) happens in the animationend handler.
-      if (container) container.scrollTop = container.scrollHeight;
+      //
+      // Auto-scroll is handled by the caller (_requestAssistantReply's
+      // onToken callback) using a sticky-bottom check; we no longer
+      // force-scroll here, so the user can scroll up mid-stream
+      // without being dragged back to the bottom.
+    }
+
+    /**
+     * True when `el`'s scroll position is at (or within `tolerance`
+     * pixels of) the bottom. Used by the streaming AI path to decide
+     * whether to follow the incoming text -- the user keeps their
+     * scroll position if they've scrolled up to read something.
+     */
+    function isScrolledToBottom(el, tolerance) {
+      if (!el) return true;
+      const tol = Number(tolerance) || 0;
+      return (el.scrollTop + el.clientHeight) >= (el.scrollHeight - tol);
     }
 
     /**
