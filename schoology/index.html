@@ -2316,20 +2316,29 @@
     // Render functions
     function renderGradesOverview() {
       const container = document.getElementById('gradesOverview');
-      container.innerHTML = state.grades.slice(0, 4).map(g => `
+      container.innerHTML = state.grades.slice(0, 4).map(g => {
+        const pct = g.percentage;
+        const hasGrade = pct != null && pct !== '';
+        const pctLabel = hasGrade ? `${pct}%` : 'N/A';
+        const pctClass = hasGrade ? getGradeClass(pct) : 'na';
+        const letter = g.letterGrade && g.letterGrade !== 'N/A' ? g.letterGrade : 'N/A';
+        return `
         <div class="grade-card" onclick="this.classList.toggle('expanded')">
           <div class="grade-header">
-            <span class="course-name">${escapeHtml(g.courseName)}</span>
-            <span class="grade-value grade-${getGradeClass(g.percentage)}">${g.percentage}%</span>
+            <div>
+              <div class="course-name">${escapeHtml(g.courseName)}</div>
+              <div style="font-size: 0.78rem; color: var(--text-secondary);">${escapeHtml(g.teacher || '')}</div>
+            </div>
+            <span class="grade-value grade-${pctClass}">${pctLabel}</span>
           </div>
           <div class="grade-details">
-            <div class="detail-row"><span class="detail-label">Letter Grade</span><span>${g.letterGrade}</span></div>
+            <div class="detail-row"><span class="detail-label">Letter Grade</span><span>${escapeHtml(letter)}</span></div>
             ${g.categoryGrades ? Object.entries(g.categoryGrades).map(([cat, grade]) =>
               `<div class="detail-row"><span class="detail-label">${escapeHtml(cat)}</span><span>${grade}%</span></div>`
             ).join('') : ''}
           </div>
         </div>
-      `).join('');
+      `;}).join('');
     }
 
     function renderAssignmentsOverview() {
@@ -2376,23 +2385,29 @@
           </div>`;
         return;
       }
-      container.innerHTML = state.grades.map(g => `
+      container.innerHTML = state.grades.map(g => {
+        const pct = g.percentage;
+        const hasGrade = pct != null && pct !== '';
+        const pctLabel = hasGrade ? `${pct}%` : 'N/A';
+        const pctClass = hasGrade ? getGradeClass(pct) : 'na';
+        const letter = g.letterGrade && g.letterGrade !== 'N/A' ? g.letterGrade : 'N/A';
+        return `
         <div class="grade-card" onclick="this.classList.toggle('expanded')">
           <div class="grade-header">
             <div>
               <div class="course-name">${escapeHtml(g.courseName)}</div>
-              <div style="font-size: 0.85rem; color: var(--text-secondary);">${escapeHtml(g.teacher || 'Teacher')}</div>
+              <div style="font-size: 0.78rem; color: var(--text-secondary);">${escapeHtml(g.teacher || '')}</div>
             </div>
-            <span class="grade-value grade-${getGradeClass(g.percentage)}">${g.percentage}%</span>
+            <span class="grade-value grade-${pctClass}">${pctLabel}</span>
           </div>
           <div class="grade-details">
-            <div class="detail-row"><span class="detail-label">Letter Grade</span><span>${g.letterGrade}</span></div>
+            <div class="detail-row"><span class="detail-label">Letter Grade</span><span>${escapeHtml(letter)}</span></div>
             ${g.categoryGrades ? Object.entries(g.categoryGrades).map(([cat, grade]) =>
               `<div class="detail-row"><span class="detail-label">${escapeHtml(cat)}</span><span>${grade}%</span></div>`
             ).join('') : ''}
           </div>
         </div>
-      `).join('');
+      `;}).join('');
     }
 
     function renderAssignmentsList() {
@@ -3740,10 +3755,19 @@ How to use this section:
 
 STUDENT DATA (use when relevant):
 Grades:
-${state.grades.map(g => `- ${g.courseName}: ${g.percentage}% (${g.letterGrade})`).join('\n')}
+${state.grades.map(g => {
+  const pct = g.percentage;
+  const pctStr = (pct == null || pct === '') ? 'N/A' : `${pct}%`;
+  const letter = g.letterGrade || 'N/A';
+  return `- ${g.courseName || 'Unknown course'}: ${pctStr} (${letter})`;
+}).join('\n')}
 
 Upcoming Assignments:
-${state.assignments.map(a => `- ${a.title} (${a.courseName}) - Due: ${a.dueDate || 'TBD'}`).join('\n')}
+${state.assignments.map(a => {
+  const course = a.courseName || a.course || a.courseTitle || 'Unknown course';
+  const due = a.dueDate || a.due_iso || a.due || 'No due date';
+  return `- ${a.title || 'Untitled'} (${course}) - Due: ${due}`;
+}).join('\n')}
 
 Recent Posts:
 ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 100)}${p.content && p.content.length > 100 ? '...' : ''}`).join('\n')}`;
