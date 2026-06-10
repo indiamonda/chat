@@ -3479,8 +3479,11 @@
         cancelled: false,
       };
       renderDataLoaderBubble(sections); // re-render to start spinner
-      // Force the data loader into the DOM
-      let bubbleEl = document.querySelector(`[data-msg-idx="${loaderMsg.msgIdx}"]`);
+      // Force the data loader into the DOM. Prefer the direct DOM
+      // ref returned by addChatMessage; fall back to a class
+      // selector if the ref is missing (e.g. older callers that
+      // depended on addChatMessage's old void return).
+      let bubbleEl = loaderMsg || document.querySelector('.chat-message.assistant:last-of-type .message-bubble');
       if (bubbleEl) {
         const inner = bubbleEl.querySelector('.message-bubble');
         if (inner) inner.innerHTML = renderDataLoaderBubble(sections);
@@ -3502,9 +3505,12 @@
       const ctx = state._dataLoaderContext;
       state._dataLoaderContext = null;
       // Re-find the bubble -- the original ref might be stale if the
-      // DOM was re-rendered. We look it up by msgIdx each time.
+      // DOM was re-rendered. Prefer the saved DOM ref from the
+      // context (captured at the time the loader was created), and
+      // fall back to a positional selector if the ref is gone.
       function findLoaderBubble() {
-        return document.querySelector(`[data-msg-idx="${loaderMsg.msgIdx}"]`);
+        if (ctx.bubble && document.contains(ctx.bubble)) return ctx.bubble;
+        return document.querySelector('.chat-message.assistant:last-of-type .message-bubble');
       }
       if (ctx.cancelled) {
         // User hit stop. Replace the loader with a brief note and
@@ -3910,9 +3916,12 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
         typewriterEffect(bubble.querySelector('.markdown-content'), content);
       }
       container.scrollTop = container.scrollHeight;
-      // Note: history pushing is handled by the caller (sendChatMessage
-      // pushes user/assistant messages explicitly). The skipHistory flag
-      // is here so renderChatMessages can re-render without double-pushing.
+      // Return the DOM element so callers (e.g. the data-loader bubble
+      // in sendChatMessage) can find or replace it later. Historically
+      // this function was void; the data-loader path needs the ref to
+      // swap the spinner for a "Stopped loading" note when the user
+      // hits Stop, so we now return the appended node.
+      return div;
     }
 
     // Copy a message's text content to the clipboard. Clones the bubble
