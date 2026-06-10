@@ -1147,6 +1147,36 @@
     .skeleton-line.short { width: 40%; }
     .skeleton-line.medium { width: 75%; }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    /* Chat-list skeleton (used by the AI tab while /api/chats is
+       in flight). Matches the real .chat-list-item row shape:
+       circular avatar on the left, two text lines on the right. */
+    .chat-list-item-skeleton {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      margin-bottom: 4px;
+    }
+    .skeleton-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: linear-gradient(90deg, var(--surface-elevated) 25%, var(--surface-hover) 50%, var(--surface-elevated) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    .skeleton-lines {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .skeleton-lines .skeleton-line {
+      height: 10px;
+      margin-bottom: 0;
+    }
 
     /* ── Section Cards ── */
     .section-card {
