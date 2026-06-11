@@ -25,6 +25,17 @@ primary_region = 'sjc'
   [http_service.http_options]
   idle_timeout = 600
 
+# Boot probe -- Fly's proxy marks the instance unhealthy until this
+# returns 200. Without it, the proxy shows "no known healthy
+# instances found for route tcp/443" right after deploys (PR01).
+# 200 OK from a static "ok" body in Node; deliberately cheap.
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "15s"
+  method = "GET"
+  timeout = "5s"
+  path = "/health"
+
 [[vm]]
   cpu_kind = 'shared'
   cpus = 1
