@@ -217,9 +217,18 @@ def _verify(token: str) -> Optional[dict]:
     # invalidates every outstanding token at once.
     if payload.get('tv') != TERMS_VERSION:
         return None
-    if payload.get('grade') is None or payload.get('grade') < MIN_GRADE:
+    # Soft-fail tokens (issued when the gate classifier couldn't
+    # determine a grade) carry grade=0 + unv=True. They get through
+    # the AI gate; the frontend then re-checks the grade after the
+    # dashboard loads. Once /api/grade/confirm mints a regular token
+    # (grade >= MIN_GRADE, unv absent/false), the new token supersedes
+    # the soft-fail one. Under-grade or missing grade remains a hard
+    # reject.
+    grade = payload.get('grade')
+    if grade is None:
         return None
-    # School/district is metadata only; not enforced.
+    if grade < MIN_GRADE and not payload.get('unv'):
+        return None
     return payload
 
 
@@ -388,22 +397,24 @@ def _rate_limited(username: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def _ok_token(username: str, grade: int, school: Optional[str],
-              semester_end: str) -> dict:
+              semester_end: str, unverified: bool = False) -> dict:
     payload = {
         'u':    username,
         'grade': int(grade),
         'school': school,
+        'unv':  bool(unverified),
         'exp':  semester_end,
         'tv':   TERMS_VERSION,
         'iat':  int(time.time()),
     }
     token = _sign(payload)
     return {
-        'ok':        True,
-        'token':     token,
-        'expiresAt': semester_end,
-        'grade':     int(grade),
-        'school':    school,
+        'ok':           True,
+        'token':        token,
+        'expiresAt':    semester_end,
+        'grade':        int(grade),
+        'school':       school,
+        'unverified':   bool(unverified),
     }
 
 
@@ -460,35 +471,29 @@ def _gate_check_view():
     posts = posts_payload if isinstance(posts_payload, list) else []
 
     if not courses and not posts:
-        # No data to classify against. Don't cache -- the user might
-        # have a slow daemon spawn; the next attempt should retry.
-        return jsonify({
-            'ok': False,
-            'reason': 'detection_failed',
-            'message': 'Could not load your Schoology data — please refresh and try again.',
-        })
+        # No data to classify against. Issue a soft-fail token: the
+        # frontend will let the dashboard load, then after data
+        # finishes populating try the AI-driven grade detection on
+        # the freshly-loaded courses + posts.
+        return jsonify(_ok_token(username, grade=0, school=None,
+                                 semester_end=semester_end,
+                                 unverified=True))
 
     result = _call_deepseek_detect(courses, posts)
     if not result:
-        # Classifier unavailable or unparseable. Do NOT cache -- the
-        # next call should retry.
-        return jsonify({
-            'ok': False,
-            'reason': 'detection_failed',
-            'message': 'Could not determine your grade level right now. Please refresh and try again.',
-        })
+        # Classifier unavailable or unparseable -- same soft-fail path.
+        return jsonify(_ok_token(username, grade=0, school=None,
+                                 semester_end=semester_end,
+                                 unverified=True))
 
     grade = result['grade']
     school = result['school']
 
     if grade is None:
-        # Couldn't tell the grade from the data. Don't cache; ask the
-        # user to try again (the daemon may have returned partial data).
-        return jsonify({
-            'ok': False,
-            'reason': 'detection_failed',
-            'message': 'Could not determine your grade level from your Schoology data. Please refresh and try again.',
-        })
+        # Couldn't tell the grade from the data. Soft-fail.
+        return jsonify(_ok_token(username, grade=0, school=None,
+                                 semester_end=semester_end,
+                                 unverified=True))
 
     if grade < MIN_GRADE:
         decision = {
@@ -578,6 +583,12 @@ def require_gate(view):
 _GATE_EXEMPT_PREFIXES = (
     '/api/gate-check',
     '/api/gate-verify',
+    # Soft-fail re-check: called by the user with only a soft-fail
+    # token in hand. If we gated it, the only person who could call it
+    # would be the user who just got rejected -- self-defeating.
+    # The endpoint itself re-validates the input and only mints a
+    # regular token if grade >= MIN_GRADE.
+    '/api/grade/confirm',
     '/api/basic-info',
     '/api/courses',
     '/api/grades',
@@ -635,9 +646,79 @@ def install_gate_middleware(app):
         return None
 
 
+def _grade_confirm_view():
+    """Confirm the detected grade after the dashboard loads.
+
+    Called by the frontend once the AI re-attempted grade detection
+    using the freshly-loaded courses + posts. The endpoint re-validates
+    the grade, mints a regular (non-soft-fail) token on success, and
+    caches the decision so the next reload skips the re-check.
+
+    On under-8, returns the same shape the gate would have -- the
+    caller paints the under-8 gate block. On malformed input, the
+    caller treats it as "still unknown" and either retries or hard-
+    fails.
+
+    Open to soft-fail token holders (it's in the exempt prefix list);
+    the endpoint itself is the source of truth.
+    """
+    from .server import decode_auth_header
+
+    username, _ = decode_auth_header()
+    if not username:
+        return jsonify({'ok': False, 'reason': 'auth_required'}), 401
+
+    body = request.get_json(silent=True) or {}
+    raw_grade = body.get('grade')
+    try:
+        grade = int(raw_grade) if raw_grade is not None else None
+    except (TypeError, ValueError):
+        grade = None
+    if grade is None or not (1 <= grade <= 12):
+        return jsonify({
+            'ok': False,
+            'reason': 'invalid_grade',
+            'message': 'grade must be an integer 1-12.',
+        })
+
+    school = (body.get('school') or '').strip() or None
+    if school and len(school) > 32:
+        school = school[:32]
+
+    semester_end = current_semester_end_iso() or (datetime.now().replace(
+        year=datetime.now().year + 1).strftime('%Y-%m-%d'))
+
+    if grade < MIN_GRADE:
+        # Cache the under-8 decision so future loads don't loop the
+        # same prompt -- the user has been told.
+        _write_cache(username, {
+            'grade': grade, 'school': school,
+            'reason': 'under_age',
+            'message': f'This AI assistant is available to students in grade {MIN_GRADE} and up. Detected grade: {grade}.',
+            'semester_end': semester_end,
+            'terms_version': TERMS_VERSION,
+        })
+        return jsonify({
+            'ok': False,
+            'reason': 'under_age',
+            'message': f'This AI assistant is available to students in grade {MIN_GRADE} and up. Detected grade: {grade}.',
+            'grade': grade,
+        })
+
+    # Pass. Cache + mint a regular token.
+    _write_cache(username, {
+        'grade': grade, 'school': school,
+        'reason': 'ok',
+        'semester_end': semester_end,
+        'terms_version': TERMS_VERSION,
+    })
+    return jsonify(_ok_token(username, grade, school, semester_end))
+
+
 def register_routes(app):
     """Register the gate endpoints on the Flask app. Called from
     schoology/ai/__init__.py."""
-    app.add_url_rule('/api/gate-check',  view_func=_gate_check_view,  methods=['POST'])
-    app.add_url_rule('/api/gate-verify', view_func=_gate_verify_view, methods=['POST'])
+    app.add_url_rule('/api/gate-check',      view_func=_gate_check_view,      methods=['POST'])
+    app.add_url_rule('/api/gate-verify',     view_func=_gate_verify_view,     methods=['POST'])
+    app.add_url_rule('/api/grade/confirm',   view_func=_grade_confirm_view,   methods=['POST'])
     install_gate_middleware(app)

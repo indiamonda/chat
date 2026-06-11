@@ -801,6 +801,7 @@
         if (data.ok) {
           state._gateGrade = data.grade;
           state._gateSchool = data.school || null;
+          state._gateUnverified = !!(obj.unverified);
           return obj.token;
         }
       } catch (_) { /* fall through */ }
@@ -1005,11 +1006,13 @@
             expiresAt: data.expiresAt,
             grade: data.grade,
             school: data.school || null,
+            unverified: !!data.unverified,
             storedAt: todayLocalISO(),
           }));
         } catch (_) { /* localStorage full? Token still works for this session. */ }
         state._gateGrade = data.grade;
         state._gateSchool = data.school || null;
+        state._gateUnverified = !!data.unverified;
         lockGateToken(data.token);
         return true;
       }
@@ -2696,6 +2699,146 @@
       if (text) text.textContent = `Loading your data… ${state.loadedCount}/${total}`;
       if (state.loadedCount >= total && gp) {
         setTimeout(() => gp.classList.add('hidden'), 400);
+        // Soft-fail path: if the server couldn't determine the grade
+        // from the first /api/gate-check pass (the daemon might have
+        // returned nothing because the dashboard hadn't loaded yet),
+        // re-attempt detection now that the data is in. Runs once per
+        // page load; the result either upgrades us to a regular token
+        // or finally paints the under-8 block.
+        if (state._gateUnverified && !state._gradeDetectionAttempted) {
+          state._gradeDetectionAttempted = true;
+          queueGradeDetectionAutoPrompt();
+        }
+      }
+    }
+
+    // Auto-prompt the AI to re-determine the grade using the freshly-
+    // loaded courses + posts, then POST the result to
+    // /api/grade/confirm. Runs in the background after the dashboard
+    // sections finish loading -- the user doesn't see the prompt or
+    // reply (that would be noise); only the gate result (access
+    // upgraded to a regular token, OR the under-8 block painted).
+    async function queueGradeDetectionAutoPrompt() {
+      if (state.demoMode) return;
+      if (!state.username) return;
+      // Build a compact data dump to inline. Smaller than the full
+      // system prompt the regular chat uses, so this is cheap (~one
+      // short message + one short reply).
+      const courseSummary = (state.courses || [])
+        .map(c => c.courseName || c.title || '')
+        .filter(Boolean)
+        .slice(0, 12)
+        .join(', ');
+      const postSample = (state.posts || [])
+        .map(p => (p.author || '') + ': ' + ((p.content || '').slice(0, 80)))
+        .filter(Boolean)
+        .slice(0, 5)
+        .join(' | ');
+      const prompt = `You are a strict US K-12 grade classifier. Given a student's Schoology data, return ONLY a JSON object on a single line: {\"grade\": <int 1-12 or null>, \"school\": <short or null>, \"confidence\": \"high\"|\"medium\"|\"low\"}. Do not include any other text.
+
+Data:
+Courses: ${courseSummary || '(none)'}
+Recent posts: ${postSample || '(none)'}`;
+      let grade = null;
+      let school = null;
+      try {
+        const workerUrl = localStorage.getItem('schoology-ai-worker-url');
+        if (!workerUrl) {
+          console.warn('[GATE] soft-fail re-detect: no AI worker URL');
+          return;
+        }
+        const res = await fetch(`${workerUrl}/v1/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [
+              { role: 'system', content: 'You only output strict JSON.' },
+              { role: 'user', content: prompt },
+            ],
+            temperature: 0,
+            max_tokens: 80,
+          }),
+        });
+        if (!res.ok) {
+          console.warn('[GATE] soft-fail re-detect: worker HTTP', res.status);
+          return;
+        }
+        // SSE parsing -- the worker may stream the response.
+        const text = await res.text();
+        // Extract all "data: {...}" lines, parse the last one.
+        const lines = text.split('\n');
+        let reply = '';
+        for (const line of lines) {
+          const m = /^data:\s*(\{.*\})\s*$/.exec(line);
+          if (m) {
+            try {
+              const obj = JSON.parse(m[1]);
+              const delta = obj.choices && obj.choices[0] && obj.choices[0].delta;
+              if (delta && delta.content) reply += delta.content;
+            } catch (_) {}
+          }
+          if (line.trim() === 'data: [DONE]') break;
+        }
+        if (!reply) reply = text;  // non-streaming fallback
+        // Find the JSON object in the reply.
+        const jsonMatch = /\{[\s\S]*\}/.exec(reply);
+        if (!jsonMatch) {
+          console.warn('[GATE] soft-fail re-detect: no JSON in reply', reply.slice(0, 100));
+          return;
+        }
+        const parsed = JSON.parse(jsonMatch[0]);
+        const g = parsed.grade;
+        if (g === null || g === undefined) return;       // still unknown
+        const gInt = parseInt(g, 10);
+        if (Number.isFinite(gInt) && gInt >= 1 && gInt <= 12) {
+          grade = gInt;
+          if (typeof parsed.school === 'string' && parsed.school) {
+            school = parsed.school.slice(0, 32);
+          }
+        }
+      } catch (e) {
+        console.warn('[GATE] soft-fail re-detect failed:', e);
+        return;
+      }
+      if (grade === null) return;
+      // POST to /api/grade/confirm to upgrade the token.
+      try {
+        const apiUrl = `${window.location.origin}/schoology`;
+        const auth = getAuthHeader();
+        if (!auth || !auth.Authorization) return;
+        const res = await fetch(`${apiUrl}/api/grade/confirm`, {
+          method: 'POST',
+          headers: { ...auth, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ grade, school }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data && data.ok) {
+          // Persist the new (verified) token; flip state.
+          try {
+            localStorage.setItem(GATE_STORAGE_KEY(state.username), JSON.stringify({
+              token: data.token,
+              expiresAt: data.expiresAt,
+              grade: data.grade,
+              school: data.school || null,
+              unverified: false,
+              storedAt: todayLocalISO(),
+            }));
+          } catch (_) {}
+          state._gateUnverified = false;
+          state._gateGrade = data.grade;
+          state._gateSchool = data.school || null;
+          lockGateToken(data.token);
+          console.log('[GATE] soft-fail upgraded to verified token; grade', data.grade);
+        } else if (data && data.reason === 'under_age') {
+          // The AI confirmed: user is under 8. Paint the block.
+          paintGateBlock({
+            title: 'You must be in grade 8 or higher to use this',
+            body: data.message || 'This AI assistant is available to students in grade 8 and up. By signing in you agreed to our Terms of Use, which include this age restriction.',
+            reason: 'under_age',
+          });
+        }
+      } catch (e) {
+        console.warn('[GATE] grade/confirm POST failed:', e);
       }
     }
 

@@ -1043,6 +1043,15 @@ app.use((req, res, next) => {
 });
 app.use(tokenAuthMiddleware);
 
+// Health check -- the Fly proxy hits this to know when a new
+// instance is ready to take traffic. Return 200 as fast as possible:
+// no DB calls, no upstream checks. The container being up == the
+// app is up. Detailed readiness for individual subsystems (MCP
+// daemon, database, etc.) lives at /api/ready and is for humans.
+app.get('/health', (req, res) => {
+  res.status(200).type('text/plain').send('ok');
+});
+
 // Serve the multiplayer game page
 app.get('/game', (req, res) => {
   const p = join(publicDir, 'game.html');
