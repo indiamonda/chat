@@ -1,0 +1,202 @@
+$ fly logs -a jchat 
+Waiting for logs...
+17:42:18
+[daemon] 2026-06-10 17:42:18,329 INFO run_tool: Calling tool get_upcoming_assignments with args={} for user 95055133
+17:42:26
+[DEBUG] MCP returned: dict = {'base_url': 'https://pausd.schoology.com', 'window_days': 14, 'assignments': [{'title': '8th DDL 2025-26', 'course': 'JLS : 8th Grade Rocks (Grade 08)', 'due': '19 days overdue', 'due_iso': '2026-05-23T06:59', 'url': 'https://pausd.schoology.com/assignment/8000942910'}]}
+17:42:26
+[DEBUG] Returning assignments array with 1 items
+17:42:26
+[daemon] 2026-06-10 17:42:26,533 INFO run_tool: Calling tool get_courses with args={} for user 95055133
+17:42:32
+[DEBUG] MCP returned: dict = {'base_url': 'https://pausd.schoology.com', 'courses': [{'title': 'Advisory/Prime 8 134668 Advisory (7062 1 Advisory/Prime 8) Fee', 'url': 'https://pausd.schoology.com/course/7921535758'}, {'title': 'English 8 134643 05 (6538 6 English 8) Bibat', 'url': 'https://pausd.schoology.com/course/7921535369
+17:42:32
+[DEBUG] Returning courses array with 10 items
+17:54:20
+Pulling container image registry.fly.io/jchat@sha256:5db378d64017dd69a53bbad21dcd1befeb812ceaad0a372371161c51fa3d7015
+17:54:57
+[PM08] machine is in a non-startable state: replacing
+17:55:32
+[PR04] could not find a good candidate within 40 attempts at load balancing
+17:55:58
+Successfully prepared image registry.fly.io/jchat@sha256:5db378d64017dd69a53bbad21dcd1befeb812ceaad0a372371161c51fa3d7015 (1m38.120432688s)
+17:55:58
+Setting up volume 'chat_data'
+17:55:58
+Opening encrypted volume
+17:55:59
+Configuring firecracker
+17:55:59
+ INFO Sending signal SIGINT to main child process w/ PID 647
+17:56:04
+ INFO Sending signal SIGTERM to main child process w/ PID 647
+17:56:04
+ INFO Main child exited with signal (with signal 'SIGTERM', core dumped? false)
+17:56:05
+ INFO Starting clean up.
+17:56:05
+ INFO Umounting /dev/vdc from /data
+17:56:05
+ERROR error umounting /data: EBUSY: Device or resource busy, retrying in a bit
+17:56:05
+[2026-06-10 17:56:05 +0000] [652] [INFO] Handling signal: term
+17:56:05
+[2026-06-10 17:56:05 +0000] [670] [INFO] Worker exiting (pid: 670)
+17:56:05
+ WARN hallpass exited, pid: 648, status: exit status: 0
+17:56:05
+2026/06/10 17:56:05 INFO SSH listening listen_address=[fdaa:49:b985:a7b:4f1:2634:6f3f:2]:22
+17:56:05
+[2026-06-10 17:56:05 +0000] [652] [INFO] Shutting down: Master
+17:56:05
+[ 2458.581298] reboot: Restarting system
+17:56:06
+2026-06-10T17:56:06.730348816 [01KTSAQFA0J77X9W4DTDPQCNC9:main] Running Firecracker v1.14.4
+17:56:06
+2026-06-10T17:56:06.730525259 [01KTSAQFA0J77X9W4DTDPQCNC9:main] Listening on API socket ("/fc.sock").
+17:56:07
+ INFO Starting init (commit: ea887ee)...
+17:56:07
+ INFO Checking filesystem on /data
+17:56:07
+/dev/vdc: clean, 173/64512 files, 103825/258048 blocks
+17:56:07
+ INFO Mounting /dev/vdc at /data w/ uid: 1001, gid: 1001 and chmod 0755
+17:56:07
+ INFO Resized /data to 1056964608 bytes
+17:56:07
+ INFO Preparing to run: `docker-entrypoint.sh sh -c cd /app/schoology; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 1 --threads 8 -c /app/schoology/gunicorn.conf.py server:app & node /app/server/index.js` as nodejs
+17:56:07
+ INFO [fly api proxy] listening at /.fly/api
+17:56:07
+Machine created and started in 1m47.491s
+17:56:08
+2026/06/10 17:56:08 INFO SSH listening listen_address=[fdaa:49:b985:a7b:4f1:2634:6f3f:2]:22
+17:56:08
+[2026-06-10 17:56:08 +0000] [656] [INFO] Starting gunicorn 26.0.0
+17:56:08
+[2026-06-10 17:56:08 +0000] [656] [INFO] Listening at: http://0.0.0.0:8081 (656)
+17:56:08
+[2026-06-10 17:56:08 +0000] [656] [INFO] Using worker: gthread
+17:56:08
+[2026-06-10 17:56:08 +0000] [671] [INFO] Booting worker with pid: 671
+17:56:08
+[2026-06-10 17:56:08 +0000] [656] [INFO] Control socket listening at /home/nodejs/.gunicorn/gunicorn.ctl
+17:56:08
+[PC01] instance refused connection. is your app listening on 0.0.0.0:8080? make sure it is not only listening on 127.0.0.1 (hint: look at your startup logs, servers often print the address they are listening on)
+17:56:09
+Server listening on 0.0.0.0:8080
+17:56:09
+Announcements poll error: FOREIGN KEY constraint failed
+18:56:09
+Announcements poll error: FOREIGN KEY constraint failed
+18:59:40
+[DEBUG] get_data_from_mcp_or_mock called: tool=get_grades, username=95055133, priority=10
+18:59:40
+[MCP-DAEMON] spawning run_tool.py for user=95055133 (worker=0)
+18:59:40
+[DEBUG] get_data_from_mcp_or_mock called: tool=get_upcoming_assignments, username=95055133, priority=10
+18:59:40
+[DEBUG] get_data_from_mcp_or_mock called: tool=get_courses, username=95055133, priority=10
+18:59:40
+[DEBUG] get_data_from_mcp_or_mock called: tool=get_recent_posts, username=95055133, priority=10
+18:59:41
+[daemon] 2026-06-10 18:59:41,133 INFO run_tool: Daemon serving user: 95055133
+18:59:41
+[daemon] 2026-06-10 18:59:41,133 INFO run_tool: Daemon started (pid=680); entering concurrent request loop
+18:59:42
+[daemon] 2026-06-10 18:59:42,068 INFO run_tool: Calling tool get_grades with args={} for user 95055133
+18:59:42
+[daemon] 2026-06-10 18:59:42,069 INFO schoology_mcp.browser: Launching Chromium (headless=True)
+19:00:08
+[daemon] 2026-06-10 19:00:08,818 INFO schoology_mcp.browser: Restoring session from /data/schoology_storage.json
+19:00:23
+[DEBUG] MCP returned: dict = {'base_url': 'https://pausd.schoology.com', 'courses': [{'title': 'Advisory/Prime 8: Advisory (7062 1 Advisory/Prime 8) Fee Course', 'course_grade': 'N/A'}, {'title': 'English 8: 05 (6538 6 English 8) Bibat Course', 'course_grade': 'B ( 82.62% )'}, {'title': 'Geom H: 03 (2407 1 Geom H) Fee Course',
+19:00:23
+[DEBUG] Returning courses array with 10 items
+19:00:23
+[daemon] 2026-06-10 19:00:23,902 INFO run_tool: Calling tool get_upcoming_assignments with args={} for user 95055133
+19:00:32
+[daemon] 2026-06-10 19:00:32,233 INFO run_tool: Calling tool get_courses with args={} for user 95055133
+19:00:32
+[DEBUG] MCP returned: dict = {'base_url': 'https://pausd.schoology.com', 'window_days': 14, 'assignments': [{'title': '8th DDL 2025-26', 'course': 'JLS : 8th Grade Rocks (Grade 08)', 'due': '19 days overdue', 'due_iso': '2026-05-23T06:59', 'url': 'https://pausd.schoology.com/assignment/8000942910'}]}
+19:00:32
+[DEBUG] Returning assignments array with 1 items
+19:00:38
+[DEBUG] MCP returned: dict = {'base_url': 'https://pausd.schoology.com', 'courses': [{'title': 'Advisory/Prime 8 134668 Advisory (7062 1 Advisory/Prime 8) Fee', 'url': 'https://pausd.schoology.com/course/7921535758'}, {'title': 'English 8 134643 05 (6538 6 English 8) Bibat', 'url': 'https://pausd.schoology.com/course/7921535369
+19:00:38
+[DEBUG] Returning courses array with 10 items
+19:00:38
+[daemon] 2026-06-10 19:00:38,318 INFO run_tool: Calling tool get_recent_posts with args={} for user 95055133
+19:00:46
+[DEBUG] MCP returned: dict = {'base_url': 'https://pausd.schoology.com', 'posts': [{'author': 'Sarah Pierce', 'posted_to': 'JLS: 8th Grade Rocks (Grade 08)', 'posted': 'Thu Jun 4, 2026 at 7:02 am', 'timestamp': 1780581733, 'text': None, 'url': 'https://pausd.schoology.com/course/7926724323'}, {'author': 'David Tomatis', 'posted
+19:00:46
+[DEBUG] Returning posts array with 6 items
+19:48:02
+[DEBUG] get_data_from_mcp_or_mock called: tool=get_upcoming_assignments, username=95055133, priority=10
+19:48:02
+[DEBUG] get_data_from_mcp_or_mock called: tool=get_recent_posts, username=95055133, priority=10
+19:48:02
+[daemon] 2026-06-10 19:48:02,099 INFO run_tool: Calling tool get_upcoming_assignments with args={} for user 95055133
+19:48:02
+[DEBUG] get_data_from_mcp_or_mock called: tool=get_courses, username=95055133, priority=10
+19:48:02
+[DEBUG] get_data_from_mcp_or_mock called: tool=get_grades, username=95055133, priority=10
+19:48:06
+Pulling container image registry.fly.io/jchat@sha256:de3fbca23da3bd964433956e862ea44c821a5d9c610fac125b06d52f5460e3c8
+19:48:10
+[daemon] 2026-06-10 19:48:10,575 INFO run_tool: Calling tool get_recent_posts with args={} for user 95055133
+19:48:10
+[DEBUG] MCP returned: dict = {'base_url': 'https://pausd.schoology.com', 'window_days': 14, 'assignments': [{'title': '8th DDL 2025-26', 'course': 'JLS : 8th Grade Rocks (Grade 08)', 'due': '19 days overdue', 'due_iso': '2026-05-23T06:59', 'url': 'https://pausd.schoology.com/assignment/8000942910'}]}
+19:48:10
+[DEBUG] Returning assignments array with 1 items
+19:48:10
+[PM08] machine is in a non-startable state: replacing
+19:48:10
+[PM08] machine is in a non-startable state: replacing
+19:48:10
+[PM08] machine is in a non-startable state: replacing
+19:48:10
+[PM08] machine is in a non-startable state: replacing
+19:48:14
+[PM08] machine is in a non-startable state: replacing
+19:48:18
+[DEBUG] MCP returned: dict = {'base_url': 'https://pausd.schoology.com', 'posts': [{'author': 'Sarah Pierce', 'posted_to': 'JLS: 8th Grade Rocks (Grade 08)', 'posted': 'Thu Jun 4, 2026 at 7:02 am', 'timestamp': 1780581733, 'text': None, 'url': 'https://pausd.schoology.com/course/7926724323'}, {'author': 'David Tomatis', 'posted
+19:48:18
+[DEBUG] Returning posts array with 6 items
+19:48:18
+[daemon] 2026-06-10 19:48:18,788 INFO run_tool: Calling tool get_courses with args={} for user 95055133
+19:48:24
+[DEBUG] MCP returned: dict = {'base_url': 'https://pausd.schoology.com', 'courses': [{'title': 'Advisory/Prime 8 134668 Advisory (7062 1 Advisory/Prime 8) Fee', 'url': 'https://pausd.schoology.com/course/7921535758'}, {'title': 'English 8 134643 05 (6538 6 English 8) Bibat', 'url': 'https://pausd.schoology.com/course/7921535369
+19:48:24
+[DEBUG] Returning courses array with 10 items
+19:48:24
+[daemon] 2026-06-10 19:48:24,571 INFO run_tool: Calling tool get_grades with args={} for user 95055133
+19:48:32
+[DEBUG] MCP returned: dict = {'base_url': 'https://pausd.schoology.com', 'courses': [{'title': 'Advisory/Prime 8: Advisory (7062 1 Advisory/Prime 8) Fee Course', 'course_grade': 'N/A'}, {'title': 'English 8: 05 (6538 6 English 8) Bibat Course', 'course_grade': 'B ( 82.62% )'}, {'title': 'Geom H: 03 (2407 1 Geom H) Fee Course',
+19:48:32
+[DEBUG] Returning courses array with 10 items
+19:48:45
+[PR04] could not find a good candidate within 40 attempts at load balancing
+19:48:46
+[PR04] could not find a good candidate within 40 attempts at load balancing
+19:48:46
+[PR04] could not find a good candidate within 40 attempts at load balancing
+19:48:49
+[PR04] could not find a good candidate within 40 attempts at load balancing
+19:48:52
+[PR03] could not find a good candidate within 40 attempts at load balancing. last error: [PR01] no known healthy instances found for route tcp/443. (hint: is your app shut down? is there an ongoing deployment with a volume or are you using the 'immediate' strategy? have your app's instances all reached their hard limit?)
+19:48:54
+[PR03] could not find a good candidate within 40 attempts at load balancing. last error: [PR01] no known healthy instances found for route tcp/443. (hint: is your app shut down? is there an ongoing deployment with a volume or are you using the 'immediate' strategy? have your app's instances all reached their hard limit?)
+19:48:56
+[PR03] could not find a good candidate within 40 attempts at load balancing. last error: [PR01] no known healthy instances found for route tcp/443. (hint: is your app shut down? is there an ongoing deployment with a volume or are you using the 'immediate' strategy? have your app's instances all reached their hard limit?)
+19:48:56
+[PR03] could not find a good candidate within 40 attempts at load balancing. last error: [PR01] no known healthy instances found for route tcp/443. (hint: is your app shut down? is there an ongoing deployment with a volume or are you using the 'immediate' strategy? have your app's instances all reached their hard limit?)
+19:48:57
+[PR03] could not find a good candidate within 40 attempts at load balancing. last error: [PR01] no known healthy instances found for route tcp/443. (hint: is your app shut down? is there an ongoing deployment with a volume or are you using the 'immediate' strategy? have your app's instances all reached their hard limit?)
+19:49:07
+[PR04] could not find a good candidate within 40 attempts at load balancing
+19:49:19
+[PR03] could not find a good candidate within 40 attempts at load balancing. last error: [PR01] no known healthy instances found for route tcp/443. (hint: is your app shut down? is there an ongoing deployment with a volume or are you using the 'immediate' strategy? have your app's instances all reached their hard limit?)
+19:49:33
+[PR04] could not find a good candidate within 40 attempts at load balancing

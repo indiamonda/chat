@@ -1787,12 +1787,28 @@ const globalRoomRegistry = new Map();
 const ROOM_MAX_PLAYERS = { crossfire: 2, 'arena-coop': 6, 'boss-coop': 4, 'training-coop': 4 };
 const ROOM_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
 
+// Per-mode default map. Client may omit `map` on create/quickplay; the spec
+// (Zone No Light server req v2026-05-29 §4.1) says the server should fill
+// in a sensible default so the matchmaking callback always carries a map
+// for the client to load. Without this, the first-to-quickplay player gets
+// map:null and has nothing to render. Keep this table aligned with the
+// client's MAP_BY_MODE.
+const DEFAULT_MAP_BY_MODE = {
+  crossfire: 'crossfire',
+  'arena-coop': 'arena',
+  'boss-coop': 'boss_arena',
+  'training-coop': 'training',
+};
+function defaultMapForMode(mode) {
+  return DEFAULT_MAP_BY_MODE[mode] || null;
+}
+
 function getAllActiveRooms() {
   const now = Date.now();
   const list = [];
   for (const [roomKey, meta] of globalRoomRegistry) {
     if (now - meta.updatedAt > ROOM_EXPIRY_MS) { globalRoomRegistry.delete(roomKey); continue; }
-    const max = ROOM_MAX_PLAYERS[meta.mode] || QUICKPLAY_MAX;
+    const max = meta.maxPlayers || ROOM_MAX_PLAYERS[meta.mode] || QUICKPLAY_MAX;
     if (meta.playerCount >= max) continue;
     list.push({
       roomKey,
@@ -1808,8 +1824,11 @@ function getAllActiveRooms() {
 }
 
 function registerRoom(roomKey, mode, code, hostId, map) {
+  const effectiveMap = map || defaultMapForMode(mode);
   globalRoomRegistry.set(roomKey, {
-    roomKey, mode, code, hostId, map: map || null,
+    roomKey, mode, code, hostId,
+    map: effectiveMap,
+    maxPlayers: ROOM_MAX_PLAYERS[mode] || QUICKPLAY_MAX,
     playerCount: 1,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -2067,7 +2086,8 @@ gameNsp.on('connection', (socket) => {
         return;
       }
     }
-    // No open room, create new one using the client's chosen map.
+    // No open room, create new one using the client's chosen map (or
+    // the per-mode default if the client didn't send one).
     const prefix = `qp:${mode}:`;
     let code;
     for (let i = 0; i < 50; i++) {
@@ -2078,7 +2098,12 @@ gameNsp.on('connection', (socket) => {
     socket.join(currentRoom);
     gameRooms.set(currentRoom, new Set([socket.id]));
     registerRoom(currentRoom, mode, code, socket.id, requestedMap);
-    cb({ room: code, roomCode: code, roomKey: currentRoom, count: 1, map: requestedMap });
+    // Read back the canonical map from the registry so the callback
+    // matches what subsequent joiners will see (default-filled if the
+    // client omitted it).
+    const newMeta = globalRoomRegistry.get(currentRoom);
+    const effectiveMap = newMeta ? newMeta.map : (requestedMap || defaultMapForMode(mode));
+    cb({ room: code, roomCode: code, roomKey: currentRoom, count: 1, map: effectiveMap });
     broadcastRoomListUpdate();
     broadcastZombieHost(currentRoom);
   });
@@ -2097,7 +2122,9 @@ gameNsp.on('connection', (socket) => {
     socket.join(currentRoom);
     gameRooms.set(currentRoom, new Set([socket.id]));
     registerRoom(currentRoom, mode, code, socket.id, requestedMap);
-    cb({ code, roomCode: code, roomKey: currentRoom, map: requestedMap });
+    const createdMeta = globalRoomRegistry.get(currentRoom);
+    const effectiveMap = createdMeta ? createdMeta.map : (requestedMap || defaultMapForMode(mode));
+    cb({ code, roomCode: code, roomKey: currentRoom, map: effectiveMap });
     broadcastRoomListUpdate();
     broadcastZombieHost(currentRoom);
   });
@@ -2116,8 +2143,8 @@ gameNsp.on('connection', (socket) => {
     }
     if (!foundKey) return cb({ error: 'Room not found' });
     const meta = globalRoomRegistry.get(foundKey);
-    const max = ROOM_MAX_PLAYERS[meta.mode] || QUICKPLAY_MAX;
-    if (meta.playerCount >= max) return cb({ error: 'Room is full' });
+    const max = meta.maxPlayers || ROOM_MAX_PLAYERS[meta.mode] || QUICKPLAY_MAX;
+    if (meta.playerCount >= max) return cb({ error: 'Room full' });
     currentRoom = foundKey;
     socket.join(currentRoom);
     if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
