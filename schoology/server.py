@@ -103,11 +103,16 @@ class FetchQueue:
         self._counter = 0
         self._items = []  # list of [priority, seq, tool_name, username, password, event, result]
 
-    def submit(self, tool_name, username, password, priority=10):
-        """Enqueue a fetch and start a worker thread. Returns (event, item_ref)."""
+    def submit(self, tool_name, username, password, priority=10, arguments=None):
+        """Enqueue a fetch and start a worker thread. Returns (event, item_ref).
+
+        ``arguments`` (optional dict) is forwarded verbatim to the MCP tool
+        call. Stored at index 7 of the item so existing positional readers
+        (priority/seq/tool/user/pw/event/result at 0-6) keep working.
+        """
         with self._lock:
             self._counter += 1
-            item = [priority, self._counter, tool_name, username, password, threading.Event(), None]
+            item = [priority, self._counter, tool_name, username, password, threading.Event(), None, arguments]
             self._items.append(item)
             self._items.sort(key=lambda x: (x[0], x[1]))
             threading.Thread(target=self._worker, args=(item,), daemon=True).start()
@@ -115,7 +120,7 @@ class FetchQueue:
 
     def _worker(self, item):
         with _subprocess_lock:
-            result = call_mcp_tool(item[2], item[3], item[4], timeout_seconds=200)
+            result = call_mcp_tool(item[2], item[3], item[4], timeout_seconds=200, arguments=item[7])
             item[6] = result
         item[5].set()
 
@@ -501,7 +506,7 @@ def _eagerly_start_daemon():
     return
 
 
-def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
+def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds, arguments=None):
     """Call a tool through the long-lived daemon for ``username``.
 
     Respawns and retries once on daemon death (EOFError / BrokenPipeError
@@ -524,7 +529,7 @@ def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
     request = {
         "tool": tool_name,
         "username": username,
-        "arguments": {},
+        "arguments": arguments or {},
     }
     tried = None
     try:
@@ -559,7 +564,7 @@ def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds):
         return None
 
 
-def call_mcp_tool(tool_name, username=None, password=None, timeout_seconds=200):
+def call_mcp_tool(tool_name, username=None, password=None, timeout_seconds=200, arguments=None):
     """Dispatcher: per-user daemon pool (single gunicorn worker).
 
     Gunicorn runs --workers 1, so all schoology traffic is handled in one
@@ -568,10 +573,10 @@ def call_mcp_tool(tool_name, username=None, password=None, timeout_seconds=200):
     background loads coalesce to a single daemon spawn, instead of one
     per request, which previously OOMed the 512MB Fly container.
     """
-    return _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds)
+    return _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds, arguments=arguments)
 
 
-def call_mcp_tool_subprocess(tool_name, username=None, password=None, timeout_seconds=200):
+def call_mcp_tool_subprocess(tool_name, username=None, password=None, timeout_seconds=200, arguments=None):
     """Call a tool by running run_tool.py in a fresh subprocess.
 
     The schoology-mcp server reads USERNAME/PASSWORD from its env, so
@@ -581,7 +586,7 @@ def call_mcp_tool_subprocess(tool_name, username=None, password=None, timeout_se
     request_payload = {
         "tool": tool_name,
         "username": username,
-        "arguments": {},
+        "arguments": arguments or {},
     }
     env = {
         **os.environ,
@@ -702,7 +707,7 @@ def get_mock_data():
     }
 
 
-def get_data_from_mcp_or_mock(tool_name, username=None, password=None, timeout_seconds=200, priority=10):
+def get_data_from_mcp_or_mock(tool_name, username=None, password=None, timeout_seconds=200, priority=10, arguments=None):
     """Try MCP first, fall back to error response (no mock data).
 
     Args:
@@ -711,6 +716,7 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None, timeout_s
         password: Schoology password for authentication
         timeout_seconds: hard timeout for the subprocess
         priority: 0 = AI, 10 = background. Lower runs sooner in the queue.
+        arguments: optional dict of kwargs forwarded to the MCP tool.
 
     NOTE: First call for a user takes ~90s (cold browser + ClassLink login on 512MB Fly.io).
           Subsequent calls take ~3-5s (warm browser reuse).
@@ -720,13 +726,13 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None, timeout_s
 
     if priority <= 0:
         # AI-priority: enqueue and wait
-        evt, item = _fetch_queue.submit(tool_name, username, password, priority=0)
+        evt, item = _fetch_queue.submit(tool_name, username, password, priority=0, arguments=arguments)
         if not evt.wait(timeout=timeout_seconds):
             print(f"[DEBUG] {tool_name} AI-priority queue wait timed out after {timeout_seconds}s", file=sys.stderr)
             return {'_error': True, 'message': f'{tool_name} timeout'}
         data = item[6]
     else:
-        data = call_mcp_tool(tool_name, username=username, password=password, timeout_seconds=timeout_seconds)
+        data = call_mcp_tool(tool_name, username=username, password=password, timeout_seconds=timeout_seconds, arguments=arguments)
     print(f"[DEBUG] MCP returned: {type(data).__name__} = {repr(data)[:300]}" if data else f"[DEBUG] MCP returned None", file=sys.stderr)
 
     # Check for error in CallToolResult
@@ -754,6 +760,14 @@ def get_data_from_mcp_or_mock(tool_name, username=None, password=None, timeout_s
             if 'grades' in data and 'courses' in data['grades']:
                 print(f"[DEBUG] Returning grade courses with {len(data['grades']['courses'])} items", file=sys.stderr)
                 return data['grades']['courses']
+            # Tools that return a single record dict (not a list-shaped
+            # wrapper) -- pass the dict through unchanged so the route
+            # can jsonify it. Without this, get_assignment_info /
+            # get_material / get_course_materials would fall through to
+            # the "not a recognized dict" branch and 502.
+            if tool_name in ('get_assignment_info', 'get_material', 'get_course_materials'):
+                print(f"[DEBUG] Returning raw dict for {tool_name}: keys={list(data.keys())}", file=sys.stderr)
+                return data
         # Not a dict we recognize and not None - fall back to mock
         print(f"[DEBUG] Returning raw data (not a recognized dict), falling back to mock", file=sys.stderr)
         data = None
@@ -873,8 +887,14 @@ def get_assignment_info_route():
     if not url:
         return jsonify({'error': 'url is required'}), 400
     # Use the per-user daemon pool (same path as grades/assignments).
-    # 200s per-call; cold-start path retries on its own.
-    data = get_data_from_mcp_or_mock('get_assignment_info', username, password, priority=_priority_from_request())
+    # 200s per-call; cold-start path retries on its own. The MCP tool
+    # signature is ``get_assignment_info(url_or_id: str)`` -- pass the
+    # raw query value through; the tool normalizes URL / path / id.
+    data = get_data_from_mcp_or_mock(
+        'get_assignment_info', username, password,
+        priority=_priority_from_request(),
+        arguments={'url_or_id': url},
+    )
     if data is None or (isinstance(data, dict) and data.get('_error')):
         return jsonify(data or {'_error': True, 'message': 'MCP call failed'}), 502
     return jsonify(data)

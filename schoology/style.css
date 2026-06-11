@@ -970,6 +970,13 @@
       position: relative;
       transition: all var(--transition-slow);
       border: 1px solid transparent;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .nav-tab-icon {
+      flex-shrink: 0;
+      display: block;
     }
     .nav-tab::after {
       content: '';
