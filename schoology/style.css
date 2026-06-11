@@ -662,14 +662,14 @@
     }
 
     /* Sign In button: HOLLOW inside, with a gradient border and
-       gradient-colored text (per the user's button.svg reference).
-       Layered background: solid --bg (interior = hollow) + gradient
-       on the border-box mask. Text uses a SEPARATE background-clip:
-       text so the gradient shows through the letters. */
+    /* Sign in / Try demo buttons: styled to match the assistant chat
+       bubble (--surface-elevated background, --border outline, --text
+       color) so they visually echo the AI message bubbles. The earlier
+       gradient-border + gradient-text treatment was replaced per user
+       request to keep the login page calmer and consistent with the
+       in-app message language. */
     .login-btn {
       position: relative;
-      /* Flex centering so the gradient text sits in the middle
-         vertically and horizontally regardless of padding. */
       display: flex;
       align-items: center;
       justify-content: center;
@@ -679,20 +679,13 @@
       font-family: 'Didact Gothic', sans-serif;
       cursor: pointer;
       border-radius: 14px;
-      /* TRULY hollow: the interior is fully transparent so the
-         page's background.svg shows through, with the gradient
-         on the border via the padding-box/border-box trick.
-         (Previously the interior was --bg which made the button
-         look like a solid rectangle on the gradient page bg.) */
-      border: 2px solid transparent;
-      background:
-        linear-gradient(transparent, transparent) padding-box,
-        var(--ai-gradient) border-box;
+      background: var(--surface-elevated);
+      color: var(--text);
+      border: 1px solid var(--border);
       transition: all var(--transition-slower);
-      filter: drop-shadow(0 0 12px var(--primary-dim, rgba(0, 187, 255, 0.35)));
     }
     /* Hide the actual <span> text inside the button -- the
-       ::before overlay is what we display, with the gradient. */
+       ::before overlay is what we display. */
     .login-btn > span {
       position: absolute;
       width: 1px; height: 1px;
@@ -702,28 +695,33 @@
       white-space: nowrap;
       border: 0;
     }
-    .login-btn {
-      color: transparent;
-    }
     .login-btn::before {
       content: attr(data-label);
-      /* Block so the ::before fills the flex container; the parent
-         is already centered, so the text sits dead-center. */
       display: block;
-      background: var(--ai-gradient);
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-      color: transparent;
+      color: var(--text);
     }
 
     .login-btn:hover {
-      transform: translateY(-3px) scale(1.02);
-      filter: drop-shadow(0 0 20px var(--primary-glow, rgba(0, 187, 255, 0.55)));
+      background: var(--surface-hover, var(--surface-elevated));
+      border-color: var(--border-bright, var(--border));
+      transform: translateY(-2px);
     }
 
     .login-btn:active {
-      transform: translateY(-1px) scale(0.98);
+      transform: translateY(0) scale(0.98);
+    }
+    /* Disabled state (legal checkbox unticked): muted, no hover lift. */
+    .login-btn:disabled,
+    .login-btn[disabled] {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .login-btn:disabled:hover,
+    .login-btn[disabled]:hover {
+      transform: none;
+      background: var(--surface-elevated);
+      border-color: var(--border);
     }
 
     .login-divider {
@@ -746,32 +744,29 @@
       padding: 0 18px;
     }
 
-    /* Demo button: same hollow-with-gradient-border treatment as
-       .login-btn so the two buttons feel like a pair, but in the
-       "secondary" weight. No full rectangle -- the gradient
-       border is the only visible chrome. */
+    /* Demo button: same chat-bubble look as .login-btn -- the two
+       buttons should feel like a pair, not two visually different
+       primary actions. */
     .demo-btn {
       padding: 16px 36px;
-      /* TRULY hollow: fully transparent interior (the page's
-         background.svg shows through), gradient on the border. */
-      background: transparent;
-      color: #ffffff;
-      border: 2px solid transparent;
-      background:
-        linear-gradient(transparent, transparent) padding-box,
-        var(--ai-gradient) border-box;
+      background: var(--surface-elevated);
+      color: var(--text);
+      border: 1px solid var(--border);
       border-radius: 14px;
       font-size: 1rem;
       font-weight: 600;
       font-family: 'Didact Gothic', sans-serif;
       cursor: pointer;
       transition: all var(--transition-slower);
-      filter: drop-shadow(0 0 10px var(--primary-dim, rgba(0, 187, 255, 0.25)));
     }
 
     .demo-btn:hover {
+      background: var(--surface-hover, var(--surface-elevated));
+      border-color: var(--border-bright, var(--border));
       transform: translateY(-2px);
-      filter: drop-shadow(0 0 18px var(--primary-glow, rgba(0, 187, 255, 0.45)));
+    }
+    .demo-btn:active {
+      transform: translateY(0) scale(0.98);
     }
 
     .login-hint {
@@ -998,6 +993,8 @@
       background: var(--bg);
       border-color: var(--border);
       border-bottom-color: var(--bg);
+      border-top-left-radius: 8px;
+      border-top-right-radius: 8px;
     }
     .nav-tab.active::after { transform: scaleX(1); }
     .nav-tab:active { transform: scale(0.97); }
@@ -1809,6 +1806,15 @@
     @keyframes streamingCharFade {
       from { opacity: 0; }
       to   { opacity: 1; }
+    }
+    /* When a complete inline-format span (e.g. **bold**, *italic*,
+       `code`, $math$) finishes mid-stream, appendStreamingToken's
+       finalizeCompletedInlineSpans() swaps the raw char-spans for a
+       single .streaming-rendered wrapper containing the final HTML.
+       Match the per-char fade so the formatted form pops in cleanly. */
+    .chat-message .markdown-content .streaming-rendered {
+      animation: streamingCharFade 0.18s ease-out;
+      display: inline;
     }
     /* 3-dot typing indicators were removed. The streaming AI reply
        now starts with an empty bubble and the first token lands
@@ -2927,4 +2933,250 @@
   filter: brightness(1.05);
   transform: translateY(-1px);
   box-shadow: 0 4px 16px rgba(139, 92, 246, 0.5);
+}
+
+/* ── Gate block (full-screen "you cannot proceed") ──────────────────── */
+/* Painted by paintGateBlock() in index.html when the age gate refuses
+   the user. Standalone page -- the dashboard is never rendered, the
+   block fills the viewport and its content sits dead-center. No
+   modal, no backdrop, no close button: this IS the page. Use min-
+   height 100dvh so it works on mobile browsers where the URL bar
+   shoves the visible height around. */
+.gate-block {
+  position: fixed; inset: 0;
+  z-index: 99999;
+  display: none;                /* runAgeGate flips to flex */
+  align-items: center; justify-content: center;
+  flex-direction: column;
+  padding: 24px;
+  min-height: 100dvh;
+  background: var(--bg);
+  font-family: 'Didact Gothic', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  overflow-y: auto;
+}
+.gate-block-card {
+  max-width: 520px;
+  width: 100%;
+  /* No card chrome -- just content. The user explicitly asked for
+     "standalone, in the center of the page", not a framed card. The
+     page background does all the work. */
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.gate-block-icon {
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  width: 64px; height: 64px;
+  margin: 0;
+  border-radius: 50%;
+  background: rgba(255, 59, 48, 0.12);
+  color: #ff6b5a;
+}
+.gate-block-title {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+.gate-block-body {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 46ch;
+}
+.gate-block-actions {
+  display: flex; gap: 12px; justify-content: center;
+  margin: 4px 0 0;
+}
+.gate-block-btn {
+  padding: 10px 24px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.gate-block-btn:hover  { background: var(--surface-hover, var(--surface-elevated)); }
+.gate-block-btn:active { transform: scale(0.98); }
+.gate-block-foot {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.7;
+}
+.gate-block-foot code {
+  font-family: 'Oxygen Mono', ui-monospace, monospace;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+/* ── Legal modal (Terms / Privacy) ──────────────────────────────────── */
+/* Opened from links under the sign-in form, and from any "review terms"
+   action later. Long-form readable text -- a scroll container with
+   generous padding and a clear close affordance. */
+.legal-modal-overlay {
+  position: fixed; inset: 0;
+  z-index: 100000;
+  display: none;
+  align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(4px);
+}
+.legal-modal-overlay.open { display: flex; }
+.legal-modal {
+  max-width: 720px;
+  width: 100%;
+  max-height: 86vh;
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.5);
+  overflow: hidden;
+  font-family: 'Didact Gothic', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+}
+.legal-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.legal-modal-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.legal-modal-close {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.1rem; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.15s ease;
+}
+.legal-modal-close:hover { background: var(--surface-elevated); }
+.legal-modal-body {
+  padding: 20px 24px 24px;
+  overflow-y: auto;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+.legal-modal-body h3 {
+  margin: 22px 0 8px;
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+.legal-modal-body h3:first-child { margin-top: 0; }
+.legal-modal-body p, .legal-modal-body li { color: var(--text-secondary); }
+.legal-modal-body p     { margin: 8px 0 12px; }
+.legal-modal-body ul    { margin: 8px 0 14px; padding-left: 20px; }
+.legal-modal-body li    { margin-bottom: 4px; }
+.legal-modal-body em    { color: var(--text); font-style: normal; font-weight: 600; }
+.legal-modal-meta {
+  margin-top: 22px; padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: 0.8;
+}
+
+/* ── Sign-in legal row (Terms + Privacy + required checkbox) ──────── */
+/* The login form is in the landing page (#landingPage). The checkbox
+   gates the Sign in button -- the button is :disabled until ticked. */
+.legal-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 16px 0 8px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  font-family: 'Didact Gothic', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+.legal-row input[type="checkbox"] {
+  flex-shrink: 0;
+  margin-top: 2px;
+  width: 16px; height: 16px;
+  accent-color: var(--primary, #8b5cf6);
+  cursor: pointer;
+}
+.legal-row label {
+  cursor: pointer;
+  user-select: none;
+}
+.legal-row a {
+  color: var(--primary, #8b5cf6);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.legal-row a:hover { filter: brightness(1.2); }
+
+/* ── Teacher chip (colored initials + name) ─────────────────────────── */
+/* Same name always gets the same color (deterministic hash in
+   teacherColor() / teacherChip() in index.html). Used in Grades cards
+   (Overview + List) and the Posts feed. CSS vars --tc-bg, --tc-fg,
+   --tc-ring are set inline so the chip's color travels with the
+   element regardless of where it's rendered. */
+.teacher-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  color: var(--text-secondary);
+}
+.teacher-chip .teacher-avatar {
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--tc-bg, #5b5b6e);
+  color: var(--tc-fg, #fff);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 0 0 2px var(--tc-ring, transparent);
+  flex-shrink: 0;
+  font-family: 'Didact Gothic', system-ui, -apple-system, sans-serif;
+}
+.teacher-chip .teacher-name {
+  font-weight: 500;
+}
+/* Posts feed: the chip replaces the bare author name -- match the
+   prior heading weight so the visual rhythm of the feed survives. */
+.post-author .teacher-chip {
+  font-size: 0.9rem;
+}
+.post-author .teacher-chip .teacher-avatar {
+  width: 26px; height: 26px;
+  font-size: 0.74rem;
+}
+.post-author .teacher-chip .teacher-name {
+  font-weight: 600;
+  color: var(--text);
 }
