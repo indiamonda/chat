@@ -131,7 +131,12 @@
         <form class="login-form" id="loginForm">
           <input type="text" id="loginUsername" placeholder="PAUSD Student ID" required>
           <input type="password" id="loginPassword" placeholder="Schoology Password" required>
-          <button type="button" class="login-btn" data-label="Sign In" onclick="handleLogin({preventDefault:()=>{}})"><span>Sign In</span></button>
+
+          <div class="legal-row">
+            <input type="checkbox" id="legalAgreeCheckbox" onchange="updateLoginButtonState()">
+            <label for="legalAgreeCheckbox">I have read and agree to the <a onclick="openLegalModal('terms')">Terms of Use</a> and <a onclick="openLegalModal('privacy')">Privacy Policy</a>. I confirm I am in 8th grade or higher.</label>
+          </div>
+          <button type="button" id="loginSubmitBtn" class="login-btn" data-label="Sign In" onclick="handleLogin({preventDefault:()=>{}})" disabled><span>Sign In</span></button>
         </form>
 
         <div class="login-divider"><span>or</span></div>
@@ -139,6 +144,102 @@
         <button class="demo-btn" onclick="enterDemoMode()">Try Demo Mode</button>
 
         <p class="login-hint">Your credentials are used to authenticate with Schoology via MCP.</p>
+      </div>
+    </div>
+
+    <!-- Terms of Use modal -->
+    <div class="legal-modal-overlay" id="termsModal" onclick="if(event.target===this)closeLegalModal('terms')">
+      <div class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="termsModalTitle">
+        <div class="legal-modal-header">
+          <h2 class="legal-modal-title" id="termsModalTitle">Terms of Use</h2>
+          <button class="legal-modal-close" onclick="closeLegalModal('terms')" aria-label="Close">✕</button>
+        </div>
+        <div class="legal-modal-body">
+          <h3>1. Who can use this dashboard</h3>
+          <p>This dashboard is designed for students who are currently enrolled in <em>8th grade or higher</em>. The AI Assistant verifies your grade level from the data Schoology returns for your account.</p>
+          <p>If you are below 8th grade, you are <em>not permitted</em> to use the AI Assistant. The dashboard itself is built around PAUSD's Schoology setup and may not work well for students at other districts, but we do not block access based on which school or district you attend — only on grade level.</p>
+
+          <h3>2. The AI Assistant can make mistakes</h3>
+          <p>The AI Assistant is an experimental, automated system. It generates answers using a large language model and may produce information that is incomplete, inaccurate, out of date, or contradicts your teacher, your school, or the official PAUSD policies.</p>
+          <p>You agree to use any output from the AI Assistant <em>at your own risk</em>. Neither the operators of this dashboard nor the underlying AI provider accept any responsibility for any harm, academic penalty, missed deadline, lost grade, disciplinary outcome, or other incident caused, directly or indirectly, by the AI Assistant's output. <em>Always verify important information with a teacher, counsellor, or the official PAUSD source before acting on it.</em></p>
+
+          <h3>3. No professional advice</h3>
+          <p>The AI Assistant is not a substitute for advice from a teacher, counsellor, licensed mental-health professional, lawyer, doctor, or any other qualified human. Do not rely on it for medical, legal, mental-health, or other safety-critical decisions.</p>
+
+          <h3>4. Acceptable use</h3>
+          <ul>
+            <li>Do not use the AI Assistant to cheat, plagiarise, or violate the PAUSD academic-integrity policy.</li>
+            <li>Do not attempt to bypass the age or district gate, including by tampering with browser storage, request headers, or tokens.</li>
+            <li>Do not use the dashboard to harass, threaten, dox, or harm any other person.</li>
+            <li>Do not attempt to access another student's data using credentials that are not yours.</li>
+          </ul>
+          <p>Misuse may result in your access being revoked and (where appropriate) reported to PAUSD.</p>
+
+          <h3>5. Service availability</h3>
+          <p>The dashboard is provided "as is" and "as available" with no warranty. It may be offline, slow, or partially broken at any time, including during exam periods. You should never rely on the dashboard as your only source for grades, assignments, or deadlines — always confirm in Schoology itself.</p>
+
+          <h3>6. Changes</h3>
+          <p>These Terms of Use may be updated. When the wording changes you will be asked to agree to the new version the next time you sign in. Continuing to use the dashboard after a change means you accept the new terms.</p>
+
+          <p class="legal-modal-meta">Terms version 2 · Last updated June 2026 · Operated by JimmyQrg (independent; not affiliated with PAUSD).</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Privacy Policy modal -->
+    <div class="legal-modal-overlay" id="privacyModal" onclick="if(event.target===this)closeLegalModal('privacy')">
+      <div class="legal-modal" role="dialog" aria-modal="true" aria-labelledby="privacyModalTitle">
+        <div class="legal-modal-header">
+          <h2 class="legal-modal-title" id="privacyModalTitle">Privacy Policy</h2>
+          <button class="legal-modal-close" onclick="closeLegalModal('privacy')" aria-label="Close">✕</button>
+        </div>
+        <div class="legal-modal-body">
+          <h3>1. What we collect</h3>
+          <p>To work, the dashboard needs to read certain data from your Schoology account:</p>
+          <ul>
+            <li>Your <em>PAUSD Student ID</em> and <em>Schoology password</em>, which you provide when you sign in.</li>
+            <li>Your <em>courses, grades, assignments, and recent posts</em> as shown in Schoology.</li>
+            <li>Your <em>chat history with the AI Assistant</em>, including any files you upload.</li>
+          </ul>
+
+          <h3>2. How we use it</h3>
+          <p>Your data is used <em>only</em> to operate the dashboard for you:</p>
+          <ul>
+            <li>Your credentials are used to log into Schoology on your behalf and are stored on the server only in the form of a session cookie file kept on the server's private disk.</li>
+            <li>Your courses, grades, and recent posts are sent to a third-party AI provider (DeepSeek) <em>once per semester</em> to verify your school and grade level (this is the age/district gate described in the Terms). The result is cached on the server so the check does not repeat until the next semester.</li>
+            <li>Your AI chat messages are sent to the AI provider to generate responses, the same way ChatGPT or any other AI assistant works.</li>
+          </ul>
+
+          <h3>3. What we do <em>not</em> do</h3>
+          <ul>
+            <li>We do <em>not</em> sell your data.</li>
+            <li>We do <em>not</em> share your data with advertisers.</li>
+            <li>We do <em>not</em> share your data with PAUSD staff, your teachers, or other students.</li>
+            <li>We do <em>not</em> share your data with anyone else's account; each account sees only its own data.</li>
+          </ul>
+
+          <h3>4. Where data is stored</h3>
+          <p>Your Schoology session cookies, your AI chat history, your uploaded files, and the gate-check decision are stored on the server's persistent disk (a Fly.io volume). Uploaded files are automatically deleted after one hour.</p>
+          <p>Chat history and gate-check decisions remain stored until you delete them (chat history via the AI Assistant UI) or until the operator deletes them on request.</p>
+
+          <h3>5. Third parties</h3>
+          <ul>
+            <li><em>Schoology / PAUSD ClassLink</em>: every time you load the dashboard, the server signs in to Schoology on your behalf, just as a browser would.</li>
+            <li><em>DeepSeek (AI provider)</em>: receives your chat messages and (once per semester) a summary of your courses + recent posts for grade detection.</li>
+            <li><em>Fly.io (hosting)</em>: hosts the dashboard server and its persistent disk.</li>
+          </ul>
+
+          <h3>6. Your choices</h3>
+          <p>You can stop using the dashboard at any time. You can request that your stored data be deleted by signing out and contacting the operator. Clearing the dashboard's session in Settings will remove your Schoology session cookies from the server.</p>
+
+          <h3>7. Children's privacy</h3>
+          <p>This service is not directed to children under the age of 13. Access to the AI Assistant is restricted to students in 8th grade or higher.</p>
+
+          <h3>8. Changes</h3>
+          <p>This policy may be updated. When the wording changes you will be asked to agree to the new version the next time you sign in.</p>
+
+          <p class="legal-modal-meta">Privacy version 2 · Last updated June 2026 · Operated by JimmyQrg (independent; not affiliated with PAUSD).</p>
+        </div>
       </div>
     </div>
 
@@ -242,13 +343,12 @@
             </svg>
             <span>Overview</span>
           </div>
-          <div class="nav-tab" data-tab="grades">
+          <div class="nav-tab" data-tab="activity">
             <svg class="nav-tab-icon" viewBox="0 0 24 24" width="16" height="16" stroke-width="1.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M2.57331 8.46334L11.2317 4.13416C11.4006 4.04971 11.5994 4.04971 11.7683 4.13416L20.4267 8.46334C20.8689 8.68446 20.8689 9.31554 20.4267 9.53666L11.7683 13.8658C11.5994 13.9503 11.4006 13.9503 11.2317 13.8658L2.57331 9.53666C2.13108 9.31554 2.13108 8.68446 2.57331 8.46334Z"/>
-              <path d="M22.5 13L22.5 9.5L20.5 8.5"/>
-              <path d="M4.5 10.5V15.9121C4.5 16.6843 4.94459 17.3876 5.6422 17.7188L10.6422 20.0928C11.185 20.3505 11.815 20.3505 12.3578 20.0928L17.3578 17.7188C18.0554 17.3876 18.5 16.6843 18.5 15.9121V10.5"/>
+              <path d="M18 8.4C18 6.70261 17.3679 5.07475 16.2426 3.87452C15.1174 2.67428 13.5913 2 12 2C10.4087 2 8.88258 2.67428 7.75736 3.87452C6.63214 5.07475 6 6.70261 6 8.4C6 15.8667 3 18 3 18H21C21 18 18 15.8667 18 8.4Z"/>
+              <path d="M13.73 21C13.5542 21.3031 13.3019 21.5547 12.9982 21.7295C12.6946 21.9044 12.3504 21.9965 12 21.9965C11.6496 21.9965 11.3054 21.9044 11.0018 21.7295C10.6982 21.5547 10.4458 21.3031 10.27 21"/>
             </svg>
-            <span>Grades</span>
+            <span>Posts</span>
           </div>
           <div class="nav-tab" data-tab="assignments">
             <svg class="nav-tab-icon" viewBox="0 0 24 24" width="16" height="16" stroke-width="1.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -261,12 +361,13 @@
             </svg>
             <span>Assignments</span>
           </div>
-          <div class="nav-tab" data-tab="activity">
+          <div class="nav-tab" data-tab="grades">
             <svg class="nav-tab-icon" viewBox="0 0 24 24" width="16" height="16" stroke-width="1.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M18 8.4C18 6.70261 17.3679 5.07475 16.2426 3.87452C15.1174 2.67428 13.5913 2 12 2C10.4087 2 8.88258 2.67428 7.75736 3.87452C6.63214 5.07475 6 6.70261 6 8.4C6 15.8667 3 18 3 18H21C21 18 18 15.8667 18 8.4Z"/>
-              <path d="M13.73 21C13.5542 21.3031 13.3019 21.5547 12.9982 21.7295C12.6946 21.9044 12.3504 21.9965 12 21.9965C11.6496 21.9965 11.3054 21.9044 11.0018 21.7295C10.6982 21.5547 10.4458 21.3031 10.27 21"/>
+              <path d="M2.57331 8.46334L11.2317 4.13416C11.4006 4.04971 11.5994 4.04971 11.7683 4.13416L20.4267 8.46334C20.8689 8.68446 20.8689 9.31554 20.4267 9.53666L11.7683 13.8658C11.5994 13.9503 11.4006 13.9503 11.2317 13.8658L2.57331 9.53666C2.13108 9.31554 2.13108 8.68446 2.57331 8.46334Z"/>
+              <path d="M22.5 13L22.5 9.5L20.5 8.5"/>
+              <path d="M4.5 10.5V15.9121C4.5 16.6843 4.94459 17.3876 5.6422 17.7188L10.6422 20.0928C11.185 20.3505 11.815 20.3505 12.3578 20.0928L17.3578 17.7188C18.0554 17.3876 18.5 16.6843 18.5 15.9121V10.5"/>
             </svg>
-            <span>Activity</span>
+            <span>Grades</span>
           </div>
           <div class="nav-tab" data-tab="settings">
             <svg class="nav-tab-icon" viewBox="0 0 24 24" width="16" height="16" stroke-width="1.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -459,6 +560,492 @@
       aiLoading: false
     };
 
+    // ── PAUSD academic calendar (secondary 9-12) ──────────────────────────
+    // Hard-coded from the official district PDFs at
+    // pausd.org/school-life/calendar (sourced 2026-06). Used by the AI
+    // system prompt so the model doesn't tell a student to "make up
+    // missing assignments" after the gradebook has closed for the
+    // semester, or reference current courses during summer break.
+    //
+    // When a new school year's PDF is published, add a new YEARS entry
+    // keyed by the starting year (Aug). All dates are ISO YYYY-MM-DD in
+    // local (Pacific) time; we never need an hour-level resolution so
+    // string compare is sufficient.
+    const PAUSD_CALENDAR = {
+      // 2025-2026 secondary
+      '2025': {
+        firstDay:       '2025-08-14',
+        sem1End:        '2025-12-19',   // gradebook closes, finals over
+        winterBreak:   ['2025-12-22', '2026-01-05'],
+        sem2Start:      '2026-01-06',
+        springBreak:   ['2026-04-06', '2026-04-10'],
+        finalsStart:    '2026-06-01',
+        lastDay:        '2026-06-04',   // = sem2 end, gradebook close
+        holidays: {
+          '2025-09-01': 'Labor Day',
+          '2025-10-03': 'Staff Development Day',
+          '2025-11-11': "Veterans' Day",
+          '2025-11-24': 'Thanksgiving Break',
+          '2025-11-25': 'Thanksgiving Break',
+          '2025-11-26': 'Thanksgiving Break',
+          '2025-11-27': 'Thanksgiving Break',
+          '2025-11-28': 'Thanksgiving Break',
+          '2026-01-19': 'MLK Jr. Day',
+          '2026-02-13': 'Local Holiday',
+          '2026-02-16': "Washington's Birthday",
+          '2026-03-09': 'Local Holiday',
+          '2026-03-10': 'Staff Development Day',
+          '2026-05-01': 'Local Holiday',
+          '2026-05-25': 'Memorial Day',
+        },
+      },
+      // 2026-2027 secondary
+      '2026': {
+        firstDay:       '2026-08-13',
+        sem1End:        '2026-12-18',
+        winterBreak:   ['2026-12-21', '2027-01-04'],
+        sem2Start:      '2027-01-05',
+        springBreak:   ['2027-04-05', '2027-04-09'],
+        finalsStart:    '2027-06-01',
+        lastDay:        '2027-06-03',
+        holidays: {
+          '2026-09-07': 'Labor Day',
+          '2026-10-02': 'Staff Development Day',
+          '2026-11-11': "Veterans' Day",
+          '2026-11-23': 'Thanksgiving Break',
+          '2026-11-24': 'Thanksgiving Break',
+          '2026-11-25': 'Thanksgiving Break',
+          '2026-11-26': 'Thanksgiving Break',
+          '2026-11-27': 'Thanksgiving Break',
+          '2027-01-18': 'MLK Jr. Day',
+          '2027-02-12': 'Local Holiday',
+          '2027-02-15': "Washington's Birthday",
+          '2027-03-15': 'Local Holiday',
+          '2027-03-16': 'Staff Development Day',
+          '2027-04-30': 'Local Holiday',
+          '2027-05-31': 'Memorial Day',
+        },
+      },
+    };
+
+    // Return today's date as YYYY-MM-DD in local (Pacific) time. The
+    // student's clock is the source of truth -- the calendar is in
+    // local school-district time and JS Date.toISOString() would shift
+    // by the user's UTC offset.
+    function todayLocalISO() {
+      const d = new Date();
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    // Pick the school year a given ISO date falls into. School year
+    // 'YYYY' runs ~Aug YYYY through ~Jun (YYYY+1). Dates before the
+    // first hard-coded year return null; dates after the last one also
+    // return null and the caller treats the result as 'unknown phase'.
+    function pickSchoolYear(iso) {
+      const years = Object.keys(PAUSD_CALENDAR).sort();
+      for (let i = years.length - 1; i >= 0; i--) {
+        const y = years[i];
+        const start = PAUSD_CALENDAR[y].firstDay;
+        // Year y "owns" all dates from its first day until the next
+        // year's first day; the last year owns everything after its
+        // start until its last day, after which we fall off the
+        // calendar.
+        if (iso >= start) {
+          // For the most recent year, also bound on the right: anything
+          // after lastDay is 'after-year' summer with no next-year data.
+          return y;
+        }
+      }
+      return null;
+    }
+
+    // Classify today into a calendar phase. Returns:
+    //   {phase, semester, year, nextBoundary, daysToNextBoundary, holidayName}
+    // phase: 'before-year' | 'in-sem1' | 'finals-sem1' | 'winter-break'
+    //      | 'in-sem2' | 'spring-break' | 'finals-week' | 'summer-after-year'
+    //      | 'holiday' | 'unknown'
+    function getTermPhase(iso) {
+      const today = iso || todayLocalISO();
+      const year = pickSchoolYear(today);
+      if (!year) {
+        return { phase: 'unknown', semester: null, year: null, nextBoundary: null, holidayName: null };
+      }
+      const cal = PAUSD_CALENDAR[year];
+      // Discrete holiday (single day, including Thanksgiving span and
+      // anything in the holidays map) takes priority over the broad
+      // 'in-sem1' / 'in-sem2' label, so the model knows today is a
+      // no-school day.
+      if (cal.holidays[today]) {
+        return {
+          phase: 'holiday',
+          semester: today < cal.sem2Start ? 1 : 2,
+          year, nextBoundary: null, holidayName: cal.holidays[today],
+        };
+      }
+      if (today < cal.firstDay) {
+        return { phase: 'before-year', semester: null, year, nextBoundary: cal.firstDay, holidayName: null };
+      }
+      // Finals week (sem 2): finalsStart .. lastDay inclusive
+      if (today >= cal.finalsStart && today <= cal.lastDay) {
+        return { phase: 'finals-week', semester: 2, year, nextBoundary: cal.lastDay, holidayName: null };
+      }
+      // Summer: past lastDay
+      if (today > cal.lastDay) {
+        // Try to point at next year's firstDay if we have it.
+        const next = PAUSD_CALENDAR[String(Number(year) + 1)];
+        return {
+          phase: 'summer-after-year',
+          semester: null, year,
+          nextBoundary: next ? next.firstDay : null,
+          holidayName: null,
+        };
+      }
+      // Winter break
+      if (today >= cal.winterBreak[0] && today <= cal.winterBreak[1]) {
+        return { phase: 'winter-break', semester: null, year, nextBoundary: cal.sem2Start, holidayName: null };
+      }
+      // Spring break
+      if (today >= cal.springBreak[0] && today <= cal.springBreak[1]) {
+        return { phase: 'spring-break', semester: 2, year, nextBoundary: null, holidayName: null };
+      }
+      // Sem 1 (between firstDay and sem1End)
+      if (today <= cal.sem1End) {
+        // Finals-sem1 marker: last 5 school days before sem1End. We
+        // don't have an exact secondary finals-sem1 range from the PDF
+        // (it isn't called out), so flag the final calendar week as
+        // gradebook-closing without claiming it's "finals" specifically.
+        const d = new Date(cal.sem1End + 'T00:00:00');
+        d.setDate(d.getDate() - 6);
+        const closeWindow = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        if (today >= closeWindow) {
+          return { phase: 'finals-sem1', semester: 1, year, nextBoundary: cal.sem1End, holidayName: null };
+        }
+        return { phase: 'in-sem1', semester: 1, year, nextBoundary: cal.sem1End, holidayName: null };
+      }
+      // Between sem1End and sem2Start (gradebook closed, students out)
+      if (today < cal.sem2Start) {
+        return { phase: 'winter-break', semester: null, year, nextBoundary: cal.sem2Start, holidayName: null };
+      }
+      // Sem 2 (between sem2Start and finalsStart)
+      return { phase: 'in-sem2', semester: 2, year, nextBoundary: cal.finalsStart, holidayName: null };
+    }
+
+    // Get the ISO date the current cached gate-token should expire on.
+    // Tokens are valid until the end of the semester (or summer-window)
+    // the user signed up in -- when the boundary rolls, the cache key
+    // changes and the gate re-checks. Three cases:
+    //   - In semester 1   -> sem1End
+    //   - In semester 2   -> lastDay (= sem2 end)
+    //   - Summer between  -> next year's firstDay if known, else null
+    // MUST stay in sync with current_semester_end_iso() in gate.py.
+    function currentSemesterEndISO(iso) {
+      const today = iso || todayLocalISO();
+      const year = pickSchoolYear(today);
+      if (!year) return null;
+      const cal = PAUSD_CALENDAR[year];
+      if (today <= cal.sem1End) return cal.sem1End;
+      if (today <= cal.lastDay) return cal.lastDay;
+      const next = PAUSD_CALENDAR[String(Number(year) + 1)];
+      return next ? next.firstDay : null;
+    }
+
+    // ── Age + district gate (frontend) ──────────────────────────────────
+    // Runs BEFORE anything renders. Sequence:
+    //   1) Check sessionStorage for a token already issued THIS PAGE
+    //      load -- if present and unexpired, skip the network call.
+    //   2) Check localStorage[gate:<username>] for a token from a
+    //      previous visit. If it verifies server-side (POST
+    //      /api/gate-verify), reuse it; this is the "already checked
+    //      this semester" fast path.
+    //   3) Otherwise POST /api/gate-check, which runs the DeepSeek
+    //      classifier against the student's actual courses+posts and
+    //      either returns a signed token (grade>=8, PAUSD) or a
+    //      reason string we render as a full-screen blocker.
+    //
+    // The token is stored under sessionStorage.gateToken AND locked
+    // via Object.defineProperty so devtools can't overwrite it; the
+    // server also re-validates it on every AI request, so even if
+    // someone tampered with localStorage they can't synthesize a
+    // valid token without SESSION_SECRET.
+    const GATE_STORAGE_KEY = (username) => `pausd_gate_v1_${username}`;
+    const TERMS_STORAGE_KEY = (username) => `pausd_terms_accepted_v1_${username}`;
+    const CURRENT_TERMS_VERSION = 2;
+
+    // Read+verify the cached token for `username`. Returns the token
+    // string if it's still valid for this semester, else null.
+    async function loadCachedGateToken(apiUrl, headers, username) {
+      // The semester-end check is also enforced server-side; this is a
+      // cheap client-side short-circuit so we don't hit the network
+      // when we don't need to.
+      const cached = localStorage.getItem(GATE_STORAGE_KEY(username));
+      if (!cached) return null;
+      try {
+        const obj = JSON.parse(cached);
+        if (!obj.token || !obj.expiresAt) return null;
+        if (todayLocalISO() > obj.expiresAt) {
+          localStorage.removeItem(GATE_STORAGE_KEY(username));
+          return null;
+        }
+        // Server-side re-validate (HMAC + binds username). Catches
+        // wall-clock tampering and SESSION_SECRET rotation.
+        const res = await fetch(`${apiUrl}/api/gate-verify`, {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: obj.token }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => ({}));
+        if (data.ok) {
+          state._gateGrade = data.grade;
+          state._gateSchool = data.school || null;
+          return obj.token;
+        }
+      } catch (_) { /* fall through */ }
+      localStorage.removeItem(GATE_STORAGE_KEY(username));
+      return null;
+    }
+
+    // Lock state.gateToken so console-set state.gateToken = "fake"
+    // throws TypeError. The server still re-verifies every request --
+    // this is the second of several anti-tamper layers.
+    function lockGateToken(token) {
+      try {
+        Object.defineProperty(state, 'gateToken', {
+          value: token, writable: false, configurable: false, enumerable: true,
+        });
+      } catch (_) {
+        // Already locked from a previous call. Silently ignore -- the
+        // server is the source of truth, and locking is defense in depth.
+        state.gateToken = token; // best-effort; defineProperty above handles the real case
+      }
+      // Also expose the token via a sealed sessionStorage entry so
+      // page reloads inside the same session can pick it back up.
+      try { sessionStorage.setItem('pausd_gate_token', token); } catch (_) {}
+      // Start the periodic re-verify -- guards against semester roll
+      // mid-session and against an attacker who replays an expired
+      // token (the server will reject it). Idempotent: only one timer
+      // ever runs.
+      startGateHeartbeat();
+      // Devtools-tamper console warning, once per session. The actual
+      // protection is the server; this is just a hint that messing
+      // with these globals will not bypass anything.
+      try {
+        if (!window.__GATE_WARNED__) {
+          window.__GATE_WARNED__ = true;
+          console.log(
+            '%cAI Assistant access verification',
+            'color:#8b5cf6;font-size:14px;font-weight:bold;',
+            '\n\nThis dashboard is for PAUSD students in grade 8 or higher.\n' +
+            'Access is verified server-side on every AI request; modifying ' +
+            'localStorage or page globals will NOT grant access.\n' +
+            'See Terms of Use / Privacy Policy for details.'
+          );
+        }
+      } catch (_) {}
+    }
+
+    // Periodically re-verify the cached gate token with the server.
+    // Catches:
+    //   - Semester roll mid-session: token expires server-side, we
+    //     stop sending AI requests gracefully.
+    //   - SESSION_SECRET rotation: server refuses every old token,
+    //     forcing a re-sign-in.
+    //   - A user who tampers with state.gateToken in some unusual
+    //     way that we didn't anticipate.
+    // Interval is 10 minutes -- often enough to catch problems within
+    // one class period, cheap enough that the network cost is nil.
+    let _gateHeartbeatHandle = null;
+    function startGateHeartbeat() {
+      if (_gateHeartbeatHandle) return;
+      _gateHeartbeatHandle = setInterval(async () => {
+        if (!state.gateToken || state.demoMode) return;
+        try {
+          const apiUrl = `${window.location.origin}/schoology`;
+          const auth = getAuthHeader();
+          if (!auth || !auth.Authorization) return;
+          const res = await fetch(`${apiUrl}/api/gate-verify`, {
+            method: 'POST',
+            headers: { 'Authorization': auth.Authorization, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: state.gateToken }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (data && data.ok) return; // still good
+          // Server rejected. Halt AI activity and paint a friendly
+          // blocker; the user can reload to re-check.
+          console.warn('[GATE] Heartbeat rejected -- token no longer valid:', data && data.reason);
+          try {
+            const u = state.username;
+            if (u) localStorage.removeItem(GATE_STORAGE_KEY(u));
+            sessionStorage.removeItem('pausd_gate_token');
+          } catch (_) {}
+          paintGateBlock({
+            title: 'Access expired',
+            body: 'Your access has expired (semester change, server update, or token issue). Please refresh the page to verify again.',
+            reason: 'heartbeat_failed',
+          });
+          clearInterval(_gateHeartbeatHandle);
+          _gateHeartbeatHandle = null;
+        } catch (_) {
+          // Network blip -- don't punish the user; try again next tick.
+        }
+      }, 10 * 60 * 1000); // 10 min
+    }
+
+    // Paint a full-screen blocker. Hides every other UI region;
+    // refusing to render the dashboard is the gate's actual effect.
+    function paintGateBlock({ title, body, reason }) {
+      const root = document.getElementById('appContainer') || document.body;
+      const appLoading = document.getElementById('appLoading');
+      const landingPage = document.getElementById('landingPage');
+      if (appLoading) appLoading.classList.add('hidden');
+      if (landingPage) landingPage.style.display = 'none';
+      let block = document.getElementById('gateBlock');
+      if (!block) {
+        block = document.createElement('div');
+        block.id = 'gateBlock';
+        block.className = 'gate-block';
+        document.body.appendChild(block);
+      }
+      block.innerHTML = `
+        <div class="gate-block-card">
+          <div class="gate-block-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M4.93 4.93l14.14 14.14"/>
+            </svg>
+          </div>
+          <h1 class="gate-block-title">${title}</h1>
+          <p class="gate-block-body">${body}</p>
+          <div class="gate-block-actions">
+            <button class="gate-block-btn" onclick="gateBlockSignOut()">Sign out</button>
+          </div>
+          <p class="gate-block-foot">Reason code: <code>${reason || 'gate_blocked'}</code></p>
+        </div>
+      `;
+      block.style.display = 'flex';
+    }
+
+    // Main gate flow. Returns true if the user passed and the dashboard
+    // can proceed; false if a blocker is painted (caller MUST bail).
+    async function runAgeGate(loadingUI, updateLoading) {
+      const apiUrl = `${window.location.origin}/schoology`;
+      const authHeaders = (() => {
+        const a = getAuthHeader();
+        return a && a.Authorization ? { Authorization: a.Authorization } : {};
+      })();
+      const username = state.username;
+      if (!username) {
+        paintGateBlock({
+          title: 'Not signed in',
+          body: 'Please sign in to continue.',
+          reason: 'auth_required',
+        });
+        return false;
+      }
+      if (!authHeaders.Authorization) {
+        paintGateBlock({
+          title: 'Not signed in',
+          body: 'Please sign in to continue.',
+          reason: 'auth_required',
+        });
+        return false;
+      }
+
+      // Fast path: cached + verifiable token from a prior visit this semester.
+      const cached = await loadCachedGateToken(apiUrl, authHeaders, username);
+      if (cached) {
+        lockGateToken(cached);
+        return true;
+      }
+
+      // Terms agreement is required before we run detection. The Terms
+      // modal stores the accepted version under TERMS_STORAGE_KEY; if
+      // the user hasn't ticked the box yet, the sign-in flow won't
+      // have set it. In that case we paint a quick "please accept"
+      // blocker and let them sign back in.
+      const termsRaw = localStorage.getItem(TERMS_STORAGE_KEY(username));
+      let termsVersion = 0;
+      try { termsVersion = parseInt(termsRaw || '0', 10) || 0; } catch (_) {}
+      if (termsVersion !== CURRENT_TERMS_VERSION) {
+        paintGateBlock({
+          title: 'Terms updated',
+          body: 'Please sign out and sign back in to review our updated Terms of Use and Privacy Policy.',
+          reason: 'terms_required',
+        });
+        return false;
+      }
+
+      if (updateLoading) updateLoading('Verifying access (one-time per semester)…');
+
+      let res, data;
+      try {
+        res = await fetch(`${apiUrl}/api/gate-check`, {
+          method: 'POST',
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ termsAcceptedVersion: CURRENT_TERMS_VERSION }),
+        });
+        data = await res.json();
+      } catch (e) {
+        paintGateBlock({
+          title: "Sorry — we couldn't verify your grade",
+          body: `Could not reach the verification server. Please refresh and try again. Network error: ${(e && e.message) || e}.`,
+          reason: 'network_error',
+        });
+        return false;
+      }
+
+      if (data && data.ok) {
+        // Persist for the rest of this semester.
+        try {
+          localStorage.setItem(GATE_STORAGE_KEY(username), JSON.stringify({
+            token: data.token,
+            expiresAt: data.expiresAt,
+            grade: data.grade,
+            school: data.school || null,
+            storedAt: todayLocalISO(),
+          }));
+        } catch (_) { /* localStorage full? Token still works for this session. */ }
+        state._gateGrade = data.grade;
+        state._gateSchool = data.school || null;
+        lockGateToken(data.token);
+        return true;
+      }
+
+      // Failure paths. Each gets a tailored screen.
+      const reason = (data && data.reason) || 'detection_failed';
+      const message = (data && data.message) || '';
+      if (reason === 'under_age') {
+        paintGateBlock({
+          title: 'You must be in grade 8 or higher to use this',
+          body: message || 'This AI assistant is available to students in grade 8 and up. By signing in you agreed to our Terms of Use, which include this age restriction.',
+          reason,
+        });
+      } else if (reason === 'terms_required') {
+        paintGateBlock({
+          title: 'Terms updated',
+          body: 'Please sign out and sign back in to review our updated Terms of Use and Privacy Policy.',
+          reason,
+        });
+      } else if (reason === 'rate_limited') {
+        paintGateBlock({
+          title: 'Please wait a moment',
+          body: message || 'Verifying access — please wait a few seconds and refresh.',
+          reason,
+        });
+      } else {
+        // detection_failed / unknown
+        paintGateBlock({
+          title: "Sorry — we couldn't determine your grade level",
+          body: message || 'Could not determine your grade level from your Schoology data. Please refresh and try again.',
+          reason,
+        });
+      }
+      return false;
+    }
+
     // Demo data
     const demoData = {
       grades: [
@@ -561,6 +1148,49 @@
       applyDarkMode(isDark);
     }
 
+    // ── Legal modals (Terms / Privacy) ─────────────────────────────────
+    // openLegalModal('terms'|'privacy') -- show; closeLegalModal(...) -- hide.
+    // The overlay traps focus loosely (Esc closes); we don't full-trap
+    // because the modals are content-only and a missed Tab is harmless.
+    function openLegalModal(which) {
+      const id = which === 'privacy' ? 'privacyModal' : 'termsModal';
+      const m = document.getElementById(id);
+      if (!m) return;
+      m.classList.add('open');
+      m.setAttribute('aria-hidden', 'false');
+      // Esc to close. Bind once per open, remove on close.
+      m._escHandler = (e) => { if (e.key === 'Escape') closeLegalModal(which); };
+      document.addEventListener('keydown', m._escHandler);
+      // Scroll body to top so the user starts at the heading.
+      const body = m.querySelector('.legal-modal-body');
+      if (body) body.scrollTop = 0;
+    }
+    function closeLegalModal(which) {
+      const id = which === 'privacy' ? 'privacyModal' : 'termsModal';
+      const m = document.getElementById(id);
+      if (!m) return;
+      m.classList.remove('open');
+      m.setAttribute('aria-hidden', 'true');
+      if (m._escHandler) {
+        document.removeEventListener('keydown', m._escHandler);
+        delete m._escHandler;
+      }
+    }
+
+    // Enable/disable the Sign in button based on the legal-accept
+    // checkbox. Called on every checkbox change. Defense in depth: even
+    // if a user scripts around the disabled attribute, handleLogin
+    // re-checks the box and refuses, and the gate-check server endpoint
+    // refuses without the matching termsAcceptedVersion.
+    function updateLoginButtonState() {
+      const box = document.getElementById('legalAgreeCheckbox');
+      const btn = document.getElementById('loginSubmitBtn');
+      if (!box || !btn) return;
+      btn.disabled = !box.checked;
+      btn.style.opacity = box.checked ? '' : '0.55';
+      btn.style.cursor = box.checked ? 'pointer' : 'not-allowed';
+    }
+
     // Login - Step 1: Store Schoology credentials, then prompt for agent password
     async function handleLogin(e) {
       if (e && e.preventDefault) e.preventDefault();
@@ -572,6 +1202,24 @@
         document.getElementById('loginError').style.display = 'block';
         return;
       }
+
+      // Legal-acceptance gate: a checked box is required before any
+      // sign-in can proceed. The checkbox also gates the button at
+      // the DOM level (button :disabled), so this is the defense-in-
+      // depth check for someone scripting around the disabled flag.
+      const legalBox = document.getElementById('legalAgreeCheckbox');
+      if (!legalBox || !legalBox.checked) {
+        document.getElementById('loginError').textContent = 'Please read and agree to the Terms of Use and Privacy Policy.';
+        document.getElementById('loginError').style.display = 'block';
+        return;
+      }
+      // Persist the accepted version per-username so the runtime gate
+      // can match what the server expects (TERMS_VERSION). Stored
+      // BEFORE the auth call so a failed sign-in keeps the agreement
+      // for retry without re-ticking.
+      try {
+        localStorage.setItem(TERMS_STORAGE_KEY(username), String(CURRENT_TERMS_VERSION));
+      } catch (_) { /* localStorage full -- runAgeGate will re-prompt */ }
 
       // Store Schoology credentials for MCP server
       state.schoologyUsername = username;
@@ -625,10 +1273,25 @@
     }
 
     function enterDemoMode() {
+      // Demo mode still requires the legal acceptance: the AI tab is
+      // visible (using fake data) and the chat history is in
+      // localStorage, but the Terms/Privacy still apply.
+      const legalBox = document.getElementById('legalAgreeCheckbox');
+      if (!legalBox || !legalBox.checked) {
+        const err = document.getElementById('loginError');
+        if (err) {
+          err.textContent = 'Please read and agree to the Terms of Use and Privacy Policy.';
+          err.style.display = 'block';
+        }
+        return;
+      }
       state.authenticated = true;
       state.demoMode = true;
       state.username = 'Demo User';
       state.sessionToken = generateToken();
+      try {
+        localStorage.setItem(TERMS_STORAGE_KEY(state.username), String(CURRENT_TERMS_VERSION));
+      } catch (_) {}
       loadDemoData();
       showApp();
     }
@@ -644,6 +1307,42 @@
       sessionStorage.removeItem('schoology_session');
       sessionStorage.removeItem('schoology_credentials');
       hideApp();
+    }
+
+    // Hard sign-out from the gate-block screen. Different from
+    // handleLogout(): the gate blocker can be painted before state is
+    // fully initialized (e.g. mid-runAgeGate, or after a Terms version
+    // bump), so we don't trust window.state or in-memory caches here.
+    // Wipes EVERY piece of stored auth, credentials, gate tokens, and
+    // terms-acceptance markers, then forces a full page reload so the
+    // user lands on a clean sign-in page. Without this, signing out
+    // and back in would re-read a stale localStorage token and bounce
+    // straight back to the same blocker.
+    function gateBlockSignOut() {
+      try {
+        sessionStorage.removeItem('schoology_session');
+        sessionStorage.removeItem('schoology_credentials');
+        sessionStorage.removeItem('pausd_gate_token');
+      } catch (_) {}
+      // Wipe per-user gate caches and terms-acceptance markers across
+      // every key prefix the gate writes. We don't know the username
+      // for sure at this point (state may be partially cleared) so we
+      // sweep every matching key.
+      try {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith('pausd_gate_v1_') ||
+                    k.startsWith('pausd_terms_accepted_v1_') ||
+                    k === 'schoology_credentials')) {
+            keys.push(k);
+          }
+        }
+        for (const k of keys) localStorage.removeItem(k);
+      } catch (_) {}
+      // Force a hard reload so any module-level state (locked
+      // state.gateToken, _gateHeartbeatHandle, etc.) is fully reset.
+      window.location.reload();
     }
 
     function saveSettings() {
@@ -691,6 +1390,14 @@
       const headers = { 'Content-Type': 'application/json', ...(init && init.headers || {}) };
       const auth = getAuthHeader();
       if (auth && auth.Authorization) headers['Authorization'] = auth.Authorization;
+      // Gate token: every multi-chat / AI call lands on a Flask route
+      // that the gate middleware protects. Reading it from sessionStorage
+      // first lets the value survive a hard reload inside the same tab
+      // before state.gateToken is re-locked. Server still re-validates.
+      const gateToken = state.gateToken || (() => {
+        try { return sessionStorage.getItem('pausd_gate_token'); } catch (_) { return null; }
+      })();
+      if (gateToken) headers['X-Gate-Token'] = gateToken;
       const res = await fetch(`${aiApiBase()}${path}`, { ...(init || {}), headers });
       let body = null;
       const text = await res.text();
@@ -1303,6 +2010,76 @@
       }[c]));
     }
 
+    // Deterministic per-teacher color. Same name always returns the
+    // same {bg, fg, ring, hue} object, so a teacher's chip looks the
+    // same in the Grades list, Activity feed, and Overview cards.
+    // Name normalization strips titles ("Dr. ", "Ms. ", "Sra. "...) and
+    // trims/lowercases so "Ms. Johnson" and "Johnson" collide on the
+    // same color -- otherwise the Posts feed (raw author) and the
+    // Grades list (with title prefix) would render the same teacher
+    // in two different colors. Hue is picked from the golden-angle
+    // sequence to keep adjacent teachers visually distinct.
+    const _teacherColorCache = new Map();
+    function teacherColor(name) {
+      const key = String(name || '')
+        .toLowerCase()
+        .replace(/^(dr|mr|mrs|ms|mx|sra|sr|prof|professor|coach|fr|sister|brother)\.?\s+/i, '')
+        .trim();
+      if (!key) {
+        return { bg: '#5b5b6e', fg: '#fff', ring: '#5b5b6e44', hue: 0 };
+      }
+      const cached = _teacherColorCache.get(key);
+      if (cached) return cached;
+      // FNV-1a-like 32-bit hash; cheap, deterministic, no deps.
+      let h = 0x811c9dc5 >>> 0;
+      for (let i = 0; i < key.length; i++) {
+        h ^= key.charCodeAt(i);
+        h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+      }
+      // Golden-angle hue distribution -> visually distinct neighbors.
+      const hue = (h * 137.508) % 360;
+      // Saturation/light tuned for both themes: vivid enough on dark,
+      // not blinding on light. Foreground (initials text) flips to
+      // dark on yellow/green hues for contrast.
+      const sat = 62;
+      const light = 48;
+      const fgDark = (hue > 35 && hue < 200);   // greens/yellows need dark text
+      const color = {
+        hue,
+        bg:   `hsl(${hue.toFixed(1)}, ${sat}%, ${light}%)`,
+        fg:   fgDark ? '#1c1424' : '#ffffff',
+        ring: `hsl(${hue.toFixed(1)}, ${sat}%, ${light}%, 0.28)`,
+      };
+      _teacherColorCache.set(key, color);
+      return color;
+    }
+
+    // Compute up to 2-char initials from a name. Strips titles like
+    // "Dr. Smith" -> "S", "Sra. Martinez" -> "M", "Mary Jane Watson" -> "MJ".
+    function teacherInitials(name) {
+      const cleaned = String(name || '')
+        .replace(/^(dr|mr|mrs|ms|mx|sra|sr|prof|professor|coach|fr|sister|brother)\.?\s+/i, '')
+        .trim();
+      if (!cleaned) return '?';
+      const parts = cleaned.split(/\s+/).filter(Boolean);
+      if (!parts.length) return '?';
+      const first = parts[0][0] || '';
+      const second = parts.length > 1 ? (parts[parts.length - 1][0] || '') : '';
+      return (first + second).toUpperCase() || '?';
+    }
+
+    // Render a teacher chip: colored circle with initials + the name.
+    // Used in Grades cards (Overview + List) and the Posts feed.
+    function teacherChip(name) {
+      if (!name) return '';
+      const c = teacherColor(name);
+      const initials = teacherInitials(name);
+      return `<span class="teacher-chip" style="--tc-bg:${c.bg};--tc-fg:${c.fg};--tc-ring:${c.ring};">`
+           +   `<span class="teacher-avatar" aria-hidden="true">${escapeHtml(initials)}</span>`
+           +   `<span class="teacher-name">${escapeHtml(name)}</span>`
+           + `</span>`;
+    }
+
     function openMemoryPanel() {
       // Read-only list for now; deletion could be wired to a confirmation
       // prompt. Keeps the surface area small.
@@ -1604,40 +2381,55 @@
         finishShowApp();
       } else {
         console.log('[DEBUG] Fetching real data...');
-        try {
-          // Load chats and global memory in parallel; both feed the AI
-          // context but neither is required for the dashboard to render.
-          Promise.all([loadChats(), loadGlobalMemory()]).then(() => {
-            console.log('[DEBUG] loadChats + loadGlobalMemory done');
-          }).catch(e => {
+        // ── AGE + DISTRICT GATE ──────────────────────────────────────
+        // Run BEFORE any dashboard render. If the user is under 8th
+        // grade or not at PAUSD, this short-circuits and shows a
+        // blocking notice; nothing else loads. Cache key on the
+        // server is (username, current-semester-end) so the same
+        // student passing the gate this semester won't re-spend a
+        // DeepSeek call on subsequent visits, but a different student
+        // ID always re-checks (cache miss on `_safe_username`). The
+        // returned token is then sent as X-Gate-Token on every AI
+        // request -- the server middleware refuses without it.
+        updateLoading('Verifying access…');
+        runAgeGate(loadingUI, updateLoading).then((gateOk) => {
+          if (!gateOk) return; // runAgeGate already painted the block screen
+          console.log('[DEBUG] Gate passed; loading dashboard');
+          try {
+            // Load chats and global memory in parallel; both feed the AI
+            // context but neither is required for the dashboard to render.
+            Promise.all([loadChats(), loadGlobalMemory()]).then(() => {
+              console.log('[DEBUG] loadChats + loadGlobalMemory done');
+            }).catch(e => {
+              console.error('[DEBUG] loadChats error:', e);
+            });
+          } catch (e) {
             console.error('[DEBUG] loadChats error:', e);
-          });
-        } catch (e) {
-          console.error('[DEBUG] loadChats error:', e);
-        }
-        console.log('[DEBUG] Calling fetchRealData...');
-        // fetchRealData() manages its own loading→shell→error transitions
-        // internally (basic-info 120s → shell + background loads, or error
-        // card). The .then()/.catch() below only clean up the elapsed
-        // counter; we don't re-render the app here because the staged
-        // loader is already in flight.
-        fetchRealData(loadingUI).then(() => {
-          console.log('[DEBUG] fetchRealData resolved');
-          loadingUI.complete();
-        }).catch((e) => {
-          console.error('[DEBUG] fetchRealData rejected:', e);
-          // fetchRealData is now expected to handle its own errors via
-          // showLoadingError(); this catch is a safety net for unexpected
-          // throws (e.g. code bug).
-          const errMsg = (e && e.message) || String(e);
-          if (errMsg.includes('entity.too.large') || errMsg.includes('body too large') || errMsg.includes('maxBodySize')) {
-            state.connectionError = 'Server returned too much data. Try clearing your session.';
-          } else {
-            state.connectionError = `Cannot reach API server: ${errMsg}`;
           }
-          showLoadingError(state.connectionError);
+          console.log('[DEBUG] Calling fetchRealData...');
+          // fetchRealData() manages its own loading→shell→error transitions
+          // internally (basic-info 120s → shell + background loads, or error
+          // card). The .then()/.catch() below only clean up the elapsed
+          // counter; we don't re-render the app here because the staged
+          // loader is already in flight.
+          fetchRealData(loadingUI).then(() => {
+            console.log('[DEBUG] fetchRealData resolved');
+            loadingUI.complete();
+          }).catch((e) => {
+            console.error('[DEBUG] fetchRealData rejected:', e);
+            // fetchRealData is now expected to handle its own errors via
+            // showLoadingError(); this catch is a safety net for unexpected
+            // throws (e.g. code bug).
+            const errMsg = (e && e.message) || String(e);
+            if (errMsg.includes('entity.too.large') || errMsg.includes('body too large') || errMsg.includes('maxBodySize')) {
+              state.connectionError = 'Server returned too much data. Try clearing your session.';
+            } else {
+              state.connectionError = `Cannot reach API server: ${errMsg}`;
+            }
+            showLoadingError(state.connectionError);
+          });
+          console.log('[DEBUG] fetchRealData promise created');
         });
-        console.log('[DEBUG] fetchRealData promise created');
       }
     }
 
@@ -2491,7 +3283,7 @@
           <div class="grade-header">
             <div>
               <div class="course-name">${escapeHtml(g.courseName)}</div>
-              <div style="font-size: 0.78rem; color: var(--text-secondary);">${escapeHtml(g.teacher || '')}</div>
+              ${g.teacher ? teacherChip(g.teacher) : ''}
             </div>
             <span class="grade-value grade-${pctClass}">${pctLabel}</span>
           </div>
@@ -2560,7 +3352,7 @@
           <div class="grade-header">
             <div>
               <div class="course-name">${escapeHtml(g.courseName)}</div>
-              <div style="font-size: 0.78rem; color: var(--text-secondary);">${escapeHtml(g.teacher || '')}</div>
+              ${g.teacher ? teacherChip(g.teacher) : ''}
             </div>
             <span class="grade-value grade-${pctClass}">${pctLabel}</span>
           </div>
@@ -2731,7 +3523,7 @@
       }
       container.innerHTML = state.posts.map(p => `
         <div class="post-item">
-          <div class="post-author">${escapeHtml(p.author)}</div>
+          <div class="post-author">${teacherChip(p.author)}</div>
           <div class="post-time">${formatTime(p.timestamp)}</div>
           <div class="post-content">${escapeHtml(p.content)}</div>
         </div>
@@ -2757,7 +3549,41 @@
       const headers = { 'Content-Type': 'application/json', ...(init.headers || {}) };
       const auth = getAuthHeader();
       if (auth && auth.Authorization) headers['Authorization'] = auth.Authorization;
-      return fetch(`${aiApiUrl()}${path}`, { ...init, headers });
+      // Attach the signed gate token so the server middleware lets the
+      // request through. Falls back to sessionStorage so a hard reload
+      // before runAgeGate finishes re-locking state.gateToken still
+      // works. The server re-verifies on every request -- this header
+      // is the price of entry; tampering with it just produces a 403.
+      const gateToken = state.gateToken || (() => {
+        try { return sessionStorage.getItem('pausd_gate_token'); } catch (_) { return null; }
+      })();
+      if (gateToken) headers['X-Gate-Token'] = gateToken;
+      const res = await fetch(`${aiApiUrl()}${path}`, { ...init, headers });
+      // 403 'gate_required' means the server's gate middleware rejected
+      // us -- token expired (mid-session semester roll), tampered with,
+      // or never present. Force a re-check; if the user truly should
+      // have access, the gate will re-issue a token. If not, the
+      // blocker screen will paint and AI activity halts.
+      if (res.status === 403 && !path.startsWith('/api/gate-')) {
+        try {
+          const body = await res.clone().json();
+          if (body && (body.error === 'gate_required' || body.error === 'gate_wrong_user')) {
+            console.warn('[GATE] Server refused AI call:', body.error, '-- triggering re-check');
+            // Drop any cached token; runAgeGate will paint the blocker
+            // if the new check also fails.
+            try {
+              const u = state.username;
+              if (u) localStorage.removeItem(GATE_STORAGE_KEY(u));
+              sessionStorage.removeItem('pausd_gate_token');
+            } catch (_) {}
+            // Don't auto-trigger runAgeGate here -- the user is mid-
+            // action; surface the failure and let the next page load
+            // re-check. This avoids a runaway loop if the server is
+            // genuinely down.
+          }
+        } catch (_) { /* not JSON; let caller handle the 403 */ }
+      }
+      return res;
     }
 
     function pushToolHistory(toolName, content) {
@@ -2894,6 +3720,98 @@
             return { display: null, history: `arXiv search for "${q}" returned no papers.` };
           } catch (e) {
             return { display: null, history: `arXiv search for "${q}" failed: ${e.message}` };
+          }
+        },
+      },
+      REDDIT: {
+        name: 'REDDIT',
+        regex: /\[REDDIT:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'See what people on Reddit are saying about something with [REDDIT:query] or [REDDIT:r/subreddit query] (e.g. [REDDIT:best calculus textbook] or [REDDIT:r/APStudents AP physics tips]). Returns the top discussion threads with scores and comment counts -- useful for "what do other students think about X". Reddit content is user-generated and unverified; cite the post and remind the user it is opinions, not fact.',
+        userBlurb: "see Reddit discussions and people's opinions",
+        executor: async (_match, raw) => {
+          const input = String(raw || '').trim();
+          if (!input) {
+            return { display: null, history: 'Reddit search: empty query.' };
+          }
+          // Parse optional leading "r/sub" or "/r/sub" prefix. Everything
+          // after it is the actual search query. Bare query = search
+          // site-wide.
+          let subreddit = null;
+          let q = input;
+          const m = input.match(/^\/?r\/([A-Za-z0-9_]{2,30})\s+(.+)$/);
+          if (m) {
+            subreddit = m[1];
+            q = m[2].trim();
+          }
+          try {
+            const res = await aiFetch('/api/reddit/search', {
+              method: 'POST',
+              body: JSON.stringify({ q, subreddit, limit: 5, sort: 'relevance' }),
+            });
+            const data = await res.json();
+            if (data && data._error) {
+              return { display: null, history: `Reddit search for "${q}" failed: ${data.message || 'error'}` };
+            }
+            const posts = (data && data.posts) || [];
+            if (!posts.length) {
+              return { display: null, history: `Reddit search for "${q}" returned no posts.` };
+            }
+            const lines = posts.map(p => {
+              const tag = p.subreddit ? `r/${p.subreddit}` : 'reddit';
+              const head = `- **${p.title}** — ${tag} · ${p.score} ↑ · ${p.num_comments} comments`;
+              const body = p.selftext_snippet ? `\n  ${p.selftext_snippet}` : '';
+              const link = p.permalink ? `\n  https://www.reddit.com${p.permalink}` : '';
+              const nsfw = p.over_18 ? '  ⚠️ NSFW' : '';
+              return head + nsfw + body + link;
+            });
+            const headerSub = subreddit ? `r/${subreddit}` : 'all of Reddit';
+            const list = lines.join('\n\n');
+            return {
+              display: `**Reddit (${headerSub}): ${q}**\n\n${list}\n\n_These are user opinions, not vetted facts._`,
+              history: `Reddit search for "${q}" in ${headerSub} returned ${posts.length} posts (user-generated, unverified):\n${list}`,
+            };
+          } catch (e) {
+            return { display: null, history: `Reddit search for "${q}" failed: ${e.message}` };
+          }
+        },
+      },
+      REDDIT_COMMENTS: {
+        name: 'REDDIT_COMMENTS',
+        regex: /\[REDDIT_COMMENTS:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Read the top comments on a Reddit post with [REDDIT_COMMENTS:/r/<sub>/comments/<id>/<slug>/] (paste the permalink path from a [REDDIT:...] result). Returns the top 5 most-upvoted comments. Like REDDIT, this is user opinion, not fact.',
+        userBlurb: 'read the top comments on a Reddit thread',
+        executor: async (_match, permalink) => {
+          const p = String(permalink || '').trim();
+          if (!p.startsWith('/r/')) {
+            return { display: null, history: 'Reddit comments: permalink must look like /r/<sub>/comments/<id>/<slug>/.' };
+          }
+          try {
+            const res = await aiFetch('/api/reddit/comments', {
+              method: 'POST',
+              body: JSON.stringify({ permalink: p, limit: 5 }),
+            });
+            const data = await res.json();
+            if (data && data._error) {
+              return { display: null, history: `Reddit comments for ${p} failed: ${data.message || 'error'}` };
+            }
+            const post = data && data.post;
+            const comments = (data && data.comments) || [];
+            if (!comments.length) {
+              return { display: null, history: `Reddit comments for ${p}: no top-level comments returned.` };
+            }
+            const head = post ? `**${post.title}** (r/${post.subreddit}, ${post.score} ↑)\n\n` : '';
+            const body = comments.map((c, i) => {
+              const op = c.is_op ? ' (OP)' : '';
+              return `**${i + 1}. ${c.author}${op}** · ${c.score} ↑\n${c.body}`;
+            }).join('\n\n---\n\n');
+            return {
+              display: head + body + '\n\n_User opinions; not vetted._',
+              history: `Reddit top comments for ${p} (user-generated, unverified):\n${head}${body}`,
+            };
+          } catch (e) {
+            return { display: null, history: `Reddit comments for ${p} failed: ${e.message}` };
           }
         },
       },
@@ -3892,8 +4810,65 @@
       return `I understand you're asking about "${message}". Since you're in demo mode, here's a helpful response:\n\nYou can ask me about:\n- Your **grades** and GPA\n- **Upcoming assignments**\n- **Concepts** from any subject\n- Help with **homework** or **studying**\n\nI can also ${toolBlurbs.slice(0, 6).join(', ')}, and more.\n\nTry asking something like "What are my current grades?" or "What's due this week?" to get started! 🚀`;
     }
 
+    // Phase-aware system-prompt block. Tells the model what's currently
+    // safe to recommend so it doesn't say "make up missing assignments"
+    // when the gradebook closed last week, or "talk to your teacher
+    // today" during summer break. Kept short on purpose; the model only
+    // needs the directive, not the full calendar.
+    function buildCalendarPromptSection() {
+      const today = todayLocalISO();
+      const p = getTermPhase(today);
+      const lines = [`CURRENT DATE: ${today}`];
+      switch (p.phase) {
+        case 'in-sem1':
+          lines.push(`SCHOOL CONTEXT: Semester 1 is in session. Gradebook is open. Sem 1 ends ${p.nextBoundary}.`);
+          lines.push(`- It's fine to suggest making up missing work, emailing the teacher, or visiting office hours.`);
+          break;
+        case 'finals-sem1':
+          lines.push(`SCHOOL CONTEXT: Last week of Semester 1 (gradebook closes ${p.nextBoundary}).`);
+          lines.push(`- Make-up work is borderline. Suggest the student email the teacher TODAY if they need a window; do not promise the teacher will grant it.`);
+          break;
+        case 'winter-break':
+          lines.push(`SCHOOL CONTEXT: Winter break. Sem 1 grades are FINAL and the gradebook is closed. Sem 2 starts ${p.nextBoundary}.`);
+          lines.push(`- Do NOT tell the student to "make up" or "check for missing" Sem 1 assignments — the grade is locked. They can still talk to a teacher next semester about a Sem 1 grade correction (Cal. Educ. Code § 49070 gives a 5-day window from when they first see the mark), but framing it as "you can still raise your grade" is wrong.`);
+          lines.push(`- Don't suggest emailing teachers expecting a same-day reply.`);
+          break;
+        case 'in-sem2':
+          lines.push(`SCHOOL CONTEXT: Semester 2 is in session. Gradebook is open. Finals start ${p.nextBoundary}.`);
+          lines.push(`- It's fine to suggest making up missing work, emailing the teacher, or visiting office hours.`);
+          lines.push(`- Sem 1 grades are FINAL — do not suggest making up Sem 1 missing work.`);
+          break;
+        case 'spring-break':
+          lines.push(`SCHOOL CONTEXT: Spring break — school is out, but Sem 2 gradebook is still open and resumes after break.`);
+          lines.push(`- Don't suggest the student talk to a teacher this week. They can plan to do so when school resumes.`);
+          break;
+        case 'finals-week':
+          lines.push(`SCHOOL CONTEXT: Finals week (Semester 2). Last day of school is ${p.nextBoundary}. The gradebook for Sem 2 closes on the last day.`);
+          lines.push(`- Suggest focused study, not new make-up work.`);
+          break;
+        case 'summer-after-year':
+          lines.push(`SCHOOL CONTEXT: SUMMER BREAK. School is OUT. The gradebook for both semesters of the just-ended year is CLOSED and grades are FINAL.${p.nextBoundary ? ` Next school year starts ${p.nextBoundary}.` : ''}`);
+          lines.push(`- Do NOT tell the student to "make up missing assignments" or "check for missing work" — both semesters' gradebooks are closed.`);
+          lines.push(`- Do NOT tell the student to "talk to your teacher today" or "email your teacher" — teachers are off contract and may not reply.`);
+          lines.push(`- It IS fine to: review concepts for next year, plan summer reading, look at college prep, discuss schedule changes, or appeal a Sem 2 grade in writing under Cal. Educ. Code § 49070.`);
+          break;
+        case 'before-year':
+          lines.push(`SCHOOL CONTEXT: New school year hasn't started yet. First day is ${p.nextBoundary}.`);
+          lines.push(`- Current "grades" / "assignments" in the dashboard are stale (from the previous year). Don't treat them as current.`);
+          break;
+        case 'holiday':
+          lines.push(`SCHOOL CONTEXT: No school today (${p.holidayName}). Gradebook is normally open during this day-off; it's a one-day break.`);
+          lines.push(`- It's fine to plan tomorrow's work, but don't assume the student can reach a teacher today.`);
+          break;
+        default:
+          lines.push(`SCHOOL CONTEXT: Calendar phase unknown for today. Be cautious about make-up suggestions; check with the user when the semester ends.`);
+      }
+      return lines.join('\n');
+    }
+
     function buildContextMessages(currentMessage, contextExtras) {
       const now = new Date();
+      const calendarBlock = buildCalendarPromptSection();
       const systemPrompt = `You are an expert AI study assistant for a PAUSD (Palo Alto Unified School District) student dashboard. Your goal is to provide thorough, helpful, and detailed responses.
 
 RESPONSE STYLE:
@@ -3988,6 +4963,8 @@ How to use this section:
 - PAUSD Student Wellness & Mental Health: PAUSD has a Student Wellness webpage and on-campus counselors; for suicide / self-harm / abuse disclosures, follow the California mandated-reporter protocol (Penal Code § 11164) and the PAUSD suicide-prevention policy. This is not legal advice; the user should talk to a real counselor.
 
 STUDENT DATA (use when relevant):
+${calendarBlock}
+
 Grades:
 ${state.grades.map(g => {
   const pct = g.percentage;
@@ -4322,26 +5299,242 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
       // Token may include newlines or spaces; iterate code points so
       // multi-byte characters don't get split mid-grapheme.
       const chars = Array.from(token);
+      // Per-bubble streaming state. We track the full text buffer
+      // alongside the DOM so we can detect when a closing delimiter
+      // (e.g. the last * of **hello**) arrives and replace the chars
+      // in that range with their rendered form in place. Each chunk
+      // is tagged with a monotonic data-pos so we can find them again
+      // by code-point index without re-walking the whole subtree.
+      let s = contentEl._streamState;
+      if (!s) {
+        s = contentEl._streamState = {
+          buf:  '',     // full plain-text buffer (KEEP in sync with the appended chars)
+          pos:  0,      // next data-pos to assign
+          // Stack-aware "next unprocessed buffer index" -- once a span
+          // is finalized, we move this past its closing delimiter so
+          // we don't re-finalize. Spans inside code blocks (` ` `, ```)
+          // and inside already-rendered nodes are skipped.
+          cursor: 0,
+          // True while we're inside a fenced code block (```...```).
+          // Inline formatting inside fenced code is intentionally left
+          // raw -- matches marked()'s behavior so the final swap is
+          // visually identical.
+          inFence: false,
+        };
+      }
       const frag = document.createDocumentFragment();
       for (const ch of chars) {
         if (ch === '\n') {
-          frag.appendChild(document.createElement('br'));
+          // <br> still gets a data-pos so finalize* can identify the
+          // span position when a delimiter spans across one.
+          const br = document.createElement('br');
+          br.setAttribute('data-pos', String(s.pos));
+          frag.appendChild(br);
         } else {
           const span = document.createElement('span');
           span.className = 'streaming-char';
+          span.setAttribute('data-pos', String(s.pos));
           span.textContent = ch;
           frag.appendChild(span);
         }
+        s.buf += ch;
+        s.pos += 1;
       }
       contentEl.appendChild(frag);
-      // Trigger the fade-in for each newly added char via the .streaming-char
-      // class. CSS handles the rest. The animation cleanup (collapsing
-      // the span to text) happens in the animationend handler.
+      // Trigger the fade-in for each newly added char via the
+      // .streaming-char class. CSS handles the rest. The animation
+      // cleanup (collapsing the span to text) happens in the
+      // animationend handler.
       //
+      // Now look for any inline formatting that JUST CLOSED with the
+      // characters we just appended -- bold, italic, strikethrough,
+      // inline code, inline LaTeX, block LaTeX -- and swap the raw
+      // .streaming-char spans for their rendered HTML in place.
+      finalizeCompletedInlineSpans(contentEl, s);
       // Auto-scroll is handled by the caller (_requestAssistantReply's
       // onToken callback) using a sticky-bottom check; we no longer
       // force-scroll here, so the user can scroll up mid-stream
       // without being dragged back to the bottom.
+    }
+
+    // Inline-formatting patterns that get rendered the instant their
+    // closing delimiter arrives in the stream. Order matters: longer
+    // / more-specific patterns first so $$..$$ wins over $..$ and
+    // **..** wins over *..*. Each entry's `make(html)` returns the
+    // replacement HTML for the captured inner text.
+    //
+    // KaTeX is rendered with throwOnError:false so a typo in the
+    // model's math doesn't break the stream -- the raw $...$ falls
+    // through and the final renderMarkdown() swap re-tries.
+    const INLINE_FORMAT_PATTERNS = [
+      // Block math: $$ ... $$  -- displayMode
+      { name: 'block-math',  open: '$$',  close: '$$',
+        make: (inner) => {
+          try { return katex.renderToString(inner, { displayMode: true,  throwOnError: false }); }
+          catch (_) { return `<pre>${escapeHtml(inner)}</pre>`; }
+        } },
+      // LaTeX \[ ... \] block
+      { name: 'tex-block',   open: '\\[', close: '\\]',
+        make: (inner) => {
+          try { return katex.renderToString(inner, { displayMode: true,  throwOnError: false }); }
+          catch (_) { return `<pre>${escapeHtml(inner)}</pre>`; }
+        } },
+      // LaTeX \( ... \) inline
+      { name: 'tex-inline',  open: '\\(', close: '\\)',
+        make: (inner) => {
+          try { return katex.renderToString(inner, { displayMode: false, throwOnError: false }); }
+          catch (_) { return `<span>${escapeHtml(inner)}</span>`; }
+        } },
+      // Bold-italic: ***x*** or ___x___
+      { name: 'bold-italic-star',  open: '***', close: '***',
+        make: (inner) => `<strong><em>${escapeHtml(inner)}</em></strong>` },
+      { name: 'bold-italic-under', open: '___', close: '___',
+        make: (inner) => `<strong><em>${escapeHtml(inner)}</em></strong>` },
+      // Bold: **x** or __x__
+      { name: 'bold-star',  open: '**', close: '**',
+        make: (inner) => `<strong>${escapeHtml(inner)}</strong>` },
+      { name: 'bold-under', open: '__', close: '__',
+        make: (inner) => `<strong>${escapeHtml(inner)}</strong>` },
+      // Strikethrough: ~~x~~
+      { name: 'strike',     open: '~~', close: '~~',
+        make: (inner) => `<del>${escapeHtml(inner)}</del>` },
+      // Inline code: `x`  -- note: we deliberately do NOT escape the
+      // inner here because the model can put valid HTML in code, and
+      // marked() doesn't either; we still wrap in <code> to neutralize.
+      { name: 'code',       open: '`',  close: '`',
+        make: (inner) => `<code>${escapeHtml(inner)}</code>` },
+      // Inline math: $x$  (require non-empty, no newline inner)
+      { name: 'inline-math', open: '$', close: '$',
+        make: (inner) => {
+          try { return katex.renderToString(inner, { displayMode: false, throwOnError: false }); }
+          catch (_) { return `$${escapeHtml(inner)}$`; }
+        } },
+      // Italic: *x* or _x_ (require non-empty, non-space adjacent)
+      { name: 'italic-star',  open: '*',  close: '*',
+        make: (inner) => `<em>${escapeHtml(inner)}</em>` },
+      { name: 'italic-under', open: '_',  close: '_',
+        make: (inner) => `<em>${escapeHtml(inner)}</em>` },
+    ];
+
+    // Walk forward from s.cursor through s.buf looking for completed
+    // inline spans. When one is found, swap the corresponding DOM nodes
+    // for the rendered HTML and advance the cursor past the closing
+    // delimiter. Repeats until no more completed spans are found.
+    function finalizeCompletedInlineSpans(contentEl, s) {
+      if (!s || !contentEl) return;
+      let safety = 0;
+      // Bound the loop -- one pattern match per iteration; if the buffer
+      // is enormous and contains many completed spans we still finish.
+      while (safety++ < 200) {
+        const buf = s.buf;
+        if (s.cursor >= buf.length) return;
+        // Skip past anything inside a fenced code block; inline
+        // formatting in there is intentionally left raw.
+        const fence = buf.indexOf('```', s.cursor);
+        if (s.inFence) {
+          if (fence === -1) return;     // still open, wait for more
+          s.cursor = fence + 3;
+          s.inFence = false;
+          continue;
+        }
+        // Find the earliest opening delimiter from any pattern,
+        // starting at s.cursor.
+        let earliestOpenAt = -1;
+        let earliestPattern = null;
+        for (const pat of INLINE_FORMAT_PATTERNS) {
+          const idx = buf.indexOf(pat.open, s.cursor);
+          if (idx === -1) continue;
+          // If the open is inside an upcoming code fence, treat as not found.
+          if (fence !== -1 && idx >= fence) continue;
+          if (earliestOpenAt === -1 || idx < earliestOpenAt ||
+              (idx === earliestOpenAt && pat.open.length > earliestPattern.open.length)) {
+            earliestOpenAt = idx;
+            earliestPattern = pat;
+          }
+        }
+        // No open found before the next fence -- advance to it.
+        if (earliestOpenAt === -1) {
+          if (fence !== -1) { s.cursor = fence + 3; s.inFence = true; continue; }
+          return;
+        }
+        // Find the closing delimiter after the open. Note that for
+        // symmetric markers (** ** etc.) the open and close are the
+        // same string; we just look forward from open+len.
+        const openLen  = earliestPattern.open.length;
+        const closeStr = earliestPattern.close;
+        const closeAt  = buf.indexOf(closeStr, earliestOpenAt + openLen);
+        if (closeAt === -1) {
+          // Open seen but not yet closed -- wait for more tokens.
+          // Don't advance s.cursor; on the next token we'll re-scan.
+          return;
+        }
+        const innerStart = earliestOpenAt + openLen;
+        const inner = buf.slice(innerStart, closeAt);
+        // Sanity checks per pattern:
+        //   - Inner must not be empty.
+        //   - For inline math / italic-star / italic-under, inner
+        //     must not contain a newline (matches marked / KaTeX rules
+        //     and avoids eating across paragraphs).
+        //   - For italic / bold variants, no leading/trailing space
+        //     (markdown-style: " *hi* " is italic but "* hi *" is not).
+        if (!inner) {
+          // Empty between delimiters -- skip past both and continue.
+          s.cursor = closeAt + closeStr.length;
+          continue;
+        }
+        const noNewlineNeeded = ['inline-math', 'italic-star', 'italic-under',
+                                 'bold-star', 'bold-under', 'strike', 'code',
+                                 'tex-inline', 'bold-italic-star', 'bold-italic-under'];
+        if (noNewlineNeeded.includes(earliestPattern.name) && /\n/.test(inner)) {
+          // Closed across a newline -- not a real span. Skip past the
+          // opening delimiter and keep scanning.
+          s.cursor = earliestOpenAt + openLen;
+          continue;
+        }
+        if (['italic-star', 'italic-under'].includes(earliestPattern.name)) {
+          if (inner.startsWith(' ') || inner.endsWith(' ')) {
+            s.cursor = earliestOpenAt + openLen;
+            continue;
+          }
+        }
+        // All good -- replace [openAt .. closeAt+closeLen) DOM range
+        // with the rendered HTML.
+        const fromPos = earliestOpenAt;
+        const toPos   = closeAt + closeStr.length;          // exclusive
+        replaceCharRange(contentEl, fromPos, toPos, earliestPattern.make(inner));
+        // The DOM has been collapsed; the buffer still has the raw text.
+        // Keep buffer intact (the final renderMarkdown() swap won't use
+        // it for already-rendered ranges -- it operates on the same raw
+        // string). Just advance cursor past the close.
+        s.cursor = toPos;
+      }
+    }
+
+    // Replace every char-span (or <br>) whose data-pos is in
+    // [fromPos, toPos) with a single rendered HTML node. Preserves
+    // surrounding text and any nodes outside the range. Idempotent in
+    // the sense that if no spans match (already replaced), it's a no-op.
+    function replaceCharRange(contentEl, fromPos, toPos, html) {
+      const sel = '[data-pos]';
+      const nodes = contentEl.querySelectorAll(sel);
+      const inRange = [];
+      for (const n of nodes) {
+        const p = parseInt(n.getAttribute('data-pos'), 10);
+        if (p >= fromPos && p < toPos) inRange.push(n);
+      }
+      if (!inRange.length) return;  // already replaced (race or repeat)
+      // Insert the rendered HTML at the position of the FIRST in-range
+      // node, then remove the rest.
+      const first = inRange[0];
+      const wrapper = document.createElement('span');
+      wrapper.className = 'streaming-rendered';
+      wrapper.setAttribute('data-pos', String(fromPos));
+      wrapper.setAttribute('data-pos-end', String(toPos));
+      wrapper.innerHTML = html;
+      first.parentNode.insertBefore(wrapper, first);
+      for (const n of inRange) {
+        if (n.parentNode) n.parentNode.removeChild(n);
+      }
     }
 
     /**
@@ -4538,10 +5731,18 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
           const form = new FormData();
           form.append('file', file);
           const auth = getAuthHeader();
+          const uploadHeaders = auth && auth.Authorization ? { 'Authorization': auth.Authorization } : {};
+          // Gate token is required by the server middleware for any
+          // /api/file/* call; the multipart body keeps its own
+          // Content-Type so we only add the auth + gate headers here.
+          const _gateToken = state.gateToken || (() => {
+            try { return sessionStorage.getItem('pausd_gate_token'); } catch (_) { return null; }
+          })();
+          if (_gateToken) uploadHeaders['X-Gate-Token'] = _gateToken;
           const res = await fetch(`${aiApiUrl()}/api/file/ingest`, {
             method: 'POST',
             body: form,
-            headers: auth && auth.Authorization ? { 'Authorization': auth.Authorization } : {},
+            headers: uploadHeaders,
           });
           if (!res.ok) {
             const errText = await res.text().catch(() => 'upload failed');
