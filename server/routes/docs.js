@@ -71,6 +71,16 @@ function itemMatches(portalItem, jchatItems) {
  * @returns {{ synced: boolean, reason?: string, version_id?: string, created_at?: number, newItems?: string[] }}
  */
 export async function syncAnnouncementsFromPortal(editorId = 'system') {
+  // doc_versions.editor_id has a FK to users(id). The auto-poll calls
+  // us with editorId='system' (a literal string), which violates the
+  // constraint and produces "FOREIGN KEY constraint failed" on every
+  // poll where the portal actually has new items. Normalize: any
+  // non-real-user editorId gets attributed to the seeded admin user
+  // 'jimmyqrg', who has can_edit_docs and who the init-db seed already
+  // uses for the same purpose.
+  const SYSTEM_EDITOR = 'jimmyqrg';
+  const effectiveEditor = (editorId && typeof editorId === 'string' && editorId !== 'system') ? editorId : SYSTEM_EDITOR;
+
   const headers = { 'User-Agent': 'JimmyQrg-Chat-Sync/1' };
   if (process.env.SYNC_KEY) headers['X-Sync-Key'] = process.env.SYNC_KEY;
   const resp = await fetch(PORTAL_ANNOUNCEMENT_URL, { headers });
@@ -102,8 +112,8 @@ export async function syncAnnouncementsFromPortal(editorId = 'system') {
   const id = randomUUID();
   const created = Date.now();
   db.prepare('INSERT INTO doc_versions (id, doc_key, content, editor_id, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(id, 'announcements', updatedContent, editorId, created);
-  recordAuditLog('docs.sync_announcements', editorId, null, { new_items: newItems });
+    .run(id, 'announcements', updatedContent, effectiveEditor, created);
+  recordAuditLog('docs.sync_announcements', effectiveEditor, null, { new_items: newItems });
   return { synced: true, version_id: id, created_at: created, newItems };
 }
 
