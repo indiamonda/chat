@@ -2682,6 +2682,44 @@
         </div>`;
     }
 
+    // ── Inline SVG icons for empty states ─────────────────────────
+    // Thin-stroke line icons that inherit `currentColor` so they
+    // pick up the muted tone of the empty-state container in both
+    // dark and light themes. No external assets.
+    const EMPTY_STATE_ICONS = {
+      // Calendar with a dotted "nothing scheduled" mark.
+      noAssignments: '<svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 9h18"/><path d="M8 3v4"/><path d="M16 3v4"/><circle cx="12" cy="15" r="2.5"/></svg>',
+      // Stack of books / folders for "no courses enrolled".
+      noCourses: '<svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h4v18H6a2 2 0 0 1-2-2V5z"/><path d="M10 3h4a2 2 0 0 1 2 2v14"/><path d="M16 5h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/></svg>',
+      // Gradebook / report card for "no grades posted".
+      noGrades: '<svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>',
+      // Speech bubble for "no recent posts".
+      noPosts: '<svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.4 7.3L4 21l1.7-5.6A8 8 0 1 1 21 12z"/><path d="M9 11h6"/><path d="M9 14h4"/></svg>',
+    };
+
+    /**
+     * Render a "this section loaded successfully but has no data"
+     * card. Distinct from the loading skeleton (which means "we
+     * haven't heard back yet") and from the section-error card
+     * (which means "the fetch failed").
+     *
+     * Use this when `state.sectionStatus[name] === 'ready'` and the
+     * section's array is empty -- e.g. summer break with no
+     * enrolled courses / upcoming assignments, or a brand-new
+     * course with no posts yet.
+     */
+    function renderEmptyState(elementId, iconKey, title, subtitle) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      const icon = EMPTY_STATE_ICONS[iconKey] || EMPTY_STATE_ICONS.noPosts;
+      el.innerHTML = `
+        <div class="empty-state-card">
+          ${icon}
+          <div class="empty-state-title">${escapeHtml(title)}</div>
+          ${subtitle ? `<div class="empty-state-subtitle">${escapeHtml(subtitle)}</div>` : ''}
+        </div>`;
+    }
+
     function setSectionStatus(name, status) {
       state.sectionStatus[name] = status;
       if (status === 'ready') {
@@ -3415,6 +3453,21 @@ Recent posts: ${postSample || '(none)'}`;
     // Render functions
     function renderGradesOverview() {
       const container = document.getElementById('gradesOverview');
+      if (!state.grades || state.grades.length === 0) {
+        if (state.sectionStatus.grades !== 'ready') {
+          // Still loading (or errored) — keep the skeleton that
+          // renderDashboardShell already painted; do not flash an
+          // empty-state while data is in flight.
+          return;
+        }
+        renderEmptyState(
+          'gradesOverview',
+          'noGrades',
+          'No grades posted yet',
+          "Once your teachers post grades, they'll show up here."
+        );
+        return;
+      }
       container.innerHTML = state.grades.slice(0, 4).map(g => {
         const pct = g.percentage;
         const hasGrade = pct != null && pct !== '';
@@ -3442,6 +3495,18 @@ Recent posts: ${postSample || '(none)'}`;
 
     function renderAssignmentsOverview() {
       const container = document.getElementById('assignmentsOverview');
+      if (!state.assignments || state.assignments.length === 0) {
+        if (state.sectionStatus.assignments !== 'ready') {
+          return;
+        }
+        renderEmptyState(
+          'assignmentsOverview',
+          'noAssignments',
+          "You don't have any upcoming assignments",
+          'Nothing is on your plate right now — enjoy the break.'
+        );
+        return;
+      }
       container.innerHTML = state.assignments.slice(0, 4).map(a => renderAssignmentCard(a, 'overview')).join('');
     }
 
@@ -3471,17 +3536,18 @@ Recent posts: ${postSample || '(none)'}`;
     function renderGradesList() {
       const container = document.getElementById('gradesList');
       if (!state.grades || state.grades.length === 0) {
-        container.innerHTML = `
-          <div class="skeleton-card">
-            <div class="skeleton-line title"></div>
-            <div class="skeleton-line medium"></div>
-            <div class="skeleton-line short"></div>
-          </div>
-          <div class="skeleton-card">
-            <div class="skeleton-line title"></div>
-            <div class="skeleton-line medium"></div>
-            <div class="skeleton-line short"></div>
-          </div>`;
+        if (state.sectionStatus.grades !== 'ready') {
+          // Still loading — keep the skeleton. The empty state should
+          // only appear once the fetch has returned (ready) and the
+          // array is empty, never while a fetch is in flight.
+          return;
+        }
+        renderEmptyState(
+          'gradesList',
+          'noGrades',
+          'No grades posted yet',
+          "Once your teachers post grades, they'll show up here."
+        );
         return;
       }
       container.innerHTML = state.grades.map(g => {
@@ -3512,15 +3578,15 @@ Recent posts: ${postSample || '(none)'}`;
     function renderAssignmentsList() {
       const container = document.getElementById('assignmentsList');
       if (!state.assignments || state.assignments.length === 0) {
-        container.innerHTML = `
-          <div class="skeleton-card">
-            <div class="skeleton-line title"></div>
-            <div class="skeleton-line medium"></div>
-          </div>
-          <div class="skeleton-card">
-            <div class="skeleton-line title"></div>
-            <div class="skeleton-line short"></div>
-          </div>`;
+        if (state.sectionStatus.assignments !== 'ready') {
+          return;
+        }
+        renderEmptyState(
+          'assignmentsList',
+          'noAssignments',
+          'No assignments found',
+          'There are no assignments on your dashboard right now.'
+        );
         return;
       }
       container.innerHTML = state.assignments.map(a => renderAssignmentCard(a, 'list')).join('');
@@ -3653,15 +3719,15 @@ Recent posts: ${postSample || '(none)'}`;
     function renderActivityList() {
       const container = document.getElementById('activityList');
       if (!state.posts || state.posts.length === 0) {
-        container.innerHTML = `
-          <div class="skeleton-card">
-            <div class="skeleton-line title"></div>
-            <div class="skeleton-line medium"></div>
-          </div>
-          <div class="skeleton-card">
-            <div class="skeleton-line title"></div>
-            <div class="skeleton-line short"></div>
-          </div>`;
+        if (state.sectionStatus.posts !== 'ready') {
+          return;
+        }
+        renderEmptyState(
+          'activityList',
+          'noPosts',
+          'No recent posts',
+          "Updates from your courses will appear here once teachers or classmates post."
+        );
         return;
       }
       container.innerHTML = state.posts.map(p => `

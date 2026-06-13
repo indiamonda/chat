@@ -1138,6 +1138,42 @@
       cursor: pointer;
     }
     .section-retry-btn:hover { background: var(--primary); color: white; }
+    /* ── Empty-state card (section loaded successfully but the
+       data array is empty -- e.g. summer break, no posts yet).
+       Distinct from the skeleton (still loading) and from the
+       error card (fetch failed). */
+    .empty-state-card {
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      border-radius: 20px;
+      padding: 32px 24px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      color: var(--text-secondary);
+    }
+    .empty-state-card .empty-state-icon {
+      width: 56px;
+      height: 56px;
+      margin-bottom: 14px;
+      color: var(--text-muted);
+      opacity: 0.85;
+      animation: none;
+    }
+    .empty-state-title {
+      color: var(--text);
+      font-weight: 600;
+      font-size: 1rem;
+      margin-bottom: 4px;
+    }
+    .empty-state-subtitle {
+      color: var(--text-secondary);
+      font-size: 0.88rem;
+      max-width: 360px;
+      line-height: 1.4;
+    }
     .skeleton-line {
       height: 16px;
       background: linear-gradient(90deg, var(--surface-elevated) 25%, var(--surface-hover) 50%, var(--surface-elevated) 75%);
