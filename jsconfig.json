@@ -4,7 +4,7 @@
     "allowJs": true,
     "noEmit": true,
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "skipLibCheck": true,
     "skipDefaultLibCheck": true,
     "types": ["node"]
