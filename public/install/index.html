@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d12" />
+  <title>Install JimmyQrg Chat — Android</title>
+  <style>
+    :root {
+      --bg: #0b0d12;
+      --surface: #14171f;
+      --surface-2: #1c2029;
+      --border: #262b36;
+      --text: #e6e9ef;
+      --muted: #9aa3b2;
+      --accent: #4f8cff;
+      --accent-hover: #6ea0ff;
+      --accent-press: #3d76e6;
+      --warn-bg: #2a1f12;
+      --warn-border: #5a4220;
+      --warn-text: #f0c878;
+      --code-bg: #0f1219;
+      --radius: 14px;
+      --radius-sm: 8px;
+      --shadow: 0 12px 40px rgba(0,0,0,0.45);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, "Helvetica Neue", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.55;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 20px 80px;
+      background:
+        radial-gradient(1200px 600px at 50% -10%, rgba(79,140,255,0.18), transparent 60%),
+        var(--bg);
+    }
+
+    .container {
+      width: 100%;
+      max-width: 640px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .brand img {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+    }
+
+    .brand-text h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-text p {
+      margin: 2px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      text-align: center;
+      padding: 8px 0 24px;
+    }
+
+    .hero h2 {
+      font-size: 28px;
+      margin: 0 0 8px;
+      letter-spacing: -0.02em;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin: 18px 0 0;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      padding: 5px 10px;
+      border-radius: 999px;
+    }
+
+    .pill .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .install-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      padding: 18px 20px;
+      margin-top: 8px;
+      background: var(--accent);
+      color: white;
+      text-decoration: none;
+      font-size: 17px;
+      font-weight: 600;
+      border-radius: 12px;
+      border: 0;
+      cursor: pointer;
+      transition: background 0.15s ease, transform 0.05s ease;
+      letter-spacing: 0.01em;
+    }
+
+    .install-btn:hover { background: var(--accent-hover); }
+    .install-btn:active { background: var(--accent-press); transform: translateY(1px); }
+    .install-btn:focus-visible {
+      outline: 2px solid var(--accent-hover);
+      outline-offset: 3px;
+    }
+
+    .install-btn svg {
+      width: 22px; height: 22px;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .checksum {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      word-break: break-all;
+    }
+
+    details {
+      margin-top: 28px;
+      border-top: 1px solid var(--border);
+      padding-top: 20px;
+    }
+
+    details summary {
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 15px;
+      list-style: none;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
+    }
+
+    details summary::-webkit-details-marker { display: none; }
+    details summary::before {
+      content: "▸";
+      transition: transform 0.15s ease;
+      color: var(--muted);
+    }
+    details[open] summary::before { transform: rotate(90deg); }
+
+    .steps {
+      margin: 14px 0 0;
+      padding: 0;
+      list-style: none;
+      counter-reset: step;
+    }
+
+    .steps li {
+      counter-increment: step;
+      position: relative;
+      padding: 10px 0 10px 40px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+
+    .steps li:last-child { border-bottom: 0; }
+
+    .steps li::before {
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 10px;
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .steps strong { color: var(--text); }
+    .steps code {
+      background: var(--code-bg);
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 12.5px;
+      color: #d0d6e0;
+    }
+
+    .warn {
+      margin-top: 22px;
+      padding: 14px 16px;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      border-radius: var(--radius-sm);
+      color: var(--warn-text);
+      font-size: 13.5px;
+      line-height: 1.5;
+    }
+
+    .warn strong { color: #ffd99a; }
+
+    footer {
+      margin-top: 28px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 480px) {
+      .card { padding: 22px; }
+      .hero h2 { font-size: 24px; }
+      .install-btn { font-size: 16px; padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="brand">
+      <img src="/assets/icons/favicon-128.png" alt="JimmyQrg Chat" />
+      <div class="brand-text">
+        <h1>JimmyQrg Chat</h1>
+        <p>Android · Debug build</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hero">
+        <h2>Install the Android app</h2>
+        <p>Tap the button below on your phone to download and install.</p>
+        <div class="meta">
+          <span class="pill"><span class="dot"></span>v1.0-debug</span>
+          <span class="pill">~27 MB</span>
+          <span class="pill">Android 7.0+</span>
+        </div>
+      </div>
+
+      <a
+        id="installBtn"
+        class="install-btn"
+        href="https://github.com/indiamonda/chat/releases/download/v1.0-debug/app-debug.apk"
+        rel="noopener"
+        download>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3v12" />
+          <path d="m7 10 5 5 5-5" />
+          <path d="M5 21h14" />
+        </svg>
+        Download &amp; Install APK
+      </a>
+
+      <div class="meta-row">
+        <span>Direct from GitHub Releases</span>
+        <span class="checksum">SHA-256: see release notes</span>
+      </div>
+
+      <div class="warn">
+        <strong>Huawei / HarmonyOS:</strong> when you tap the APK, your phone may block it the first time. Tap <strong>设置</strong> in the dialog (or <strong>Settings → Apps → App management → [your browser] → Install unknown apps</strong>) and toggle it on, then re-open the file.
+      </div>
+
+      <details>
+        <summary>How to install (step-by-step)</summary>
+        <ol class="steps">
+          <li>Tap <strong>Download &amp; Install APK</strong> above. Your browser will save the file.</li>
+          <li>Open your phone's <strong>Downloads</strong> folder (or the notification bar) and tap the APK.</li>
+          <li>If Android asks <em>"For your security, your phone is not allowed to install unknown apps from this source"</em>, tap <strong>Settings</strong> in that dialog.</li>
+          <li>Toggle <strong>Allow from this source</strong> on for the browser you used to download.</li>
+          <li>Go back and tap the APK again. Confirm <strong>Install</strong>.</li>
+          <li>Open <strong>JimmyQrg Chat</strong> from your launcher.</li>
+        </ol>
+      </details>
+    </div>
+
+    <footer>
+      Need help? <a href="mailto:support@jchat.fly.dev">support@jchat.fly.dev</a> ·
+      <a href="/">Back to chat</a>
+    </footer>
+  </div>
+</body>
+</html>
