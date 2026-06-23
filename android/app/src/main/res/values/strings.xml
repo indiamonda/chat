@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">JimmyQrg Chat</string>
+    <string name="title_activity_main">JimmyQrg Chat</string>
+    <string name="package_name">com.jimmyqrg.chat</string>
+    <string name="custom_url_scheme">com.jimmyqrg.chat</string>
+</resources>
