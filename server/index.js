@@ -1812,10 +1812,23 @@ function defaultMapForMode(mode) {
   return DEFAULT_MAP_BY_MODE[mode] || null;
 }
 
+/**
+ * Suspended rooms: created rooms whose host has left are immediately marked suspended
+ * so joinByCode rejects them (friends can't join a hostless game), but the registry
+ * entry is kept so the host can rejoin via joinRoom using their original roomKey.
+ * Quickplay rooms don't have a single host, so they're not "suspended" — they get a
+ * 5-minute grace window (lastEmptyAt + ROOM_EXPIRY_MS) during which anyone with the
+ * code can still rejoin, then getAllActiveRooms reaps them.
+ */
 function getAllActiveRooms() {
   const now = Date.now();
   const list = [];
   for (const [roomKey, meta] of globalRoomRegistry) {
+    if (meta.suspended) continue;
+    if (meta.kind === 'quickplay' && meta.lastEmptyAt && now - meta.lastEmptyAt > ROOM_EXPIRY_MS) {
+      globalRoomRegistry.delete(roomKey);
+      continue;
+    }
     if (now - meta.updatedAt > ROOM_EXPIRY_MS) { globalRoomRegistry.delete(roomKey); continue; }
     const max = meta.maxPlayers || ROOM_MAX_PLAYERS[meta.mode] || QUICKPLAY_MAX;
     if (meta.playerCount >= max) continue;
@@ -1832,15 +1845,18 @@ function getAllActiveRooms() {
   return list;
 }
 
-function registerRoom(roomKey, mode, code, hostId, map) {
+function registerRoom(roomKey, mode, code, hostId, map, kind) {
   const effectiveMap = map || defaultMapForMode(mode);
   globalRoomRegistry.set(roomKey, {
     roomKey, mode, code, hostId,
     map: effectiveMap,
+    kind: kind === 'quickplay' ? 'quickplay' : 'created',
     maxPlayers: ROOM_MAX_PLAYERS[mode] || QUICKPLAY_MAX,
     playerCount: 1,
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    suspended: false,
+    lastEmptyAt: 0,
   });
 }
 
@@ -1849,7 +1865,24 @@ function updateRoomPlayerCount(roomKey, delta) {
   if (!meta) return;
   meta.playerCount = Math.max(0, meta.playerCount + delta);
   meta.updatedAt = Date.now();
-  if (meta.playerCount <= 0) globalRoomRegistry.delete(roomKey);
+  // Don't auto-delete on empty — leaveCurrentRoom handles suspension/expiry
+  // differently for 'created' vs 'quickplay' rooms.
+}
+
+function suspendRoom(roomKey) {
+  const meta = globalRoomRegistry.get(roomKey);
+  if (!meta) return;
+  meta.suspended = true;
+  meta.lastEmptyAt = Date.now();
+  meta.updatedAt = meta.lastEmptyAt;
+}
+
+function resumeRoom(roomKey) {
+  const meta = globalRoomRegistry.get(roomKey);
+  if (!meta) return;
+  meta.suspended = false;
+  meta.lastEmptyAt = 0;
+  meta.updatedAt = Date.now();
 }
 
 function unregisterRoom(roomKey) {
@@ -2040,7 +2073,18 @@ function leaveCurrentRoom(socket, currentRoom) {
     members.delete(socket.id);
     if (!members.size) {
       gameRooms.delete(currentRoom);
-      unregisterRoom(currentRoom);
+      // Created rooms suspend immediately so joinByCode rejects them — the host
+      // can rejoin later via joinRoom using the same roomKey. Quickplay rooms
+      // have no single host, so they keep the registry entry with lastEmptyAt
+      // set; getAllActiveRooms reaps them after ROOM_EXPIRY_MS of being empty.
+      const meta = globalRoomRegistry.get(currentRoom);
+      if (meta && meta.kind === 'quickplay') {
+        meta.playerCount = 0;
+        meta.lastEmptyAt = Date.now();
+        meta.updatedAt = meta.lastEmptyAt;
+      } else {
+        suspendRoom(currentRoom);
+      }
     } else broadcastZombieHost(currentRoom);
   }
   updateRoomPlayerCount(currentRoom, -1);
@@ -2055,16 +2099,35 @@ gameNsp.on('connection', (socket) => {
       if (typeof ack === 'function') ack({ ok: false, error: 'bad room' });
       return;
     }
-    leaveCurrentRoom(socket, currentRoom);
-    // Full keys from quickplay / create / join-by-code; legacy bare codes use game: prefix
-    if (roomId.startsWith('qp:') || roomId.startsWith('cr:')) {
-      currentRoom = roomId;
-    } else {
-      currentRoom = `game:${roomId}`;
+    // Look up the canonical roomKey the client is asking to join.
+    let canonical = roomId;
+    if (!roomId.startsWith('qp:') && !roomId.startsWith('cr:')) {
+      canonical = `game:${roomId}`;
     }
+    // Reject joinByCode-style lookups via joinRoom for suspended/empty rooms —
+    // only an existing member reconnecting (using their known roomKey) should
+    // resume them.
+    const meta = globalRoomRegistry.get(canonical);
+    if (!meta) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Room not found' });
+      return;
+    }
+    if (meta.kind !== 'quickplay' && meta.lastEmptyAt && Date.now() - meta.lastEmptyAt > ROOM_EXPIRY_MS) {
+      // Created room whose grace has fully lapsed — fully reap.
+      globalRoomRegistry.delete(canonical);
+      gameRooms.delete(canonical);
+      if (typeof ack === 'function') ack({ ok: false, error: 'Room not found' });
+      return;
+    }
+    leaveCurrentRoom(socket, currentRoom);
+    currentRoom = canonical;
     socket.join(currentRoom);
     if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
     gameRooms.get(currentRoom).add(socket.id);
+    if (meta.suspended || meta.playerCount === 0) {
+      resumeRoom(currentRoom);
+    }
+    updateRoomPlayerCount(currentRoom, 1);
     broadcastZombieHost(currentRoom);
     if (typeof ack === 'function') {
       const members = gameRooms.get(currentRoom);
@@ -2084,12 +2147,13 @@ gameNsp.on('connection', (socket) => {
     // loads the right map.
     const max = ROOM_MAX_PLAYERS[mode] || QUICKPLAY_MAX;
     for (const [key, meta] of globalRoomRegistry) {
-      if (meta.mode === mode && meta.playerCount < max) {
+      if (meta.mode === mode && meta.playerCount < max && !meta.suspended && !(meta.kind === 'quickplay' && meta.lastEmptyAt && Date.now() - meta.lastEmptyAt > ROOM_EXPIRY_MS)) {
         currentRoom = key;
         socket.join(currentRoom);
         if (!gameRooms.has(currentRoom)) gameRooms.set(currentRoom, new Set());
         gameRooms.get(currentRoom).add(socket.id);
         updateRoomPlayerCount(currentRoom, 1);
+        if (meta.playerCount === 0 && meta.lastEmptyAt) resumeRoom(currentRoom);
         cb({ room: meta.code, roomCode: meta.code, roomKey: currentRoom, count: meta.playerCount + 1, map: meta.map || null });
         broadcastZombieHost(currentRoom);
         return;
@@ -2106,7 +2170,7 @@ gameNsp.on('connection', (socket) => {
     currentRoom = `${prefix}${code}`;
     socket.join(currentRoom);
     gameRooms.set(currentRoom, new Set([socket.id]));
-    registerRoom(currentRoom, mode, code, socket.id, requestedMap);
+    registerRoom(currentRoom, mode, code, socket.id, requestedMap, 'quickplay');
     // Read back the canonical map from the registry so the callback
     // matches what subsequent joiners will see (default-filled if the
     // client omitted it).
@@ -2130,7 +2194,7 @@ gameNsp.on('connection', (socket) => {
     currentRoom = `cr:${mode}:${code}`;
     socket.join(currentRoom);
     gameRooms.set(currentRoom, new Set([socket.id]));
-    registerRoom(currentRoom, mode, code, socket.id, requestedMap);
+    registerRoom(currentRoom, mode, code, socket.id, requestedMap, 'created');
     const createdMeta = globalRoomRegistry.get(currentRoom);
     const effectiveMap = createdMeta ? createdMeta.map : (requestedMap || defaultMapForMode(mode));
     cb({ code, roomCode: code, roomKey: currentRoom, map: effectiveMap });
@@ -2148,7 +2212,11 @@ gameNsp.on('connection', (socket) => {
     // Mode-agnostic lookup: search all rooms with matching code
     let foundKey = null;
     for (const [key, meta] of globalRoomRegistry) {
-      if (meta.code === code) { foundKey = key; break; }
+      if (meta.code !== code) continue;
+      if (meta.suspended) continue; // Created room whose host has left — wait for host to return.
+      if (meta.lastEmptyAt && Date.now() - meta.lastEmptyAt > ROOM_EXPIRY_MS) continue;
+      foundKey = key;
+      break;
     }
     if (!foundKey) return cb({ error: 'Room not found' });
     const meta = globalRoomRegistry.get(foundKey);
