@@ -5243,6 +5243,7 @@ const ICON_SCREEN_STOP = '<svg xmlns="http://www.w3.org/2000/svg" width="24" hei
 const ICON_PHONE_OFF = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="22" x2="2" y1="2" y2="22"/></svg>';
 const ICON_USERS_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
 const ICON_PHONE = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+const ICON_EMOJI = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg>';
 
 function renderProfileView(userId) {
   // Block-private view: server returned 403/private_user for both the
@@ -5687,7 +5688,6 @@ function renderChatArea() {
         <div class="chat-header">
           <div class="chat-header-title">${escapeHtml(getChatHeaderTitle(roomType, roomId))}</div>
           ${headerSubtitle}
-          ${roomType === 'dm' && isFriend(state.dmUserId) ? `<button type="button" class="chat-header-menu-btn" id="dm-voice-call-btn" title="Start voice call" aria-label="Start voice call"><span class="icon" aria-hidden="true">${ICON_PHONE}</span></button>` : ''}
           <button type="button" class="chat-header-menu-btn" id="chat-header-menu-btn" title="${tx('more', 'More')}" aria-expanded="${sidePanelOpen}"><span class="icon" aria-hidden="true">${ICON_ELLIPSIS_V}</span></button>
         </div>
         ${pinnedBanner}
@@ -5740,6 +5740,7 @@ function renderChatArea() {
                 ${roomType === 'group' ? `<button type="button" id="composer-command-mode" class="composer-command-btn ${state.commandMode ? 'composer-command-btn-on' : ''}" title="${state.commandMode ? 'Command mode on (e.g. /games, /wordle, /file &lt;id&gt;)' : 'Command mode off (send as text)'}" aria-label="Toggle command mode" aria-pressed="${state.commandMode}"><span class="icon" aria-hidden="true">${ICON_COMMAND}</span></button>` : ''}
                 <button type="button" id="composer-mic" title="Record voice message" ${(roomType === 'dm' && !isFriend(state.dmUserId)) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
                 <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
+                <button type="button" id="composer-emoji" title="Emoji" aria-label="Insert emoji"><span class="icon" aria-hidden="true">${ICON_EMOJI}</span></button>
                 <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
               </div>
             </div>
@@ -7327,7 +7328,47 @@ function bindMain() {
     const roomId = state.dmUserId ? state.convId : state.panel;
     apiDelete(`/api/admin/pin/${roomType}/${roomId}`).catch((err) => showToast(err.message || 'Failed to unpin'));
   });
-  document.getElementById('chat-header-menu-btn')?.addEventListener('click', () => {
+  document.getElementById('chat-header-menu-btn')?.addEventListener('click', (e) => {
+    const isDm = !!state.dmUserId;
+    if (isDm) {
+      // DM: open a real dropdown menu anchored to the button.
+      const btn = e.currentTarget;
+      const rect = btn.getBoundingClientRect();
+      const isFriendTarget = isFriend(state.dmUserId);
+      const items = [];
+      if (isFriendTarget) {
+        items.push({
+          label: 'Voice Call',
+          action: 'voice-call',
+        });
+      }
+      items.push({
+        label: 'Search Message',
+        action: 'search-message',
+      });
+      items.push({
+        label: 'View Profile',
+        action: 'view-profile',
+      });
+      // Anchor the menu to the bottom-right of the button; showContextMenu
+      // clamps to viewport.
+      const x = rect.right;
+      const y = rect.bottom + 4;
+      showContextMenu(x, y, items, (action) => {
+        if (action === 'voice-call') {
+          dmVoiceInvite(state.dmUserId, state.convByUserId?.[state.dmUserId] || state.convId);
+        } else if (action === 'search-message') {
+          state._chatSidePanelOpen = true;
+          state._chatSidePanelTab = 'search';
+          render();
+          requestAnimationFrame(() => document.getElementById('chat-search-query')?.focus());
+        } else if (action === 'view-profile') {
+          navigateTo(`/chat/${encodeURIComponent(state.dmUserId)}?view=profile`);
+        }
+      });
+      return;
+    }
+    // Group: keep existing side-panel toggle behavior.
     state._chatSidePanelOpen = !state._chatSidePanelOpen;
     if (state._chatSidePanelOpen && !state._chatSidePanelTab) state._chatSidePanelTab = 'users';
     render();
@@ -7800,6 +7841,7 @@ function bindMain() {
 
   const sendBtn = document.getElementById('send-btn');
   const input = document.getElementById('composer-input');
+  const emojiBtn = document.getElementById('composer-emoji');
   const COMPOSER_MAX_HEIGHT = 200;
   function resizeComposerInput() {
     if (!input) return;
@@ -7807,6 +7849,98 @@ function bindMain() {
     const h = Math.min(input.scrollHeight, COMPOSER_MAX_HEIGHT);
     input.style.height = Math.max(22, h) + 'px';
   }
+
+  // Curated emoji set. Organized into rows visually by category in the picker.
+  // Kept small (around 60) for fast scanning and tiny payload.
+  const EMOJI_LIST = [
+    '😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩',
+    '😘','😗','😚','😙','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨',
+    '😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕',
+    '👍','👎','👌','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','☝️','✋','🤚','🖐️',
+    '❤️','💔','💖','💯','🔥','✨','🎉','🎊','🎁','🎈','🎂','🍰','🍕','🍔','🍟','☕',
+  ];
+  function openEmojiPicker(btn) {
+    const existing = document.getElementById('emoji-picker');
+    if (existing) {
+      existing.remove();
+      document.removeEventListener('click', existing._close);
+      if (btn._pickerOpen === existing) btn._pickerOpen = null;
+      // If the same button was clicked while open, just close — don't reopen.
+      if (btn._lastClicked === btn) return;
+    }
+    btn._lastClicked = btn;
+    const rect = btn.getBoundingClientRect();
+    const pop = document.createElement('div');
+    pop.id = 'emoji-picker';
+    pop.className = 'emoji-picker';
+    // Build a 12-col grid.
+    const cols = 12;
+    pop.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    EMOJI_LIST.forEach((emoji) => {
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      cell.className = 'emoji-picker-cell';
+      cell.textContent = emoji;
+      cell.setAttribute('aria-label', `Insert ${emoji}`);
+      cell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        insertAtCursor(input, emoji);
+        resizeComposerInput();
+        pop.remove();
+        document.removeEventListener('click', pop._close);
+        input?.focus();
+      });
+      pop.appendChild(cell);
+    });
+    document.body.appendChild(pop);
+    // Default position: above the button, right-aligned.
+    let x = rect.right;
+    let y = rect.top - 8;
+    pop.style.visibility = 'hidden';
+    pop.style.left = x + 'px';
+    pop.style.top = y + 'px';
+    requestAnimationFrame(() => {
+      const pad = 6;
+      const pr = pop.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      // Clamp inside viewport.
+      if (pr.right > vw - pad) x = Math.max(pad, vw - pr.width - pad);
+      if (pr.left < pad) x = pad;
+      if (pr.top < pad) {
+        // Flip below the button.
+        y = rect.bottom + 8;
+      }
+      if (y + pr.height > vh - pad) y = Math.max(pad, vh - pr.height - pad);
+      pop.style.left = x + 'px';
+      pop.style.top = y + 'px';
+      pop.style.visibility = '';
+    });
+    const close = (ev) => {
+      if (pop.contains(ev?.target)) return;
+      pop.remove();
+      document.removeEventListener('click', close);
+      if (btn._pickerOpen === pop) btn._pickerOpen = null;
+    };
+    pop._close = close;
+    btn._pickerOpen = pop;
+    setTimeout(() => document.addEventListener('click', close), 0);
+  }
+  function insertAtCursor(textarea, text) {
+    if (!textarea) return;
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? textarea.value.length;
+    const before = textarea.value.slice(0, start);
+    const after = textarea.value.slice(end);
+    textarea.value = before + text + after;
+    const caret = start + text.length;
+    textarea.selectionStart = textarea.selectionEnd = caret;
+    textarea.focus();
+  }
+  emojiBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openEmojiPicker(emojiBtn);
+  });
   if (sendBtn && input) {
     const send = () => {
       if (state._sendingMessage) return;
@@ -9687,18 +9821,18 @@ function renderChatUsersView() {
 }
 
 function renderChatSidePanel(roomType, roomId) {
-  const activeTab = state._chatSidePanelTab || 'users';
+  const activeTab = state._chatSidePanelTab || (roomType === 'dm' ? 'search' : 'users');
   return `
     <aside class="chat-side-panel ${state._chatSidePanelOpen ? 'open' : ''}" id="chat-side-panel">
       <div class="chat-side-panel-header">
         <div class="chat-side-panel-tabs">
-          <button type="button" class="chat-side-panel-tab ${activeTab === 'users' ? 'active' : ''}" data-chat-side-tab="users"><span class="icon" aria-hidden="true">${ICON_USERS}</span> ${tx('users', 'Users')}</button>
+          ${roomType !== 'dm' ? `<button type="button" class="chat-side-panel-tab ${activeTab === 'users' ? 'active' : ''}" data-chat-side-tab="users"><span class="icon" aria-hidden="true">${ICON_USERS}</span> ${tx('users', 'Users')}</button>` : ''}
           <button type="button" class="chat-side-panel-tab ${activeTab === 'search' ? 'active' : ''}" data-chat-side-tab="search"><span class="icon" aria-hidden="true">${ICON_SEARCH_SM}</span> ${tx('search', 'Search')}</button>
         </div>
         <button type="button" class="chat-side-panel-close" id="chat-side-panel-close" aria-label="Close"><span class="icon" aria-hidden="true">${ICON_CLOSE}</span></button>
       </div>
       <div class="chat-side-panel-body">
-        ${activeTab === 'search' ? renderChatSearchView(roomType, roomId) : renderChatUsersView()}
+        ${activeTab === 'search' ? renderChatSearchView(roomType, roomId) : (roomType === 'dm' ? renderChatSearchView(roomType, roomId) : renderChatUsersView())}
       </div>
     </aside>
   `;
