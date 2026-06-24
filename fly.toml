@@ -7,6 +7,7 @@ app = 'jchat'
 primary_region = 'sjc'
 
 [build]
+  dockerfile = "Dockerfile"
 
 # Persistent storage — one volume in primary_region (SQLite + sessions are per-machine; use 1 machine only)
 #   fly volume create chat_data --region sjc --size 1 -a jchat
