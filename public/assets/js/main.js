@@ -3450,10 +3450,32 @@ async function voiceShareScreen(options = {}) {
       }
       track.onended = () => voiceStopScreenShare();
     }
+    // Safari often fails to fire onnegotiationneeded when addTrack is called
+    // from a MediaStream that differs from the one used during the initial
+    // handshake. Explicitly kick a renegotiation for each peer so the
+    // receiver learns about the new video m-section.
+    await voiceKickRenegotiation();
     voiceBroadcastMediaState();
     render();
   } catch (err) {
     if (err.name !== 'NotAllowedError') showToast('Screen share failed: ' + (err.message || err));
+  }
+}
+
+// Force a renegotiation offer for every group-voice peer. Safe to call
+// after any pc.addTrack / pc.removeTrack — skips peers whose pc isn't in
+// the stable state (e.g. another offer is already in flight).
+async function voiceKickRenegotiation() {
+  const entries = Object.entries(state._voicePeers || {});
+  for (const [peerId, pc] of entries) {
+    if (pc.signalingState !== 'stable') continue;
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      state.socket?.emit('voice:offer', { to: peerId, offer: pc.localDescription }, () => {});
+    } catch (_) {
+      // Best-effort; ignore transient negotiation races.
+    }
   }
 }
 
@@ -3581,6 +3603,7 @@ function dmVoiceCleanup() {
   }
   state._dmVoiceDataChannel = null;
   state._dmVoicePeer = null;
+  state._dmVoicePeerUserId = null;
   state._dmVoiceLocalStream?.getTracks().forEach(t => t.stop());
   state._dmVoiceScreenStream?.getTracks().forEach(t => t.stop());
   state._dmVoiceLocalStream = null;
@@ -3603,6 +3626,10 @@ function dmVoiceCreatePeer(remoteUserId, initiator) {
   }
   const pc = new RTCPeerConnection(RTC_CONFIG);
   state._dmVoicePeer = pc;
+  // Preserve the peer userId on state so renegotiation helpers (e.g. when
+  // adding screen-share tracks) can address the dm-voice:offer payload
+  // without needing the closure-local variable.
+  state._dmVoicePeerUserId = remoteUserId;
 
   // Caller (initiator) creates the data channel; callee receives via ondatachannel.
   if (initiator) {
@@ -3765,10 +3792,30 @@ async function dmVoiceShareScreen(options = {}) {
       state._dmVoicePeer?.addTrack(track, screenStream);
       track.onended = () => dmVoiceStopScreenShare();
     }
+    // Safari often fails to fire onnegotiationneeded when addTrack is called
+    // from a MediaStream that differs from the one used during the initial
+    // handshake. Explicitly kick a renegotiation so the receiver learns
+    // about the new video m-section.
+    await dmVoiceKickRenegotiation();
     dmVoiceBroadcastMediaState();
     render();
   } catch (err) {
     if (err.name !== 'NotAllowedError') showToast('Screen share failed: ' + (err.message || err));
+  }
+}
+
+async function dmVoiceKickRenegotiation() {
+  const pc = state._dmVoicePeer;
+  const to = state._dmVoicePeerUserId;
+  const convId = state._dmVoiceConvId;
+  if (!pc || pc.signalingState !== 'stable') return;
+  if (!to || !convId) return;
+  try {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    state.socket?.emit('dm-voice:offer', { to, convId, offer: pc.localDescription }, () => {});
+  } catch (_) {
+    // Best-effort; ignore transient negotiation races.
   }
 }
 

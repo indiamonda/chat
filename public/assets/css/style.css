@@ -1394,7 +1394,9 @@ select:focus {
 
 .main-content-body .doc-panel,
 .main-content-body .admin-main,
-.main-content-body .settings-page {
+.main-content-body .settings-page,
+.main-content-body .inbox-page,
+.main-content-body .collections-page {
   flex: 1;
   display: flex;
   flex-direction: column;
