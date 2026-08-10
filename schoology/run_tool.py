@@ -65,10 +65,68 @@ log = logging.getLogger("run_tool")
 _TOOL_FUNCTIONS = None
 
 
+def _install_fastmcp_stub() -> None:
+    """Stub ``mcp.server.fastmcp`` so the schoology-mcp server.py can import.
+
+    The upstream Python MCP SDK v2+ moved FastMCP out of ``mcp.server.fastmcp``
+    (it's now in the standalone ``fastmcp`` package). The vendored
+    schoology-mcp/server.py still does ``from mcp.server.fastmcp import
+    FastMCP``, which crashes every daemon tool call with
+    ``ModuleNotFoundError: No module named 'mcp.server.fastmcp'``.
+
+    This daemon never talks MCP-over-stdio -- it calls the underlying tool
+    functions directly. So FastMCP is dead weight here: we just need the
+    module import + the ``@mcp.tool()`` decorator calls to be no-ops. The
+    shim provides a minimal FastMCP whose ``.tool()`` returns the decorated
+    function unchanged.
+
+    Installed before any ``import server`` happens so the deferred import in
+    ``_load_tool_functions`` succeeds on the venv's mcp package version.
+
+    Per HARD CONSTRAINT we cannot edit ``schoology-mcp/`` for dashboard bugs;
+    this stub lives in the dashboard's own run_tool.py and is the cheapest
+    possible workaround until schoology-mcp is refreshed from upstream.
+    """
+    import importlib
+    import types
+
+    try:
+        importlib.import_module("mcp.server.fastmcp")
+        return  # real module available; nothing to do
+    except ModuleNotFoundError:
+        pass
+
+    pkg = types.ModuleType("mcp.server")
+    pkg.__path__ = []  # mark as package so submodule imports work
+    sys.modules.setdefault("mcp.server", pkg)
+
+    class _StubFastMCP:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def tool(self, *_args, **_kwargs):
+            # Return the function unchanged so ``@mcp.tool()`` is a no-op.
+            def decorator(fn):
+                return fn
+            # Support both ``@mcp.tool()`` (called) and ``@mcp.tool`` (bare).
+            if _args and callable(_args[0]) and not _kwargs:
+                return _args[0]
+            return decorator
+
+    mod = types.ModuleType("mcp.server.fastmcp")
+    mod.FastMCP = _StubFastMCP
+    sys.modules["mcp.server.fastmcp"] = mod
+    log.warning(
+        "Installed mcp.server.fastmcp stub (real module missing in venv). "
+        "Daemon will use raw tool functions; FastMCP stdio server is unused here."
+    )
+
+
 def _load_tool_functions() -> dict:
     global _TOOL_FUNCTIONS
     if _TOOL_FUNCTIONS is not None:
         return _TOOL_FUNCTIONS
+    _install_fastmcp_stub()
     import server as server_mod
     _TOOL_FUNCTIONS = {
         "get_grades": server_mod.get_grades,

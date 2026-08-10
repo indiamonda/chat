@@ -1,6 +1,6 @@
 """Age gate for the AI Assistant.
 
-Enforces a "grade 8 and up" policy at the *server* boundary so a hostile
+Enforces a "grade 9 and up" policy at the *server* boundary so a hostile
 or curious user cannot bypass the JS gate from devtools. The frontend
 gate is a UX nicety; this module is the actual guard.
 
@@ -86,8 +86,8 @@ PAUSD_CALENDAR = {
     },
 }
 
-MIN_GRADE = 8
-TERMS_VERSION = 2   # bumped when the gate policy or Terms wording changes; old tokens invalidate
+MIN_GRADE = 9
+TERMS_VERSION = 3   # bumped when the gate policy or Terms wording changes; old tokens invalidate
 
 GATE_DIR = Path(os.environ.get('DATA_DIR', '/data')) / 'ai_gate'
 
@@ -566,7 +566,7 @@ def require_gate(view):
         payload = _verify(token)
         if not payload:
             return jsonify({'error': 'gate_required',
-                            'message': 'AI Assistant is only available to verified PAUSD students in grade 8 or up.'}), 403
+                            'message': 'AI Assistant is only available to verified PAUSD students in grade 9 or up.'}), 403
         if payload.get('u') != username:
             return jsonify({'error': 'gate_wrong_user'}), 403
         return view(*args, **kwargs)
@@ -639,7 +639,7 @@ def install_gate_middleware(app):
         if not payload:
             print(f'[GATE] reject {request.method} {path} user={username!r}: missing/invalid token')
             return jsonify({'error': 'gate_required',
-                            'message': 'AI Assistant is only available to verified PAUSD students in grade 8 or up.'}), 403
+                            'message': 'AI Assistant is only available to verified PAUSD students in grade 9 or up.'}), 403
         if payload.get('u') != username:
             print(f'[GATE] reject {request.method} {path} user={username!r}: token bound to {payload.get("u")!r}')
             return jsonify({'error': 'gate_wrong_user'}), 403
@@ -654,8 +654,8 @@ def _grade_confirm_view():
     the grade, mints a regular (non-soft-fail) token on success, and
     caches the decision so the next reload skips the re-check.
 
-    On under-8, returns the same shape the gate would have -- the
-    caller paints the under-8 gate block. On malformed input, the
+    On under-MIN_GRADE, returns the same shape the gate would have -- the
+    caller paints the under-age gate block. On malformed input, the
     caller treats it as "still unknown" and either retries or hard-
     fails.
 
@@ -689,7 +689,7 @@ def _grade_confirm_view():
         year=datetime.now().year + 1).strftime('%Y-%m-%d'))
 
     if grade < MIN_GRADE:
-        # Cache the under-8 decision so future loads don't loop the
+        # Cache the under-age decision so future loads don't loop the
         # same prompt -- the user has been told.
         _write_cache(username, {
             'grade': grade, 'school': school,

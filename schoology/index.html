@@ -134,7 +134,7 @@
 
           <div class="legal-row">
             <input type="checkbox" id="legalAgreeCheckbox" onchange="updateLoginButtonState()">
-            <label for="legalAgreeCheckbox">I have read and agree to the <a onclick="openLegalModal('terms')">Terms of Use</a> and <a onclick="openLegalModal('privacy')">Privacy Policy</a>. I confirm I am in 8th grade or higher.</label>
+            <label for="legalAgreeCheckbox">I have read and agree to the <a onclick="openLegalModal('terms')">Terms of Use</a> and <a onclick="openLegalModal('privacy')">Privacy Policy</a>. I confirm I am in 9th grade or higher.</label>
           </div>
           <button type="button" id="loginSubmitBtn" class="login-btn" data-label="Sign In" onclick="handleLogin({preventDefault:()=>{}})" disabled><span>Sign In</span></button>
         </form>
@@ -156,8 +156,8 @@
         </div>
         <div class="legal-modal-body">
           <h3>1. Who can use this dashboard</h3>
-          <p>This dashboard is designed for students who are currently enrolled in <em>8th grade or higher</em>. The AI Assistant verifies your grade level from the data Schoology returns for your account.</p>
-          <p>If you are below 8th grade, you are <em>not permitted</em> to use the AI Assistant. The dashboard itself is built around PAUSD's Schoology setup and may not work well for students at other districts, but we do not block access based on which school or district you attend — only on grade level.</p>
+          <p>This dashboard is designed for students who are currently enrolled in <em>9th grade or higher</em>. The AI Assistant verifies your grade level from the data Schoology returns for your account.</p>
+          <p>If you are below 9th grade, you are <em>not permitted</em> to use the AI Assistant. The dashboard itself is built around PAUSD's Schoology setup and may not work well for students at other districts, but we do not block access based on which school or district you attend — only on grade level.</p>
 
           <h3>2. The AI Assistant can make mistakes</h3>
           <p>The AI Assistant is an experimental, automated system. It generates answers using a large language model and may produce information that is incomplete, inaccurate, out of date, or contradicts your teacher, your school, or the official PAUSD policies.</p>
@@ -167,11 +167,13 @@
           <p>The AI Assistant is not a substitute for advice from a teacher, counsellor, licensed mental-health professional, lawyer, doctor, or any other qualified human. Do not rely on it for medical, legal, mental-health, or other safety-critical decisions.</p>
 
           <h3>4. Acceptable use</h3>
+          <p>The AI Assistant is built to help with <em>schedules, future planning, organisation, and questions unrelated to your graded work</em>. It is <em>not</em> a tutor, study aid, homework helper, or grader.</p>
           <ul>
-            <li>Do not use the AI Assistant to cheat, plagiarise, or violate the PAUSD academic-integrity policy.</li>
-            <li>Do not attempt to bypass the age or district gate, including by tampering with browser storage, request headers, or tokens.</li>
-            <li>Do not use the dashboard to harass, threaten, dox, or harm any other person.</li>
-            <li>Do not attempt to access another student's data using credentials that are not yours.</li>
+            <li>Do <em>not</em> use the AI Assistant to produce, solve, outline, draft, paraphrase, translate, summarise, or otherwise help with graded work — including homework, essays, problem sets, lab reports, projects, take-home tests, foreign-language exercises, or anything that will be (or could be) submitted for a grade.</li>
+            <li>Do <em>not</em> use the AI Assistant to cheat, plagiarise, or violate the PAUSD academic-integrity policy. PAUSD's policy does <em>not</em> authorise AI use on student work unless a teacher has explicitly allowed it for a specific assignment. If a teacher has posted such an allowance, the AI may help within the bounds the teacher set; otherwise it will refuse.</li>
+            <li>Do <em>not</em> attempt to bypass the age or district gate, including by tampering with browser storage, request headers, or tokens.</li>
+            <li>Do <em>not</em> use the dashboard to harass, threaten, dox, or harm any other person.</li>
+            <li>Do <em>not</em> attempt to access another student's data using credentials that are not yours.</li>
           </ul>
           <p>Misuse may result in your access being revoked and (where appropriate) reported to PAUSD.</p>
 
@@ -181,7 +183,7 @@
           <h3>6. Changes</h3>
           <p>These Terms of Use may be updated. When the wording changes you will be asked to agree to the new version the next time you sign in. Continuing to use the dashboard after a change means you accept the new terms.</p>
 
-          <p class="legal-modal-meta">Terms version 2 · Last updated June 2026 · Operated by JimmyQrg (independent; not affiliated with PAUSD).</p>
+          <p class="legal-modal-meta">Terms version 3 · Last updated August 2026 · Operated by JimmyQrg (independent; not affiliated with PAUSD).</p>
         </div>
       </div>
     </div>
@@ -233,12 +235,12 @@
           <p>You can stop using the dashboard at any time. You can request that your stored data be deleted by signing out and contacting the operator. Clearing the dashboard's session in Settings will remove your Schoology session cookies from the server.</p>
 
           <h3>7. Children's privacy</h3>
-          <p>This service is not directed to children under the age of 13. Access to the AI Assistant is restricted to students in 8th grade or higher.</p>
+          <p>This service is not directed to children under the age of 13. Access to the AI Assistant is restricted to students in 9th grade or higher.</p>
 
           <h3>8. Changes</h3>
           <p>This policy may be updated. When the wording changes you will be asked to agree to the new version the next time you sign in.</p>
 
-          <p class="legal-modal-meta">Privacy version 2 · Last updated June 2026 · Operated by JimmyQrg (independent; not affiliated with PAUSD).</p>
+          <p class="legal-modal-meta">Privacy version 3 · Last updated August 2026 · Operated by JimmyQrg (independent; not affiliated with PAUSD).</p>
         </div>
       </div>
     </div>
@@ -772,7 +774,7 @@
     // valid token without SESSION_SECRET.
     const GATE_STORAGE_KEY = (username) => `pausd_gate_v1_${username}`;
     const TERMS_STORAGE_KEY = (username) => `pausd_terms_accepted_v1_${username}`;
-    const CURRENT_TERMS_VERSION = 2;
+    const CURRENT_TERMS_VERSION = 3;
 
     // Read+verify the cached token for `username`. Returns the token
     // string if it's still valid for this semester, else null.
@@ -839,7 +841,7 @@
           console.log(
             '%cAI Assistant access verification',
             'color:#8b5cf6;font-size:14px;font-weight:bold;',
-            '\n\nThis dashboard is for PAUSD students in grade 8 or higher.\n' +
+            '\n\nThis dashboard is for PAUSD students in grade 9 or higher.\n' +
             'Access is verified server-side on every AI request; modifying ' +
             'localStorage or page globals will NOT grant access.\n' +
             'See Terms of Use / Privacy Policy for details.'
@@ -1022,8 +1024,8 @@
       const message = (data && data.message) || '';
       if (reason === 'under_age') {
         paintGateBlock({
-          title: 'You must be in grade 8 or higher to use this',
-          body: message || 'This AI assistant is available to students in grade 8 and up. By signing in you agreed to our Terms of Use, which include this age restriction.',
+          title: 'You must be in grade 9 or higher to use this',
+          body: message || 'This AI assistant is available to students in grade 9 and up. By signing in you agreed to our Terms of Use, which include this age restriction.',
           reason,
         });
       } else if (reason === 'terms_required') {
@@ -2385,7 +2387,7 @@
       } else {
         console.log('[DEBUG] Fetching real data...');
         // ── AGE + DISTRICT GATE ──────────────────────────────────────
-        // Run BEFORE any dashboard render. If the user is under 8th
+        // Run BEFORE any dashboard render. If the user is under 9th
         // grade or not at PAUSD, this short-circuits and shows a
         // blocking notice; nothing else loads. Cache key on the
         // server is (username, current-semester-end) so the same
@@ -2742,7 +2744,7 @@
         // returned nothing because the dashboard hadn't loaded yet),
         // re-attempt detection now that the data is in. Runs once per
         // page load; the result either upgrades us to a regular token
-        // or finally paints the under-8 block.
+        // or finally paints the under-age block.
         if (state._gateUnverified && !state._gradeDetectionAttempted) {
           state._gradeDetectionAttempted = true;
           queueGradeDetectionAutoPrompt();
@@ -2755,7 +2757,7 @@
     // /api/grade/confirm. Runs in the background after the dashboard
     // sections finish loading -- the user doesn't see the prompt or
     // reply (that would be noise); only the gate result (access
-    // upgraded to a regular token, OR the under-8 block painted).
+    // upgraded to a regular token, OR the under-age block painted).
     async function queueGradeDetectionAutoPrompt() {
       if (state.demoMode) return;
       if (!state.username) return;
@@ -2868,10 +2870,10 @@ Recent posts: ${postSample || '(none)'}`;
           lockGateToken(data.token);
           console.log('[GATE] soft-fail upgraded to verified token; grade', data.grade);
         } else if (data && data.reason === 'under_age') {
-          // The AI confirmed: user is under 8. Paint the block.
+          // The AI confirmed: user is under 9. Paint the block.
           paintGateBlock({
-            title: 'You must be in grade 8 or higher to use this',
-            body: data.message || 'This AI assistant is available to students in grade 8 and up. By signing in you agreed to our Terms of Use, which include this age restriction.',
+            title: 'You must be in grade 9 or higher to use this',
+            body: data.message || 'This AI assistant is available to students in grade 9 and up. By signing in you agreed to our Terms of Use, which include this age restriction.',
             reason: 'under_age',
           });
         }
@@ -5078,18 +5080,57 @@ Recent posts: ${postSample || '(none)'}`;
     function buildContextMessages(currentMessage, contextExtras) {
       const now = new Date();
       const calendarBlock = buildCalendarPromptSection();
-      const systemPrompt = `You are an expert AI study assistant for a PAUSD (Palo Alto Unified School District) student dashboard. Your goal is to provide thorough, helpful, and detailed responses.
+      const systemPrompt = `You are an AI scheduling and planning assistant for a PAUSD (Palo Alto Unified School District) student dashboard. You help with schedules, future planning, organisation, and any topic unrelated to the student's graded work.
 
-RESPONSE STYLE:
-- Always be comprehensive and detailed unless the user asks something simple/quick
-- Break down complex topics step-by-step with clear explanations
-- Use markdown formatting including headers (##, ###), lists, tables, code blocks, blockquotes, and horizontal rules for organization
-- Write LaTeX math with $$ for block and $ for inline: $$\\frac{a}{b}$ or $\\sqrt{x}$
-- Use relevant emoji sparingly to enhance readability: 🎉 ✅ ❌ 💡 📚 📝 🎯 🚀
-- Include practical examples and real-world applications when explaining concepts
-- When teaching, explain the "why" behind concepts, not just the "what"
-- Offer follow-up suggestions or related topics the user might want to explore
-- Never give one-word or extremely brief answers — a good answer is thorough
+WHAT YOU WILL NOT DO — HELP WITH GRADED WORK:
+The AI Assistant is NOT a study helper, tutor, homework aid, or problem-solver for the student's courses. You must not:
+- Solve math, science, engineering, or statistics problems (worked examples, derivations, integrals, proofs, equations, code solutions, etc.).
+- Write, outline, edit, summarise, paraphrase, proofread, translate, or rewrite essays, lab reports, history responses, book analyses, or any other graded text.
+- Answer content questions about social studies, history, English literature, foreign language, science, or any other subject the student is being graded on.
+- Provide facts, dates, definitions, or explanations that the student could submit for a grade on a current or recent assignment.
+
+Why: PAUSD's academic-integrity policy does not authorise AI use on student work unless a teacher has explicitly allowed it for a specific assignment. Helping a student produce or substantially produce graded work without that explicit permission violates that policy.
+
+EXCEPTION — TEACHER-EXPLICITLY-ALLOWED AI USE:
+Before refusing, check whether the user's teacher has stated a policy that allows AI for the assignment in question. Many PAUSD teachers post assignment instructions, rubrics, or AI-use notes on the course page. The student's "Recent Posts" and "Upcoming Assignments" (loaded into your context below) may include such instructions — read them.
+- If a teacher's instructions explicitly permit AI use (e.g. "you may use AI to brainstorm an outline", "AI grammar-checking is fine", "cite any AI use in your bibliography"), you may help WITHIN THE BOUNDS THAT TEACHER SET. Do not exceed those bounds — if they say "AI for outlining only", do not write the essay.
+- If no teacher AI-use policy is visible for the assignment, refuse politely (see "How to refuse" below).
+- When in doubt, refuse.
+
+WHAT YOU WILL DO — SCHEDULES, PLANNING, NON-ACADEMIC HELP:
+You may help with:
+- Schedules: class times, room changes, bell schedules, calendar planning, the PAUSD academic calendar (loaded into your context below), sports/club/extracurricular scheduling.
+- Future planning: college-application timelines, summer planning, study scheduling, balancing coursework with extracurriculars, goal-setting.
+- Non-academic topics: technology, cooking, sports, hobbies, current events not tied to a graded assignment, general life advice.
+- Schoology navigation help: "how do I find my grade for X", "where do I see upcoming work".
+- Rights and policy questions (see LEGAL & POLICY FRAMEWORK below): grading appeals, accommodations, suspensions, FERPA, Title IX — these are rights/advocacy, not homework help.
+
+HOW TO REFUSE:
+When the question is about graded work and no teacher AI-use policy permits it, respond briefly and politely. Suggested phrasing:
+"I'm not able to help with graded work for that course unless your teacher has posted an AI-use policy that allows it. If your teacher has allowed AI for this assignment, share the policy and I can help within those bounds. Otherwise, your teacher, a tutor, or a classmate's study group are the right places to ask."
+
+Do not lecture. Do not moralise. Do not mention the Terms of Use unless asked. Do not offer to do the work "just a little". A short, polite, redirect-and-stop is correct.
+
+DETECTING HOMEWORK QUESTIONS:
+You receive the student's current courses, upcoming assignments, and recent posts in your context below. Use them:
+1. Course-name match: if the question references one of the student's courses (or a clear alias — "calc" for "AP Calculus", "APUSH" for "AP US History", "bio" for "Biology", etc.), treat it as coursework unless the question is about scheduling ("when does calc meet?", "is my calc class cancelled tomorrow?").
+2. Academic-topic match: even without a course-name hit, treat the following as coursework:
+   - Math problems (worked numerical/algebraic/calculus questions, "solve …", "evaluate …", "integrate …", proofs, geometry constructions).
+   - Essay prompts, thesis statements, outlines for graded essays, claims/evidence prompts, book analyses, comparative-literature questions.
+   - Science problem sets, lab-report structure, lab calculations.
+   - Foreign-language translation/grammar exercises (translating a passage the student was assigned, conjugating assigned verbs).
+   - History / social-studies content questions ("what caused X", "explain Y") tied to a current unit.
+   - Code that looks like a homework assignment ("write a function that …", "implement merge sort").
+3. The student's upcoming-assignments list is your best signal: if the user asks something close to an upcoming assignment's title or description, treat it as that assignment.
+
+RESPONSE STYLE (for the topics you ARE allowed to answer):
+- Always be thorough and detailed unless the user asks something simple/quick.
+- Break down complex topics step-by-step with clear explanations.
+- Use markdown formatting including headers (##, ###), lists, tables, code blocks, blockquotes, and horizontal rules for organization.
+- Feel free to use any emoji wherever it improves readability — there is no restricted list.
+- Include practical examples and real-world applications when explaining concepts.
+- When teaching (e.g. college-application strategy, scheduling techniques), explain the "why" behind the recommendation, not just the "what".
+- Never give one-word or extremely brief answers.
 
 ${buildToolsPrompt()}
 
