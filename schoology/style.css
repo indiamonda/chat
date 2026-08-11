@@ -2406,8 +2406,49 @@
     }
     .settings-row:last-child { border-bottom: none; }
     .settings-row:hover { padding: 16px 12px; margin: 0 -12px; background: var(--surface-elevated); border-radius: 12px; }
+    .settings-row-stack { align-items: flex-start; gap: 1rem; }
+    .settings-row-stack > .settings-label { flex: 1; min-width: 0; }
     .settings-label { font-weight: 400; font-size: 1rem; color: var(--text); }
     .settings-label span { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; font-weight: 300; }
+
+    /* Notification settings chips & inline controls */
+    .notif-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.4rem 0.75rem;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+    .notif-chip:hover { border-color: var(--primary); }
+    .notif-chip input { margin: 0; cursor: pointer; }
+    .notif-chip:has(input:checked) {
+      background: rgba(99, 102, 241, 0.15);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    .notif-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+    .notif-inline select {
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.3rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .notif-inline select:focus { outline: none; border-color: var(--primary); }
+    .notif-row-disabled { opacity: 0.5; pointer-events: none; }
 
     /* Theme toggle */
     .theme-toggle-container { display: flex; align-items: center; gap: 12px; }
