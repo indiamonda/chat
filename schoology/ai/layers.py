@@ -54,6 +54,7 @@ from .system_prompt import (
     build_calendar_block,
     build_extras_block,
     build_student_data_block,
+    build_school_events_block,
 )
 
 # Reuse the same env vars the gate uses for the DeepSeek key.
@@ -250,6 +251,7 @@ You always receive:
   - Prior messages in the conversation (for follow-up context).
   - Layer 2's explanation of the question, if it ran (may be absent).
   - Live context: PAUSD calendar phase (winter / spring / summer / finals / single-day holiday), the student's courses + grades + upcoming assignments + recent posts, the cross-chat summaries + remembered facts.
+  - Paly / Gunn public event calendar (homecoming, prom, spring musical, graduation, dances, etc.) for the next 90 days. When the student asks about an upcoming event, reference these dates -- and remind the student when one is approaching.
 
 Your job:
   1. REASON. Restate the question in one sentence. Identify any factual claims in the question that may need verification. List what's already known from context vs. what needs to be checked.
@@ -259,6 +261,7 @@ Your job:
        - Which course / assignment / date to cite (if any).
        - Tone and length ({length}).
        - Whether to use any of the available tools (search, wikipedia, etc.) -- if so, name the tool and what to search for.
+       - If the question touches an upcoming school event (Paly or Gunn dance, performance, prom, graduation, etc.) AND it's within ~2 weeks, mention it as a "you might want to plan for this" note in the response.
   4. POLICY PRE-CHECK. Look at the policy block (Terms + Privacy + the rest). Does this question come close to any policy boundary? If so, say how Layer 4 should handle it (e.g. "polite refusal, don't elaborate"). If it's a clear pass, say "no policy concern".
   5. HANDOFF. Produce a compact "plan" that Layer 4 will use as its brief.
 
@@ -273,6 +276,8 @@ EFFORT LEVEL: {effort}. Adjust depth accordingly (low = brief, high = thorough).
 {live_context}
 
 {extras_block}
+
+{school_events_block}
 """
 
 
@@ -301,6 +306,7 @@ def _build_layer3_user(student_message: str, prior_messages: list, layer2_text: 
 
 def layer3_plan(*, student_message: str, prior_messages: list, layer2_text: Optional[str],
                 calendar_block: str, live_context: str, extras_block: str,
+                school_events_block: str,
                 effort: str, length: str,
                 violation_feedback: Optional[str] = None,
                 layer3_argument: Optional[str] = None) -> str:
@@ -318,6 +324,7 @@ def layer3_plan(*, student_message: str, prior_messages: list, layer2_text: Opti
         calendar_block=calendar_block,
         live_context=live_context,
         extras_block=extras_block,
+        school_events_block=school_events_block,
     )
     user_msg = _build_layer3_user(
         student_message, prior_messages, layer2_text,
@@ -529,6 +536,20 @@ def run_pipeline(*, student_message: str, prior_messages: list,
     calendar_block = build_calendar_block()
     live_context = build_student_data_block(grades, courses, assignments, posts)
     extras_block = build_extras_block(extras)
+    # Per-school events for Paly / Gunn over the next 90 days, so Layer 3
+    # can reference upcoming dances, performances, prom, graduation, etc.
+    # when the student asks about them.
+    today_iso = f"{time.gmtime().tm_year:04d}-"
+    # Use server local date for "today" (matches PAUSD in Pacific time
+    # when the server runs in Fly's sjc region). Frontend computes its
+    # own ISO too; minor off-by-one at midnight is fine for this use.
+    from datetime import date, timedelta
+    today_dt = date.today()
+    horizon_dt = today_dt + timedelta(days=90)
+    school_events_block = build_school_events_block(
+        today_dt.isoformat(),
+        horizon_dt.isoformat(),
+    )
     policy_block = POLICY_BLOCK_FOR_LAYER_5
 
     # Layer 1: router.
@@ -557,6 +578,7 @@ def run_pipeline(*, student_message: str, prior_messages: list,
         calendar_block=calendar_block,
         live_context=live_context,
         extras_block=extras_block,
+        school_events_block=school_events_block,
         effort=effort,
         length=length,
     )
@@ -619,6 +641,7 @@ def run_pipeline(*, student_message: str, prior_messages: list,
             calendar_block=calendar_block,
             live_context=live_context,
             extras_block=extras_block,
+            school_events_block=school_events_block,
             effort=effort,
             length=length,
             violation_feedback=violation_text,
