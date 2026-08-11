@@ -192,6 +192,28 @@ async def main_loop() -> None:
         log.info("Daemon serving user: %s", config.USERNAME)
 
     client = SchoologyClient()
+
+    # Bump Playwright's default navigation timeout from 30s to 90s. Schoology's
+    # `/home` page frequently takes longer than 30s to fire `domcontentloaded`
+    # on cold start (the upstream `browser._load` uses `wait_until="domcontentloaded"`
+    # with no explicit timeout, so it falls through to Playwright's 30s default;
+    # that timeout cascades as a tool error on every dashboard section).
+    # We monkey-patch _ensure_browser so the *next* context created (on first
+    # fetch) gets the longer default. Hot daemons reuse an existing context and
+    # pick up the timeout the first time they fetched.
+    _orig_ensure_browser = client._ensure_browser
+
+    async def _ensure_browser_with_longer_timeout():
+        await _orig_ensure_browser()
+        try:
+            if client._context is not None:
+                client._context.set_default_navigation_timeout(90_000)
+                client._context.set_default_timeout(90_000)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Failed to set longer Playwright timeout: %s", exc)
+
+    client._ensure_browser = _ensure_browser_with_longer_timeout
+
     loop = asyncio.get_running_loop()
     log.info("Daemon started (pid=%d); entering concurrent request loop", os.getpid())
 
