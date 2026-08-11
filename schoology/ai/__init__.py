@@ -18,6 +18,7 @@ from .integrations import register_routes as register_integrations_routes
 from .basics import register_routes as register_basics_routes
 from .web import register_routes as register_web_routes
 from .social import register_routes as register_social_routes
+from .layers import register_routes as register_layers_routes
 from ..gate import register_routes as register_gate_routes
 
 
@@ -37,4 +38,5 @@ def register_routes(app):
     register_basics_routes(app)
     register_web_routes(app)
     register_social_routes(app)
+    register_layers_routes(app)
     register_gate_routes(app)

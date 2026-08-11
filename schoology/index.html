@@ -1262,6 +1262,52 @@
     renderer.codespan = function({ text }) { return `<code>${escapeHtml(String(text || ''))}</code>`; };
     marked.use({ renderer });
 
+    // ── 5-layer pipeline UI helpers ──────────────────────────────────────
+    // Each layer's reasoning is shown as a collapsible "Thinking..."
+    // block above the final reply, default-collapsed. Users can expand
+    // individual layers to see what each one was doing.
+    //
+    // Layers in the trace (server-defined names):
+    //   router     - "I'll run layers X at effort Y / length Z"
+    //   explainer  - what the student is asking
+    //   planner    - the plan for the response
+    //   writer     - the draft reply
+    //   compliance - approve / reject + reasoning
+    function renderThinkingPlaceholder() {
+      return `<div class="thinking-placeholder"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-text">Thinking through the layers…</span></div>`;
+    }
+
+    function renderLayerTrace(layers) {
+      if (!Array.isArray(layers) || !layers.length) return '';
+      const items = layers.map((layer, i) => {
+        const name = layer.name || ('layer-' + i);
+        const reasoning = layer.reasoning || '';
+        const cfg = layer.config ? ' <span class="layer-cfg">' + escapeHtml(JSON.stringify(layer.config)) + '</span>' : '';
+        // Truncate long reasoning in the collapsed preview; full text
+        // shown when expanded.
+        const preview = reasoning.length > 220 ? reasoning.slice(0, 220) + '…' : reasoning;
+        const layerLabel = ({
+          router: 'Layer 1 · Routing',
+          explainer: 'Layer 2 · Explainer',
+          planner: 'Layer 3 · Planner',
+          writer: 'Layer 4 · Writer',
+          compliance: 'Layer 5 · Compliance',
+        })[name] || ('Layer · ' + name);
+        const verdict = layer.verdict ? ` <span class="layer-verdict layer-verdict-${layer.verdict}">${escapeHtml(layer.verdict)}</span>` : '';
+        return `
+          <details class="layer-block">
+            <summary>
+              <span class="layer-summary-label">${escapeHtml(layerLabel)}${cfg}${verdict}</span>
+              <span class="layer-summary-preview">${escapeHtml(preview)}</span>
+            </summary>
+            <pre class="layer-body">${escapeHtml(reasoning)}</pre>
+          </details>
+        `;
+      }).join('');
+      return `<div class="layer-trace-inner">${items}</div>`;
+    }
+    // ── end 5-layer helpers ──────────────────────────────────────────
+
     function renderMarkdown(text) {
       if (text == null) return '';
       if (typeof text !== 'string') return String(text);
@@ -5215,28 +5261,126 @@ Recent posts: ${postSample || '(none)'}`;
       setAiBusy(true);
 
       try {
-        if (workerUrl) {
-          // Streaming path: open the bubble FIRST (with the typing
-          // dots inside it) and append tokens to it as they arrive
-          // from the SSE response. The typing dots live INSIDE the
-          // future assistant bubble so the user sees the "where the
-          // AI reply will appear" indicator in the same place as
-          // the final text.
+        // ── 5-LAYER PIPELINE PATH ─────────────────────────────────
+        // Real (non-demo, non-worker-proxy) chats route through the
+        // server-side layered pipeline at /api/chat/layered. The server
+        // runs Layer 1 (router), then optionally Layer 2 (explainer),
+        // then required Layer 3 (planner), then Layer 4 (writer), then
+        // Layer 5 (compliance) with up to 5 rejection rounds. Each layer's
+        // reasoning is returned so the user can expand "Thinking..."
+        // blocks under the assistant bubble.
+        const useLayered = !state.demoMode;
+        if (useLayered) {
+          // Open the bubble immediately with a "Thinking through the
+          // layers..." placeholder. We'll replace it with the final
+          // markdown render once the pipeline returns.
+          const bubble = addChatMessage('assistant', '', {
+            skipHistory: true,
+            renderMarkdown: false,
+          });
+          const contentEl = bubble ? bubble.querySelector('.markdown-content') : null;
+          const layerTraceEl = bubble ? bubble.querySelector('.layer-trace') : null;
+          if (contentEl) {
+            contentEl.innerHTML = renderThinkingPlaceholder();
+          }
+
+          const chatScrollEl = document.getElementById('chatMessages');
+          if (chatScrollEl) chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
+
+          // Build the prior-messages slice to send to the server. Strip
+          // layer traces from old assistant messages so the model
+          // doesn't see its own internal scaffolding.
+          const priorForServer = (state.currentMessages || []).map(m => ({
+            role: m.role,
+            content: m.content || '',
+          }));
+
+          const body = {
+            message: userFullMessage,
+            prior_messages: priorForServer,
+            grades: state.grades || [],
+            courses: state.courses || [],
+            assignments: state.assignments || [],
+            posts: state.posts || [],
+            extras,
+            grade_level: state._gateGrade || null,
+          };
+
+          let response;
+          try {
+            response = await fetch(`/api/chat/layered`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(getAuthHeader() || {}),
+                ...(state.gateToken ? { 'X-Gate-Token': state.gateToken } : {}),
+              },
+              body: JSON.stringify(body),
+              signal: abortController.signal,
+            });
+          } catch (fetchErr) {
+            if (bubble && contentEl && !contentEl.textContent) bubble.remove();
+            throw fetchErr;
+          }
+          if (!response.ok) {
+            // Show the error message in the bubble instead of leaving it
+            // empty.
+            if (contentEl) {
+              contentEl.innerHTML = `<em>(request failed: ${response.status})</em>`;
+            }
+            throw new Error(`layered endpoint returned ${response.status}`);
+          }
+          const result = await response.json();
+          const visible = stripToolBrackets(result.content || '');
+          const layers = result.layers || [];
+
+          // Render the layer trace as collapsible Thinking... blocks.
+          // The trace is rendered ABOVE the visible reply inside the
+          // same bubble so the user sees the reasoning, then the answer.
+          if (layerTraceEl) {
+            layerTraceEl.innerHTML = renderLayerTrace(layers);
+          }
+          if (contentEl) {
+            if (!visible) {
+              contentEl.innerHTML = '<em>(no response)</em>';
+            } else {
+              contentEl.innerHTML = renderMarkdown(visible);
+              contentEl.style.transition = 'opacity 0.3s ease-out';
+              contentEl.style.opacity = '0';
+              void contentEl.offsetHeight;
+              contentEl.style.opacity = '1';
+            }
+          }
+
+          // Save the assistant message WITH the layer trace so old chats
+          // can re-render the Thinking blocks later.
+          state.currentMessages.push({
+            role: 'assistant',
+            content: visible,
+            layers: layers,
+          });
+          scheduleSaveCurrentChat();
+          handleAICommands(visible);
+
+          if (opts.autoNameWith && state.currentChatId && !state.demoMode) {
+            const userCount = state.currentMessages.filter(m => m.role === 'user').length;
+            const meta = state.chats.find(c => c.id === state.currentChatId);
+            if (userCount === 1 && meta && (!meta.title || meta.title === 'New chat')) {
+              aiNameChat(state.currentChatId, opts.autoNameWith);
+            }
+          }
+        } else if (workerUrl) {
+          // (Legacy worker-proxy streaming path -- kept for demo mode
+          // and as a fallback when the layered endpoint is unavailable.)
+          // ... trimmed by the legacy block below.
           const streamBubble = addChatMessage('assistant', '', {
             skipHistory: true,
             renderMarkdown: false,
           });
           const streamContentEl = streamBubble ? streamBubble.querySelector('.markdown-content') : null;
-          // Empty bubble -- tokens land directly. No dots / no spinner;
-          // the user wanted a quiet start so the first character "types in"
-          // immediately.
           if (streamContentEl) {
             streamContentEl.innerHTML = '';
           }
-          // Smart auto-scroll: only follow the stream while the user
-          // is already at the bottom of the chat. If they scroll up
-          // mid-stream to read something, we leave their scroll alone
-          // (sticky behavior). Re-checked on every token.
           const chatScrollEl = document.getElementById('chatMessages');
           const SCROLL_BOTTOM_TOLERANCE = 32; // px
           let autoScroll = isScrolledToBottom(chatScrollEl, SCROLL_BOTTOM_TOLERANCE);
@@ -5252,50 +5396,31 @@ Recent posts: ${postSample || '(none)'}`;
                 if (!streamContentEl) return;
                 appendStreamingToken(streamContentEl, token);
                 reply += token;
-                // Re-evaluate whether the user is still at the bottom.
-                // If yes, keep them glued to the latest text; if no,
-                // leave their scroll position alone.
                 if (autoScroll) {
                   const stillAtBottom = isScrolledToBottom(chatScrollEl, SCROLL_BOTTOM_TOLERANCE);
                   if (stillAtBottom && chatScrollEl) {
                     chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
                   } else {
-                    autoScroll = false; // user scrolled up -- stop following
+                    autoScroll = false;
                   }
                 }
               },
             });
           } catch (streamErr) {
-            // If the stream itself errored (network, 5xx, parse), we
-            // need to surface it. Re-throw so the outer catch handles
-            // it the same way as a non-streaming error.
-            // If the bubble is empty (nothing streamed), remove it
-            // so we don't leave an empty bubble in the chat.
             if (streamBubble && streamContentEl && !streamContentEl.textContent) {
               streamBubble.remove();
             }
             throw streamErr;
           }
           if (!reply) reply = 'No response received.';
-          // Finalize: swap the streamed plain-text view for the full
-          // markdown render. Tool-bracket stripping still happens on
-          // the full reply so the visible content reads cleanly.
           const visibleReply = stripToolBrackets(reply);
           if (streamContentEl) {
-            // Strip the loading-state class if the stream errored
-            // before any token arrived (in which case the dots
-            // never got replaced).
             if (!visibleReply) {
-              // No content at all -- show the fallback inside the
-              // bubble so it isn't empty.
               streamContentEl.innerHTML = '<em>(no response)</em>';
             } else {
               streamContentEl.innerHTML = renderMarkdown(visibleReply);
-              // Re-apply the bubble-level fade so the final render
-              // doesn't pop in jarringly.
               streamContentEl.style.transition = 'opacity 0.3s ease-out';
               streamContentEl.style.opacity = '0';
-              // Trigger reflow then fade in.
               void streamContentEl.offsetHeight;
               streamContentEl.style.opacity = '1';
             }
@@ -5303,10 +5428,6 @@ Recent posts: ${postSample || '(none)'}`;
           state.currentMessages.push({ role: 'assistant', content: visibleReply });
           scheduleSaveCurrentChat();
           handleAICommands(reply);
-          // If this was the user's first message in a brand-new chat and
-          // the title is still the server's "New chat" default, ask the
-          // AI to name it. Fire-and-forget; the chat keeps working while
-          // the name is in flight, and failures are silent.
           if (opts.autoNameWith && state.currentChatId && !state.demoMode) {
             const userCount = state.currentMessages.filter(m => m.role === 'user').length;
             const meta = state.chats.find(c => c.id === state.currentChatId);
@@ -5680,7 +5801,7 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
       const bubble = document.createElement('div');
       bubble.className = 'message-bubble';
       if (type === 'assistant') {
-        bubble.innerHTML = `<div class="markdown-content"></div>`;
+        bubble.innerHTML = `<div class="layer-trace"></div><div class="markdown-content"></div>`;
       } else if (type === 'user') {
         const contentEl = document.createElement('div');
         contentEl.className = 'message-content';
