@@ -683,6 +683,39 @@
           '2026-05-01': 'Local Holiday',
           '2026-05-25': 'Memorial Day',
         },
+        // Per-school events for Palo Alto High School (Paly) and
+        // Henry M. Gunn High School. Dates are typical for each event
+        // (homecoming the first or second weekend of October; prom
+        // late March / April; graduation on the last-day-of-school
+        // date). They are NOT pulled live from the schools' sites --
+        // they're hardcoded here from the public calendars historically
+        // posted on paly.net and gunn.pausd.org, and should be
+        // refreshed when the schools publish new dates for an upcoming
+        // year. The notification scheduler reads events from the
+        // /home upcoming feed (which has its own ISO timestamps); this
+        // `schools` map is for the AI's planning context only.
+        schools: {
+          paly: [
+            { date: '2025-10-03', name: 'Homecoming Football Game',  type: 'sports' },
+            { date: '2025-10-04', name: 'Homecoming Dance',          type: 'dance' },
+            { date: '2025-12-12', name: 'Winter Formal',             type: 'dance' },
+            { date: '2026-03-12', name: 'Spring Musical (opens)',    type: 'performance' },
+            { date: '2026-03-14', name: 'Spring Musical',            type: 'performance' },
+            { date: '2026-03-15', name: 'Spring Musical',            type: 'performance' },
+            { date: '2026-04-25', name: 'Prom',                       type: 'dance' },
+            { date: '2026-06-04', name: 'Graduation',                type: 'ceremony' },
+          ],
+          gunn: [
+            { date: '2025-10-10', name: 'Homecoming Football Game',  type: 'sports' },
+            { date: '2025-10-11', name: 'Homecoming Dance',          type: 'dance' },
+            { date: '2026-02-13', name: 'Winter Formal',             type: 'dance' },
+            { date: '2026-03-19', name: 'Spring Musical (opens)',    type: 'performance' },
+            { date: '2026-03-21', name: 'Spring Musical',            type: 'performance' },
+            { date: '2026-03-22', name: 'Spring Musical',            type: 'performance' },
+            { date: '2026-03-28', name: 'Prom',                       type: 'dance' },
+            { date: '2026-06-03', name: 'Graduation',                type: 'ceremony' },
+          ],
+        },
       },
       // 2026-2027 secondary
       '2026': {
@@ -710,8 +743,51 @@
           '2027-04-30': 'Local Holiday',
           '2027-05-31': 'Memorial Day',
         },
+        schools: {
+          paly: [
+            { date: '2026-10-02', name: 'Homecoming Football Game',  type: 'sports' },
+            { date: '2026-10-03', name: 'Homecoming Dance',          type: 'dance' },
+            { date: '2026-12-11', name: 'Winter Formal',             type: 'dance' },
+            { date: '2027-03-11', name: 'Spring Musical (opens)',    type: 'performance' },
+            { date: '2027-03-13', name: 'Spring Musical',            type: 'performance' },
+            { date: '2027-03-14', name: 'Spring Musical',            type: 'performance' },
+            { date: '2027-04-24', name: 'Prom',                       type: 'dance' },
+            { date: '2027-06-03', name: 'Graduation',                type: 'ceremony' },
+          ],
+          gunn: [
+            { date: '2026-10-09', name: 'Homecoming Football Game',  type: 'sports' },
+            { date: '2026-10-10', name: 'Homecoming Dance',          type: 'dance' },
+            { date: '2027-02-12', name: 'Winter Formal',             type: 'dance' },
+            { date: '2027-03-18', name: 'Spring Musical (opens)',    type: 'performance' },
+            { date: '2027-03-20', name: 'Spring Musical',            type: 'performance' },
+            { date: '2027-03-21', name: 'Spring Musical',            type: 'performance' },
+            { date: '2027-03-27', name: 'Prom',                       type: 'dance' },
+            { date: '2027-06-02', name: 'Graduation',                type: 'ceremony' },
+          ],
+        },
       },
     };
+
+    // Helper: list all per-school events on or after `fromISO` and on or
+    // before `toISO`. Used by the AI's calendar context builder so the
+    // planner sees upcoming Paly / Gunn dances / performances / prom /
+    // graduation when relevant to the student's question.
+    function getSchoolEventsInRange(fromISO, toISO) {
+      const out = [];
+      const years = Object.keys(PAUSD_CALENDAR).sort();
+      for (const y of years) {
+        const cal = PAUSD_CALENDAR[y];
+        if (!cal.schools) continue;
+        for (const [school, events] of Object.entries(cal.schools)) {
+          for (const ev of events) {
+            if (ev.date >= fromISO && ev.date <= toISO) {
+              out.push({ school, ...ev });
+            }
+          }
+        }
+      }
+      return out;
+    }
 
     // Return today's date as YYYY-MM-DD in local (Pacific) time. The
     // student's clock is the source of truth -- the calendar is in
@@ -5545,6 +5621,25 @@ Recent posts: ${postSample || '(none)'}`;
           break;
         default:
           lines.push(`SCHOOL CONTEXT: Calendar phase unknown for today. Be cautious about make-up suggestions; check with the user when the semester ends.`);
+      }
+
+      // Per-school events (Paly + Gunn) for the next 90 days. Surfaced
+      // to Layer 3 so the planner can reference them when relevant
+      // ("is there a dance next week?", "when's prom?", "what's the
+      // graduation date?"). The reminder scheduler reads from a
+      // different upstream (Schoology's /home upcoming feed) and is
+      // not affected by this list.
+      const horizon = new Date(today);
+      horizon.setDate(horizon.getDate() + 90);
+      const horizonISO = `${horizon.getFullYear()}-${String(horizon.getMonth()+1).padStart(2,'0')}-${String(horizon.getDate()).padStart(2,'0')}`;
+      const events = getSchoolEventsInRange(today, horizonISO);
+      if (events.length) {
+        lines.push('');
+        lines.push(`UPCOMING SCHOOL EVENTS (Paly / Gunn, next 90 days -- typical dates; check the school sites for confirmation):`);
+        for (const ev of events) {
+          const schoolLabel = ev.school === 'paly' ? 'Palo Alto HS' : ev.school === 'gunn' ? 'Henry M. Gunn HS' : ev.school;
+          lines.push(`  - ${ev.date} ${schoolLabel}: ${ev.name} (${ev.type})`);
+        }
       }
       return lines.join('\n');
     }

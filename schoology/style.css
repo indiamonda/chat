@@ -2658,11 +2658,22 @@
   /* Use the system UI font for the chat search so it doesn't pick
      up the body 'Didact Gothic' which can look heavy at small
      sizes and renders inconsistently across platforms. */
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, "Apple Color Emoji",
+               "Segoe UI Emoji", sans-serif;
   outline: none;
   min-width: 0;
 }
-.chat-sidebar-search input::placeholder { color: var(--text-muted); }
+.chat-sidebar-search input::placeholder {
+  color: var(--text-muted);
+  /* Placeholder text does NOT inherit font-family from the input in
+     some browsers (notably Firefox pre-2020). Set it explicitly so
+     the "Search chats" placeholder matches the typed text. */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  opacity: 1; /* Firefox lowers placeholder opacity by default; keep
+                  it consistent with the typed text's contrast. */
+}
 .chat-sidebar-new-btn {
   flex-shrink: 0;
   width: 32px;

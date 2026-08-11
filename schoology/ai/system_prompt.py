@@ -59,11 +59,89 @@ Don't expose the layer names in your reply -- write a single polished answer.
 
 def build_calendar_block() -> str:
     """Server-side mirror of the frontend's buildCalendarPromptSection.
-    Returns a short paragraph describing today's PAUSD calendar phase."""
-    # We could re-import the PAUSD_CALENDAR from index.html, but that's
-    # client-only. Instead, the frontend sends the phase already computed.
-    # The route accepts phase via extras.get('phase') and uses that here.
+    Returns a short paragraph describing today's PAUSD calendar phase +
+    upcoming Paly / Gunn events for the next 90 days.
+
+    The phase text itself is computed client-side and passed in via the
+    request payload (extras.get('calendar_phase') / 'calendar_season'
+    / 'calendar_school_context'). For per-school events, we ship the
+    same hardcoded data as the frontend so Layer 3 sees them.
+    """
     return ''  # populated by route from request extras
+
+
+# Per-school events for Palo Alto High School (Paly) and Henry M. Gunn
+# High School. Mirror of the frontend's PAUSD_CALENDAR.schools map.
+# Dates are typical for each event (homecoming early Oct; prom Mar/Apr;
+# graduation on the last day of school). They're hardcoded here from the
+# schools' historically-published calendars and should be refreshed when
+# the schools publish new dates for an upcoming year.
+SCHOOL_EVENTS = {
+    '2025-2026': {
+        'paly': [
+            {'date': '2025-10-03', 'name': 'Homecoming Football Game', 'type': 'sports'},
+            {'date': '2025-10-04', 'name': 'Homecoming Dance',         'type': 'dance'},
+            {'date': '2025-12-12', 'name': 'Winter Formal',            'type': 'dance'},
+            {'date': '2026-03-12', 'name': 'Spring Musical (opens)',   'type': 'performance'},
+            {'date': '2026-03-14', 'name': 'Spring Musical',           'type': 'performance'},
+            {'date': '2026-03-15', 'name': 'Spring Musical',           'type': 'performance'},
+            {'date': '2026-04-25', 'name': 'Prom',                      'type': 'dance'},
+            {'date': '2026-06-04', 'name': 'Graduation',               'type': 'ceremony'},
+        ],
+        'gunn': [
+            {'date': '2025-10-10', 'name': 'Homecoming Football Game', 'type': 'sports'},
+            {'date': '2025-10-11', 'name': 'Homecoming Dance',         'type': 'dance'},
+            {'date': '2026-02-13', 'name': 'Winter Formal',            'type': 'dance'},
+            {'date': '2026-03-19', 'name': 'Spring Musical (opens)',   'type': 'performance'},
+            {'date': '2026-03-21', 'name': 'Spring Musical',           'type': 'performance'},
+            {'date': '2026-03-22', 'name': 'Spring Musical',           'type': 'performance'},
+            {'date': '2026-03-28', 'name': 'Prom',                      'type': 'dance'},
+            {'date': '2026-06-03', 'name': 'Graduation',               'type': 'ceremony'},
+        ],
+    },
+    '2026-2027': {
+        'paly': [
+            {'date': '2026-10-02', 'name': 'Homecoming Football Game', 'type': 'sports'},
+            {'date': '2026-10-03', 'name': 'Homecoming Dance',         'type': 'dance'},
+            {'date': '2026-12-11', 'name': 'Winter Formal',            'type': 'dance'},
+            {'date': '2027-03-11', 'name': 'Spring Musical (opens)',   'type': 'performance'},
+            {'date': '2027-03-13', 'name': 'Spring Musical',           'type': 'performance'},
+            {'date': '2027-03-14', 'name': 'Spring Musical',           'type': 'performance'},
+            {'date': '2027-04-24', 'name': 'Prom',                      'type': 'dance'},
+            {'date': '2027-06-03', 'name': 'Graduation',               'type': 'ceremony'},
+        ],
+        'gunn': [
+            {'date': '2026-10-09', 'name': 'Homecoming Football Game', 'type': 'sports'},
+            {'date': '2026-10-10', 'name': 'Homecoming Dance',         'type': 'dance'},
+            {'date': '2027-02-12', 'name': 'Winter Formal',            'type': 'dance'},
+            {'date': '2027-03-18', 'name': 'Spring Musical (opens)',   'type': 'performance'},
+            {'date': '2027-03-20', 'name': 'Spring Musical',           'type': 'performance'},
+            {'date': '2027-03-21', 'name': 'Spring Musical',           'type': 'performance'},
+            {'date': '2027-03-27', 'name': 'Prom',                      'type': 'dance'},
+            {'date': '2027-06-02', 'name': 'Graduation',               'type': 'ceremony'},
+        ],
+    },
+}
+
+
+def build_school_events_block(from_iso: str, to_iso: str) -> str:
+    """Return a short block listing per-school events in the date range.
+    Used by Layer 3's planner context so the AI can reference upcoming
+    Paly / Gunn dances, performances, prom, graduation, etc.
+    """
+    out = []
+    for year_key, schools in SCHOOL_EVENTS.items():
+        for school, events in schools.items():
+            for ev in events:
+                if from_iso <= ev['date'] <= to_iso:
+                    school_label = 'Palo Alto HS' if school == 'paly' else 'Henry M. Gunn HS'
+                    out.append(f"  - {ev['date']} {school_label}: {ev['name']} ({ev['type']})")
+    if not out:
+        return ''
+    return ('UPCOMING SCHOOL EVENTS (Paly / Gunn, '
+            + f"{from_iso} through {to_iso} -- typical dates; "
+            "check school sites for confirmation):\n"
+            + '\n'.join(out))
 
 
 def build_student_data_block(grades, courses, assignments, posts) -> str:
