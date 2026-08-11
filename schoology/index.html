@@ -3115,6 +3115,10 @@ Recent posts: ${postSample || '(none)'}`;
       } else if (name === 'assignments') {
         normalized = Array.isArray(data) ? data : (data.assignments || []);
         state.assignments = normalized.map(normalizeAssignmentItem);
+        // Kick off the notification scheduler now that we have the
+        // upcoming items to track. Safe to call repeatedly -- it clears
+        // any prior timer first.
+        try { startNotificationScheduler(); } catch (_) {}
       } else if (name === 'posts') {
         normalized = Array.isArray(data) ? data : (data.posts || []);
         state.posts = normalized.map(normalizePostItem);
@@ -6359,17 +6363,29 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
     //   - total:  total courses in the input
     //   - missing: courses with no grade yet
     //
-    // Ungraded courses are EXCLUDED from the average (not treated as F).
-    // The UI surfaces the missing count so the student knows the GPA is
-    // partial -- see "Show GPA over courses with grades + total count".
+    // A course is counted when it has a numeric percentage OR a real
+    // letter grade (anything but 'N/A'). Courses with N/A grade are
+    // EXCLUDED from the average -- never silently treated as F. The UI
+    // surfaces the missing count so the student knows the GPA is
+    // partial. See "Show GPA over courses with grades + total count".
     function calculateGPA(grades) {
       const total = grades.length;
       let sum = 0;
       let count = 0;
       for (const g of grades) {
-        const pct = g && g.percentage;
-        if (pct != null && pct !== '' && !Number.isNaN(Number(pct))) {
-          sum += percentageToGpaPoints(Number(pct));
+        if (!g) continue;
+        const pct = g.percentage;
+        const letter = (g.letterGrade || '').toString().trim();
+        const hasNumericGrade = pct != null && pct !== '' && !Number.isNaN(Number(pct));
+        const hasRealLetter = letter !== '' && letter.toUpperCase() !== 'N/A';
+        if (hasNumericGrade || hasRealLetter) {
+          // Prefer the numeric percentage when both are present; only fall
+          // back to mapping a letter when no numeric data was returned.
+          if (hasNumericGrade) {
+            sum += percentageToGpaPoints(Number(pct));
+          } else {
+            sum += letterToGpaPoints(letter);
+          }
           count += 1;
         }
       }
@@ -6379,6 +6395,197 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
         total,
         missing: total - count,
       };
+    }
+
+    // Map a letter grade (with optional +/-) to a 4.0 GPA value. Used as
+    // a fallback when a course has a letter but no numeric percentage.
+    function letterToGpaPoints(letter) {
+      const base = letter.charAt(0).toUpperCase();
+      const mod = letter.length > 1 ? letter[1] : '';
+      let pts;
+      switch (base) {
+        case 'A': pts = 4.0; break;
+        case 'B': pts = 3.0; break;
+        case 'C': pts = 2.0; break;
+        case 'D': pts = 1.0; break;
+        case 'F': pts = 0.0; break;
+        default:  pts = 0.0;
+      }
+      if (mod === '+' && base !== 'A') pts += 0.3;
+      else if (mod === '-') pts -= 0.3;
+      return pts;
+    }
+
+    // ── NOTIFICATION SCHEDULER ─────────────────────────────────────────
+    // Core feature. Three reminder rules driven by `state.assignments`:
+    //
+    //   1. EVENTS (school dance, performance, alert — anything with a
+    //      `/event/` URL in its link) → notify at 1h, 30m, and 15m
+    //      before the event start time.
+    //   2. ASSIGNMENTS DUE TOMORROW → starting the day before at 4 PM
+    //      (local time), send a "due tomorrow" notification every hour
+    //      on the hour until the assignment's due time passes. Time-
+    //      of-day doesn't matter; only the calendar date.
+    //   3. MISSING ASSIGNMENTS → daily sweep at 4:30 PM local time for
+    //      every upcoming `/assignment/` item whose due date hasn't
+    //      passed. (Upstream doesn't carry submission state, so
+    //      "missing" = any open upcoming assignment. A submission
+    //      would presumably remove it from the upcoming list on the
+    //      next fetch.)
+    //
+    // De-duplication: every fired notification is keyed in localStorage
+    // by `<username>:<itemId>:<rule>:<YYYY-MM-DD>` so the same alert
+    // never fires twice on the same day. localStorage entries auto-
+    // expire after 14 days to keep storage bounded.
+    //
+    // The scheduler ticks every 60s. showNotification() is the in-app
+    // toast renderer already used elsewhere — no new UI needed.
+    let _notifSchedulerTimer = null;
+    const _NOTIF_DEDUP_PREFIX = 'schoology_notif_';
+
+    function _notifDedupKey(username, itemId, rule, dateStr) {
+      return `${_NOTIF_DEDUP_PREFIX}${username}:${itemId}:${rule}:${dateStr}`;
+    }
+
+    function _notifAlreadyFired(key) {
+      try { return !!localStorage.getItem(key); } catch (_) { return false; }
+    }
+
+    function _notifMarkFired(key) {
+      try { localStorage.setItem(key, String(Date.now())); } catch (_) {}
+    }
+
+    function _notifPruneOldEntries() {
+      // Drop dedup keys older than 14 days so we don't grow unbounded.
+      try {
+        const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+        const keys = Object.keys(localStorage).filter(k => k.startsWith(_NOTIF_DEDUP_PREFIX));
+        for (const k of keys) {
+          const ts = Number(localStorage.getItem(k));
+          if (!ts || ts < cutoff) localStorage.removeItem(k);
+        }
+      } catch (_) {}
+    }
+
+    function _itemType(item) {
+      // Distinguish /event/ from /assignment/ URLs. Items without a URL
+      // fall through as 'assignment' (the more common case).
+      const url = (item && item.url) || '';
+      if (url.includes('/event/')) return 'event';
+      return 'assignment';
+    }
+
+    function _itemId(item) {
+      return (item && (item.url || item.title)) || 'unknown';
+    }
+
+    function _parseItemDue(item) {
+      // Best-effort Date from upstream data. Falls back to the human
+      // `due` string (e.g. "Due Friday") by anchoring to local midnight.
+      if (!item) return null;
+      if (item.dueDate) {
+        const d = new Date(item.dueDate);
+        if (!isNaN(d)) return d;
+      }
+      if (item.due_iso) {
+        const d = new Date(item.due_iso);
+        if (!isNaN(d)) return d;
+      }
+      if (item.due) {
+        const d = new Date(item.due);
+        if (!isNaN(d)) return d;
+      }
+      return null;
+    }
+
+    function _sameLocalDay(a, b) {
+      return a.getFullYear() === b.getFullYear()
+          && a.getMonth() === b.getMonth()
+          && a.getDate() === b.getDate();
+    }
+
+    function _startOfLocalDay(d) {
+      const x = new Date(d);
+      x.setHours(0, 0, 0, 0);
+      return x;
+    }
+
+    function startNotificationScheduler() {
+      // Idempotent: clearing any previous timer before starting fresh.
+      if (_notifSchedulerTimer) clearInterval(_notifSchedulerTimer);
+      _notifPruneOldEntries();
+      // First tick immediately, then every minute.
+      try { tickNotificationScheduler(); } catch (_) {}
+      _notifSchedulerTimer = setInterval(tickNotificationScheduler, 60 * 1000);
+    }
+
+    function tickNotificationScheduler() {
+      if (!state || !state.username) return;
+      const items = state.assignments || [];
+      if (!items.length) return;
+      const now = new Date();
+      const username = state.username;
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowDate = _startOfLocalDay(tomorrow);
+
+      for (const item of items) {
+        const due = _parseItemDue(item);
+        if (!due) continue;
+        const type = _itemType(item);
+        const id = _itemId(item);
+
+        if (type === 'event') {
+          // Events: notify at 60 / 30 / 15 minutes before start.
+          const msUntil = due.getTime() - now.getTime();
+          if (msUntil < 0) continue; // already started/passed
+          const minutes = Math.floor(msUntil / 60000);
+          for (const [threshold, label] of [[60, '1h'], [30, '30m'], [15, '15m']]) {
+            // Fire when the time-to-event is within (threshold, threshold+1]
+            // minutes so we don't double-fire if the user closes the tab
+            // and reopens during the threshold window.
+            if (minutes <= threshold && minutes > threshold - 1) {
+              const key = _notifDedupKey(username, id, `event-${label}m`, todayStr);
+              if (!_notifAlreadyFired(key)) {
+                showNotification(`📅 ${label} until "${item.title || 'event'}"`, 'info');
+                _notifMarkFired(key);
+              }
+            }
+          }
+          continue;
+        }
+
+        // ASSIGNMENT rules.
+        // Rule: notify "due tomorrow" hourly from 4 PM the day before.
+        if (_sameLocalDay(due, tomorrowDate)) {
+          // Tomorrow's due date. Start the hourly reminders at 16:00 the
+          // day before.
+          const hour = now.getHours();
+          if (hour >= 16) {
+            // Fire at the top of each hour (within a 60s window).
+            const hourKey = String(hour).padStart(2, '0');
+            const key = _notifDedupKey(username, id, `due-tmrw-${hourKey}`, todayStr);
+            if (!_notifAlreadyFired(key)) {
+              showNotification(`📝 "${item.title || 'Assignment'}" due tomorrow${item.courseName ? ` (${item.courseName})` : ''}`, 'info');
+              _notifMarkFired(key);
+            }
+          }
+        }
+
+        // Rule: missing assignment daily 4:30 PM. Fires once per
+        // assignment per day for any upcoming /assignment/ item whose
+        // due date hasn't passed.
+        if (due.getTime() > now.getTime()) {
+          if (now.getHours() === 16 && now.getMinutes() >= 30 && now.getMinutes() < 31) {
+            const key = _notifDedupKey(username, id, 'missing-daily', todayStr);
+            if (!_notifAlreadyFired(key)) {
+              showNotification(`📌 Missing assignment: "${item.title || 'Untitled'}"${item.courseName ? ` (${item.courseName})` : ''}${item.dueDate ? ` — due ${formatDueDate(item.dueDate)}` : ''}`, 'info');
+              _notifMarkFired(key);
+            }
+          }
+        }
+      }
     }
 
     function getDueClass(dueDate) {
