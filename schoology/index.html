@@ -48,7 +48,7 @@
             <span class="typewriter-cursor"></span>
           </div>
         </div>
-        <p class="typewriter-hint">Your intelligent study companion for PAUSD Schoology</p>
+        <p class="typewriter-hint" id="typewriterHint">Your intelligent study companion for PAUSD Schoology</p>
 
         <div class="features-grid">
           <div class="feature-card">
@@ -247,6 +247,7 @@
 
     <div class="footer">
       <p>Powered by Schoology MCP · By JimmyQrg and Dajun666</p>
+      <p class="footer-holiday" id="footerHoliday" style="display:none; font-size:0.85rem; opacity:0.85;"></p>
     </div>
   </div>
 
@@ -314,6 +315,7 @@
           <div class="header-title-group">
             <h1>Schoology Help</h1>
             <p class="subtitle" id="subtitle">Your academic dashboard, connected</p>
+          <p class="subtitle-holiday" id="subtitleHoliday" style="display:none; font-size:0.8rem; color:var(--text-dim); margin-top:0.15rem;"></p>
           </div>
         </div>
         <div class="header-status" id="headerStatus">
@@ -391,7 +393,7 @@
           <div class="chat-messages" id="chatMessages">
             <div class="chat-message assistant" id="welcomeBubble">
               <div class="markdown-content">
-                <p>Hi! 👋 What can I help you with today?</p>
+                <p id="welcomeBubbleText">Hi! 👋 What can I help you with today?</p>
               </div>
             </div>
           </div>
@@ -733,6 +735,80 @@
       }
       // Sem 2 (between sem2Start and finalsStart)
       return { phase: 'in-sem2', semester: 2, year, nextBoundary: cal.finalsStart, holidayName: null };
+    }
+
+    // ── HOLIDAY / BREAK FLAVOR ───────────────────────────────────────────
+    // Returns a small set of strings (emoji + short phrase) tied to the
+    // current calendar phase. Used by the sign-in page, the AI welcome
+    // bubble, the dashboard header, the AI's system-prompt calendar block,
+    // and a few other places that benefit from a small festive touch.
+    //
+    // Designed to be subtle, never intrusive, and short. Outside any
+    // break/holiday window this returns the default ("📚" + "Hope your
+    // semester is going well") so the dashboard never feels empty or
+    // out-of-date -- just neutral.
+    function getHolidayFlavor() {
+      const phase = getTermPhase(todayLocalISO());
+      switch (phase.phase) {
+        case 'winter-break':
+          return {
+            emoji: '❄️',
+            phrase: 'Happy winter break!',
+            welcome: 'Hi! 👋 Hope your winter break is going well — what can I help you with today?',
+            header: 'Enjoy winter break! Classes resume soon.',
+            signin: 'Your intelligent study companion for PAUSD Schoology · Enjoy the break ❄️',
+          };
+        case 'spring-break':
+          return {
+            emoji: '🌷',
+            phrase: 'Happy spring break!',
+            welcome: 'Hi! 👋 Hope your spring break is off to a great start — what can I help you with today?',
+            header: 'Enjoy spring break!',
+            signin: 'Your intelligent study companion for PAUSD Schoology · Spring break 🌷',
+          };
+        case 'summer-after-year':
+          return {
+            emoji: '☀️',
+            phrase: 'Happy summer!',
+            welcome: 'Hi! 👋 Hope your summer is going well — what can I help you with today?',
+            header: 'Enjoy your summer!',
+            signin: 'Your intelligent study companion for PAUSD Schoology · Summer mode ☀️',
+          };
+        case 'holiday': {
+          const name = phase.holidayName || 'school holiday';
+          return {
+            emoji: '🎉',
+            phrase: `Happy ${name}!`,
+            welcome: `Hi! 👋 Happy ${name} — what can I help you with today?`,
+            header: `Enjoy ${name}!`,
+            signin: `Your intelligent study companion for PAUSD Schoology · ${name} 🎉`,
+          };
+        }
+        case 'finals-sem1':
+          return {
+            emoji: '🍂',
+            phrase: 'Good luck on finals!',
+            welcome: 'Hi! 👋 Good luck with finals — what can I help you with today?',
+            header: 'Finals week — you\'ve got this! 🍂',
+            signin: 'Your intelligent study companion for PAUSD Schoology · Finals 🍂',
+          };
+        case 'finals-week':
+          return {
+            emoji: '☀️',
+            phrase: 'Good luck on finals!',
+            welcome: 'Hi! 👋 Good luck with finals — what can I help you with today?',
+            header: 'Finals week — almost there! ☀️',
+            signin: 'Your intelligent study companion for PAUSD Schoology · Finals ☀️',
+          };
+        default:
+          return {
+            emoji: '📚',
+            phrase: 'Hope your semester is going well!',
+            welcome: 'Hi! 👋 What can I help you with today?',
+            header: '',
+            signin: 'Your intelligent study companion for PAUSD Schoology',
+          };
+      }
     }
 
     // Get the ISO date the current cached gate-token should expire on.
@@ -2162,6 +2238,7 @@
               </div>
               <div class="chat-empty-placeholder-title">No chat selected</div>
               <div class="chat-empty-placeholder-sub">Pick a chat from the left, or start a new one.</div>
+              <div class="chat-empty-placeholder-flavor" id="chatEmptyFlavor" style="display:none; margin-top:0.5rem; font-size:0.85rem; opacity:0.7;"></div>
             </div>
           `;
         } else {
@@ -2169,7 +2246,7 @@
             <div class="chat-message assistant" id="welcomeBubble">
               <div class="message-bubble">
                 <div class="markdown-content">
-                  <p>Hi! 👋 What can I help you with today?</p>
+                  <p>${(typeof getHolidayFlavor === 'function' ? getHolidayFlavor().welcome : 'Hi! 👋 What can I help you with today?')}</p>
                 </div>
               </div>
             </div>
@@ -2191,6 +2268,17 @@
       }
       // Auto-scroll to the bottom so the user lands at the latest message.
       container.scrollTop = container.scrollHeight;
+      // Holiday / break flavor on the empty-state placeholder.
+      const flavorEl = document.getElementById('chatEmptyFlavor');
+      if (flavorEl) {
+        try {
+          const f = getHolidayFlavor();
+          if (f.phrase) {
+            flavorEl.textContent = `${f.emoji} ${f.phrase}`;
+            flavorEl.style.display = 'block';
+          }
+        } catch (_) {}
+      }
     }
 
     function clearAllData() {
@@ -2651,7 +2739,13 @@
       // patterns: "john.smith" -> "John", "jane_doe" -> "Jane", "alex42" ->
       // "Alex". Falls back to the raw username if nothing matches.
       const name = s.name || deriveFirstName(state.username) || 'Student';
+      const flavor = getHolidayFlavor();
       nameEl.textContent = `Welcome! ${name}`;
+      const holidayEl = document.getElementById('subtitleHoliday');
+      if (holidayEl) {
+        holidayEl.textContent = flavor.phrase || '';
+        holidayEl.style.display = flavor.phrase ? 'block' : 'none';
+      }
       // grade, school, and any future identity fields stay on state.student
       // for the AI to read -- only the visible header is restricted to name.
       infoEl.style.display = 'flex';
@@ -5029,7 +5123,14 @@ Recent posts: ${postSample || '(none)'}`;
     function buildCalendarPromptSection() {
       const today = todayLocalISO();
       const p = getTermPhase(today);
+      const flavor = getHolidayFlavor();
       const lines = [`CURRENT DATE: ${today}`];
+      if (flavor.phrase) {
+        // Subtle festive context for the model so its tone matches the
+        // calendar phase. Operational rules still come from the phase
+        // cases below; this is the "flavor" line.
+        lines.push(`SEASON: ${flavor.phrase} (${flavor.emoji})`);
+      }
       switch (p.phase) {
         case 'in-sem1':
           lines.push(`SCHOOL CONTEXT: Semester 1 is in session. Gradebook is open. Sem 1 ends ${p.nextBoundary}.`);
@@ -5043,6 +5144,7 @@ Recent posts: ${postSample || '(none)'}`;
           lines.push(`SCHOOL CONTEXT: Winter break. Sem 1 grades are FINAL and the gradebook is closed. Sem 2 starts ${p.nextBoundary}.`);
           lines.push(`- Do NOT tell the student to "make up" or "check for missing" Sem 1 assignments — the grade is locked. They can still talk to a teacher next semester about a Sem 1 grade correction (Cal. Educ. Code § 49070 gives a 5-day window from when they first see the mark), but framing it as "you can still raise your grade" is wrong.`);
           lines.push(`- Don't suggest emailing teachers expecting a same-day reply.`);
+          lines.push(`- It's a fine time to plan next-semester courses, summer plans, college-prep, or enjoy the break.`);
           break;
         case 'in-sem2':
           lines.push(`SCHOOL CONTEXT: Semester 2 is in session. Gradebook is open. Finals start ${p.nextBoundary}.`);
@@ -5052,6 +5154,7 @@ Recent posts: ${postSample || '(none)'}`;
         case 'spring-break':
           lines.push(`SCHOOL CONTEXT: Spring break — school is out, but Sem 2 gradebook is still open and resumes after break.`);
           lines.push(`- Don't suggest the student talk to a teacher this week. They can plan to do so when school resumes.`);
+          lines.push(`- It's a fine time to relax, travel, or plan for the home stretch of Sem 2.`);
           break;
         case 'finals-week':
           lines.push(`SCHOOL CONTEXT: Finals week (Semester 2). Last day of school is ${p.nextBoundary}. The gradebook for Sem 2 closes on the last day.`);
@@ -5062,6 +5165,7 @@ Recent posts: ${postSample || '(none)'}`;
           lines.push(`- Do NOT tell the student to "make up missing assignments" or "check for missing work" — both semesters' gradebooks are closed.`);
           lines.push(`- Do NOT tell the student to "talk to your teacher today" or "email your teacher" — teachers are off contract and may not reply.`);
           lines.push(`- It IS fine to: review concepts for next year, plan summer reading, look at college prep, discuss schedule changes, or appeal a Sem 2 grade in writing under Cal. Educ. Code § 49070.`);
+          lines.push(`- Enjoy the summer — there's no school calendar pressure right now.`);
           break;
         case 'before-year':
           lines.push(`SCHOOL CONTEXT: New school year hasn't started yet. First day is ${p.nextBoundary}.`);
@@ -6282,16 +6386,38 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
       { before: "Master ", blue: "any", after: " subject" }
     ];
 
+    // Holiday / break phrases, injected into the rotation based on the
+    // current calendar phase. Each shows up only when the phase matches,
+    // so the typewriter naturally references whatever the season is.
+    const typewriterHolidayPhrases = {
+      'winter-break':      [{ before: "Enjoy the ", blue: "winter break", after: " ❄️" }],
+      'spring-break':      [{ before: "Happy ", blue: "spring break", after: " 🌷" }],
+      'summer-after-year': [{ before: "Have a great ", blue: "summer", after: " ☀️" }],
+      'finals-sem1':       [{ before: "Good luck on ", blue: "finals", after: " 🍂" }],
+      'finals-week':       [{ before: "Good luck on ", blue: "finals", after: " ☀️" }],
+      'before-year':       [{ before: "Get ready for the new ", blue: "school year", after: " 🎒" }],
+    };
+
     let phraseIndex = 0;
     let charIndex = 0;
     let isDeleting = false;
     let typeSpeed = 80;
 
+    // Build the active rotation: always include the standard phrases, plus
+    // whatever holiday/break phrase (if any) applies today. Recomputed
+    // once at boot -- the dashboard usually stays open across a single
+    // break window.
+    const typewriterActivePhrases = (() => {
+      const phase = getTermPhase(todayLocalISO()).phase;
+      const extra = typewriterHolidayPhrases[phase] || [];
+      return typewriterPhrases.concat(extra);
+    })();
+
     function updateTypewriter() {
       const container = document.getElementById('typewriterText');
       if (!container) return;
       const cursor = container.querySelector('.typewriter-cursor');
-      const phrase = typewriterPhrases[phraseIndex];
+      const phrase = typewriterActivePhrases[phraseIndex];
       const whiteSpans = container.querySelectorAll('.white');
       const blueSpan = container.querySelector('.blue');
 
@@ -6346,8 +6472,8 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
           isDeleting = false;
           let nextIndex;
           do {
-            nextIndex = Math.floor(Math.random() * typewriterPhrases.length);
-          } while (nextIndex === phraseIndex && typewriterPhrases.length > 1);
+            nextIndex = Math.floor(Math.random() * typewriterActivePhrases.length);
+          } while (nextIndex === phraseIndex && typewriterActivePhrases.length > 1);
           phraseIndex = nextIndex;
           typeSpeed = 500;
         }
@@ -6357,6 +6483,27 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
 
     // Start typewriter when page loads
     setTimeout(updateTypewriter, 1000);
+
+    // Apply any holiday/break flavor to the sign-in page right away
+    // (hint text, page title, welcome bubble, footer). Done once on boot;
+    // re-runs only on full page reload.
+    (function applyHolidayFlavor() {
+      try {
+        const f = getHolidayFlavor();
+        const hint = document.getElementById('typewriterHint');
+        if (hint && f.signin) hint.textContent = f.signin;
+        const welcomeEl = document.getElementById('welcomeBubbleText');
+        if (welcomeEl && f.welcome) welcomeEl.textContent = f.welcome;
+        const footerEl = document.getElementById('footerHoliday');
+        if (footerEl && f.phrase) {
+          footerEl.textContent = f.phrase;
+          footerEl.style.display = 'block';
+        }
+        if (f.emoji) {
+          document.title = `${f.emoji} Schoology Help`;
+        }
+      } catch (_) { /* not in a browser / SSR context */ }
+    })();
 
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.emoji-btn')) {
