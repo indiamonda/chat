@@ -1391,6 +1391,56 @@
     }
     .grade-card.expanded .grade-details { display: block; }
 
+    /* ── GPA Overview Card ── */
+    /* The overview tab shows a single, prominent unweighted-GPA card
+       instead of the (previous) 4-course strip. The full per-course
+       breakdown still lives in the grades list / "Your Grades" tab. */
+    .gpa-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+      transition: all var(--transition-slower);
+    }
+    .gpa-card:hover {
+      border-color: var(--primary);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+    }
+    .gpa-card-main {
+      flex: 1;
+      min-width: 0;
+    }
+    .gpa-card-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      margin-bottom: 0.35rem;
+    }
+    .gpa-card-sub {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      margin-top: 0.4rem;
+    }
+    .gpa-card-value {
+      flex-shrink: 0;
+      font-size: 2.4rem;
+      font-weight: 700;
+      line-height: 1;
+      padding: 0.55rem 1rem;
+      border-radius: 10px;
+      letter-spacing: -0.02em;
+    }
+    .gpa-card-value-na {
+      background: var(--surface-elevated);
+      color: var(--text-muted);
+      font-size: 2rem;
+    }
+
     .detail-row {
       display: flex;
       justify-content: space-between;
