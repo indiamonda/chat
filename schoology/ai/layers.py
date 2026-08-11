@@ -424,7 +424,18 @@ def layer4_write(*, student_message: str, prior_messages: list, layer3_plan: str
 # Layer 5: compliance
 # ---------------------------------------------------------------------------
 
-LAYER5_SYSTEM_TEMPLATE = """You are Layer 5 of a 5-layer AI pipeline. You are the final compliance check. Your verdict is binary: APPROVE or REJECT.
+LAYER5_SYSTEM_TEMPLATE = """You are Layer 5 of a 5-layer AI pipeline. You are the final compliance + polish pass. Your verdict has THREE possible outcomes:
+
+  APPROVE -- the draft is fine on policy AND needs no polish. Ship
+              it as-is.
+
+  EDIT    -- the draft passes compliance but could use a small style /
+              text polish. Ship the edited version. Do NOT bounce back
+              to Layer 3 for edits -- Layer 5 owns the final word on
+              polish.
+
+  REJECT  -- the draft violates policy. Bounce back to Layer 3 with
+              the violation description so it can re-plan.
 
 You receive:
   - The student's message.
@@ -435,25 +446,49 @@ You receive:
     advice, calendar rules, etc.).
   - The student's grade (if known) -- responses must be age-appropriate.
 
-If the draft passes, reply with a single JSON object:
-  {"verdict": "approve"}
+When to use each verdict:
 
-If the draft violates ANY policy, reply with a single JSON object naming
-the specific section that was violated and quoting the offending phrase
-from the draft:
-  {"verdict": "reject",
-   "section": "Terms of Use §4 -- no graded-work help",
-   "offending_phrase": "Here's the integral step by step...",
-   "why": "This is the student's AP Calculus homework. The policy says no help with graded work."}
+  APPROVE  -- the draft passes compliance AND reads cleanly. Ship
+               unchanged.
+
+  EDIT     -- the draft passes compliance but has small style / text
+               issues you can fix in one pass. Examples of acceptable
+               edits:
+                 * fix a typo or grammatical slip
+                 * tighten a run-on sentence or chop a rambling intro
+                 * swap an emoji that doesn't fit the message
+                 * normalize whitespace / fix a markdown typo
+                 * swap a word for a clearer one
+                 * add a missing section heading for readability
+               Things you may NOT change:
+                 * the factual claims or any number / date / name
+                 * the policy-relevant content (don't drop a refusal
+                   or soften a 'no, I can't help with graded work')
+                 * the meaning, tone, or stance
+                 * the length tier ('short' / 'medium' / 'long') the
+                   Layer 1 router asked for
+               If a fix would change meaning, return REJECT with the
+               policy or factual concern -- Layer 3 / 4 own meaning,
+               Layer 5 owns polish only.
+               Output format:
+                 {"verdict": "edit",
+                  "edited_text": "<full polished reply -- the WHOLE message, not a diff>",
+                  "edits": ["short list of what you changed", ...]}
+
+  REJECT   -- the draft violates ANY policy. Output:
+                 {"verdict": "reject",
+                  "section": "Terms of Use §4 -- no graded-work help",
+                  "offending_phrase": "Here's the integral step by step...",
+                  "why": "This is the student's AP Calculus homework. The policy says no help with graded work."}
 
 If the response is ALMOST compliant but you find a borderline issue,
-prefer APPROVE and note the concern in a separate field:
+prefer APPROVE / EDIT and note the concern in a separate field:
   {"verdict": "approve", "concern": "Borderline; the student may have meant this as a graded question."}
 
 If Layer 3 has filed an argument (see the "ARGUMENT FROM LAYER 3" field
 in the user message), weigh it on its merits. If Layer 3's argument is
 correct (e.g. the flagged phrase was actually inside a quoted teaching
-example, not actual help), you can APPROVE.
+example, not actual help), you can APPROVE or EDIT accordingly.
 
 This is the LAST round. The student has been waiting. Decide now.
 
@@ -466,7 +501,7 @@ LATE-ROUND PROMPT (only included on the final round):
 
 def layer5_check(*, student_message: str, layer3_plan: str, layer4_draft: str,
                  policy_block: str, is_final_round: bool, layer3_argument: Optional[str] = None) -> dict:
-    """Returns {"verdict": "approve"|"reject", ...details}.
+    """Returns {"verdict": "approve"|"reject"|"edit", ...details}.
 
     Robust to malformed JSON -- falls back to "approve" if we can't parse,
     but logs so we can spot model drift.
@@ -496,14 +531,18 @@ def layer5_check(*, student_message: str, layer3_plan: str, layer4_draft: str,
             {'role': 'user', 'content': user_msg},
         ],
         temperature=0,
-        max_tokens=400,
+        max_tokens=1200,  # bumped from 400 -- 'edit' verdict embeds the full polished message
         json_mode=True,
     )
     try:
         parsed = json.loads(raw)
         verdict = parsed.get('verdict')
-        if verdict not in ('approve', 'reject'):
+        if verdict not in ('approve', 'reject', 'edit'):
             verdict = 'approve'  # conservative
+        # If 'edit' but no edited_text, treat as approve (don't ship an empty message).
+        if verdict == 'edit' and not (parsed.get('edited_text') or '').strip():
+            verdict = 'approve'
+            parsed['concern'] = (parsed.get('concern') or 'edit verdict had empty edited_text; defaulted to approve')
         return parsed if isinstance(parsed, dict) else {'verdict': verdict}
     except (json.JSONDecodeError, TypeError):
         return {'verdict': 'approve', 'concern': 'parse failure; defaulted to approve'}
@@ -582,10 +621,17 @@ def run_pipeline(*, student_message: str, prior_messages: list,
         effort=effort,
         length=length,
     )
-    layer_trace.append({'name': 'planner', 'reasoning': plan})
+    # Don't append the planner's reasoning to the visible trace yet --
+    # if Layer 5 rejects this plan and we go around again, the
+    # student should NOT see the rejected reasoning (it leaks the
+    # violation details to them before the fix lands). We'll add the
+    # final, approved planner reasoning at the end.
+    planner_reasoning_final = plan
+    plan_was_revised = False
 
     # If only Layer 3 ran, the planner is the answer.
     if layer_layers == [3]:
+        layer_trace.append({'name': 'planner', 'reasoning': plan})
         return {
             'content': plan,
             'layers': layer_trace,
@@ -628,12 +674,25 @@ def run_pipeline(*, student_message: str, prior_messages: list,
             final_draft = layer4_draft
             break
 
+        if verdict.get('verdict') == 'edit':
+            # Layer 5 polished the draft in-place. Ship the edited
+            # version as the final reply -- no Layer 3 round-trip for
+            # polish changes (Layer 5 owns polish; Layer 3 owns meaning).
+            final_draft = (verdict.get('edited_text') or layer4_draft).strip()
+            break
+
         # Rejected. Build a violation summary for Layer 3.
         violation_text = (
             f"Section: {verdict.get('section','unspecified')}\n"
             f"Offending phrase: {verdict.get('offending_phrase','(not quoted)')}\n"
             f"Reason: {verdict.get('why','(not provided)')}"
         )
+        # The original plan (the one that just got rejected) must NOT be
+        # shown to the student -- it would leak the policy-violating
+        # framing. Replace the trace's planner entry with the new
+        # plan only AFTER Layer 5 approves it (or at end-of-loop).
+        plan_was_revised = True
+        previous_plan = plan
         plan = layer3_plan(
             student_message=student_message,
             prior_messages=prior_messages,
@@ -664,9 +723,46 @@ def run_pipeline(*, student_message: str, prior_messages: list,
     # Truncate the trace to one entry per layer to keep payload size sane.
     # We only keep the LAST planner / writer / compliance round -- earlier
     # rounds are implied.
-    layers_out = layer_trace + [
+    #
+    # PLANNER VISIBILITY RULE: a planner entry is shown to the user ONLY
+    # if its plan was approved (or was the only layer for a [3]-only
+    # call). Rejected plans are never shown -- they leak the
+    # violation reasoning to the student before the fix lands, which
+    # is exactly the bug the user reported.
+    compliance_reasoning = json.dumps(layer5_verdict)
+    if layer5_verdict.get('verdict') == 'edit':
+        edits = layer5_verdict.get('edits') or []
+        compliance_reasoning = (
+            'Polished the draft (' + str(len(edits)) + ' change'
+            + ('s' if len(edits) != 1 else '') + '): '
+            + ('; '.join(edits) if edits else 'see edited_text')
+        )
+
+    # Build the final layers trace. The planner entry is conditional
+    # on whether its last plan was approved.
+    layers_out = list(layer_trace)
+    final_verdict = layer5_verdict.get('verdict', 'approve')
+    if final_verdict in ('approve', 'edit'):
+        # Last plan passed (or was polished in place by Layer 5). Show
+        # the final planner reasoning.
+        layers_out.append({'name': 'planner', 'reasoning': plan})
+    elif plan_was_revised:
+        # All rejection rounds happened and we shipped a refusal. Don't
+        # show the (also rejected) last plan -- just say so.
+        layers_out.append({
+            'name': 'planner',
+            'reasoning': (
+                'Revised the plan ' + str(MAX_REJECTION_ROUNDS) + ' times to '
+                'satisfy compliance; final version was still rejected. The '
+                'shipped reply is a generic refusal. See the compliance '
+                'block for the policy reason.'
+            ),
+        })
+    # else: only-layer-3 mode -- the planner entry is already in layer_trace.
+
+    layers_out += [
         {'name': 'writer',     'reasoning': layer4_draft},
-        {'name': 'compliance','reasoning': json.dumps(layer5_verdict), 'verdict': layer5_verdict.get('verdict', 'approve')},
+        {'name': 'compliance','reasoning': compliance_reasoning, 'verdict': final_verdict},
     ]
     return {
         'content': final_draft,
