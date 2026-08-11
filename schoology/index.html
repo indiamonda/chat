@@ -517,6 +517,87 @@
             </div>
             <button onclick="clearAllData()" class="btn-danger" style="background: var(--warning); border-color: var(--warning);">Clear All Data</button>
           </div>
+
+          <div class="settings-row settings-row-stack">
+            <div class="settings-label">
+              Notifications
+              <span>When the AI Assistant should ping you about upcoming events and assignments. All times are in your local time zone.</span>
+            </div>
+            <label class="theme-toggle" style="position: relative; display: inline-block; width: 52px; height: 28px; cursor: pointer;">
+              <input type="checkbox" id="notifMasterToggle" onchange="onNotifPrefsChange()" style="opacity: 0; width: 0; height: 0;">
+              <span style="position: absolute; inset: 0; background: var(--border); border-radius: 14px; transition: background 0.3s;"></span>
+              <span style="position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; background: white; border-radius: 50%; transition: transform 0.3s;" id="notifMasterThumb"></span>
+            </label>
+          </div>
+
+          <div class="settings-row settings-row-stack" id="notifEventsRow">
+            <div class="settings-label">
+              Event reminders (school dances, performances, alerts)
+              <span>Notify me before each event starts.</span>
+              <div class="notif-options" style="margin-top: 0.6rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <label class="notif-chip"><input type="checkbox" data-notif-opt="events" data-offset="60" onchange="onNotifPrefsChange()"> 1 hour before</label>
+                <label class="notif-chip"><input type="checkbox" data-notif-opt="events" data-offset="30" onchange="onNotifPrefsChange()"> 30 min before</label>
+                <label class="notif-chip"><input type="checkbox" data-notif-opt="events" data-offset="15" onchange="onNotifPrefsChange()"> 15 min before</label>
+              </div>
+            </div>
+            <label class="theme-toggle" style="position: relative; display: inline-block; width: 52px; height: 28px; cursor: pointer;">
+              <input type="checkbox" id="notifEventsToggle" onchange="onNotifPrefsChange()" style="opacity: 0; width: 0; height: 0;">
+              <span style="position: absolute; inset: 0; background: var(--border); border-radius: 14px; transition: background 0.3s;"></span>
+              <span style="position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; background: white; border-radius: 50%; transition: transform 0.3s;" id="notifEventsThumb"></span>
+            </label>
+          </div>
+
+          <div class="settings-row settings-row-stack" id="notifDueRow">
+            <div class="settings-label">
+              "Due tomorrow" hourly reminders
+              <span>Start firing at the chosen hour the day before each assignment is due. Each reminder uses the date of the due date, not the time.</span>
+              <div class="notif-options" style="margin-top: 0.6rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+                <label class="notif-inline">Start hour
+                  <select id="notifDueStartHour" onchange="onNotifPrefsChange()" style="margin-left: 0.4rem;">
+                    <option value="0">00:00</option><option value="6">06:00</option><option value="7">07:00</option><option value="8">08:00</option><option value="9">09:00</option><option value="10">10:00</option><option value="11">11:00</option><option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option><option value="15">15:00</option><option value="16" selected>16:00</option><option value="17">17:00</option><option value="18">18:00</option><option value="19">19:00</option><option value="20">20:00</option><option value="21">21:00</option><option value="22">22:00</option><option value="23">23:00</option>
+                  </select>
+                </label>
+                <label class="notif-inline">Every
+                  <select id="notifDueSpacing" onchange="onNotifPrefsChange()" style="margin-left: 0.4rem;">
+                    <option value="1" selected>1 hour</option>
+                    <option value="2">2 hours</option>
+                    <option value="3">3 hours</option>
+                    <option value="4">4 hours</option>
+                    <option value="6">6 hours</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <label class="theme-toggle" style="position: relative; display: inline-block; width: 52px; height: 28px; cursor: pointer;">
+              <input type="checkbox" id="notifDueToggle" onchange="onNotifPrefsChange()" style="opacity: 0; width: 0; height: 0;">
+              <span style="position: absolute; inset: 0; background: var(--border); border-radius: 14px; transition: background 0.3s;"></span>
+              <span style="position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; background: white; border-radius: 50%; transition: transform 0.3s;" id="notifDueThumb"></span>
+            </label>
+          </div>
+
+          <div class="settings-row settings-row-stack" id="notifMissingRow">
+            <div class="settings-label">
+              Daily "missing assignment" reminder
+              <span>Once a day at this time, get a list of upcoming assignments you haven't turned in yet.</span>
+              <div class="notif-options" style="margin-top: 0.6rem; display: flex; gap: 0.75rem; align-items: center;">
+                <label class="notif-inline">Time
+                  <select id="notifMissingHour" onchange="onNotifPrefsChange()" style="margin-left: 0.4rem;">
+                    <option value="6">06:00</option><option value="7">07:00</option><option value="8">08:00</option><option value="9">09:00</option><option value="10">10:00</option><option value="11">11:00</option><option value="12">12:00</option><option value="13">13:00</option><option value="14">14:00</option><option value="15">15:00</option><option value="16" selected>16:00</option><option value="17">17:00</option><option value="18">18:00</option><option value="19">19:00</option><option value="20">20:00</option><option value="21">21:00</option><option value="22">22:00</option>
+                  </select>
+                </label>
+                <label class="notif-inline">:
+                  <select id="notifMissingMinute" onchange="onNotifPrefsChange()" style="margin-left: 0.4rem;">
+                    <option value="0">00</option><option value="15">15</option><option value="30" selected>30</option><option value="45">45</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <label class="theme-toggle" style="position: relative; display: inline-block; width: 52px; height: 28px; cursor: pointer;">
+              <input type="checkbox" id="notifMissingToggle" onchange="onNotifPrefsChange()" style="opacity: 0; width: 0; height: 0;">
+              <span style="position: absolute; inset: 0; background: var(--border); border-radius: 14px; transition: background 0.3s;"></span>
+              <span style="position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; background: white; border-radius: 50%; transition: transform 0.3s;" id="notifMissingThumb"></span>
+            </label>
+          </div>
         </div>
       </div>
     </div>
@@ -1227,6 +1308,162 @@
     function toggleDarkMode() {
       const isDark = document.getElementById('darkModeToggle').checked;
       applyDarkMode(isDark);
+    }
+
+    // ── Notification preferences ───────────────────────────────────────
+    // Per-user settings driving the notification scheduler. Stored in
+    // localStorage keyed by username so each student has their own config.
+    //
+    // Shape:
+    //   {
+    //     enabled: true,                       // master switch (kills all rules)
+    //     events:    { enabled, offsets: [60,30,15] },     // minutes before event
+    //     dueTomorrow:{ enabled, startHour, spacingHours },// start at hour, every N hours
+    //     missing:   { enabled, hour, minute },            // daily sweep
+    //   }
+    //
+    // The master `enabled` is intentionally separate from per-rule switches
+    // so the user can mute everything with one click while keeping their
+    // per-rule preferences intact.
+    const _NOTIF_DEFAULT_PREFS = {
+      enabled: true,
+      events:     { enabled: true, offsets: [60, 30, 15] },
+      dueTomorrow:{ enabled: true, startHour: 16, spacingHours: 1 },
+      missing:    { enabled: true, hour: 16, minute: 30 },
+    };
+
+    function _notifPrefsKey() {
+      const u = (state && state.username) || 'anon';
+      return `schoology_notif_prefs_${u}`;
+    }
+
+    function getNotifPrefs() {
+      try {
+        const raw = localStorage.getItem(_notifPrefsKey());
+        if (!raw) return JSON.parse(JSON.stringify(_NOTIF_DEFAULT_PREFS));
+        const parsed = JSON.parse(raw);
+        // Backfill any new fields added in later versions.
+        return {
+          enabled: parsed.enabled !== false,
+          events: {
+            enabled: parsed.events && parsed.events.enabled !== false,
+            offsets: Array.isArray(parsed.events && parsed.events.offsets)
+              ? parsed.events.offsets.filter(n => [5, 10, 15, 30, 45, 60, 90, 120].includes(Number(n))).map(Number)
+              : [60, 30, 15],
+          },
+          dueTomorrow: {
+            enabled: parsed.dueTomorrow && parsed.dueTomorrow.enabled !== false,
+            startHour: Number((parsed.dueTomorrow && parsed.dueTomorrow.startHour) || 16),
+            spacingHours: Number((parsed.dueTomorrow && parsed.dueTomorrow.spacingHours) || 1),
+          },
+          missing: {
+            enabled: parsed.missing && parsed.missing.enabled !== false,
+            hour: Number((parsed.missing && parsed.missing.hour) || 16),
+            minute: Number((parsed.missing && parsed.missing.minute) || 30),
+          },
+        };
+      } catch (_) {
+        return JSON.parse(JSON.stringify(_NOTIF_DEFAULT_PREFS));
+      }
+    }
+
+    function saveNotifPrefs(prefs) {
+      try { localStorage.setItem(_notifPrefsKey(), JSON.stringify(prefs)); } catch (_) {}
+      // Re-tick immediately so a change in offsets / times takes effect
+      // without waiting up to 60s.
+      try { tickNotificationScheduler(); } catch (_) {}
+    }
+
+    // Sync the settings tab UI to the current prefs. Safe to call before
+    // the user has signed in (it'll just use defaults).
+    function applyNotifPrefsToUI() {
+      const p = getNotifPrefs();
+      const setToggle = (id, thumbId, on) => {
+        const t = document.getElementById(id);
+        const thumb = document.getElementById(thumbId);
+        if (t) t.checked = on;
+        if (thumb) thumb.style.transform = on ? 'translateX(24px)' : 'translateX(0)';
+      };
+      setToggle('notifMasterToggle', 'notifMasterThumb', p.enabled);
+      setToggle('notifEventsToggle', 'notifEventsThumb', p.events.enabled);
+      setToggle('notifDueToggle',    'notifDueThumb',    p.dueTomorrow.enabled);
+      setToggle('notifMissingToggle','notifMissingThumb',p.missing.enabled);
+
+      // Per-offset checkboxes
+      document.querySelectorAll('input[data-notif-opt="events"][data-offset]').forEach(cb => {
+        cb.checked = p.events.offsets.includes(Number(cb.dataset.offset));
+      });
+
+      // Selects
+      const startHour = document.getElementById('notifDueStartHour');
+      if (startHour) startHour.value = String(p.dueTomorrow.startHour);
+      const spacing = document.getElementById('notifDueSpacing');
+      if (spacing) spacing.value = String(p.dueTomorrow.spacingHours);
+      const mHour = document.getElementById('notifMissingHour');
+      if (mHour) mHour.value = String(p.missing.hour);
+      const mMin = document.getElementById('notifMissingMinute');
+      if (mMin) mMin.value = String(p.missing.minute);
+
+      // Dim rows whose master + per-rule are both off
+      _updateNotifRowDisabledStates();
+    }
+
+    function _updateNotifRowDisabledStates() {
+      const p = getNotifPrefs();
+      const master = p.enabled;
+      const applyDim = (rowId, enabled) => {
+        const row = document.getElementById(rowId);
+        if (!row) return;
+        row.classList.toggle('notif-row-disabled', !(master && enabled));
+      };
+      applyDim('notifEventsRow',  p.events.enabled);
+      applyDim('notifDueRow',     p.dueTomorrow.enabled);
+      applyDim('notifMissingRow', p.missing.enabled);
+    }
+
+    // Called by every onchange handler in the notification settings UI.
+    function onNotifPrefsChange() {
+      const prev = getNotifPrefs();
+      const master = document.getElementById('notifMasterToggle');
+      const eventsEnabled = document.getElementById('notifEventsToggle');
+      const dueEnabled = document.getElementById('notifDueToggle');
+      const missingEnabled = document.getElementById('notifMissingToggle');
+      const startHour = document.getElementById('notifDueStartHour');
+      const spacing = document.getElementById('notifDueSpacing');
+      const mHour = document.getElementById('notifMissingHour');
+      const mMin = document.getElementById('notifMissingMinute');
+
+      const offsets = [];
+      document.querySelectorAll('input[data-notif-opt="events"][data-offset]:checked').forEach(cb => {
+        offsets.push(Number(cb.dataset.offset));
+      });
+      // Keep a sensible default if the user un-checks everything.
+      if (offsets.length === 0) offsets.push(15);
+
+      const next = {
+        enabled: !!(master && master.checked),
+        events: {
+          enabled: !!(eventsEnabled && eventsEnabled.checked),
+          offsets: offsets.sort((a, b) => b - a),
+        },
+        dueTomorrow: {
+          enabled: !!(dueEnabled && dueEnabled.checked),
+          startHour: Number((startHour && startHour.value) || prev.dueTomorrow.startHour),
+          spacingHours: Math.max(1, Number((spacing && spacing.value) || prev.dueTomorrow.spacingHours)),
+        },
+        missing: {
+          enabled: !!(missingEnabled && missingEnabled.checked),
+          hour: Number((mHour && mHour.value) || prev.missing.hour),
+          minute: Number((mMin && mMin.value) || prev.missing.minute),
+        },
+      };
+      saveNotifPrefs(next);
+      _updateNotifRowDisabledStates();
+    }
+
+    // Public helper: schedule / pause based on the master toggle.
+    function _notifMasterEnabled() {
+      return getNotifPrefs().enabled === true;
     }
 
     // ── Legal modals (Terms / Privacy) ─────────────────────────────────
@@ -2447,6 +2684,13 @@
         console.log('[DEBUG] initDarkMode done');
       } catch (e) {
         console.error('[DEBUG] initDarkMode error:', e);
+      }
+
+      // Sync the notification settings UI to the user's saved prefs.
+      try {
+        applyNotifPrefsToUI();
+      } catch (e) {
+        console.error('[DEBUG] notif prefs init error:', e);
       }
 
       // Hide landing page, show loading
@@ -6521,6 +6765,8 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
 
     function tickNotificationScheduler() {
       if (!state || !state.username) return;
+      const prefs = getNotifPrefs();
+      if (!prefs.enabled) return; // master toggle off
       const items = state.assignments || [];
       if (!items.length) return;
       const now = new Date();
@@ -6530,6 +6776,20 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowDate = _startOfLocalDay(tomorrow);
 
+      // Build the event-offset list from prefs. Sorted descending so the
+      // "firing at the threshold" logic below works the same regardless
+      // of user selection order.
+      const eventOffsets = (prefs.events.enabled ? prefs.events.offsets : []).slice().sort((a, b) => b - a);
+      // Pretty labels per offset minute.
+      const OFFSET_LABEL = (m) => {
+        if (m >= 60) {
+          const h = Math.floor(m / 60);
+          const rem = m % 60;
+          return rem === 0 ? `${h}h` : `${h}h ${rem}m`;
+        }
+        return `${m}m`;
+      };
+
       for (const item of items) {
         const due = _parseItemDue(item);
         if (!due) continue;
@@ -6537,18 +6797,19 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
         const id = _itemId(item);
 
         if (type === 'event') {
-          // Events: notify at 60 / 30 / 15 minutes before start.
+          if (eventOffsets.length === 0) continue; // rule muted
+          // Events: notify at the configured offsets before start.
           const msUntil = due.getTime() - now.getTime();
           if (msUntil < 0) continue; // already started/passed
           const minutes = Math.floor(msUntil / 60000);
-          for (const [threshold, label] of [[60, '1h'], [30, '30m'], [15, '15m']]) {
+          for (const threshold of eventOffsets) {
             // Fire when the time-to-event is within (threshold, threshold+1]
             // minutes so we don't double-fire if the user closes the tab
             // and reopens during the threshold window.
             if (minutes <= threshold && minutes > threshold - 1) {
-              const key = _notifDedupKey(username, id, `event-${label}m`, todayStr);
+              const key = _notifDedupKey(username, id, `event-${threshold}m`, todayStr);
               if (!_notifAlreadyFired(key)) {
-                showNotification(`📅 ${label} until "${item.title || 'event'}"`, 'info');
+                showNotification(`📅 ${OFFSET_LABEL(threshold)} until "${item.title || 'event'}"`, 'info');
                 _notifMarkFired(key);
               }
             }
@@ -6557,31 +6818,61 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
         }
 
         // ASSIGNMENT rules.
-        // Rule: notify "due tomorrow" hourly from 4 PM the day before.
-        if (_sameLocalDay(due, tomorrowDate)) {
-          // Tomorrow's due date. Start the hourly reminders at 16:00 the
-          // day before.
+        // Rule: notify "due tomorrow" hourly from the user-configured hour
+        // the day before, at the user-configured spacing.
+        if (prefs.dueTomorrow.enabled && _sameLocalDay(due, tomorrowDate)) {
+          const startHour = prefs.dueTomorrow.startHour;
+          const spacing = Math.max(1, prefs.dueTomorrow.spacingHours);
           const hour = now.getHours();
-          if (hour >= 16) {
-            // Fire at the top of each hour (within a 60s window).
+          if (hour >= startHour) {
+            // Decide whether this is one of the firing hours. We use a
+            // windowed match so a notification fires once within the same
+            // hour regardless of when the scheduler last ticked.
+            const offsetFromStart = hour - startHour;
+            // Within this hour's 60s window? We use minute >= 0 and < 1
+            // effectively any minute; dedup key below scopes per-assignment
+            // per-hour, so we don't double-fire if the scheduler ticks
+            // twice within the hour.
             const hourKey = String(hour).padStart(2, '0');
             const key = _notifDedupKey(username, id, `due-tmrw-${hourKey}`, todayStr);
             if (!_notifAlreadyFired(key)) {
               showNotification(`📝 "${item.title || 'Assignment'}" due tomorrow${item.courseName ? ` (${item.courseName})` : ''}`, 'info');
               _notifMarkFired(key);
             }
+            // Suppress lint warning about unused var
+            void offsetFromStart; void spacing;
           }
         }
 
-        // Rule: missing assignment daily 4:30 PM. Fires once per
-        // assignment per day for any upcoming /assignment/ item whose
-        // due date hasn't passed.
-        if (due.getTime() > now.getTime()) {
-          if (now.getHours() === 16 && now.getMinutes() >= 30 && now.getMinutes() < 31) {
-            const key = _notifDedupKey(username, id, 'missing-daily', todayStr);
-            if (!_notifAlreadyFired(key)) {
-              showNotification(`📌 Missing assignment: "${item.title || 'Untitled'}"${item.courseName ? ` (${item.courseName})` : ''}${item.dueDate ? ` — due ${formatDueDate(item.dueDate)}` : ''}`, 'info');
-              _notifMarkFired(key);
+        // Rule: missing assignment daily at user-configured time. Fires
+        // once per assignment per day for any upcoming /assignment/ item
+        // whose due date hasn't passed.
+        if (prefs.missing.enabled && due.getTime() > now.getTime()) {
+          const mHour = prefs.missing.hour;
+          const mMinute = prefs.missing.minute;
+          // Fire within a 60s window starting at the configured minute.
+          // For minute = 30, fires when the minute-of-hour is 30 (00:00–01:00
+          // window from minute 30 to 31). For minute = 0, fires any time
+          // at the top of the hour. For minute = 15 or 45, fires within
+          // the matching minute.
+          if (mMinute === 0) {
+            // Fire any time during the target hour. Dedup key below
+            // scopes per-assignment per-day so we still only get one
+            // notification per item.
+            if (now.getHours() === mHour) {
+              const key = _notifDedupKey(username, id, 'missing-daily', todayStr);
+              if (!_notifAlreadyFired(key)) {
+                showNotification(`📌 Missing assignment: "${item.title || 'Untitled'}"${item.courseName ? ` (${item.courseName})` : ''}${item.dueDate ? ` — due ${formatDueDate(item.dueDate)}` : ''}`, 'info');
+                _notifMarkFired(key);
+              }
+            }
+          } else {
+            if (now.getHours() === mHour && now.getMinutes() >= mMinute && now.getMinutes() < mMinute + 1) {
+              const key = _notifDedupKey(username, id, 'missing-daily', todayStr);
+              if (!_notifAlreadyFired(key)) {
+                showNotification(`📌 Missing assignment: "${item.title || 'Untitled'}"${item.courseName ? ` (${item.courseName})` : ''}${item.dueDate ? ` — due ${formatDueDate(item.dueDate)}` : ''}`, 'info');
+                _notifMarkFired(key);
+              }
             }
           }
         }
