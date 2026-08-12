@@ -284,7 +284,7 @@ router.post('/users/:id/allowed', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-const PERM_KEYS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall'];
+const PERM_KEYS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall', 'can_see_whispers'];
 
 // Set a user's permissions (only for users on admin list). Requires can_manage_users.
 router.patch('/users/:id/permissions', requireAuth, (req, res) => {
@@ -321,12 +321,16 @@ router.get('/recalled-messages', requireAuth, (req, res) => {
   const admin = assertAllowed(req, res);
   if (admin === undefined) return;
   const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+  // The recalled list is an audit view: never surface whispers here, even
+  // to admins with can_see_whispers, so it cannot be used to enumerate
+  // private messages that happen to have been recalled.
   const rows = db.prepare(`
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.recalled_at, m.created_at,
            u.username, u.display_name, u.avatar_url
     FROM messages m
     LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = 'group' AND m.room_id = ? AND m.recalled_at IS NOT NULL AND m.deleted_by_admin = 0
+      AND m.msg_type != 'whisper'
     ORDER BY m.recalled_at DESC
     LIMIT ?
   `).all(GROUP_ID, limit);
@@ -476,14 +480,24 @@ router.get('/export/:kind', requireAuth, (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 5000, 50000);
 
   if (kind === 'messages') {
+    // Admin export of whispers uses the SAME per-row audience predicate
+    // as every other read path: admins see a whisper only if they're the
+    // sender, named recipient, jimmyqrg, or listed in whisper_audience for
+    // that specific message. The can_see_whispers perm doesn't elevate
+    // export — audience is locked at send time, like everywhere else.
+    const isJimmyqrg = admin.id === 'jimmyqrg';
     const rows = db.prepare(`
       SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type,
              m.reply_to_id, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
              u.username AS sender_username
       FROM messages m
       LEFT JOIN users u ON u.id = m.sender_id
+      WHERE m.msg_type != 'whisper'
+         OR m.sender_id = ?
+         OR ? = 'jimmyqrg'
+         OR EXISTS(SELECT 1 FROM whisper_audience wa WHERE wa.message_id = m.id AND wa.user_id = ?)
       ORDER BY m.created_at DESC LIMIT ?
-    `).all(limit);
+    `).all(admin.id, isJimmyqrg ? 'jimmyqrg' : '', admin.id, limit);
     recordAuditLog('admin.export', admin.id, null, { kind, format, rows: rows.length });
     return sendExport(res, `chat-messages-${Date.now()}`, format, rows, [
       'id', 'room_type', 'room_id', 'sender_id', 'sender_username', 'content', 'msg_type',
@@ -494,7 +508,8 @@ router.get('/export/:kind', requireAuth, (req, res) => {
     const rows = db.prepare(`
       SELECT id, username, display_name, email, is_allowed, deleted_at, created_at,
              can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages,
-             can_manage_users, can_timeout, can_pin_messages, can_unlimited_edit_recall
+             can_manage_users, can_timeout, can_pin_messages, can_unlimited_edit_recall,
+             can_see_whispers
       FROM users ORDER BY created_at ASC
     `).all();
     recordAuditLog('admin.export', admin.id, null, { kind, format, rows: rows.length });
@@ -502,6 +517,7 @@ router.get('/export/:kind', requireAuth, (req, res) => {
       'id', 'username', 'display_name', 'email', 'is_allowed', 'deleted_at', 'created_at',
       'can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages',
       'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall',
+      'can_see_whispers',
     ]);
   }
   if (kind === 'audit') {
@@ -595,6 +611,9 @@ router.post('/pin', requireAuth, (req, res) => {
   if (!message_id || !room_type || !room_id) return res.status(400).json({ error: 'message_id, room_type, room_id required' });
   const msg = db.prepare('SELECT id, sender_id, content, msg_type, created_at FROM messages WHERE id = ? AND room_type = ? AND room_id = ? AND deleted_by_admin = 0 AND recalled_at IS NULL').get(message_id, room_type, room_id);
   if (!msg) return res.status(404).json({ error: 'Message not found' });
+  // Don't pin whispers — pinning would surface them to every viewer,
+  // which contradicts the audience model.
+  if (msg.msg_type === 'whisper') return res.status(400).json({ error: 'Cannot pin private messages' });
   db.prepare('INSERT OR REPLACE INTO pinned_messages (room_type, room_id, message_id, pinned_by, pinned_at) VALUES (?, ?, ?, ?, ?)').run(room_type, room_id, message_id, admin.id, Date.now());
   const sender = db.prepare('SELECT username, display_name, avatar_url FROM users WHERE id = ?').get(msg.sender_id);
   const pinned = { message_id: msg.id, sender_id: msg.sender_id, content: msg.content, msg_type: msg.msg_type, created_at: msg.created_at, username: sender?.username, display_name: sender?.display_name, pinned_by: admin.id, pinned_at: Date.now() };

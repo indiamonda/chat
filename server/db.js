@@ -12,7 +12,7 @@ if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 export const db = new Database(dbPath);
 
 // Ensure permission columns exist (migration for older DBs)
-const PERM_COLS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall'];
+const PERM_COLS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall', 'can_see_whispers'];
 for (const col of PERM_COLS) {
   try {
     db.exec(`ALTER TABLE users ADD COLUMN ${col} INTEGER NOT NULL DEFAULT 0`);
@@ -36,6 +36,7 @@ try {
     can_timeout = 1,
     can_pin_messages = 1,
     can_unlimited_edit_recall = 1,
+    can_see_whispers = 1,
     deleted_at = NULL
   WHERE id = 'jimmyqrg'`);
 } catch (err) { console.error('[db.boot] Failed to ensure jimmyqrg admin powers:', err?.message || err); }
@@ -44,6 +45,46 @@ try { db.exec('ALTER TABLE users ADD COLUMN profile_links TEXT'); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN description TEXT'); } catch (_) {}
 try { db.exec("ALTER TABLE users ADD COLUMN chatbox_style TEXT DEFAULT 'default'"); } catch (_) {}
 try { db.exec('ALTER TABLE users ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+
+// Whispers: per-row audience for /whisper messages. The sender is implicit
+// via messages.sender_id; rows here list only the extra viewers (recipient,
+// jimmyqrg, admins with the can_see_whispers perm at the time of send).
+// Admins granted the perm AFTER a whisper was sent will NOT retroactively
+// see it — audience is locked at send time.
+try {
+  db.exec(`ALTER TABLE messages ADD COLUMN recipient_user_id TEXT`);
+} catch (_) {}
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS whisper_audience (
+      message_id TEXT NOT NULL,
+      user_id    TEXT NOT NULL,
+      PRIMARY KEY (message_id, user_id),
+      FOREIGN KEY (message_id) REFERENCES messages(id),
+      FOREIGN KEY (user_id)    REFERENCES users(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_whisper_audience_msg  ON whisper_audience(message_id);
+    CREATE INDEX IF NOT EXISTS idx_whisper_audience_user ON whisper_audience(user_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_recipient    ON messages(recipient_user_id);
+  `);
+} catch (err) { console.error('[db.boot] whisper schema setup failed:', err?.message || err); }
+
+/** Build the WHERE-clause fragment that hides whispers from non-audience
+ *  viewers. Caller appends `AND (...sql...)` to their `messages` SELECT.
+ *  Returns `{ sql, params }` so callers can `.all(...params)`.
+ *
+ *  Viewer can see a whisper iff: they sent it, it's addressed to them,
+ *  they're jimmyqrg, or they're listed in whisper_audience. Empty params
+ *  when no viewer id was supplied (always-hide). */
+export function whisperVisibleClause(viewer) {
+  if (!viewer || !viewer.id) {
+    return { sql: `m.msg_type != 'whisper'`, params: [] };
+  }
+  return {
+    sql: `(m.msg_type != 'whisper' OR m.sender_id = ? OR m.recipient_user_id = ? OR ? = 'jimmyqrg' OR EXISTS(SELECT 1 FROM whisper_audience wa WHERE wa.message_id = m.id AND wa.user_id = ?))`,
+    params: [viewer.id, viewer.id, viewer.id, viewer.id],
+  };
+}
 
 // Seed: private user account for jimmyqrg. Runs on every server boot,
 // idempotent. Placed here (not in scripts/init-db.js) so the seed

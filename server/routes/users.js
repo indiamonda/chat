@@ -4,7 +4,7 @@ import { db, GROUP_ID, isEmailBanned, isPrivateUser, canSeePrivateUser, PRIVATE_
 import { upload } from '../upload.js';
 
 const router = Router();
-const PERM_COLS = 'can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_manage_users, can_timeout, can_pin_messages, can_unlimited_edit_recall';
+const PERM_COLS = 'can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_manage_users, can_timeout, can_pin_messages, can_unlimited_edit_recall, can_see_whispers';
 
 router.get('/', requireAuth, (req, res) => {
   const me = getCurrentUser(req);
@@ -36,6 +36,7 @@ router.get('/', requireAuth, (req, res) => {
       out.can_timeout = !!u.can_timeout;
       out.can_pin_messages = !!u.can_pin_messages;
       out.can_unlimited_edit_recall = !!u.can_unlimited_edit_recall;
+      out.can_see_whispers = !!u.can_see_whispers;
     } else {
       PERM_COLS.split(', ').forEach(c => delete out[c]);
     }

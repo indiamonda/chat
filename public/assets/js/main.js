@@ -5910,6 +5910,7 @@ function getMediaMessageIds(list) {
 function getFileKind(msg, urlOverride) {
   const type = (msg.msg_type || '').toLowerCase();
   const url = (urlOverride || msg.content || '').toLowerCase();
+  if (type === 'whisper') return 'text';
   if (type === 'video' || /\.(mp4|webm|mov|ogg)(\?|$)/.test(url)) return 'video';
   if (type === 'audio' || type === 'voice' || /\.(mp3|wav|ogg|webm|m4a)(\?|$)/.test(url)) return 'audio';
   if (type === 'image' || type === 'gif' || /\.(gif|jpg|jpeg|png|webp)(\?|$)/.test(url)) return url.includes('.gif') ? 'gif' : 'image';
@@ -6004,7 +6005,11 @@ function renderMessagesWithTimestamps(list, roomType, roomId) {
 
 function renderMessage(m, roomType, roomId, context = {}) {
   const isOwn = m.sender_id === state.user?.id;
+  const isWhisper = m.msg_type === 'whisper';
   const isFileMessage = !!parseFileRef(m.content, m.msg_type);
+  // Pull a recipient user record from cached state.users when possible
+  // so we can render the recipient's display name + handle in the badge.
+  const recipientUser = isWhisper ? (state.users || []).find(u => u.id === m.recipient_user_id) : null;
   const reactionSummary = (m.reactions || []).map((r) => `
     <button type="button" class="message-reaction-chip" data-msg-id="${m.id}" data-emoji="${escapeHtml(r.emoji)}">
       <span class="message-reaction-emoji">${escapeHtml(r.emoji)}</span>
@@ -6080,10 +6085,12 @@ function renderMessage(m, roomType, roomId, context = {}) {
   if (useSvgBubble) bodyClasses.push('message-body-svg');
   if (useSvgBubble && hasTail) bodyClasses.push('message-body-tail');
   if (!useSvgBubble && cbStyle !== 'default') bodyClasses.push(`chatbox-${cbStyle}`);
+  if (isWhisper) bodyClasses.push('message-body-whisper');
+  const whisperBadge = isWhisper ? `<span class="message-whisper-badge" title="Private message: only you, the recipient, jimmyqrg, and admins with the See whispers permission can see this.">Whisper to @${escapeHtml(recipientUser ? recipientUser.username : (m.recipient_user_id || ''))}</span>` : '';
   return `
-    <div class="message-row" data-msg-id="${m.id}">
-      <div class="message ${isOwn ? 'own' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
-        <div class="message-header"><span class="message-sender">${senderName}</span></div>
+    <div class="message-row ${isWhisper ? 'message-row-whisper' : ''}" data-msg-id="${m.id}">
+      <div class="message ${isOwn ? 'own' : ''} ${isWhisper ? 'message-whisper' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
+        <div class="message-header"><span class="message-sender">${senderName}</span>${whisperBadge}</div>
         <div class="message-inline">
           <div class="message-avatar-wrap" data-sender-id="${escapeHtml(m.sender_id || '')}" title="View profile" role="button" tabindex="0">
             <img class="message-avatar" src="${avatarSrc}" data-fallback="${defaultAvatar.replace(/"/g, '&quot;')}" onerror="this.onerror=null;if(this.dataset.fallback)this.src=this.dataset.fallback" alt="" />
@@ -7071,6 +7078,414 @@ async function openFileContentModal(url) {
   }
 }
 
+/* ====================================================================
+ * Slash-commands: /fall /joke /grumm /jimmyqrg /whisper
+ *
+ * Each is dispatched by the composer's send() closure when the typed text
+ * starts with `/`. Returning `'kept'` means the helper deliberately leaves
+ * the composer text as-is (currently no command uses this); returning
+ * `true` means send() should clear the input + return; returning a
+ * non-truthy value means the command didn't match, so the regular send
+ * path proceeds. This makes it safe for unknown slash commands to fall
+ * through to legacy group commands below.
+ * ==================================================================*/
+
+const PREFERS_REDUCED_MOTION = () =>
+  typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/** /fall <text>: animate the text falling from top to bottom of the page,
+ *  drifting horizontally with a small random offset per character/word. */
+function playFallAnimation(rawText) {
+  if (!rawText) return;
+  if (PREFERS_REDUCED_MOTION()) {
+    const flash = document.createElement('div');
+    flash.className = 'fall-overlay';
+    flash.setAttribute('aria-hidden', 'true');
+    flash.style.background = 'linear-gradient(180deg, rgba(139,92,246,0.18) 0%, rgba(139,92,246,0) 60%)';
+    flash.style.opacity = '1';
+    flash.style.transition = 'opacity 0.6s ease-out';
+    document.body.appendChild(flash);
+    setTimeout(() => { flash.style.opacity = '0'; }, 80);
+    setTimeout(() => { flash.remove(); }, 700);
+    return;
+  }
+  let text = String(rawText).trim();
+  if (!text) return;
+  if (text.length > 120) {
+    text = text.slice(0, 120);
+    showToast('Trimmed to 120 characters');
+  }
+  const perWord = text.length > 80;
+  const tokens = perWord ? text.split(/\s+/).filter(Boolean) : Array.from(text);
+  const overlay = document.createElement('div');
+  overlay.className = 'fall-overlay';
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(overlay);
+  const W = Math.max(window.innerWidth, 320);
+  const H = Math.max(window.innerHeight, 480);
+  for (const t of tokens) {
+    if (!t) continue;
+    const span = document.createElement('span');
+    span.className = perWord ? 'fall-word' : 'fall-letter';
+    span.textContent = t;
+    const startX = Math.random() * Math.max(1, W - 40);
+    const drift = (Math.random() - 0.5) * 24;
+    const dur = 6000 + Math.random() * 6000;
+    const delay = Math.random() * 3000;
+    span.style.left = startX + 'px';
+    span.style.top = '-10vh';
+    span.style.setProperty('--drift', drift.toFixed(1) + 'px');
+    span.style.setProperty('--dur', dur + 'ms');
+    span.style.setProperty('--delay', delay + 'ms');
+    span.style.fontSize = perWord ? (24 + Math.random() * 18) + 'px' : (28 + Math.random() * 22) + 'px';
+    overlay.appendChild(span);
+  }
+  // Hard safety cleanup in case animationend doesn't fire (background tabs).
+  const safety = setTimeout(() => overlay.remove(), 14_000);
+  overlay.addEventListener('animationend', (e) => {
+    if (e.target === spanListLast(tokens)) {
+      // Last token finished — let CSS handle the rest. As a fallback we
+      // still rely on the setTimeout if `animationend` doesn't propagate.
+    }
+  });
+  // Simpler: just remove after the longest possible duration + delay.
+  setTimeout(() => { clearTimeout(safety); overlay.remove(); }, 14_000);
+  // helper kept inline to avoid an unused closure
+  function spanListLast(arr) { return null; }
+}
+
+/** /grumm [/grumm] /GRUMM /grumm_: flip the entire #app vertically. A
+ *  click anywhere on the page reverts. */
+function triggerGrumm() {
+  if (PREFERS_REDUCED_MOTION()) {
+    showToast('Flipping is disabled in reduced-motion mode');
+    return;
+  }
+  // Don't flip if any modal is open — would visually invert it.
+  for (const m of document.querySelectorAll('.modal-overlay')) {
+    const cs = getComputedStyle(m);
+    if (cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity || '1') > 0.01) {
+      showToast('Close any open modal first');
+      return;
+    }
+  }
+  const app = document.getElementById('app');
+  if (!app) return;
+  if (app.classList.contains('grumm-flipped')) return; // idempotent
+  app.classList.add('grumm-flipped');
+  // Floating "Flip Back" pill.
+  const pill = document.createElement('button');
+  pill.type = 'button';
+  pill.className = 'grumm-flip-back';
+  pill.textContent = 'Flip back';
+  document.body.appendChild(pill);
+  const revert = (ev) => {
+    if (pill.contains(ev.target)) return; // let the pill handle itself
+    app.classList.remove('grumm-flipped');
+    pill.remove();
+    document.removeEventListener('click', revert, true);
+  };
+  pill.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    app.classList.remove('grumm-flipped');
+    pill.remove();
+    document.removeEventListener('click', revert, true);
+  });
+  // Defer attaching the click-away listener so the click that triggered
+  // /grumm doesn't immediately revert.
+  setTimeout(() => document.addEventListener('click', revert, true), 0);
+}
+
+/** /jimmyqrg: open the official sister site in a new tab. */
+function openJimmyqrgSite() {
+  try { window.open('https://indiamonda.github.io', '_blank', 'noopener,noreferrer'); }
+  catch (_) { showToast('Pop-up blocked'); }
+}
+
+/** /joke: fetch a random joke and send it as a regular text message in
+ *  the current room, as the sender's own message. */
+async function handleJokeCommand({ roomType, roomId, replyTo }) {
+  let data;
+  try {
+    data = await apiGet('/api/jokes/random');
+  } catch (err) {
+    showToast(err?.message || 'Failed to fetch a joke');
+    return true; // we consumed the input
+  }
+  const joke = (data && data.joke) ? String(data.joke) : '';
+  if (!joke) {
+    showToast('No jokes available');
+    return true;
+  }
+  const reply_to_id = replyTo?.id || null;
+  const socketReady = !!(state.socket && state.socket.connected);
+  const sendOverSocket = () => new Promise((resolve) => {
+    state.socket.emit('message:send', { roomType, roomId, content: joke, msg_type: 'text', reply_to_id }, (res) => {
+      if (!res || res.error) {
+        if (res?.error === 'AI_MOD_BLOCK') showAiModerationModal(res.reason || '');
+        else if (res?.error) showToast(res.error);
+        return resolve();
+      }
+      if (res.message) addMessageLocal(res.message);
+      setState({ replyTo: null });
+      resolve();
+    });
+  });
+  state._sendingMessage = true;
+  try {
+    if (socketReady) await sendOverSocket();
+    else {
+      const path = roomType === 'dm'
+        ? `/api/conversations/${roomId}/messages`
+        : `/api/rooms/${roomType}/${roomId}/messages`;
+      try {
+        const body = { content: joke, msg_type: 'text' };
+        if (reply_to_id) body.reply_to_id = reply_to_id;
+        const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
+        const json = await res.json().catch(() => ({}));
+        if (json && json.message) addMessageLocal(json.message);
+        setState({ replyTo: null });
+      } catch (err) {
+        showToast(err?.message || 'Failed to send joke');
+      }
+    }
+  } finally {
+    state._sendingMessage = false;
+  }
+  return true;
+}
+
+/** /whisper [/msg] [/tell]: parse user → resolve → modal → send. Returns
+ *  true on completion (input always cleared). */
+async function handleWhisperCommand(text, ctx) {
+  // Strip the leading `/cmd ` to get `<name> <text>`.
+  const m = text.match(/^\/(whisper|msg|tell)\s+(.+)$/i);
+  if (!m) return false;
+  const tail = m[2].trim();
+  if (!tail) { showToast('Usage: /whisper <username> <message>'); return true; }
+  // First token is the recipient; strip a leading '@' and lowercase it.
+  const sp = tail.split(/\s+/);
+  const rawName = sp[0].replace(/^@/, '');
+  const message = sp.slice(1).join(' ').trim();
+  if (!message) {
+    showToast('Usage: /whisper <username> <message>');
+    return true;
+  }
+  let recipient;
+  try {
+    const search = await apiGet(`/api/users/mention-search?q=${encodeURIComponent(rawName)}&limit=5`);
+    const users = (search && Array.isArray(search.users)) ? search.users : [];
+    if (users.length === 0) {
+      showToast(`No matching user for "${rawName}"`);
+      return true;
+    }
+    if (users.length === 1) recipient = users[0];
+    else {
+      const picked = await pickWhisperRecipient(users, rawName);
+      if (!picked) return true; // user cancelled
+      recipient = picked;
+    }
+  } catch (err) {
+    showToast(err?.message || 'Failed to look up user');
+    return true;
+  }
+  const audience = await pickWhisperAudience(recipient);
+  if (!audience) return true;
+  if (ctx.roomType !== 'group' && ctx.roomType !== 'dm') {
+    showToast('Cannot whisper from this room');
+    return true;
+  }
+  const payload = {
+    roomType: ctx.roomType,
+    roomId: ctx.roomId,
+    content: message,
+    msg_type: 'whisper',
+    recipient_user_id: recipient.id,
+    audience,
+    reply_to_id: ctx.replyTo?.id || null,
+  };
+  state._sendingMessage = true;
+  try {
+    const socketReady = !!(state.socket && state.socket.connected);
+    if (socketReady) {
+      await new Promise((resolve) => {
+        state.socket.emit('message:send', payload, (res) => {
+          if (!res || res.error) {
+            if (res?.error === 'AI_MOD_BLOCK') showAiModerationModal(res.reason || '');
+            else if (res?.error) showToast(res.error);
+            return resolve();
+          }
+          if (res.message) addMessageLocal(res.message);
+          setState({ replyTo: null });
+          resolve();
+        });
+      });
+    } else {
+      const path = payload.roomType === 'dm'
+        ? `/api/conversations/${payload.roomId}/messages`
+        : `/api/rooms/${payload.roomType}/${payload.roomId}/messages`;
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (json?.error === 'AI_MOD_BLOCK') showAiModerationModal(json.reason || '');
+        else showToast(json?.error || res.statusText);
+      } else if (json && json.message) addMessageLocal(json.message);
+      setState({ replyTo: null });
+    }
+  } finally {
+    state._sendingMessage = false;
+  }
+  return true;
+}
+
+/** Modal: pick a single recipient when mention-search returned >1. */
+function pickWhisperRecipient(users, query) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay whisper-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Choose recipient</h2>
+          <button type="button" class="modal-close-x" aria-label="Close">${ICON_X_SM}</button>
+        </div>
+        <div class="whisper-modal-body">
+          <p>Multiple users match "${escapeHtml(query)}". Pick one:</p>
+          <div class="whisper-recipient-list"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary whisper-modal-cancel">Cancel</button>
+        </div>
+      </div>
+    `;
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    document.body.appendChild(overlay);
+    const close = (val) => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    function onKey(ev) { if (ev.key === 'Escape') close(null); }
+    document.addEventListener('keydown', onKey);
+    overlay.querySelector('.modal-close-x').addEventListener('click', (e) => { e.stopPropagation(); close(null); });
+    overlay.querySelector('.whisper-modal-cancel').addEventListener('click', (e) => { e.stopPropagation(); close(null); });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close(null);
+    });
+    const list = overlay.querySelector('.whisper-recipient-list');
+    for (const u of users) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'whisper-recipient-option';
+      btn.innerHTML = `
+        <span class="whisper-recipient-name">${escapeHtml(u.display_name || u.username)}</span>
+        <span class="whisper-recipient-handle">@${escapeHtml(u.username)}</span>
+      `;
+      btn.addEventListener('click', (e) => { e.stopPropagation(); close(u); });
+      list.appendChild(btn);
+    }
+    overlay.querySelector('.whisper-recipient-option')?.focus();
+  });
+}
+
+/** Modal: choose 'hidden' or 'placeholder' for the whisper. */
+function pickWhisperAudience(recipient) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay whisper-modal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    const username = recipient && recipient.username ? recipient.username : 'user';
+    overlay.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Whisper to @${escapeHtml(username)}</h2>
+          <button type="button" class="modal-close-x" aria-label="Close">${ICON_X_SM}</button>
+        </div>
+        <div class="whisper-modal-body">
+          <p>Whispering sends a private message only visible to <strong>you</strong>, <strong>@${escapeHtml(username)}</strong>, <strong>jimmyqrg</strong>, and any admin with the <em>See whispers</em> permission.</p>
+          <p>Choose how others see this message:</p>
+          <div class="whisper-audience-options">
+            <button type="button" class="whisper-audience-option" data-audience="hidden">
+              <strong>Hidden</strong>
+              <span>Don't show anything to other viewers. Recommended.</span>
+            </button>
+            <button type="button" class="whisper-audience-option" data-audience="placeholder">
+              <strong>Show as placeholder</strong>
+              <span>Show a small "[private message]" stub to other viewers.</span>
+            </button>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary whisper-modal-cancel">Cancel</button>
+        </div>
+      </div>
+    `;
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    document.body.appendChild(overlay);
+    const close = (val) => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    function onKey(ev) {
+      if (ev.key === 'Escape') close(null);
+      else if (ev.key === 'Enter') {
+        const hiddenBtn = overlay.querySelector('button[data-audience="hidden"]');
+        hiddenBtn && hiddenBtn.click();
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    overlay.querySelector('.modal-close-x').addEventListener('click', (e) => { e.stopPropagation(); close(null); });
+    overlay.querySelector('.whisper-modal-cancel').addEventListener('click', (e) => { e.stopPropagation(); close(null); });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close(null);
+    });
+    overlay.querySelectorAll('.whisper-audience-option').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        close(btn.dataset.audience || 'hidden');
+      });
+    });
+    overlay.querySelector('button[data-audience="hidden"]').focus();
+  });
+}
+
+/** Dispatcher used by the composer send closure. */
+async function handleSlashCommand(text, ctx) {
+  if (!text.startsWith('/')) return false;
+  const lower = text.toLowerCase();
+  // /fall <anything>
+  if (lower.startsWith('/fall ')) {
+    const payload = text.slice(6).trim();
+    playFallAnimation(payload);
+    return true;
+  }
+  // /grumm variants. Accept /grumm, /grumm_, /GRUMM, etc.
+  if (lower === '/grumm' || lower === '/grumm_' || lower === '/grumm.' || lower === '/grumm!' || lower === '/grumm?') {
+    triggerGrumm();
+    return true;
+  }
+  if (lower === '/jimmyqrg' || lower === '/jimmyqrg.' || lower === '/jimmyqrg!' || lower === '/jimmyqrg?') {
+    openJimmyqrgSite();
+    return true;
+  }
+  if (lower === '/joke' || lower === '/joke.' || lower === '/joke!' || lower === '/joke?') {
+    return await handleJokeCommand(ctx);
+  }
+  if (lower.startsWith('/whisper ') || lower.startsWith('/msg ') || lower.startsWith('/tell ')) {
+    return await handleWhisperCommand(text, ctx);
+  }
+  return false;
+}
+
 function bindMain() {
   document.addEventListener('click', (e) => {
     const copyBtn = e.target.closest('.chat-codeblock-copy');
@@ -7524,10 +7939,14 @@ function bindMain() {
 
       // ── Group 1: basic message actions (copy / reply / file id)
       items.push({ label: t('copy'), action: 'copy' });
-      items.push({ label: t('reply'), action: 'reply' });
+      if (msg.msg_type !== 'whisper') {
+        items.push({ label: t('reply'), action: 'reply' });
+      }
       const fileRef = parseFileRef(msg.content, msg.msg_type);
       if (fileRef) items.push({ label: t('getFileId'), action: 'get-file-id' });
-      items.push({ label: tx('addToCollection', 'Add to collection'), action: 'add-to-collection' });
+      if (msg.msg_type !== 'whisper') {
+        items.push({ label: tx('addToCollection', 'Add to collection'), action: 'add-to-collection' });
+      }
 
       // ── Group 2: own-message edit / recall / delete
       if (canRecallEditOwn || canRecallEditOther) {
@@ -7620,7 +8039,13 @@ function bindMain() {
           state.supportMessageIdForSolve = msgId;
           navigateTo('/chat/group/?panel=problem');
         }
-        if (action === 'reply') setState({ replyTo: msg });
+        if (action === 'reply') {
+          if (msg && msg.msg_type === 'whisper') {
+            showToast('Cannot reply to a private message');
+            return;
+          }
+          setState({ replyTo: msg });
+        }
         if (action === 'report') showReportMessageModal(msg);
       });
     });
@@ -7923,6 +8348,12 @@ function bindMain() {
     // Build a 12-col grid.
     const cols = 12;
     pop.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+    const closePicker = () => {
+      pop.remove();
+      document.removeEventListener('click', pop._close);
+      if (btn._pickerOpen === pop) btn._pickerOpen = null;
+      input?.focus();
+    };
     EMOJI_LIST.forEach((emoji) => {
       const cell = document.createElement('button');
       cell.type = 'button';
@@ -7933,12 +8364,31 @@ function bindMain() {
         e.stopPropagation();
         insertAtCursor(input, emoji);
         resizeComposerInput();
-        pop.remove();
-        document.removeEventListener('click', pop._close);
-        input?.focus();
+        closePicker();
       });
       pop.appendChild(cell);
     });
+    // Header bar with a close X so users can dismiss the picker without
+    // picking an emoji (works whether or not they click an emoji cell).
+    const header = document.createElement('div');
+    header.className = 'emoji-picker-header';
+    const headerTitle = document.createElement('span');
+    headerTitle.className = 'emoji-picker-title';
+    headerTitle.textContent = 'Emoji';
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'emoji-picker-close';
+    closeBtn.setAttribute('aria-label', 'Close emoji picker');
+    closeBtn.title = 'Close';
+    closeBtn.innerHTML = ICON_X_SM;
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      closePicker();
+    });
+    header.appendChild(headerTitle);
+    header.appendChild(closeBtn);
+    pop.insertBefore(header, pop.firstChild);
     document.body.appendChild(pop);
     // Default position: above the button, right-aligned.
     let x = rect.right;
@@ -7989,7 +8439,7 @@ function bindMain() {
     openEmojiPicker(emojiBtn);
   });
   if (sendBtn && input) {
-    const send = () => {
+    const send = async () => {
       if (state._sendingMessage) return;
       const text = input.value.trim();
       if (!text && !state._pendingFile) return;
@@ -8009,6 +8459,23 @@ function bindMain() {
           }).catch((err) => showToast(err.message || 'Failed to save setting'));
         }
         return;
+      }
+
+      // Slash-commands: /fall, /joke, /grumm, /jimmyqrg, /whisper (also
+      // /msg, /tell). These always fire on a leading `/`, regardless of
+      // `state.commandMode` (which now only governs the legacy
+      // /games /wordle /request-admin /file group commands below).
+      if (text.startsWith('/')) {
+        const handled = await handleSlashCommand(text, { roomType, roomId, replyTo: state.replyTo });
+        if (handled) {
+          // Only clear for commands that consumed the input (fall/joke/etc).
+          // /grumm + /jimmyqrg have already cleaned up inside the helper.
+          if (handled !== 'kept') {
+            input.value = '';
+            resizeComposerInput();
+          }
+          return;
+        }
       }
 
       if (roomType === 'group' && state.commandMode && text.startsWith('/')) {
@@ -8719,7 +9186,7 @@ async function toggleBlacklist(userId, isBlacklisted) {
   } catch (err) { showToast(err.message); }
 }
 
-const ADMIN_PERM_KEYS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall'];
+const ADMIN_PERM_KEYS = ['can_send_inbox', 'can_broadcast', 'can_edit_docs', 'can_kick', 'can_delete_messages', 'can_manage_users', 'can_timeout', 'can_pin_messages', 'can_unlimited_edit_recall', 'can_see_whispers'];
 
 function getAdminPermLabels() {
   return {
@@ -8732,6 +9199,7 @@ function getAdminPermLabels() {
     can_timeout: t('adminPermTimeout'),
     can_pin_messages: tx('adminPermPinMessages', 'Pin messages'),
     can_unlimited_edit_recall: tx('adminPermUnlimitedEditRecall', 'Unlimited edit & recall'),
+    can_see_whispers: tx('adminPermSeeWhispers', 'See whispers'),
   };
 }
 

@@ -169,12 +169,18 @@ const MOD_SYSTEM_PROMPT = [
 function getRecentRoomContext(roomType, roomId, limit = 10) {
   if (!roomType || !roomId) return [];
   try {
+    // Whispers are excluded entirely from the moderator's prior-context
+    // window: they're 1:1 secrets shared with a specific audience and
+    // shouldn't leak into the per-room moderation context for unrelated
+    // senders. The new whisper's body is still moderated by the caller
+    // (the text is passed in via the user-message directly).
     const rows = db.prepare(`
       SELECT m.content, m.msg_type, m.sender_id, m.created_at,
              u.username, u.display_name
       FROM messages m LEFT JOIN users u ON u.id = m.sender_id
       WHERE m.room_type = ? AND m.room_id = ?
         AND m.recalled_at IS NULL AND m.deleted_by_admin = 0
+        AND (m.msg_type IS NULL OR m.msg_type != 'whisper')
       ORDER BY m.created_at DESC LIMIT ?
     `).all(roomType, roomId, Math.max(1, Math.min(20, Number(limit) || 10)));
     return rows.reverse().map(r => ({

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
-import { requireAuth, getCurrentUser, isAllowed } from '../auth.js';
+import { requireAuth, getCurrentUser, isAllowed, canSeeWhispers } from '../auth.js';
 import { db } from '../db.js';
 import { recordAuditLog } from '../audit.js';
 
@@ -363,15 +363,23 @@ router.get('/:id/context', requireAuth, (req, res) => {
   if (!report.message_id) return res.status(400).json({ error: 'Report is not tied to a message' });
   const focus = db.prepare(`
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id,
-           m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
+           m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at, m.recipient_user_id,
            u.username, u.display_name, u.avatar_url, u.chatbox_style
     FROM messages m
     LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.id = ?
   `).get(report.message_id);
   if (!focus) return res.status(404).json({ error: 'Reported message not found' });
+  // Hide the focus body from admins without can_see_whispers so they can't
+  // peek at a whisper through the moderation queue.
+  if (focus.msg_type === 'whisper' && admin.id !== 'jimmyqrg' && !canSeeWhispers(admin)) {
+    return res.status(404).json({ error: 'Reported message not found' });
+  }
 
   const WINDOW = 5;
+  // Strip whispers from the context window regardless of admin perm — the
+  // focus is what the admin is investigating; surrounding whispers are
+  // private to their audience.
   const before = db.prepare(`
     SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id,
            m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
@@ -379,6 +387,7 @@ router.get('/:id/context', requireAuth, (req, res) => {
     FROM messages m
     LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = ? AND m.room_id = ?
+      AND m.msg_type != 'whisper'
       AND (m.created_at < ? OR (m.created_at = ? AND m.id < ?))
     ORDER BY m.created_at DESC, m.id DESC
     LIMIT ?
@@ -391,6 +400,7 @@ router.get('/:id/context', requireAuth, (req, res) => {
     FROM messages m
     LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = ? AND m.room_id = ?
+      AND m.msg_type != 'whisper'
       AND (m.created_at > ? OR (m.created_at = ? AND m.id > ?))
     ORDER BY m.created_at ASC, m.id ASC
     LIMIT ?

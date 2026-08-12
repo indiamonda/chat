@@ -86,7 +86,7 @@ export function requireAuth(req, res, next) {
   res.status(401).json({ error: 'Not authenticated' });
 }
 
-const PERM_COLS = 'can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_manage_users, can_timeout, can_pin_messages, can_unlimited_edit_recall';
+const PERM_COLS = 'can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_manage_users, can_timeout, can_pin_messages, can_unlimited_edit_recall, can_see_whispers';
 
 function normalizeUser(u) {
   if (!u) return null;
@@ -102,6 +102,7 @@ function normalizeUser(u) {
     can_timeout: !!u.can_timeout,
     can_pin_messages: !!u.can_pin_messages,
     can_unlimited_edit_recall: !!u.can_unlimited_edit_recall,
+    can_see_whispers: !!u.can_see_whispers,
     chatbox_style: u.chatbox_style || 'default',
   };
 }
@@ -268,6 +269,10 @@ export function canPinMessages(user) {
 
 export function canUnlimitedEditRecall(user) {
   return user && !!user.can_unlimited_edit_recall;
+}
+
+export function canSeeWhispers(user) {
+  return user && !!user.can_see_whispers;
 }
 
 /** Return normalized user by id (for login/register response). */

@@ -8,8 +8,8 @@ import express from 'express';
 import { Server } from 'socket.io';
 import cookieParser from 'cookie-parser';
 import bcrypt from 'bcryptjs';
-import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages, canTimeout, canUnlimitedEditRecall, tokenAuthMiddleware } from './auth.js';
-import { db, GROUP_ID, PANELS, HELPER_USER_ID, isBlacklisted, isUserDeleted, canSeePrivateUser, PRIVATE_USER_BLOCKED } from './db.js';
+import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecallOrEdit, canSendInbox, canBroadcast, canEditDocs, canKick, canDeleteMessages, canTimeout, canUnlimitedEditRecall, canSeeWhispers, tokenAuthMiddleware } from './auth.js';
+import { db, GROUP_ID, PANELS, HELPER_USER_ID, isBlacklisted, isUserDeleted, canSeePrivateUser, PRIVATE_USER_BLOCKED, whisperVisibleClause } from './db.js';
 import { moderateMessage } from './ai-moderation.js';
 import { upload } from './upload.js';
 import { getUploadUrl, getFileRef } from './upload.js';
@@ -137,6 +137,101 @@ function decorateMessages(rows) {
   }));
 }
 
+/* ── Whisper helpers ──────────────────────────────────────────────────
+ *
+ * A whisper is a regular messages row with `msg_type='whisper'` plus a
+ * `whisper_audience` rows entry per non-sender viewer (recipient + jimmyqrg
+ * + admins-with-can_see_whispers at send time). The sender is implicit via
+ * `messages.sender_id`.
+ *
+ * The audience is locked at send time. Admin permission grants AFTER send
+ * do NOT retroactively reveal whispers.
+ */
+
+function getWhisperAudienceIds() {
+  // Snapshot admins-who-can-see-whispers at call time. jimmyqrg is always
+  // included via the WHERE clause in whisperVisibleClause and never needs
+  // an explicit audience row.
+  const adminIds = db.prepare(`
+    SELECT id FROM users
+    WHERE id != 'jimmyqrg'
+      AND deleted_at IS NULL
+      AND can_see_whispers = 1
+      AND is_allowed = 1
+  `).all().map(r => r.id);
+  return adminIds;
+}
+
+/** Persist the whisper audience rows for `messageId`. Recipient + jimmyqrg +
+ *  perm-admins. Returns the full set of audience user ids (recipient included)
+ *  for downstream broadcasting. */
+function persistWhisperAudience(messageId, recipientId) {
+  const ids = new Set([recipientId, 'jimmyqrg', ...getWhisperAudienceIds()]);
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO whisper_audience (message_id, user_id) VALUES (?, ?)
+  `);
+  for (const uid of ids) insert.run(messageId, uid);
+  return [...ids];
+}
+
+/** Targeted broadcast for whisper messages. Emits the same `event` payload
+ *  to the sender's own user-room (so they see their own whisper echo) and
+ *  to every user in `audienceIds` via their per-user room. */
+function emitToWhisperAudience(io, event, payload, senderId, audienceIds) {
+  if (!io) return;
+  try {
+    io.to(`user:${senderId}`).emit(event, payload);
+    for (const uid of audienceIds) {
+      if (uid === senderId) continue;
+      io.to(`user:${uid}`).emit(event, payload);
+    }
+  } catch (_) {}
+}
+
+/** Single entry point for message broadcast: whispers go to the per-user
+ *  audience rooms, non-whispers go to the room as before. Falls back to
+ *  the room broadcast if the whisper's audience rows are missing (e.g.
+ *  pre-feature rows), so legacy behaviour is preserved. */
+function emitMessageEvent(io, msg, event = 'message', payload = null) {
+  if (!io) return;
+  const body = payload || msg;
+  if (msg.msg_type === 'whisper') {
+    const audienceRows = db.prepare('SELECT user_id FROM whisper_audience WHERE message_id = ?').all(msg.id);
+    const audienceIds = audienceRows.map(r => r.user_id);
+    if (audienceIds.length) {
+      emitToWhisperAudience(io, event, body, msg.sender_id, audienceIds);
+      return;
+    }
+  }
+  if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit(event, body);
+  else io.to(`group:${GROUP_ID}`).emit(event, body);
+}
+
+/** Look up the audience for a whisper message id. Empty array if the row
+ *  isn't a whisper or has no audience rows. */
+function getWhisperAudience(messageId) {
+  return db.prepare('SELECT user_id FROM whisper_audience WHERE message_id = ?').all(messageId).map(r => r.user_id);
+}
+
+/** True if `viewer` is permitted to see a whisper. Mirrors the WHERE clause
+ *  in `whisperVisibleClause` so we can short-circuit per-message paths
+ *  (recall / edit broadcasts, pin, etc.) without round-tripping through
+ *  the database for every check. */
+function canViewerSeeWhisper(viewer, msgRow) {
+  if (!msgRow || msgRow.msg_type !== 'whisper') return true;
+  if (!viewer || !viewer.id) return false;
+  if (msgRow.sender_id === viewer.id) return true;
+  if (msgRow.recipient_user_id === viewer.id) return true;
+  if (viewer.id === 'jimmyqrg') return true;
+  const row = db.prepare(`
+    SELECT 1 FROM whisper_audience
+    WHERE message_id = ? AND user_id = ?
+    LIMIT 1
+  `).get(msgRow.id, viewer.id);
+  return !!row;
+}
+
+
 function parseFlexibleDate(dateText, endOfRange = false) {
   if (!dateText) return null;
   const match = String(dateText).trim().match(/^(\d{4})(?:\/(\d{1,2}))?(?:\/(\d{1,2}))?$/);
@@ -219,6 +314,12 @@ function applySearchFilters(rows, filterSpec) {
 
 function createInboxForNewMessage(messageId, content, replyToId, senderId, roomType, roomId) {
   if (roomId === 'voice_chat') return;
+  // Whisper messages get their audience pre-baked at insert time
+  // (persistWhisperAudience); the whisper send handler takes care of
+  // inbox notifications explicitly. Skip the generic mention path so we
+  // don't @-everyone or @-admins a private message.
+  const msgRow = db.prepare('SELECT msg_type FROM messages WHERE id = ?').get(messageId);
+  if (msgRow && msgRow.msg_type === 'whisper') return;
   const toNotify = findMentionUserIds(content, senderId);
   toNotify.delete(HELPER_USER_ID);
   for (const uid of [...toNotify]) {
@@ -536,6 +637,7 @@ function buildHelperContext(triggerMsg, roomType, roomId, maxMessages = 14) {
     FROM messages m LEFT JOIN users u ON u.id = m.sender_id
     WHERE m.room_type = ? AND m.room_id = ?
       AND m.recalled_at IS NULL AND m.deleted_by_admin = 0
+      AND (m.msg_type IS NULL OR m.msg_type != 'whisper')
     ORDER BY m.created_at DESC LIMIT ?
   `).all(roomType, roomId, maxMessages);
 
@@ -545,6 +647,7 @@ function buildHelperContext(triggerMsg, roomType, roomId, maxMessages = 14) {
     WHERE m.room_type = ? AND m.room_id = ?
       AND m.sender_id = ?
       AND m.recalled_at IS NULL AND m.deleted_by_admin = 0
+      AND (m.msg_type IS NULL OR m.msg_type != 'whisper')
     ORDER BY m.created_at DESC LIMIT 6
   `).all(roomType, roomId, HELPER_USER_ID);
 
@@ -737,6 +840,160 @@ async function executeServerTools(text) {
     catch (e) { return { call: tc, result: 'Tool error: ' + e.message }; }
   }));
   return results;
+}
+
+/* ── Whispers: send via socket or HTTP ───────────────────────────────
+ *
+ * Persists a messages row with msg_type='whisper' + recipient_user_id, then
+ * seeds whisper_audience rows for the recipient, jimmyqrg, and any
+ * admins-who-can-see-whispers at this moment. Broadcasts go to the sender
+ * (own echo) and every audience user via their per-user room — never to
+ * the room channel.
+ *
+ * Shared by both the socket handler (live send) and the HTTP fallback
+ * (`POST /api/rooms/.../messages` and `/api/conversations/.../messages`)
+ * so a disconnected client can't bypass the audience model.
+ */
+async function handleWhisperSend(io, caller, payload, ack, httpRes) {
+  try {
+    const recipientId = String(payload?.recipient_user_id || '');
+    const audience = payload?.audience === 'placeholder' ? 'placeholder' : 'hidden';
+    const content = String(payload?.content || '');
+    const roomType = payload?.roomType || null;
+    const roomId = payload?.roomId || null;
+    const replyToId = payload?.reply_to_id || null;
+    if (!recipientId || !roomType || !roomId) {
+      return ackOrHttp(httpRes, ack, 400, { error: 'recipient_user_id, roomType, roomId required' });
+    }
+    if (!['group', 'dm'].includes(roomType)) {
+      return ackOrHttp(httpRes, ack, 400, { error: 'Invalid roomType' });
+    }
+    if (!content.trim()) {
+      return ackOrHttp(httpRes, ack, 400, { error: 'content required' });
+    }
+    if (content.length > 4000) {
+      return ackOrHttp(httpRes, ack, 400, { error: 'content too long (max 4000 chars)' });
+    }
+    const sender = caller.userId ? { id: caller.userId } : (caller.user || null);
+    if (!sender || !sender.id) {
+      return ackOrHttp(httpRes, ack, 401, { error: 'Not authenticated' });
+    }
+    if (sender.id === recipientId) {
+      return ackOrHttp(httpRes, ack, 400, { error: 'Cannot whisper to yourself' });
+    }
+    // Recipient must exist, not be deleted. Private users can still receive
+    // whispers from jimmyqrg only — anything else falls through to the same
+    // gate as direct DMs / @mentions.
+    const recipientRow = db.prepare('SELECT id, deleted_at, is_private FROM users WHERE id = ?').get(recipientId);
+    if (!recipientRow || recipientRow.deleted_at) {
+      return ackOrHttp(httpRes, ack, 404, { error: 'Recipient not found' });
+    }
+    if (recipientRow.is_private && sender.id !== 'jimmyqrg') {
+      return ackOrHttp(httpRes, ack, 403, { error: 'This user is private' });
+    }
+    // Room membership / scope gates
+    if (roomType === 'group') {
+      if (isBlacklisted(sender.id)) {
+        // Blacklisted users may still whisper to jimmyqrg (the only DM/GROUP
+        // recipient visible in their chat list).
+        if (recipientId !== 'jimmyqrg') {
+          return ackOrHttp(httpRes, ack, 403, { error: 'Access denied. Blacklisted users can only message JimmyQrg.' });
+        }
+      }
+      if (!['free_chat', 'support', 'voice_chat'].includes(roomId)) {
+        return ackOrHttp(httpRes, ack, 400, { error: 'Invalid panel' });
+      }
+      if (isTimedOut(sender.id)) {
+        return ackOrHttp(httpRes, ack, 403, { error: 'You are timed out from group chat' });
+      }
+    } else if (roomType === 'dm') {
+      const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(roomId);
+      if (!conv || (conv.user1_id !== sender.id && conv.user2_id !== sender.id)) {
+        return ackOrHttp(httpRes, ack, 404, { error: 'Conversation not found' });
+      }
+      const otherParty = conv.user1_id === sender.id ? conv.user2_id : conv.user1_id;
+      if (isBlacklisted(sender.id)) {
+        const other = db.prepare('SELECT id, is_allowed FROM users WHERE id = ?').get(otherParty);
+        if (!other || (other.id !== 'jimmyqrg' && !other.is_allowed)) {
+          return ackOrHttp(httpRes, ack, 403, { error: 'Access denied. Blacklisted users can only DM with JimmyQrg or allowed users.' });
+        }
+      }
+      if (blockedByDmTimeout(sender.id, otherParty)) {
+        if (recipientId !== 'jimmyqrg') {
+          return ackOrHttp(httpRes, ack, 403, { error: 'You are timed out from private chat. You can still message jimmyqrg.' });
+        }
+      }
+      // Non-friend 10-message head-start applies to whispers (counts toward
+      // the cap) and blocks file/attachment senders entirely.
+      if (!areFriends(sender.id, otherParty)) {
+        const myCount = db.prepare('SELECT COUNT(*) as c FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?').get('dm', roomId, sender.id).c;
+        const otherCount = db.prepare('SELECT COUNT(*) as c FROM messages WHERE room_type = ? AND room_id = ? AND sender_id = ?').get('dm', roomId, otherParty).c;
+        if (otherCount > 0) return ackOrHttp(httpRes, ack, 403, { error: 'Accept their friend request to continue chatting' });
+        if (myCount >= 10) return ackOrHttp(httpRes, ack, 403, { error: 'Add as friend to send more messages' });
+      }
+    }
+    // AI moderation (skip for admin↔admin DM as the regular path does)
+    const otherUserRow = roomType === 'dm'
+      ? db.prepare('SELECT is_allowed FROM users WHERE id = ?').get((() => {
+          const c = db.prepare('SELECT user1_id, user2_id FROM conversations WHERE id = ?').get(roomId);
+          return c.user1_id === sender.id ? c.user2_id : c.user1_id;
+        })())
+      : null;
+    const recipientIsAdmin = !!db.prepare('SELECT is_allowed FROM users WHERE id = ?').get(recipientId)?.is_allowed;
+    const senderIsAdmin = !!db.prepare('SELECT is_allowed FROM users WHERE id = ?').get(sender.id)?.is_allowed;
+    const adminDm = senderIsAdmin && recipientIsAdmin;
+    if (recipientId !== HELPER_USER_ID && !adminDm) {
+      const mod = await moderateMessage({
+        userId: sender.id,
+        senderName: '',
+        content,
+        roomType,
+        roomId,
+        msgType: 'whisper',
+        file: null,
+        replyToId: replyToId || null,
+      });
+      if (mod && mod.allowed === false) {
+        return ackOrHttp(httpRes, ack, 403, {
+          error: 'AI_MOD_BLOCK',
+          reason: mod.reason,
+          category: mod.category || 'other',
+          severity: mod.severity ?? 0,
+        });
+      }
+    }
+    const id = randomUUID();
+    const now = Date.now();
+    db.prepare(`
+      INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, recipient_user_id, reply_to_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'whisper', ?, ?, ?, ?)
+    `).run(id, roomType, roomId, sender.id, content, recipientId, replyToId, now, now);
+    const audienceIds = persistWhisperAudience(id, recipientId);
+    const row = db.prepare(`
+      SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.recipient_user_id, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
+             u.username, u.display_name, u.avatar_url, u.chatbox_style
+      FROM messages m
+      LEFT JOIN users u ON u.id = m.sender_id
+      WHERE m.id = ?
+    `).get(id);
+    const msg = { ...row, likes: 0, reactions: [], edit_history: null };
+    emitToWhisperAudience(io, 'message', msg, sender.id, audienceIds);
+    return ackOrHttp(httpRes, ack, 201, { message: msg });
+  } catch (err) {
+    console.error('[whisper] send error:', err);
+    return ackOrHttp(httpRes, ack, 500, { error: 'Failed to send whisper' });
+  }
+}
+
+/** Tiny adapter so handleWhisperSend can be reused for socket ack (callback)
+ *  and HTTP fallback (Express res). Returns the response/ack value so caller
+ *  can early-return. */
+function ackOrHttp(res, ack, status, body) {
+  if (res) {
+    if (!res.headersSent) return res.status(status).json(body);
+    return;
+  }
+  return ack?.({ status, ...body });
 }
 
 async function helperReply(triggerMsgId, content, roomType, roomId, userId) {
@@ -1118,6 +1375,62 @@ app.get('/api/chatbox-styles', (req, res) => {
   }
 });
 
+/* ── /joke: random line from server/jokes.txt ─────────────────────────
+ *
+ * Auth-gated so a blacklisted/timed-out user can't bypass group gates by
+ * hitting the joke endpoint and free-typing through to the regular socket
+ * — the joke itself is then sent via the existing socket message:send
+ * flow on the client. Per-user rate limit (6/hour) so /joke can't be used
+ * as a chat-spam gimmick. */
+let JOKES_LINES = null;
+function loadJokes() {
+  if (JOKES_LINES != null) return JOKES_LINES;
+  JOKES_LINES = [];
+  try {
+    const fs = require('node:fs');
+    const txt = fs.readFileSync(join(__dirname, 'jokes.txt'), 'utf8');
+    JOKES_LINES = txt.split(/\r?\n/).map(s => s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim()).filter(Boolean);
+  } catch (_) {
+    JOKES_LINES = [];
+  }
+  // Inline safety net so the endpoint works even if jokes.txt hasn't been
+  // deployed yet. These are seeded as a stable, public-appropriate fallback.
+  const FALLBACK = [
+    "Why don't scientists trust atoms? Because they make up everything.",
+    "I told my computer I needed a break, and it said 'No problem — I'll go to sleep.'",
+    "Why did the scarecrow win an award? Because he was outstanding in his field.",
+    "I used to hate facial hair, but then it grew on me.",
+    "Why don't eggs tell jokes? They'd crack each other up.",
+  ];
+  if (JOKES_LINES.length === 0) JOKES_LINES = FALLBACK;
+  return JOKES_LINES;
+}
+
+const JOKES_HISTORY = new Map(); // userId -> [timestamps]
+const JOKE_RATE_LIMIT = 6;
+const JOKE_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+function isJokeThrottled(userId) {
+  const now = Date.now();
+  const arr = (JOKES_HISTORY.get(userId) || []).filter(t => now - t < JOKE_RATE_WINDOW_MS);
+  JOKES_HISTORY.set(userId, arr);
+  if (arr.length >= JOKE_RATE_LIMIT) {
+    return Math.ceil((arr[0] + JOKE_RATE_WINDOW_MS - now) / 1000);
+  }
+  arr.push(now);
+  return 0;
+}
+
+app.get('/api/jokes/random', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  const retry = isJokeThrottled(user.id);
+  if (retry) return res.status(429).json({ error: 'Too many joke requests, slow down.', retry_after: retry });
+  const lines = loadJokes();
+  if (!lines.length) return res.status(503).json({ error: 'No jokes available' });
+  let joke = lines[Math.floor(Math.random() * lines.length)];
+  if (joke.length > 1000) joke = joke.slice(0, 1000);
+  res.json({ joke });
+});
+
 // Collections: saved messages per user
 app.get('/api/collections', requireAuth, (req, res) => {
   const user = getCurrentUser(req);
@@ -1324,15 +1637,16 @@ app.get('/api/rooms/:roomType/:roomId/messages', requireAuth, (req, res) => {
   const limit = normalizePageLimit(req.query.limit);
   const before = req.query.before ? parseInt(req.query.before, 10) : Date.now();
   const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(user.id).map(r => r.blocked_id);
+  const wc = whisperVisibleClause(user);
   const rows = db.prepare(`
-    SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
+    SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at, m.recipient_user_id,
            u.username, u.display_name, u.avatar_url, u.chatbox_style, u.is_private
     FROM messages m
     LEFT JOIN users u ON u.id = m.sender_id
-    WHERE m.room_type = ? AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
+    WHERE m.room_type = ? AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0 AND ${wc.sql}
     ORDER BY m.created_at DESC
     LIMIT ?
-  `).all(roomType, roomId, before, (limit + 1) * (blockedIds.length ? 2 : 1));
+  `).all(roomType, roomId, before, ...wc.params, (limit + 1) * (blockedIds.length ? 2 : 1));
   const filtered = blockedIds.length ? rows.filter(r => !blockedIds.includes(r.sender_id)) : rows;
   const hasMore = filtered.length > limit;
   const limited = filtered.slice(0, limit);
@@ -1347,6 +1661,13 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
     return res.status(401).json({ error: 'Not authenticated' });
   }
   const { roomType, roomId } = req.params;
+  // HTTP-side whisper fallback: keep this path symmetric with the socket
+  // handler so a disconnected client can't bypass the audience model.
+  if (req.body && req.body.msg_type === 'whisper') {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+    const io = app.get('io');
+    return handleWhisperSend(io, { userId: user.id, user }, { ...req.body, roomType, roomId }, null, res);
+  }
   // Only group rooms use this endpoint. DMs must use /api/conversations/:id/messages
   // so they go through the full set of security checks (blacklist, dm timeout,
   // friendship limits, blocking). Previously this endpoint silently accepted DM
@@ -1459,8 +1780,7 @@ app.patch('/api/messages/:id/recall', requireAuth, (req, res) => {
   }
   db.prepare('UPDATE messages SET recalled_at = ? WHERE id = ?').run(Date.now(), msg.id);
   try {
-    if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:recalled', { id: msg.id });
-    else io.to(`group:${GROUP_ID}`).emit('message:recalled', { id: msg.id });
+    emitMessageEvent(io, msg, 'message:recalled', { id: msg.id });
   } catch (_) {}
   res.json({ ok: true });
 });
@@ -1486,8 +1806,7 @@ app.patch('/api/messages/:id/edit', requireAuth, (req, res) => {
     .run(newContent, JSON.stringify(history), now, msg.id);
   const payloadOut = { id: msg.id, content: newContent, edit_history: history, updated_at: now };
   try {
-    if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:edited', payloadOut);
-    else io.to(`group:${GROUP_ID}`).emit('message:edited', payloadOut);
+    emitMessageEvent(io, msg, 'message:edited', payloadOut);
   } catch (_) {}
   res.json({ ok: true, content: newContent, edit_history: history });
 });
@@ -1524,15 +1843,16 @@ app.get('/api/search/messages', requireAuth, (req, res) => {
     if (!conv || (conv.user1_id !== user.id && conv.user2_id !== user.id)) return res.status(404).json({ error: 'Not found' });
   }
   const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(user.id).map(r => r.blocked_id);
+  const wc = whisperVisibleClause(user);
   const rows = db.prepare(`
-    SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
+    SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at, m.recipient_user_id,
            u.username, u.display_name, u.avatar_url, u.chatbox_style, u.is_private
     FROM messages m
     LEFT JOIN users u ON u.id = m.sender_id
-    WHERE m.room_type = ? AND m.room_id = ? AND m.deleted_by_admin = 0
+    WHERE m.room_type = ? AND m.room_id = ? AND m.deleted_by_admin = 0 AND ${wc.sql}
     ORDER BY m.created_at DESC
     LIMIT 5000
-  `).all(roomType, roomId);
+  `).all(roomType, roomId, ...wc.params);
   let filtered = blockedIds.length ? rows.filter((row) => !blockedIds.includes(row.sender_id)) : rows;
   if (attachmentType) {
     const map = { image: 'image', video: 'video', audio: 'audio', voice: 'voice', file: 'file', gif: 'gif', any: 'any' };
@@ -1565,14 +1885,21 @@ app.get('/api/search/messages', requireAuth, (req, res) => {
 app.get('/api/conversations', requireAuth, (req, res) => {
   const me = getCurrentUser(req);
   const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(me.id).map(r => r.blocked_id);
+  // Mirror the whisper visibility for the per-conversation MAX(created_at)
+  // so non-audience viewers don't have a whisper drag the conversation to
+  // the top of their list. jimmyqrg and the sender always see their whispers.
   const rows = db.prepare(`
     SELECT c.id AS conversation_id,
            CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END AS other_user_id,
-           (SELECT MAX(m.created_at) FROM messages m WHERE m.room_type = 'dm' AND m.room_id = c.id AND m.deleted_by_admin = 0) AS last_message_at
+           (SELECT MAX(m.created_at) FROM messages m
+              WHERE m.room_type = 'dm' AND m.room_id = c.id
+                AND m.deleted_by_admin = 0
+                AND (m.msg_type != 'whisper' OR m.sender_id = ? OR m.recipient_user_id = ? OR ? = 'jimmyqrg' OR EXISTS(SELECT 1 FROM whisper_audience wa WHERE wa.message_id = m.id AND wa.user_id = ?))
+           ) AS last_message_at
     FROM conversations c
     WHERE c.user1_id = ? OR c.user2_id = ?
     ORDER BY last_message_at DESC
-  `).all(me.id, me.id, me.id);
+  `).all(me.id, me.id, me.id, me.id, me.id, me.id, me.id);
   const filtered = blockedIds.length ? rows.filter(r => !blockedIds.includes(r.other_user_id)) : rows;
   res.json({ conversations: filtered });
 });
@@ -1604,15 +1931,16 @@ app.get('/api/conversations/:convId/messages', requireAuth, (req, res) => {
   const blockedIds = db.prepare('SELECT blocked_id FROM blocked_users WHERE user_id = ?').all(me.id).map(r => r.blocked_id);
   const limit = normalizePageLimit(req.query.limit);
   const before = req.query.before ? parseInt(req.query.before, 10) : Date.now();
+  const wc = whisperVisibleClause(me);
   let rows = db.prepare(`
-    SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at,
+    SELECT m.id, m.room_type, m.room_id, m.sender_id, m.content, m.msg_type, m.reply_to_id, m.edit_history, m.recalled_at, m.deleted_by_admin, m.created_at, m.updated_at, m.recipient_user_id,
            u.username, u.display_name, u.avatar_url, u.chatbox_style, u.is_private
     FROM messages m
     LEFT JOIN users u ON u.id = m.sender_id
-    WHERE m.room_type = 'dm' AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0
+    WHERE m.room_type = 'dm' AND m.room_id = ? AND m.created_at < ? AND m.deleted_by_admin = 0 AND ${wc.sql}
     ORDER BY m.created_at DESC
     LIMIT ?
-  `).all(req.params.convId, before, blockedIds.length ? (limit + 1) * 2 : (limit + 1));
+  `).all(req.params.convId, before, ...wc.params, blockedIds.length ? (limit + 1) * 2 : (limit + 1));
   if (blockedIds.length) rows = rows.filter(r => !blockedIds.includes(r.sender_id));
   const hasMore = rows.length > limit;
   const limited = rows.slice(0, limit);
@@ -1626,6 +1954,12 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   if (!conv || (conv.user1_id !== user.id && conv.user2_id !== user.id)) {
     if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
     return res.status(404).json({ error: 'Not found' });
+  }
+  // HTTP-side whisper fallback for DMs.
+  if (req.body && req.body.msg_type === 'whisper') {
+    if (req.file) try { fsRm(req.file.path, { force: true }); } catch (_) {}
+    const io = app.get('io');
+    return handleWhisperSend(io, { userId: user.id, user }, { ...req.body, roomType: 'dm', roomId: req.params.convId }, null, res);
   }
   const otherId = conv.user1_id === user.id ? conv.user2_id : conv.user1_id;
   // Mirror the socket-side checks so HTTP fallback cannot be used to bypass
@@ -2721,6 +3055,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('message:send', async (payload, ack) => {
+    // Whisper branch first: it carries a different shape (no text content
+    // embedded in shared room, payload.recipient_user_id + audience) and
+    // its own permission gates. Returning keeps the regular message path
+    // unchanged.
+    if (payload && payload.msg_type === 'whisper') {
+      return handleWhisperSend(io, socket, payload, ack);
+    }
     const { roomType, roomId, content, msg_type, reply_to_id } = payload || {};
     if (!roomType || !roomId) return ack?.({ error: 'roomType and roomId required' });
     const textContent = content || '';
@@ -2851,8 +3192,7 @@ io.on('connection', (socket) => {
       if (target?.can_unlimited_edit_recall && socket.userId !== 'jimmyqrg') return ack?.({ error: 'Forbidden' });
     }
     db.prepare('UPDATE messages SET recalled_at = ? WHERE id = ?').run(Date.now(), msgId);
-    if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:recalled', { id: msgId });
-    else io.to(`group:${GROUP_ID}`).emit('message:recalled', { id: msgId });
+    emitMessageEvent(io, msg, 'message:recalled', { id: msgId });
     ack?.({ ok: true });
   });
 
@@ -2889,38 +3229,38 @@ io.on('connection', (socket) => {
       }
     } catch (_) {}
     const payloadOut = { id: msgId, content: newContent, edit_history: history, updated_at: now };
-    if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:edited', payloadOut);
-    else io.to(`group:${GROUP_ID}`).emit('message:edited', payloadOut);
+    emitMessageEvent(io, msg, 'message:edited', payloadOut);
     ack?.({ ok: true });
   });
 
   socket.on('message:like', (msgId, ack) => {
-    const msg = db.prepare('SELECT id, room_type, room_id FROM messages WHERE id = ?').get(msgId);
+    const msg = db.prepare('SELECT id, room_type, room_id, msg_type FROM messages WHERE id = ?').get(msgId);
     if (!msg) return ack?.({ error: 'Not found' });
+    if (msg.msg_type === 'whisper') return ack?.({ ok: true, likes: 0 });
     db.prepare('INSERT OR IGNORE INTO message_likes (message_id, user_id, created_at) VALUES (?, ?, ?)').run(msgId, socket.userId, Date.now());
     const count = db.prepare('SELECT COUNT(*) as c FROM message_likes WHERE message_id = ?').get(msgId);
     const payloadOut = { id: msgId, likes: count.c };
-    if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:liked', payloadOut);
-    else io.to(`group:${GROUP_ID}`).emit('message:liked', payloadOut);
+    emitMessageEvent(io, msg, 'message:liked', payloadOut);
     ack?.({ likes: count.c });
   });
 
   socket.on('message:unlike', (msgId, ack) => {
-    const msg = db.prepare('SELECT id, room_type, room_id FROM messages WHERE id = ?').get(msgId);
+    const msg = db.prepare('SELECT id, room_type, room_id, msg_type FROM messages WHERE id = ?').get(msgId);
     if (!msg) return ack?.({ error: 'Not found' });
+    if (msg.msg_type === 'whisper') return ack?.({ ok: true, likes: 0 });
     db.prepare('DELETE FROM message_likes WHERE message_id = ? AND user_id = ?').run(msgId, socket.userId);
     const count = db.prepare('SELECT COUNT(*) as c FROM message_likes WHERE message_id = ?').get(msgId);
     const payloadOut = { id: msgId, likes: count.c };
-    if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:liked', payloadOut);
-    else io.to(`group:${GROUP_ID}`).emit('message:liked', payloadOut);
+    emitMessageEvent(io, msg, 'message:liked', payloadOut);
     ack?.({ likes: count.c });
   });
 
   socket.on('message:reaction:toggle', (payload, ack) => {
     const { id: msgId, emoji } = payload || {};
     if (!msgId || !ALLOWED_REACTIONS.has(emoji)) return ack?.({ error: 'Invalid reaction' });
-    const msg = db.prepare('SELECT id, room_type, room_id FROM messages WHERE id = ?').get(msgId);
+    const msg = db.prepare('SELECT id, room_type, room_id, msg_type FROM messages WHERE id = ?').get(msgId);
     if (!msg) return ack?.({ error: 'Not found' });
+    if (msg.msg_type === 'whisper') return ack?.({ id: msgId, reactions: [] });
     const existing = db.prepare('SELECT 1 FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?').get(msgId, socket.userId, emoji);
     if (existing) {
       db.prepare('DELETE FROM message_reactions WHERE message_id = ? AND user_id = ? AND emoji = ?').run(msgId, socket.userId, emoji);
@@ -2929,8 +3269,7 @@ io.on('connection', (socket) => {
     }
     const reactions = getReactionMap([msgId])[msgId] || [];
     const payloadOut = { id: msgId, reactions };
-    if (msg.room_type === 'dm') io.to(`dm:${msg.room_id}`).emit('message:reactions', payloadOut);
-    else io.to(`group:${GROUP_ID}`).emit('message:reactions', payloadOut);
+    emitMessageEvent(io, msg, 'message:reactions', payloadOut);
     ack?.(payloadOut);
   });
 
