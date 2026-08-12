@@ -7258,3 +7258,193 @@ input[type="checkbox"]:checked::after {
   line-height: 1.4;
 }
 .dm-voice-modal-btn:hover { filter: brightness(1.1); }
+
+
+/* ====================================================================
+ * Slash-commands + whisper styling
+ *   .fall-overlay / .fall-letter / .fall-word   -- /fall animation
+ *   .grumm-flipped                              -- /grumm page flip
+ *   .emoji-picker-header / .emoji-picker-close  -- emoji X button
+ *   .message-whisper / .message-body-whisper / .message-whisper-badge
+ *   .grumm-flip-back                            -- "Flip back" pill
+ *   .whisper-modal / .whisper-recipient-list / .whisper-audience-options
+ * ==================================================================*/
+
+.fall-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99999;
+  overflow: hidden;
+}
+.fall-letter,
+.fall-word {
+  position: absolute;
+  font-family: var(--font-family, system-ui, sans-serif);
+  font-weight: 700;
+  color: var(--fall-color, #8b5cf6);
+  text-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  will-change: transform;
+  animation: fall var(--dur, 8s) linear var(--delay, 0s) forwards;
+}
+@keyframes fall {
+  from { transform: translate(0, -10vh) rotate(0deg); }
+  to   { transform: translate(var(--drift, 0px), 110vh) rotate(360deg); }
+}
+
+.grumm-flipped {
+  transform: rotate(180deg);
+  transform-origin: center center;
+  transition: transform 0.4s ease-out;
+}
+.grumm-flip-back {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100000;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 0;
+  background: rgba(0,0,0,0.75);
+  color: #fff;
+  font: 600 0.85rem system-ui, sans-serif;
+  cursor: pointer;
+}
+.grumm-flip-back:hover { background: rgba(0,0,0,0.9); }
+
+.emoji-picker {
+  /* (most styles inherited from existing .emoji-picker rule) */
+  position: absolute;
+}
+.emoji-picker-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 6px 8px;
+}
+.emoji-picker-title {
+  font: 600 0.75rem system-ui, sans-serif;
+  color: var(--text-dim, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.emoji-picker-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim, #888);
+  cursor: pointer;
+}
+.emoji-picker-close:hover {
+  background: rgba(0,0,0,0.08);
+  color: var(--text, #111);
+}
+
+/* Whisper message styling */
+.message-whisper .message-body { background: transparent; }
+.message-body-whisper {
+  background: rgba(139, 92, 246, 0.10);
+  border-left: 3px solid #8b5cf6;
+}
+.message-whisper-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: #8b5cf6;
+  color: #fff;
+  font: 600 0.7rem system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  cursor: help;
+}
+
+/* Whisper modal styling (reuses .modal-overlay / .modal-content) */
+.whisper-modal .modal-content {
+  max-width: 520px;
+  background: var(--surface, #fff);
+  color: var(--text, #111);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.45);
+}
+.whisper-modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.whisper-modal .modal-header h2 {
+  font-size: 1.05rem;
+  margin: 0;
+}
+.whisper-modal-body {
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.whisper-modal-body p { margin: 0 0 10px; }
+.whisper-recipient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.whisper-recipient-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  background: var(--surface-2, #f7f7f9);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.whisper-recipient-option:hover { background: rgba(139,92,246,0.10); }
+.whisper-recipient-handle {
+  color: var(--text-dim, #888);
+  font-size: 0.85rem;
+}
+.whisper-audience-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.whisper-audience-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  background: var(--surface-2, #f7f7f9);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.whisper-audience-option:hover { background: rgba(139,92,246,0.10); }
+.whisper-audience-option strong { font-size: 0.95rem; margin-bottom: 2px; }
+.whisper-audience-option span:not(:first-child) { color: var(--text-dim, #888); font-size: 0.82rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fall-overlay,
+  .fall-letter,
+  .fall-word,
+  .grumm-flipped {
+    animation: none !important;
+    transition: none !important;
+  }
+}

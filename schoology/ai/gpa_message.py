@@ -56,7 +56,7 @@ def _safe_username(username: str) -> str:
 
 
 def _gpa_message_path(username: str) -> Path:
-    base = Path(os.environ.get('DATA_DIR', '/data)) / 'gpa_messages'
+    base = Path(os.environ.get('DATA_DIR', '/data')) / 'gpa_messages'
     base.mkdir(parents=True, exist_ok=True)
     return base / f"{_safe_username(username)}.json"
 
