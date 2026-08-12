@@ -3952,10 +3952,57 @@ Recent posts: ${postSample || '(none)'}`;
           <div class="gpa-card-main">
             <div class="gpa-card-title">Your GPA</div>
             <div class="gpa-card-sub">${escapeHtml(subText)}</div>
+            <div class="gpa-message" id="gpaMessage" style="display:none;">
+              <span class="gpa-message-icon" aria-hidden="true">✨</span>
+              <span class="gpa-message-body"></span>
+            </div>
           </div>
           <div class="gpa-card-value ${valueClass}">${valueLabel}</div>
         </div>
       `;
+      // Kick off the server-side GPA message fetch (cached; only
+      // regenerates on GPA change or weekly). Fire-and-forget; if it
+      // fails we just show the GPA without a message.
+      fetchGpaMessage(gpa).then((msg) => {
+        const el = document.getElementById('gpaMessage');
+        if (!el) return;
+        if (!msg) {
+          el.style.display = 'none';
+          return;
+        }
+        el.querySelector('.gpa-message-body').textContent = msg;
+        el.style.display = 'flex';
+      }).catch(() => {
+        const el = document.getElementById('gpaMessage');
+        if (el) el.style.display = 'none';
+      });
+    }
+
+    async function fetchGpaMessage(gpa) {
+      // GET with body: matches the layered endpoint convention; keeps
+      // the GPA snapshot alongside the request so the server can decide
+      // whether to regenerate.
+      try {
+        const auth = getAuthHeader();
+        const res = await fetch('/schoology/api/gpa-message', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(auth || {}),
+            ...(state.gateToken ? { 'X-Gate-Token': state.gateToken } : {}),
+          },
+          body: JSON.stringify({
+            gpa: gpa.gpa,
+            count: gpa.count,
+            total: gpa.total,
+          }),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.message || null;
+      } catch (_) {
+        return null;
+      }
     }
 
     function renderAssignmentsOverview() {
