@@ -47,7 +47,7 @@ let state = {
   _recordingStream: null,
   _recordingRecorder: null,
   _recordingChunks: [],
-  commandMode: typeof localStorage !== 'undefined' && localStorage.getItem('commandMode') === '1',
+  commandMode: true, // commands are always on; toggle UI removed.
   uiAnimations: typeof localStorage !== 'undefined' ? localStorage.getItem('uiAnimations') !== '0' : true,
   notificationPrefs: null,
   drafts: {},
@@ -5784,7 +5784,7 @@ function renderChatArea() {
             <div class="composer-input-wrap">
               <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(getDraft(roomType, roomId))}</textarea>
               <div class="composer-actions">
-                ${roomType === 'group' ? `<button type="button" id="composer-command-mode" class="composer-command-btn ${state.commandMode ? 'composer-command-btn-on' : ''}" title="${state.commandMode ? 'Command mode on (e.g. /games, /wordle, /file &lt;id&gt;)' : 'Command mode off (send as text)'}" aria-label="Toggle command mode" aria-pressed="${state.commandMode}"><span class="icon" aria-hidden="true">${ICON_COMMAND}</span></button>` : ''}
+                ${'' /* command-mode toggle removed — commands are always on */}
                 <button type="button" id="composer-mic" title="Record voice message" ${(roomType === 'dm' && !isFriend(state.dmUserId)) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
                 <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
                 <button type="button" id="composer-emoji" title="Emoji" aria-label="Insert emoji"><span class="icon" aria-hidden="true">${ICON_EMOJI}</span></button>
@@ -7093,65 +7093,107 @@ async function openFileContentModal(url) {
 const PREFERS_REDUCED_MOTION = () =>
   typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/** /fall <text>: animate the text falling from top to bottom of the page,
- *  drifting horizontally with a small random offset per character/word. */
-function playFallAnimation(rawText) {
-  if (!rawText) return;
+/**
+ * /fall <text>: send a "rain" of falling letters over the room. The
+ * command is server-side: the server broadcasts a `fall:start` event to
+ * every socket in the room, and every connected client (including the
+ * sender) renders the animation locally. Default count is 100 letters.
+ *
+ * Why server-side: every viewer should see the rain fall in their own
+ * viewport — that's a room-wide effect. Doing it client-only would mean
+ * the sender sees rain and nobody else does.
+ */
+function sendFallRain(text, ctx, count = 100) {
+  if (!text) return;
+  // Trim to the server-side cap so we don't ship 200KB of text.
+  const trimmed = String(text).trim().slice(0, 120);
+  const payload = { text: trimmed, count, roomType: ctx.roomType, roomId: ctx.roomId };
+  if (state.socket && state.socket.connected) {
+    state.socket.emit('fall:start', payload, (res) => {
+      if (res && res.error) showToast(res.error);
+    });
+  } else {
+    // HTTP fallback: POST a multipart-free body to the room endpoint via
+    // a dedicated query? We don't have one. Easiest: render locally only.
+    renderFallRain({ text: trimmed, count });
+  }
+}
+
+/**
+ * Render a fall-rain animation locally. Called both from the
+ * server-broadcast listener (every connected socket) and from the HTTP
+ * fallback path. Rain starts immediately at the top of the viewport
+ * (no delay) so the rain feels like a burst of confetti, then drifts
+ * down with a small random horizontal offset per letter.
+ */
+function renderFallRain({ text, count }) {
   if (PREFERS_REDUCED_MOTION()) {
     const flash = document.createElement('div');
     flash.className = 'fall-overlay';
     flash.setAttribute('aria-hidden', 'true');
-    flash.style.background = 'linear-gradient(180deg, rgba(139,92,246,0.18) 0%, rgba(139,92,246,0) 60%)';
+    flash.style.background = 'linear-gradient(180deg, color-mix(in srgb, var(--purple) 18%, transparent) 0%, transparent 60%)';
     flash.style.opacity = '1';
-    flash.style.transition = 'opacity 0.6s ease-out';
+    flash.style.transition = 'opacity 0.5s ease-out';
     document.body.appendChild(flash);
-    setTimeout(() => { flash.style.opacity = '0'; }, 80);
-    setTimeout(() => { flash.remove(); }, 700);
+    setTimeout(() => { flash.style.opacity = '0'; }, 60);
+    setTimeout(() => { flash.remove(); }, 600);
     return;
   }
-  let text = String(rawText).trim();
-  if (!text) return;
-  if (text.length > 120) {
-    text = text.slice(0, 120);
-    showToast('Trimmed to 120 characters');
-  }
-  const perWord = text.length > 80;
-  const tokens = perWord ? text.split(/\s+/).filter(Boolean) : Array.from(text);
+  if (typeof count !== 'number' || count < 10) count = 100;
+  if (count > 200) count = 200;
+  const W = Math.max(window.innerWidth, 320);
+  const baseDelay = 0;
+  // Per character limit at 200 to keep the DOM bounded.
+  const chars = String(text || '').trim() || '*';
+  // Build a list of `count` items, each one picks a random character
+  // from `chars` so the rain feels rich and varied.
   const overlay = document.createElement('div');
   overlay.className = 'fall-overlay';
   overlay.setAttribute('aria-hidden', 'true');
   document.body.appendChild(overlay);
-  const W = Math.max(window.innerWidth, 320);
-  const H = Math.max(window.innerHeight, 480);
-  for (const t of tokens) {
-    if (!t) continue;
+  // Two passes per item so it stays inside CSS transform compositing.
+  for (let i = 0; i < count; i++) {
     const span = document.createElement('span');
-    span.className = perWord ? 'fall-word' : 'fall-letter';
-    span.textContent = t;
+    span.className = 'fall-letter';
+    span.textContent = chars.charAt(Math.floor(Math.random() * chars.length));
     const startX = Math.random() * Math.max(1, W - 40);
     const drift = (Math.random() - 0.5) * 24;
-    const dur = 6000 + Math.random() * 6000;
-    const delay = Math.random() * 3000;
+    const dur = 5000 + Math.random() * 4000;
+    // Stagger the very first ~150 letters across 0-1.5s so they
+    // visibly cascade from the top, but later letters in the burst
+    // arrive together. The user said "immediately" so we keep this
+    // small — only enough to feel like a rain, not a synchronized blink.
+    const delay = baseDelay + (i < 60 ? Math.random() * 1500 : Math.random() * 400);
     span.style.left = startX + 'px';
     span.style.top = '-10vh';
     span.style.setProperty('--drift', drift.toFixed(1) + 'px');
     span.style.setProperty('--dur', dur + 'ms');
     span.style.setProperty('--delay', delay + 'ms');
-    span.style.fontSize = perWord ? (24 + Math.random() * 18) + 'px' : (28 + Math.random() * 22) + 'px';
+    span.style.fontSize = (22 + Math.random() * 22) + 'px';
     overlay.appendChild(span);
   }
-  // Hard safety cleanup in case animationend doesn't fire (background tabs).
-  const safety = setTimeout(() => overlay.remove(), 14_000);
-  overlay.addEventListener('animationend', (e) => {
-    if (e.target === spanListLast(tokens)) {
-      // Last token finished — let CSS handle the rest. As a fallback we
-      // still rely on the setTimeout if `animationend` doesn't propagate.
-    }
-  });
-  // Simpler: just remove after the longest possible duration + delay.
-  setTimeout(() => { clearTimeout(safety); overlay.remove(); }, 14_000);
-  // helper kept inline to avoid an unused closure
-  function spanListLast(arr) { return null; }
+  // Hard safety cleanup — even if animations don't fire (background tab).
+  setTimeout(() => overlay.remove(), 14_000);
+}
+
+/** Install the inbound `fall:start` socket listener once. */
+if (typeof window !== 'undefined' && !window.__fallInboxInstalled) {
+  window.__fallInboxInstalled = true;
+  // Connect at any time: we re-bind whenever a new socket is created.
+  const tryBind = () => {
+    if (!state.socket) return;
+    if (state.socket.__fallBound) return;
+    state.socket.__fallBound = true;
+    state.socket.on('fall:start', (payload) => {
+      try { renderFallRain(payload || {}); } catch (_) {}
+    });
+  };
+  // Run once now and again after each reconnect.
+  tryBind();
+  // Watch for socket replacement.
+  setInterval(() => {
+    if (state.socket && !state.socket.__fallBound) tryBind();
+  }, 2000);
 }
 
 /** /grumm [/grumm] /GRUMM /grumm_: flip the entire #app vertically. A
@@ -7351,30 +7393,46 @@ function pickWhisperRecipient(users, query) {
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
     overlay.innerHTML = `
-      <div class="modal-content">
+      <div class="modal whisper-modal" role="dialog" aria-modal="true" aria-labelledby="whisper-recipient-title">
         <div class="modal-header">
-          <h2>Choose recipient</h2>
-          <button type="button" class="modal-close-x" aria-label="Close">${ICON_X_SM}</button>
+          <h2 id="whisper-recipient-title">Choose recipient</h2>
+          <button type="button" class="modal-close" aria-label="Close">${ICON_X_SM}</button>
         </div>
         <div class="whisper-modal-body">
-          <p>Multiple users match "${escapeHtml(query)}". Pick one:</p>
-          <div class="whisper-recipient-list"></div>
+          <p>Multiple users match "<strong>${escapeHtml(query)}</strong>". Pick one:</p>
+          <div class="whisper-recipient-list" role="listbox" aria-label="Matching users"></div>
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn-secondary whisper-modal-cancel">Cancel</button>
+          <button type="button" class="modal-close whisper-modal-cancel">Cancel</button>
         </div>
       </div>
     `;
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    // The .modal-overlay class is what gives the dim backdrop and the
+    // centred flex layout. We piggy-back on it instead of inlining styles.
+    overlay.classList.add('modal-overlay');
+    overlay.removeAttribute('style');
     document.body.appendChild(overlay);
     const close = (val) => {
       overlay.remove();
       document.removeEventListener('keydown', onKey);
       resolve(val);
     };
-    function onKey(ev) { if (ev.key === 'Escape') close(null); }
+    function onKey(ev) {
+      if (ev.key === 'Escape') close(null);
+      else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        ev.preventDefault();
+        const opts = overlay.querySelectorAll('.whisper-recipient-option');
+        if (!opts.length) return;
+        const focused = document.activeElement;
+        const idx = Array.from(opts).indexOf(focused);
+        const next = ev.key === 'ArrowDown'
+          ? (idx + 1) % opts.length
+          : (idx <= 0 ? opts.length - 1 : idx - 1);
+        opts[next].focus();
+      }
+    }
     document.addEventListener('keydown', onKey);
-    overlay.querySelector('.modal-close-x').addEventListener('click', (e) => { e.stopPropagation(); close(null); });
+    overlay.querySelector('.modal-header .modal-close').addEventListener('click', (e) => { e.stopPropagation(); close(null); });
     overlay.querySelector('.whisper-modal-cancel').addEventListener('click', (e) => { e.stopPropagation(); close(null); });
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) close(null);
@@ -7384,14 +7442,19 @@ function pickWhisperRecipient(users, query) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'whisper-recipient-option';
+      btn.setAttribute('role', 'option');
+      btn.setAttribute('aria-selected', 'false');
       btn.innerHTML = `
-        <span class="whisper-recipient-name">${escapeHtml(u.display_name || u.username)}</span>
-        <span class="whisper-recipient-handle">@${escapeHtml(u.username)}</span>
+        <span class="whisper-recipient-text">
+          <span class="whisper-recipient-name">${escapeHtml(u.display_name || u.username)}</span>
+          <span class="whisper-recipient-handle">@${escapeHtml(u.username)}</span>
+        </span>
       `;
       btn.addEventListener('click', (e) => { e.stopPropagation(); close(u); });
       list.appendChild(btn);
     }
-    overlay.querySelector('.whisper-recipient-option')?.focus();
+    const first = overlay.querySelector('.whisper-recipient-option');
+    if (first) first.focus();
   });
 }
 
@@ -7404,31 +7467,30 @@ function pickWhisperAudience(recipient) {
     overlay.setAttribute('aria-modal', 'true');
     const username = recipient && recipient.username ? recipient.username : 'user';
     overlay.innerHTML = `
-      <div class="modal-content">
+      <div class="modal whisper-modal" role="document">
         <div class="modal-header">
-          <h2>Whisper to @${escapeHtml(username)}</h2>
-          <button type="button" class="modal-close-x" aria-label="Close">${ICON_X_SM}</button>
+          <h2 id="whisper-audience-title">Whisper to @${escapeHtml(username)}</h2>
+          <button type="button" class="modal-close" aria-label="Close">${ICON_X_SM}</button>
         </div>
         <div class="whisper-modal-body">
           <p>Whispering sends a private message only visible to <strong>you</strong>, <strong>@${escapeHtml(username)}</strong>, <strong>jimmyqrg</strong>, and any admin with the <em>See whispers</em> permission.</p>
           <p>Choose how others see this message:</p>
-          <div class="whisper-audience-options">
-            <button type="button" class="whisper-audience-option" data-audience="hidden">
+          <div class="whisper-audience-options" role="radiogroup" aria-labelledby="whisper-audience-title">
+            <button type="button" class="whisper-audience-option" data-audience="hidden" role="radio" aria-checked="false">
               <strong>Hidden</strong>
-              <span>Don't show anything to other viewers. Recommended.</span>
+              <span class="option-desc">Don't show anything to other viewers. Recommended.</span>
             </button>
-            <button type="button" class="whisper-audience-option" data-audience="placeholder">
+            <button type="button" class="whisper-audience-option" data-audience="placeholder" role="radio" aria-checked="false">
               <strong>Show as placeholder</strong>
-              <span>Show a small "[private message]" stub to other viewers.</span>
+              <span class="option-desc">Show a small "[private message]" stub to other viewers.</span>
             </button>
           </div>
         </div>
         <div class="modal-actions">
-          <button type="button" class="btn-secondary whisper-modal-cancel">Cancel</button>
+          <button type="button" class="modal-close whisper-modal-cancel">Cancel</button>
         </div>
       </div>
     `;
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;';
     document.body.appendChild(overlay);
     const close = (val) => {
       overlay.remove();
@@ -7443,7 +7505,7 @@ function pickWhisperAudience(recipient) {
       }
     }
     document.addEventListener('keydown', onKey);
-    overlay.querySelector('.modal-close-x').addEventListener('click', (e) => { e.stopPropagation(); close(null); });
+    overlay.querySelector('.modal-header .modal-close').addEventListener('click', (e) => { e.stopPropagation(); close(null); });
     overlay.querySelector('.whisper-modal-cancel').addEventListener('click', (e) => { e.stopPropagation(); close(null); });
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) close(null);
@@ -7451,6 +7513,8 @@ function pickWhisperAudience(recipient) {
     overlay.querySelectorAll('.whisper-audience-option').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
+        overlay.querySelectorAll('.whisper-audience-option').forEach(b => b.setAttribute('aria-checked', 'false'));
+        btn.setAttribute('aria-checked', 'true');
         close(btn.dataset.audience || 'hidden');
       });
     });
@@ -7458,14 +7522,101 @@ function pickWhisperAudience(recipient) {
   });
 }
 
+/**
+ * True only when the first `/` of `text` actually begins a slash-command
+ * at the message level — i.e. NOT enclosed by an inline code span,
+ * fenced code block, raw HTML tag, or a `$\language="" $` KaTeX flag.
+ *
+ * Implementation: returns false if, at the offset where the leading `/`
+ * appears, the text on that line is already inside an unclosed span /
+ * block of any of those delimiters. We keep this intentionally narrow
+ * so a normal "/joke" at the start of a line always qualifies.
+ */
+function textIsTopLevelSlash(text) {
+  if (!text) return false;
+  if (text[0] !== '/') return false;
+  // Unclosed spans/fences on the leading line. Returns true if nothing
+  // wraps the leading `/`.
+  return isSlashUnblocked(text);
+}
+function isSlashUnblocked(text) {
+  // Walk char-by-char tracking the most recent opener of any of: code
+  // fence (```...``` or ~~~...~~~), inline backticks (`x`), HTML tag
+  // (<...>... — we just track the open brace), or LaTeX math ($...$ /
+  // $$...$$). If the leading `/` sits inside any of those, the command
+  // shouldn't fire.
+  let inFence = false; // ``` or ~~~
+  let fenceMarker = null;
+  let fenceLen = 0;
+  let inInlineCode = false;
+  let inMath = false;       // single-$ ... $
+  let inDisplayMath = false; // $$ ... $$
+  let inHtmlTag = false;     // <...>
+  let i = 0;
+  // Detect a fenced code block at the very start of the message first.
+  const fenceStart = text.match(/^(\s*)(`{3,}|~{3,})/);
+  if (fenceStart) {
+    const marker = fenceStart[2][0];
+    inFence = true;
+    fenceMarker = marker;
+    fenceLen = fenceStart[2].length;
+    i = fenceStart[0].length;
+  }
+  // Slashes only count as commands at the start of the message; we
+  // already checked text[0] === '/'. The question is: is that leading /
+  // wrapped in any of the contexts above? It can only be wrapped by a
+  // fence opened before it on the same line — backticks, math, or HTML
+  // would have to span a preceding portion of the same line that opened
+  // with an unclosed delimiter. The simple check: scan the very leading
+  // substring before the `/` for any unclosed delimiter.
+  const head = text.slice(0, 0); // we already know /  is at index 0
+  // Same-line only — backticks / $ / < before the / on this line.
+  // If the first char is / and there's no preceding content on this
+  // line, it's necessarily top-level.
+  let lineStart = 0;
+  // The slash is at index 0 so there's no prefix on the same line;
+  // there's nothing to unwrap. The only enclosing context would be a
+  // fence that opened BEFORE lineStart — but a fence must start a line.
+  // So if we're inside a fence, the / must be on a later line — already
+  // checked by fence-detect at the top.
+  // The remaining trick: a leading `$\language="..."$\` block — the
+  // user's literal example. `$...$` is inline math. If the message
+  // begins with `$/...$` we'd treat it as math; but our dispatches look
+  // at the literal leading `/`. Treat `$\language="..."\$ ...` as an
+  // explicit "math-flag block" — if the first 3 chars are `$\\` or
+  // `$\l` it's a language-tag block, return false. The user's example
+  // shows `$\language=""$\\` for a KaTeX language flag, which begins
+  // with `$\\`. The safe heuristic: if the leading line starts with
+  // `$\` (backslash), treat it as a math block opener and skip.
+  if (text.startsWith('$\\')) return false;
+  return true;
+}
+
+/**
+ * If the typed text is wrapped in a math/code/HTML block of any kind at
+ * its top, returns the raw text minus any language-flag prefix. Otherwise
+ * returns null. Used to make commands inert inside content blocks.
+ */
+function extractPlaintextBypass(text) {
+  // User prefix: literally `/plaintext ` or `/plaintext\n` etc. Anything
+  // after the prefix is sent verbatim as a text message — leading slashes
+  // preserved. We deliberately do NOT echo the literal "/plaintext" into
+  // the message body.
+  const m = text.match(/^\/plaintext\b\s*([\s\S]*)$/i);
+  if (m) return m[1];
+  return null;
+}
+
 /** Dispatcher used by the composer send closure. */
 async function handleSlashCommand(text, ctx) {
-  if (!text.startsWith('/')) return false;
+  if (!text || !textIsTopLevelSlash(text)) return false;
   const lower = text.toLowerCase();
-  // /fall <anything>
+  // /fall <anything>: server-side broadcast. The handler attaches a
+  // `fall:start` listener that runs the actual animation. Text + count
+  // are forwarded verbatim so the server can rate-limit centrally.
   if (lower.startsWith('/fall ')) {
     const payload = text.slice(6).trim();
-    playFallAnimation(payload);
+    sendFallRain(payload, { roomType: ctx.roomType, roomId: ctx.roomId }, 100);
     return true;
   }
   // /grumm variants. Accept /grumm, /grumm_, /GRUMM, etc.
@@ -8446,7 +8597,18 @@ function bindMain() {
       const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;
 
-      if (roomType === 'dm' && text.toLowerCase().startsWith('/memorymessagelength')) {
+      // `/plaintext <whatever>` strips the prefix and re-puts the body in the
+      // composer so the user can edit + press Enter to send plain text.
+      // (We don't auto-submit to avoid recursive send() calls.)
+      const plaintextBody = extractPlaintextBypass(text);
+      if (plaintextBody !== null) {
+        input.value = plaintextBody;
+        resizeComposerInput();
+        input.focus();
+        return;
+      }
+
+      if (text.toLowerCase().startsWith('/memorymessagelength')) {
         const numStr = text.split(/\s+/)[1];
         const num = parseInt(numStr, 10);
         if (isNaN(num) || num < 1 || num > 100) {
@@ -8478,7 +8640,32 @@ function bindMain() {
         }
       }
 
-      if (roomType === 'group' && state.commandMode && text.startsWith('/')) {
+      // All commands — legacy (/games /wordle /request-admin /file
+      // /memorymessagelength) and new (/fall /joke /grumm /jimmyqrg
+      // /whisper) — work in both group rooms AND DMs. Always-on, no
+      // `state.commandMode` gate, no toggle button. The leading slash
+      // is the user's intent signal; the in-helper `textIsTopLevelSlash`
+      // rule makes sure the slash isn't inside a code/HTML/LaTeX block.
+      // The old command-mode block intentionally no longer lives here;
+      // each legacy command has its own matching branch in
+      // handleSlashCommand() so the new cross-room scope applies uniformly.
+      if (textIsTopLevelSlash(text)) {
+        // 1) Legacy /memorymessagelength — DM-only kept for back-compat.
+        if (text.toLowerCase().startsWith('/memorymessagelength')) {
+          const numStr = text.split(/\s+/)[1];
+          const num = parseInt(numStr, 10);
+          if (isNaN(num) || num < 1 || num > 100) {
+            showToast('Usage: /memorymessagelength <1-100>');
+          } else {
+            apiPatch(`/api/users/me`, { memory_message_length: num }).then(() => {
+              showToast(`Memory message length set to ${num}`);
+              input.value = '';
+              resizeComposerInput();
+            }).catch((err) => showToast(err.message || 'Failed to save setting'));
+          }
+          return;
+        }
+        // 2) Legacy group commands — now available in DMs too.
         const cmd = text.split(/\s/)[0].toLowerCase();
         if (cmd === '/games') {
           window.open('https://indiamonda.github.io/page');
@@ -8506,8 +8693,8 @@ function bindMain() {
             return;
           }
           state._sendingMessage = true;
-      const reply_to_id = state.replyTo?.id || null;
-            state.socket?.emit('message:send', { roomType, roomId, content: `/file ${fileId}`, msg_type: 'file', reply_to_id }, (res) => {
+          const reply_to_id = state.replyTo?.id || null;
+          state.socket?.emit('message:send', { roomType, roomId, content: `/file ${fileId}`, msg_type: 'file', reply_to_id }, (res) => {
             state._sendingMessage = false;
             if (res?.error) {
               if (res.error === 'AI_MOD_BLOCK') {
@@ -8723,20 +8910,7 @@ function bindMain() {
     render();
   });
 
-  if (!window._commandModeDelegated) {
-    window._commandModeDelegated = true;
-    document.addEventListener('click', (e) => {
-      const btn = e.target.closest('#composer-command-mode');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      state.commandMode = !state.commandMode;
-      try { localStorage.setItem('commandMode', state.commandMode ? '1' : '0'); } catch (_) {}
-      btn.classList.toggle('composer-command-btn-on', state.commandMode);
-      btn.setAttribute('aria-pressed', state.commandMode);
-      btn.title = state.commandMode ? 'Command mode on (e.g. /games, /wordle, /file <id>)' : 'Command mode off (send as text)';
-    });
-  }
+  // /composer-command-mode toggle removed — commands are always active.
   const micBtn = document.getElementById('composer-mic');
   const beginRecording = async () => {
     if (state._recording) return;

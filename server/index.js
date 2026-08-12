@@ -3054,6 +3054,59 @@ io.on('connection', (socket) => {
     ack?.({ ok: true });
   });
 
+  // ── /fall rain broadcast ──
+  // Sends `fall:start` to everyone in the room (group) or DM conv.
+  // payload: { roomType, roomId, text, count }. count defaults to 100.
+  // The text is broadcast as-is (no LLM, no DB write) so it's a lightweight
+  // visual effect. Rate-limited per-user so spam can't be a denial-of-attn.
+  const FALL_RAIN_LIMIT = 6;
+  const FALL_TEXT_LIMIT = 120;
+  const FALL_WINDOW_MS = 60 * 1000;
+  const fallRainHistory = new Map(); // userId -> [timestamps]
+  function fallRainThrottled(userId) {
+    const now = Date.now();
+    const arr = (fallRainHistory.get(userId) || []).filter(t => now - t < FALL_WINDOW_MS);
+    fallRainHistory.set(userId, arr);
+    if (arr.length >= FALL_RAIN_LIMIT) return true;
+    arr.push(now);
+    return false;
+  }
+  socket.on('fall:start', (payload, ack) => {
+    try {
+      const { roomType, roomId } = payload || {};
+      const rawText = String((payload && payload.text) || '').trim();
+      const roomTypeVal = roomType || (socket.rooms.has(`dm:${socket.convId}`) ? 'dm' : 'group');
+      const roomIdVal = roomId || (roomTypeVal === 'dm' ? socket.convId : GROUP_ID);
+      if (!roomTypeVal || !roomIdVal) return ack?.({ error: 'roomType and roomId required' });
+      if (rawText.length > FALL_TEXT_LIMIT) {
+        return ack?.({ error: `text too long (max ${FALL_TEXT_LIMIT} chars)` });
+      }
+      if (fallRainThrottled(socket.userId)) {
+        return ack?.({ error: 'Too many /fall requests, slow down.' });
+      }
+      const count = Math.max(10, Math.min(200, Number(payload.count) || 100));
+      const broadcast = { text: rawText, count, ts: Date.now() };
+      if (roomTypeVal === 'dm') {
+        const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(roomIdVal);
+        if (!conv || (conv.user1_id !== socket.userId && conv.user2_id !== socket.userId)) {
+          return ack?.({ error: 'Forbidden' });
+        }
+        io.to(`dm:${roomIdVal}`).emit('fall:start', broadcast);
+      } else if (roomTypeVal === 'group') {
+        if (!['free_chat', 'support', 'voice_chat'].includes(roomIdVal) && roomIdVal !== GROUP_ID) {
+          return ack?.({ error: 'Invalid panel' });
+        }
+        io.to(`group:${GROUP_ID}`).emit('fall:start', broadcast);
+      } else {
+        return ack?.({ error: 'Invalid roomType' });
+      }
+      ack?.({ ok: true });
+    } catch (err) {
+      console.error('[fall:start] error:', err);
+      ack?.({ error: 'Failed to start fall' });
+    }
+  });
+
   socket.on('message:send', async (payload, ack) => {
     // Whisper branch first: it carries a different shape (no text content
     // embedded in shared room, payload.recipient_user_id + audience) and
