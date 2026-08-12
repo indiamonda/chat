@@ -6086,7 +6086,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
   if (useSvgBubble && hasTail) bodyClasses.push('message-body-tail');
   if (!useSvgBubble && cbStyle !== 'default') bodyClasses.push(`chatbox-${cbStyle}`);
   if (isWhisper) bodyClasses.push('message-body-whisper');
-  const whisperBadge = isWhisper ? `<span class="message-whisper-badge" title="Private message: only you, the recipient, jimmyqrg, and admins with the See whispers permission can see this.">Whisper to @${escapeHtml(recipientUser ? recipientUser.username : (m.recipient_user_id || ''))}</span>` : '';
+  const whisperBadge = isWhisper ? `<span class="message-whisper-badge" title="Private message: send a private message to the recipient without letting other members know.">Whisper to @${escapeHtml(recipientUser ? recipientUser.username : (m.recipient_user_id || ''))}</span>` : '';
   return `
     <div class="message-row ${isWhisper ? 'message-row-whisper' : ''}" data-msg-id="${m.id}">
       <div class="message ${isOwn ? 'own' : ''} ${isWhisper ? 'message-whisper' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
