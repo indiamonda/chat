@@ -7262,12 +7262,16 @@ input[type="checkbox"]:checked::after {
 
 /* ====================================================================
  * Slash-commands + whisper styling
- *   .fall-overlay / .fall-letter / .fall-word   -- /fall animation
- *   .grumm-flipped                              -- /grumm page flip
+ *   .fall-overlay / .fall-letter / .fall-word    -- /fall animation
+ *   .grumm-flipped / .grumm-flip-back           -- /grumm page flip
  *   .emoji-picker-header / .emoji-picker-close  -- emoji X button
  *   .message-whisper / .message-body-whisper / .message-whisper-badge
- *   .grumm-flip-back                            -- "Flip back" pill
- *   .whisper-modal / .whisper-recipient-list / .whisper-audience-options
+ *   .whisper-modal / .whisper-recipient-* / .whisper-audience-*
+ *
+ * Color/background/foreground all reference the active theme tokens
+ * (--bg-panel / --bg-hover / --text / --text-dim / --border / --purple
+ * / --purple-dim / --purple-bright) so these elements work in both
+ * dark and light themes without separate overrides.
  * ==================================================================*/
 
 .fall-overlay {
@@ -7282,13 +7286,13 @@ input[type="checkbox"]:checked::after {
   position: absolute;
   font-family: var(--font-family, system-ui, sans-serif);
   font-weight: 700;
-  color: var(--fall-color, #8b5cf6);
+  color: var(--purple, #8b5cf6);
   text-shadow: 0 2px 8px rgba(0,0,0,0.35);
   will-change: transform;
   animation: fall var(--dur, 8s) linear var(--delay, 0s) forwards;
 }
 @keyframes fall {
-  from { transform: translate(0, -10vh) rotate(0deg); }
+  from { transform: translate(0, -32px) rotate(0deg); }
   to   { transform: translate(var(--drift, 0px), 110vh) rotate(360deg); }
 }
 
@@ -7306,27 +7310,30 @@ input[type="checkbox"]:checked::after {
   padding: 6px 14px;
   border-radius: 9999px;
   border: 0;
-  background: rgba(0,0,0,0.75);
-  color: #fff;
-  font: 600 0.85rem system-ui, sans-serif;
+  background: var(--bg-deep, rgba(0,0,0,0.75));
+  color: var(--text, #fff);
+  font: 600 0.85rem var(--font-family, system-ui, sans-serif);
   cursor: pointer;
 }
-.grumm-flip-back:hover { background: rgba(0,0,0,0.9); }
+.grumm-flip-back:hover { background: var(--bg-hover, rgba(0,0,0,0.9)); }
 
-.emoji-picker {
-  /* (most styles inherited from existing .emoji-picker rule) */
-  position: absolute;
-}
+/* ---- Emoji picker header + close-X ----
+ * The existing .emoji-picker rule already positions the popover and lays
+ * out the emoji grid. We add a single header row spanning the grid for
+ * the title + X button, plus explicit focus styles so keyboard users
+ * can dismiss. */
 .emoji-picker-header {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 6px 6px 8px;
+  padding: 2px 4px 6px 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
 }
 .emoji-picker-title {
-  font: 600 0.75rem system-ui, sans-serif;
-  color: var(--text-dim, #888);
+  font: 600 0.75rem var(--font-family, system-ui, sans-serif);
+  color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -7334,25 +7341,33 @@ input[type="checkbox"]:checked::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: var(--text-dim, #888);
+  color: var(--text-dim);
   cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
 }
 .emoji-picker-close:hover {
-  background: rgba(0,0,0,0.08);
-  color: var(--text, #111);
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.emoji-picker-close:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 1px;
 }
 
-/* Whisper message styling */
-.message-whisper .message-body { background: transparent; }
+/* ---- Whisper message styling ----
+ * .message-body-whisper tints the bubble; .message-whisper (outer row)
+ * is a hook for any layout tweaks. The badge surfaces the recipient so
+ * viewers don't confuse the bubble with a deleted or recalled message. */
+.message-row-whisper { /* row-level hook */ }
 .message-body-whisper {
-  background: rgba(139, 92, 246, 0.10);
-  border-left: 3px solid #8b5cf6;
+  background: color-mix(in srgb, var(--purple) 12%, transparent);
+  border-left: 3px solid var(--purple);
 }
 .message-whisper-badge {
   display: inline-flex;
@@ -7360,91 +7375,168 @@ input[type="checkbox"]:checked::after {
   margin-left: 8px;
   padding: 2px 8px;
   border-radius: 9999px;
-  background: #8b5cf6;
+  background: var(--purple);
   color: #fff;
-  font: 600 0.7rem system-ui, sans-serif;
+  font: 600 0.7rem var(--font-family, system-ui, sans-serif);
   letter-spacing: 0.02em;
   vertical-align: middle;
   cursor: help;
 }
 
-/* Whisper modal styling (reuses .modal-overlay / .modal-content) */
-.whisper-modal .modal-content {
+/* ---- Whisper modals (recipient picker + audience choice) ----
+ * The shell is the same .modal used by every other dialog in the app
+ * (see the .modal rule around line 4389): theme-aware bg, border,
+ * border-radius, padding, animation. Anything that diverges from the
+ * standard modal is scoped under .whisper-modal. */
+.whisper-modal.modal {
   max-width: 520px;
-  background: var(--surface, #fff);
-  color: var(--text, #111);
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 16px 48px rgba(0,0,0,0.45);
+  width: 90vw;
+  background: var(--bg-panel);
+  color: var(--text);
+  border: var(--border-width) solid var(--border);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
 }
 .whisper-modal .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 12px;
 }
 .whisper-modal .modal-header h2 {
-  font-size: 1.05rem;
+  font-size: 1.1rem;
+  font-weight: 600;
   margin: 0;
+  color: var(--text);
+  line-height: 1.2;
 }
 .whisper-modal-body {
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   line-height: 1.45;
+  color: var(--text);
 }
-.whisper-modal-body p { margin: 0 0 10px; }
+.whisper-modal-body p { margin: 0 0 0.75rem; }
+.whisper-modal-body p:last-child { margin-bottom: 0; }
+.whisper-modal-body strong { color: var(--text); }
+.whisper-modal-body em { color: var(--purple-bright); font-style: normal; font-weight: 600; }
+
+/* Recipient picker: each option is a thin row with display name on
+ * top and the @handle badge below. Two-column structure keeps things
+ * aligned even when names vary in length. */
 .whisper-recipient-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 240px;
+  gap: 8px;
+  max-height: 280px;
   overflow-y: auto;
+  margin: 0 0 12px;
+  padding: 2px;
 }
 .whisper-recipient-option {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 12px;
   width: 100%;
-  padding: 10px 14px;
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 8px;
-  background: var(--surface-2, #f7f7f9);
-  color: inherit;
+  padding: 10px 12px;
+  border: var(--border-width) solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-main);
+  color: var(--text);
   cursor: pointer;
   text-align: left;
+  font: inherit;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
-.whisper-recipient-option:hover { background: rgba(139,92,246,0.10); }
+.whisper-recipient-option:hover {
+  border-color: var(--purple);
+  background: var(--bg-hover);
+}
+.whisper-recipient-option:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 1px;
+}
+.whisper-recipient-option:active { transform: scale(0.98); }
+.whisper-recipient-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.whisper-recipient-name {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .whisper-recipient-handle {
-  color: var(--text-dim, #888);
-  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  font-family: var(--font-code, ui-monospace, monospace);
 }
+
+/* Audience choice: two large cards (Hidden / Placeholder) with a
+ * bold title and a one-line description. */
 .whisper-audience-options {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 10px;
+  margin: 8px 0 0;
 }
 .whisper-audience-option {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  gap: 4px;
+  width: 100%;
   padding: 12px 14px;
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 8px;
-  background: var(--surface-2, #f7f7f9);
-  color: inherit;
+  border: var(--border-width) solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-main);
+  color: var(--text);
   cursor: pointer;
   text-align: left;
+  font: inherit;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
-.whisper-audience-option:hover { background: rgba(139,92,246,0.10); }
-.whisper-audience-option strong { font-size: 0.95rem; margin-bottom: 2px; }
-.whisper-audience-option span:not(:first-child) { color: var(--text-dim, #888); font-size: 0.82rem; }
+.whisper-audience-option:hover {
+  border-color: var(--purple);
+  background: var(--bg-hover);
+}
+.whisper-audience-option:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 1px;
+}
+.whisper-audience-option:active { transform: scale(0.98); }
+.whisper-audience-option strong {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  display: block;
+}
+.whisper-audience-option .option-desc {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  line-height: 1.35;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .fall-overlay,
   .fall-letter,
   .fall-word,
-  .grumm-flipped {
+  .grumm-flipped,
+  .whisper-recipient-option,
+  .whisper-audience-option {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* Fallback for browsers without color-mix() (older Safari, mostly). */
+@supports not (background: color-mix(in srgb, red, blue)) {
+  .message-body-whisper {
+    background: rgba(139, 92, 246, 0.12);
+    border-left: 3px solid #8b5cf6;
   }
 }
