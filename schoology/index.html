@@ -5431,7 +5431,7 @@ Recent posts: ${postSample || '(none)'}`;
 
           let response;
           try {
-            response = await fetch(`/api/chat/layered`, {
+            response = await fetch(`${aiApiBase()}/api/chat/layered`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',

@@ -6086,7 +6086,7 @@ function renderMessage(m, roomType, roomId, context = {}) {
   if (useSvgBubble && hasTail) bodyClasses.push('message-body-tail');
   if (!useSvgBubble && cbStyle !== 'default') bodyClasses.push(`chatbox-${cbStyle}`);
   if (isWhisper) bodyClasses.push('message-body-whisper');
-  const whisperBadge = isWhisper ? `<span class="message-whisper-badge" title="Private message: send a private message to the recipient without letting other members know.">Whisper to @${escapeHtml(recipientUser ? recipientUser.username : (m.recipient_user_id || ''))}</span>` : '';
+  const whisperBadge = isWhisper ? `<span class="message-whisper-badge" title="Private message: only you, the recipient, jimmyqrg, and admins with the See whispers permission can see this.">Whisper to @${escapeHtml(recipientUser ? recipientUser.username : (m.recipient_user_id || ''))}</span>` : '';
   return `
     <div class="message-row ${isWhisper ? 'message-row-whisper' : ''}" data-msg-id="${m.id}">
       <div class="message ${isOwn ? 'own' : ''} ${isWhisper ? 'message-whisper' : ''}" data-msg-id="${m.id}" data-sender-id="${m.sender_id}">
@@ -7143,10 +7143,12 @@ function renderFallRain({ text, count }) {
   if (count > 200) count = 200;
   const W = Math.max(window.innerWidth, 320);
   const baseDelay = 0;
-  // Per character limit at 200 to keep the DOM bounded.
-  const chars = String(text || '').trim() || '*';
-  // Build a list of `count` items, each one picks a random character
-  // from `chars` so the rain feels rich and varied.
+  // Fall everything after the /fall command as a WHOLE unit: each falling
+  // piece shows the full string, not a random single character. Assigning
+  // the whole string via textContent also means every character falls
+  // correctly (emoji, astral-plane, any Unicode) -- unlike charAt() which
+  // would split surrogate pairs.
+  const label = String(text || '').trim() || '*';
   const overlay = document.createElement('div');
   overlay.className = 'fall-overlay';
   overlay.setAttribute('aria-hidden', 'true');
@@ -7154,8 +7156,8 @@ function renderFallRain({ text, count }) {
   // Two passes per item so it stays inside CSS transform compositing.
   for (let i = 0; i < count; i++) {
     const span = document.createElement('span');
-    span.className = 'fall-letter';
-    span.textContent = chars.charAt(Math.floor(Math.random() * chars.length));
+    span.className = 'fall-word';
+    span.textContent = label;
     const startX = Math.random() * Math.max(1, W - 40);
     const drift = (Math.random() - 0.5) * 24;
     const dur = 5000 + Math.random() * 4000;
@@ -7605,6 +7607,18 @@ function extractPlaintextBypass(text) {
   const m = text.match(/^\/plaintext\b\s*([\s\S]*)$/i);
   if (m) return m[1];
   return null;
+}
+
+/**
+ * Returns true when `text` contains a "/plaintext" line on its own line
+ * (case-insensitive, trimmed). This is the highest-priority directive:
+ * everything below that line is sent verbatim as plain text, bypassing
+ * ALL slash-command dispatch. The line itself stays in the stored message
+ * so renderMessageContent() can split on it and escape the lines below.
+ */
+function hasPlaintextLine(text) {
+  if (text == null) return false;
+  return String(text).split(/\r\n|\r|\n/).some((l) => l.trim().toLowerCase() === '/plaintext');
 }
 
 /** Dispatcher used by the composer send closure. */
@@ -8596,6 +8610,43 @@ function bindMain() {
       if (!text && !state._pendingFile) return;
       const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;
+
+      // /plaintext has the highest priority: a "/plaintext" line makes
+      // everything below it plain text and skips ALL slash-command
+      // dispatch. Send the raw text verbatim (the /plaintext line stays in
+      // the stored message so renderMessageContent escapes the lines below
+      // it). This must run before any command handling below.
+      if (hasPlaintextLine(text)) {
+        const reply_to_id = state.replyTo?.id || null;
+        state._sendingMessage = true;
+        sendMessageResilient({ roomType, roomId, text, reply_to_id })
+          .then((res) => {
+            state._sendingMessage = false;
+            if (res?.error) {
+              if (res.error === 'AI_MOD_BLOCK') {
+                showAiModerationModal(res.reason || '');
+                return;
+              }
+              showToast(res.error);
+              if (res.error === 'NO SPAMMING!') {
+                state._spamBlockedUntil = Date.now() + 5000;
+                setState({});
+                setTimeout(() => { state._spamBlockedUntil = null; setState({}); }, 5000);
+              }
+              return;
+            }
+            if (res?.message) addMessageLocal(res.message);
+            clearDraft(roomType, roomId);
+            input.value = '';
+            resizeComposerInput();
+            setState({ replyTo: null });
+          })
+          .catch((err) => {
+            state._sendingMessage = false;
+            showToast(err?.message || tx('sendFailed', 'Message could not be sent. Try again.'));
+          });
+        return;
+      }
 
       // `/plaintext <whatever>` strips the prefix and re-puts the body in the
       // composer so the user can edit + press Enter to send plain text.

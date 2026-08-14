@@ -7288,6 +7288,7 @@ input[type="checkbox"]:checked::after {
   font-weight: 700;
   color: var(--purple, #8b5cf6);
   text-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  white-space: nowrap;
   will-change: transform;
   animation: fall var(--dur, 8s) linear var(--delay, 0s) forwards;
 }
