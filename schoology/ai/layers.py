@@ -390,6 +390,14 @@ If Layer 3 flagged a policy issue, address it the way Layer 3 prescribed (e.g. p
 
 Reply with the visible text only. No JSON. No "Here's the answer:" prefix.
 
+LIVE-DATA REFRESH MARKERS (emit only when the student asks for a refresh; the
+marker is hidden from the student and handled automatically -- do NOT explain
+it to them):
+  - When the student asks you to reload / refresh / re-check / "get the latest"
+    grades, assignments, courses, or class posts, put ONE of these markers at
+    the end of your reply and briefly confirm you refreshed it:
+      [RELOAD:grades]  [RELOAD:assignments]  [RELOAD:courses]  [RELOAD:posts]  [RELOAD:all]
+
 {policy_block}
 
 {calendar_block}
@@ -482,6 +490,8 @@ When to use each verdict:
                  * the factual claims or any number / date / name
                  * the policy-relevant content (don't drop a refusal
                    or soften a 'no, I can't help with graded work')
+                 * any [RELOAD:...] marker in the reply (preserve it
+                   verbatim -- it is an internal data-refresh command)
                  * the meaning, tone, or stance
                  * the length tier ('short' / 'medium' / 'long') the
                    Layer 1 router asked for
@@ -650,15 +660,6 @@ def run_pipeline(*, student_message: str, prior_messages: list,
     planner_reasoning_final = plan
     plan_was_revised = False
 
-    # If only Layer 3 ran, the planner is the answer.
-    if layer_layers == [3]:
-        layer_trace.append({'name': 'planner', 'reasoning': plan})
-        return {
-            'content': plan,
-            'layers': layer_trace,
-            'elapsed_ms': int((time.monotonic() - started_at) * 1000),
-        }
-
     # Layer 4 + 5 with the rejection loop.
     layer4_draft = ''
     layer5_verdict = {'verdict': 'reject'}
@@ -779,7 +780,7 @@ def run_pipeline(*, student_message: str, prior_messages: list,
                 'block for the policy reason.'
             ),
         })
-    # else: only-layer-3 mode -- the planner entry is already in layer_trace.
+    # else: the planner entry was already appended to layer_trace.
 
     layers_out += [
         {'name': 'writer',     'reasoning': layer4_draft},
