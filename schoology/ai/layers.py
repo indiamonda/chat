@@ -524,7 +524,10 @@ def layer5_check(*, student_message: str, layer3_plan: str, layer4_draft: str,
     Robust to malformed JSON -- falls back to "approve" if we can't parse,
     but logs so we can spot model drift.
     """
-    sys_msg = LAYER5_SYSTEM_TEMPLATE.format(policy_block=policy_block)
+    # Use .replace() instead of .format() here: the template contains literal
+    # JSON examples with braces (e.g. {"verdict": "approve"}), which .format()
+    # would treat as placeholder fields and crash on (KeyError: '"verdict"').
+    sys_msg = LAYER5_SYSTEM_TEMPLATE.replace('{policy_block}', policy_block)
     if is_final_round:
         sys_msg += (
             "\n\nThis is round 5 of 5 -- the LAST round. The student has been "
