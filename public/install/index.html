@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0d12" />
-  <title>Install JimmyQrg Chat — Android</title>
+  <title>Install JimmyQrg Chat — Desktop &amp; Mobile</title>
   <style>
     :root {
       --bg: #0b0d12;
@@ -50,7 +50,7 @@
 
     .container {
       width: 100%;
-      max-width: 640px;
+      max-width: 880px;
     }
 
     .brand {
@@ -79,37 +79,72 @@
       color: var(--muted);
     }
 
+    .cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 720px) {
+      .cards { grid-template-columns: 1fr; }
+    }
+
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 28px;
       box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
     }
 
-    .hero {
-      text-align: center;
-      padding: 8px 0 24px;
+    .card-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
     }
 
-    .hero h2 {
-      font-size: 28px;
-      margin: 0 0 8px;
-      letter-spacing: -0.02em;
+    .card-head-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      flex-shrink: 0;
     }
 
-    .hero p {
+    .card-head-icon svg { width: 26px; height: 26px; }
+
+    .card-head h2 {
       margin: 0;
+      font-size: 20px;
+      letter-spacing: -0.01em;
+    }
+
+    .card-head p {
+      margin: 2px 0 0;
+      font-size: 13px;
       color: var(--muted);
-      font-size: 15px;
+    }
+
+    .card-body {
+      flex: 1;
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 16px;
     }
 
     .meta {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      justify-content: center;
-      margin: 18px 0 0;
+      margin-bottom: 16px;
     }
 
     .pill {
@@ -135,12 +170,11 @@
       justify-content: center;
       gap: 10px;
       width: 100%;
-      padding: 18px 20px;
-      margin-top: 8px;
+      padding: 16px 20px;
       background: var(--accent);
       color: white;
       text-decoration: none;
-      font-size: 17px;
+      font-size: 16px;
       font-weight: 600;
       border-radius: 12px;
       border: 0;
@@ -156,39 +190,18 @@
       outline-offset: 3px;
     }
 
-    .install-btn svg {
-      width: 22px; height: 22px;
-    }
-
-    .meta-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 14px;
-      font-size: 13px;
-      color: var(--muted);
-    }
-
-    .checksum {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 12px;
-      color: var(--muted);
-      background: var(--code-bg);
-      padding: 2px 6px;
-      border-radius: 4px;
-      word-break: break-all;
-    }
+    .install-btn svg { width: 20px; height: 20px; }
 
     details {
-      margin-top: 28px;
+      margin-top: 20px;
       border-top: 1px solid var(--border);
-      padding-top: 20px;
+      padding-top: 16px;
     }
 
     details summary {
       cursor: pointer;
       font-weight: 600;
-      font-size: 15px;
+      font-size: 14px;
       list-style: none;
       user-select: none;
       display: flex;
@@ -206,7 +219,7 @@
     details[open] summary::before { transform: rotate(90deg); }
 
     .steps {
-      margin: 14px 0 0;
+      margin: 12px 0 0;
       padding: 0;
       list-style: none;
       counter-reset: step;
@@ -215,9 +228,9 @@
     .steps li {
       counter-increment: step;
       position: relative;
-      padding: 10px 0 10px 40px;
+      padding: 9px 0 9px 36px;
       border-bottom: 1px solid var(--border);
-      font-size: 14px;
+      font-size: 13.5px;
     }
 
     .steps li:last-child { border-bottom: 0; }
@@ -226,15 +239,15 @@
       content: counter(step);
       position: absolute;
       left: 0;
-      top: 10px;
-      width: 26px; height: 26px;
+      top: 9px;
+      width: 24px; height: 24px;
       border-radius: 50%;
       background: var(--surface-2);
       border: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       color: var(--accent);
     }
@@ -244,18 +257,18 @@
       background: var(--code-bg);
       padding: 1px 6px;
       border-radius: 4px;
-      font-size: 12.5px;
+      font-size: 12px;
       color: #d0d6e0;
     }
 
     .warn {
-      margin-top: 22px;
-      padding: 14px 16px;
+      margin-top: 18px;
+      padding: 13px 15px;
       background: var(--warn-bg);
       border: 1px solid var(--warn-border);
       border-radius: var(--radius-sm);
       color: var(--warn-text);
-      font-size: 13.5px;
+      font-size: 13px;
       line-height: 1.5;
     }
 
@@ -273,12 +286,6 @@
       text-decoration: none;
     }
     footer a:hover { text-decoration: underline; }
-
-    @media (max-width: 480px) {
-      .card { padding: 22px; }
-      .hero h2 { font-size: 24px; }
-      .install-btn { font-size: 16px; padding: 16px; }
-    }
   </style>
 </head>
 <body>
@@ -287,55 +294,104 @@
       <img src="/assets/icons/favicon-128.png" alt="JimmyQrg Chat" />
       <div class="brand-text">
         <h1>JimmyQrg Chat</h1>
-        <p>Android · Debug build</p>
+        <p>Install the app on your desktop or phone</p>
       </div>
     </div>
 
-    <div class="card">
-      <div class="hero">
-        <h2>Install the Android app</h2>
-        <p>Tap the button below on your phone to download and install.</p>
+    <div class="cards">
+      <!-- Mac -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a9 9 0 0 1 9 9v8a2 2 0 0 1-2 2h-3V10a2 2 0 0 0-2-2h-1a2 2 0 0 0-2 2v11H8a2 2 0 0 1-2-2v-8a6 6 0 0 1 6-6Z"/>
+            </svg>
+          </div>
+          <div>
+            <h2>Mac</h2>
+            <p>macOS desktop app</p>
+          </div>
+        </div>
+        <div class="card-body">
+          A lightweight native wrapper around the web app — chat from your Mac without a browser tab.
+        </div>
+        <div class="meta">
+          <span class="pill"><span class="dot"></span>v1.0-desktop</span>
+          <span class="pill">~2 MB</span>
+          <span class="pill">macOS 12+</span>
+        </div>
+        <a
+          class="install-btn"
+          href="https://github.com/indiamonda/chat/releases/download/v1.0-desktop/JimmyQrg-Chat-mac.zip"
+          rel="noopener"
+          download>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v12" />
+            <path d="m7 10 5 5 5-5" />
+            <path d="M5 21h14" />
+          </svg>
+          Download .app
+        </a>
+        <details>
+          <summary>How to install</summary>
+          <ol class="steps">
+            <li>Click <strong>Download .app</strong> — it downloads a <code>.zip</code>.</li>
+            <li>Open the <code>.zip</code> to extract <code>JimmyQrg Chat.app</code>.</li>
+            <li>Drag <strong>JimmyQrg Chat.app</strong> into your <strong>Applications</strong> folder.</li>
+            <li>The first time you open it, right-click the app and choose <strong>Open</strong> (then <strong>Open</strong> again in the dialog) to allow it.</li>
+          </ol>
+        </details>
+      </div>
+
+      <!-- Android -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-head-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="6" y="3" width="12" height="18" rx="2"/>
+              <path d="M11 18h2"/>
+              <path d="M10 6h4"/>
+            </svg>
+          </div>
+          <div>
+            <h2>Android</h2>
+            <p>Phone app (sideload APK)</p>
+          </div>
+        </div>
+        <div class="card-body">
+          The Android app for your phone. Sideloaded as an APK — no Play Store required.
+        </div>
         <div class="meta">
           <span class="pill"><span class="dot"></span>v1.0-debug</span>
-          <span class="pill">~27 MB</span>
+          <span class="pill">~28 MB</span>
           <span class="pill">Android 7.0+</span>
         </div>
+        <a
+          class="install-btn"
+          href="https://github.com/indiamonda/chat/releases/download/v1.0-debug/app-debug.apk"
+          rel="noopener"
+          download>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3v12" />
+            <path d="m7 10 5 5 5-5" />
+            <path d="M5 21h14" />
+          </svg>
+          Download .apk
+        </a>
+        <details>
+          <summary>How to install</summary>
+          <ol class="steps">
+            <li>Tap <strong>Download .apk</strong>. Your browser saves the file.</li>
+            <li>Open your <strong>Downloads</strong> (or the notification bar) and tap the APK.</li>
+            <li>If Android asks to allow <em>"install unknown apps"</em>, tap <strong>Settings</strong> in the dialog.</li>
+            <li>Toggle <strong>Allow from this source</strong> on for the browser you used.</li>
+            <li>Tap the APK again and confirm <strong>Install</strong>.</li>
+          </ol>
+        </details>
+        <div class="warn">
+          <strong>Huawei / HarmonyOS:</strong> the toggle lives under <strong>设置 → 应用和服务 → 应用管理 → [your browser] → 安装外部来源应用</strong>. Tap <strong>设置</strong> in the blocked dialog to jump straight there.
+        </div>
       </div>
-
-      <a
-        id="installBtn"
-        class="install-btn"
-        href="https://github.com/indiamonda/chat/releases/download/v1.0-debug/app-debug.apk"
-        rel="noopener"
-        download>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 3v12" />
-          <path d="m7 10 5 5 5-5" />
-          <path d="M5 21h14" />
-        </svg>
-        Download &amp; Install APK
-      </a>
-
-      <div class="meta-row">
-        <span>Direct from GitHub Releases</span>
-        <span class="checksum">SHA-256: see release notes</span>
-      </div>
-
-      <div class="warn">
-        <strong>Huawei / HarmonyOS:</strong> when you tap the APK, your phone may block it the first time. Tap <strong>设置</strong> in the dialog (or <strong>Settings → Apps → App management → [your browser] → Install unknown apps</strong>) and toggle it on, then re-open the file.
-      </div>
-
-      <details>
-        <summary>How to install (step-by-step)</summary>
-        <ol class="steps">
-          <li>Tap <strong>Download &amp; Install APK</strong> above. Your browser will save the file.</li>
-          <li>Open your phone's <strong>Downloads</strong> folder (or the notification bar) and tap the APK.</li>
-          <li>If Android asks <em>"For your security, your phone is not allowed to install unknown apps from this source"</em>, tap <strong>Settings</strong> in that dialog.</li>
-          <li>Toggle <strong>Allow from this source</strong> on for the browser you used to download.</li>
-          <li>Go back and tap the APK again. Confirm <strong>Install</strong>.</li>
-          <li>Open <strong>JimmyQrg Chat</strong> from your launcher.</li>
-        </ol>
-      </details>
     </div>
 
     <footer>
