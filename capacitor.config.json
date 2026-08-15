@@ -1,5 +1,9 @@
 {
   "appId": "com.jimmyqrg.chat",
   "appName": "JimmyQrg Chat",
-  "webDir": "public"
+  "webDir": "public",
+  "server": {
+    "url": "https://jchat.fly.dev",
+    "cleartext": false
+  }
 }
