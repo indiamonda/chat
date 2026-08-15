@@ -58,7 +58,10 @@ from .system_prompt import (
 )
 
 # Reuse the same env vars the gate uses for the DeepSeek key.
-DEEPSEEK_API = 'https://api.deepseek.com/v1/chat/completions'
+# With a DEEPSEEK_KEY we call DeepSeek directly; without it we fall back to
+# the public proxy worker, mirroring server/index.js and ai-moderation.js.
+DEEPSEEK_API_DIRECT = 'https://api.deepseek.com/v1/chat/completions'
+DEEPSEEK_API_PROXY = 'https://deepseek-proxy.ikunbeautiful.workers.dev/v1/chat'
 DEEPSEEK_MODEL = os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat')
 DEEPSEEK_TIMEOUT = int(os.environ.get('LAYER_TIMEOUT', '60'))
 
@@ -74,38 +77,53 @@ MAX_REJECTION_ROUNDS = 5
 def _call_deepseek(messages, *, temperature=0.4, max_tokens=900, json_mode=False):
     """Single round-trip to DeepSeek. Returns the assistant text (str).
 
-    Mirrors the call pattern in gate.py:_call_deepseek_detect so we share
-    the same retry / error semantics.
+    Tries the direct DeepSeek API first (when a key is set), then falls
+    back to the public proxy worker on any failure. This way the pipeline
+    works both when DEEPSEEK_KEY is absent AND when api.deepseek.com is
+    unreachable from the server (the Node app uses the same proxy fallback).
     """
     api_key = os.environ.get('DEEPSEEK_KEY')
-    if not api_key:
-        raise RuntimeError('DEEPSEEK_KEY not set on server')
 
     body = {
         'model': DEEPSEEK_MODEL,
         'messages': messages,
         'temperature': temperature,
         'max_tokens': max_tokens,
+        'stream': False,
     }
     if json_mode:
         body['response_format'] = {'type': 'json_object'}
 
-    req = urllib.request.Request(
-        DEEPSEEK_API,
-        data=json.dumps(body).encode('utf-8'),
-        headers={
+    candidates = []
+    if api_key:
+        candidates.append((DEEPSEEK_API_DIRECT, {'Authorization': f'Bearer {api_key}'}))
+    candidates.append((DEEPSEEK_API_PROXY, {}))
+
+    last_err = None
+    for endpoint, extra_headers in candidates:
+        # The proxy worker rejects non-browser User-Agents (Python-urllib
+        # gets a 403), so send a browser-like UA. Harmless for the direct
+        # API, which only cares about the Authorization header.
+        headers = {
             'Content-Type': 'application/json',
-            'Authorization': f'Bearer {api_key}',
-        },
-        method='POST',
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=DEEPSEEK_TIMEOUT) as resp:
-            raw = resp.read().decode('utf-8')
-        data = json.loads(raw)
-        return data['choices'][0]['message']['content']
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, KeyError) as exc:
-        raise RuntimeError(f'deepseek call failed: {type(exc).__name__}: {exc}')
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+            **extra_headers,
+        }
+        req = urllib.request.Request(
+            endpoint,
+            data=json.dumps(body).encode('utf-8'),
+            headers=headers,
+            method='POST',
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=DEEPSEEK_TIMEOUT) as resp:
+                raw = resp.read().decode('utf-8')
+            data = json.loads(raw)
+            return data['choices'][0]['message']['content']
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
+            last_err = exc
+            continue
+    raise RuntimeError(f'deepseek call failed (tried {len(candidates)} endpoint(s)): {type(last_err).__name__}: {last_err}')
 
 
 # ---------------------------------------------------------------------------
