@@ -1323,7 +1323,7 @@ const SPA_SKIP_EXT = /\.(?:js|mjs|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|
 app.use((req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   if (SPA_SKIP_EXT.test(req.path)) return next();
-  if (req.path === '/redirect.html' || req.path === '/game' || req.path.startsWith('/api') || req.path.startsWith('/assets') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
+  if (req.path === '/redirect.html' || req.path === '/game' || req.path.startsWith('/install') || req.path.startsWith('/api') || req.path.startsWith('/assets') || req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
   try {
     const p = join(publicDir, 'index.html');
     if (!existsSync(p)) return next();
