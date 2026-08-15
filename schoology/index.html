@@ -1350,7 +1350,15 @@
     //   writer     - the draft reply
     //   compliance - approve / reject + reasoning
     function renderThinkingPlaceholder() {
-      return `<div class="thinking-placeholder"><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-dot"></span><span class="thinking-text">Thinking through the layers…</span></div>`;
+      // Shimmering skeleton message box while the pipeline runs, so the
+      // assistant bubble shows the shape of a reply landing rather than a
+      // bare "Thinking…" line.
+      return `<div class="message-skeleton" aria-busy="true">
+        <div class="message-skeleton-label">Thinking…</div>
+        <div class="skeleton-line" style="width: 72%;"></div>
+        <div class="skeleton-line" style="width: 94%;"></div>
+        <div class="skeleton-line" style="width: 55%;"></div>
+      </div>`;
     }
 
     function renderLayerTrace(layers) {
@@ -5003,7 +5011,41 @@ Recent posts: ${postSample || '(none)'}`;
           }
         },
       },
+      RELOAD: {
+        name: 'RELOAD',
+        regex: /\[RELOAD:([^\]]+)\]/g,
+        captureIdx: 1,
+        prompt: 'Refresh the student\'s live Schoology data with [RELOAD:grades], [RELOAD:assignments], [RELOAD:courses], [RELOAD:posts], or [RELOAD:all]. Use this whenever the user asks you to reload, refresh, re-check, or get the latest grades/assignments/posts.',
+        userBlurb: 'refresh the dashboard data',
+        executor: async (_match, raw) => {
+          const sections = parseReloadSections(raw);
+          const results = [];
+          for (const name of sections) {
+            try {
+              if (!state.sectionLoaders[name]) {
+                results.push(`${name}: not available`);
+                continue;
+              }
+              await retrySection(name);
+              results.push(`${name}: reloaded`);
+            } catch (e) {
+              results.push(`${name}: failed (${e.message})`);
+            }
+          }
+          return { display: null, history: `Dashboard reload requested: ${results.join('; ')}` };
+        },
+      },
     };
+
+    // Parse a [RELOAD:...] argument into a list of valid section names.
+    function parseReloadSections(raw) {
+      const ALL = ['grades', 'courses', 'assignments', 'posts'];
+      const s = String(raw || '').trim().toLowerCase();
+      if (!s || s === 'all' || s === 'everything') return ALL.slice();
+      const names = s.split(/[,\s]+/).filter(Boolean);
+      const valid = names.filter((n) => ALL.includes(n));
+      return valid.length ? valid : ALL.slice();
+    }
 
     // Build the TOOLS block of the system prompt from the registry.
     function buildToolsPrompt() {
@@ -5402,7 +5444,6 @@ Recent posts: ${postSample || '(none)'}`;
             renderMarkdown: false,
           });
           const contentEl = bubble ? bubble.querySelector('.markdown-content') : null;
-          const layerTraceEl = bubble ? bubble.querySelector('.layer-trace') : null;
           if (contentEl) {
             contentEl.innerHTML = renderThinkingPlaceholder();
           }
@@ -5455,14 +5496,7 @@ Recent posts: ${postSample || '(none)'}`;
           }
           const result = await response.json();
           const visible = stripToolBrackets(result.content || '');
-          const layers = result.layers || [];
 
-          // Render the layer trace as collapsible Thinking... blocks.
-          // The trace is rendered ABOVE the visible reply inside the
-          // same bubble so the user sees the reasoning, then the answer.
-          if (layerTraceEl) {
-            layerTraceEl.innerHTML = renderLayerTrace(layers);
-          }
           if (contentEl) {
             if (!visible) {
               contentEl.innerHTML = '<em>(no response)</em>';
@@ -5475,15 +5509,18 @@ Recent posts: ${postSample || '(none)'}`;
             }
           }
 
-          // Save the assistant message WITH the layer trace so old chats
-          // can re-render the Thinking blocks later.
+          // Only the final response is shown to the student. The layer
+          // trace (router / planner / writer / compliance reasoning) is
+          // internal scaffolding and is deliberately NOT rendered.
           state.currentMessages.push({
             role: 'assistant',
             content: visible,
-            layers: layers,
           });
           scheduleSaveCurrentChat();
-          handleAICommands(visible);
+          // Dispatch tools on the RAW reply (with brackets intact) — the
+          // `visible` copy already had [TOOL:...] markers stripped, so
+          // dispatching on it would never fire any tool.
+          handleAICommands(result.content || '');
 
           if (opts.autoNameWith && state.currentChatId && !state.demoMode) {
             const userCount = state.currentMessages.filter(m => m.role === 'user').length;
@@ -5943,7 +5980,7 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
       const bubble = document.createElement('div');
       bubble.className = 'message-bubble';
       if (type === 'assistant') {
-        bubble.innerHTML = `<div class="layer-trace"></div><div class="markdown-content"></div>`;
+        bubble.innerHTML = `<div class="markdown-content"></div>`;
       } else if (type === 'user') {
         const contentEl = document.createElement('div');
         contentEl.className = 'message-content';

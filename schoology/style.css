@@ -3398,6 +3398,12 @@
       font-size: 0.85rem;
       font-style: italic;
     }
+    .message-skeleton-label {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      font-style: italic;
+      margin-bottom: 10px;
+    }
     .thinking-dot {
       width: 6px;
       height: 6px;
