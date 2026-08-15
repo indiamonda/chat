@@ -254,7 +254,18 @@ Then run `fly deploy` again.
 
 - Live app: [https://jchat.fly.dev](https://jchat.fly.dev)
 
+## Schoology Help
+
+This repo also hosts the **Schoology Help** dashboard (`schoology/`), a separate Flask app served through the Node proxy at `/schoology/*`. It shows a PAUSD student's grades, courses, assignments, and posts from Schoology, plus a full AI study assistant.
+
+- `schoology/server.py` — Flask app, per-user Schoology daemon pool, all `/api/*` routes
+- `schoology/index.html` — dashboard + AI assistant UI (single large file)
+- `schoology/ai/*.py` — AI tool routes and the 5-layer response pipeline (router → explainer → planner → writer → compliance)
+- `schoology-mcp/` — vendored Schoology scraper (Playwright)
+
+The AI assistant runs a server-side 5-layer pipeline (`/api/chat/layered`), supports a multi-chat sidebar with cross-chat memory, browser tools (`[WIKI:...]`, `[SEARCH:...]`, `[CALC:...]`, `[RELOAD:...]`, etc.), and continuously monitors the student's emotional state — providing comfort/calming support and escalating to emergency resources (911 / 988 / Crisis Text Line) only in urgent situations.
+
 ## License
 
 MIT
-test
+

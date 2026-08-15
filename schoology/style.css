@@ -527,8 +527,7 @@
       border-radius: 20px;
       padding: 28px;
       text-align: left;
-      transition: all var(--transition-slower);
-      animation: cardFloat 5s ease-in-out infinite;
+      transition: background var(--transition-slower), border-color var(--transition-slower), box-shadow var(--transition-slower);
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
     }
     .feature-card::after {
@@ -540,24 +539,12 @@
       pointer-events: none;
       z-index: 0;
     }
-    .feature-card:nth-child(1) { animation-delay: 0s; }
-    .feature-card:nth-child(2) { animation-delay: 0.5s; }
-    .feature-card:nth-child(3) { animation-delay: 1s; }
-    .feature-card:nth-child(4) { animation-delay: 1.5s; }
-    .feature-card:nth-child(5) { animation-delay: 2s; }
-    .feature-card:nth-child(6) { animation-delay: 2.5s; }
-    @keyframes cardFloat {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-8px); }
-    }
-
-    /* Hover: lift + brighter background tint. */
+    /* Hover: lift + brighter background tint. The raise/drop transform is
+       driven per-card by JS (each card keeps its own animation state). */
     .feature-card:hover {
-      transform: translateY(-8px);
       background: rgba(255, 255, 255, 0.15);
       border-color: rgba(99, 102, 241, 0.5);
       box-shadow: 0 20px 60px rgba(99, 102, 241, 0.3), 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-      animation: none;
     }
 
     .feature-icon {

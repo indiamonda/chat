@@ -7339,6 +7339,37 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
     // Start typewriter when page loads
     setTimeout(updateTypewriter, 1000);
 
+    // Feature cards: per-card hover "raise up / drop down" animation.
+    // Each card keeps its OWN animation state (current/target/raf), so the
+    // six cards animate independently instead of sharing a single variable.
+    (function initFeatureCardHover() {
+      const cards = document.querySelectorAll('.feature-card');
+      cards.forEach((card) => {
+        let current = 0;   // unique per card
+        let target = 0;    // unique per card
+        let raf = null;    // unique per card
+        const step = () => {
+          current += (target - current) * 0.2;
+          if (Math.abs(target - current) < 0.05) {
+            current = target;
+            raf = null;
+            card.style.transform = target === 0 ? '' : `translateY(${target}px)`;
+            return;
+          }
+          card.style.transform = `translateY(${current}px)`;
+          raf = requestAnimationFrame(step);
+        };
+        card.addEventListener('mouseenter', () => {
+          target = -8;
+          if (raf == null) raf = requestAnimationFrame(step);
+        });
+        card.addEventListener('mouseleave', () => {
+          target = 0;
+          if (raf == null) raf = requestAnimationFrame(step);
+        });
+      });
+    })();
+
     // Apply any holiday/break flavor to the sign-in page right away
     // (hint text, page title, welcome bubble, footer). Done once on boot;
     // re-runs only on full page reload.
