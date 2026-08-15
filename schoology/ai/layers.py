@@ -229,6 +229,7 @@ In your analysis cover, in order:
   5. STUDENT'S LOGIC: if the student's framing reveals assumptions (e.g. "since finals are next week I should..."), surface them so Layer 3 can validate or correct.
   6. AMBIGUITIES: anything you can't tell from the message that Layer 3 may need to ask about.
   7. RISK FLAGS (one line per item): anything that suggests the response might run into a policy issue (graded work, age-restricted advice, professional advice, harassment, etc.). Flag but don't refuse -- Layer 5 will check.
+  8. EMERGENCY STATE CHECK (1-2 sentences): assess whether the student's message -- together with prior messages -- indicates an EMERGENCY: extremely urgent / extreme / serious (immediate risk of suicide, self-harm, abuse, violence, or a severe crisis), or whether they are explicitly asking for emergency help. Clearly distinguish an EMERGENCY from ordinary sadness, anxiety, or stress, which are NOT emergencies and get no special handling.
 
 Be specific and concise. Don't repeat the student's message verbatim. Don't start with "The student is asking..." -- write the analysis directly.
 
@@ -280,7 +281,7 @@ Your job:
        - Tone and length ({length}).
        - Whether to use any of the available tools (search, wikipedia, etc.) -- if so, name the tool and what to search for.
        - If the question touches an upcoming school event (Paly or Gunn dance, performance, prom, graduation, etc.) AND it's within ~2 weeks, mention it as a "you might want to plan for this" note in the response.
-  4. POLICY PRE-CHECK. Look at the policy block (Terms + Privacy + the rest). Does this question come close to any policy boundary? If so, say how Layer 4 should handle it (e.g. "polite refusal, don't elaborate"). If it's a clear pass, say "no policy concern".
+  4. POLICY PRE-CHECK. Look at the policy block (Terms + Privacy + the rest). Does this question come close to any policy boundary? If so, say how Layer 4 should handle it (e.g. "polite refusal, don't elaborate"). If it's a clear pass, say "no policy concern". SAFETY OVERRIDE (EMERGENCY ONLY): if the student's state is an EMERGENCY (extremely urgent / extreme / serious -- immediate risk of suicide, self-harm, abuse, violence, or a severe crisis) OR they ask for emergency help, the plan MUST instruct Layer 4 to give the emergency numbers (911, 988, Crisis Text Line 741741, counselor / trusted adult) and urge immediate contact. Do NOT plan a refusal. Ordinary sadness / anxiety / stress is NOT an emergency -- no special handling, no emergency numbers.
   5. HANDOFF. Produce a compact "plan" that Layer 4 will use as its brief.
 
 {policy_block}
@@ -388,6 +389,8 @@ Write the reply. Don't expose internal pipeline labels to the student -- they sh
 
 If Layer 3 flagged a policy issue, address it the way Layer 3 prescribed (e.g. polite refusal). Don't moralise.
 
+SAFETY OVERRIDE -- EMERGENCY ONLY: if the student is in an EMERGENCY (extremely urgent / extreme / serious -- immediate risk of suicide, self-harm, abuse, violence, or a severe crisis) or explicitly asks for emergency help, do NOT refuse and do NOT lecture. Write a short, warm, urgent reply that tells them to contact help NOW and gives the emergency numbers: 911 for an immediate emergency; 988 Suicide & Crisis Lifeline (call or text 988); Crisis Text Line (text HOME to 741741); and their school counselor or a trusted adult. Do NOT provide emotional support, therapy, or counselling -- only the emergency referral. Ordinary sadness / anxiety / stress gets normal handling (no emergency numbers, no extra support).
+
 Reply with the visible text only. No JSON. No "Here's the answer:" prefix.
 
 LIVE-DATA REFRESH MARKERS (emit only when the student asks for a refresh; the
@@ -490,6 +493,9 @@ When to use each verdict:
                  * the factual claims or any number / date / name
                  * the policy-relevant content (don't drop a refusal
                    or soften a 'no, I can't help with graded work')
+                 * the emergency numbers (911, 988, Crisis Text Line,
+                   counselor) in an emergency reply -- never drop or
+                   soften them
                  * any [RELOAD:...] marker in the reply (preserve it
                    verbatim -- it is an internal data-refresh command)
                  * the meaning, tone, or stance
