@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0d12" />
-  <title>Install JimmyQrg Chat — Desktop &amp; Mobile</title>
+  <title data-i18n="installTitle">Install JimmyQrg Chat — Desktop &amp; Mobile</title>
   <style>
     :root {
       --bg: #0b0d12;
@@ -294,7 +294,7 @@
       <img src="/assets/icons/favicon-128.png" alt="JimmyQrg Chat" />
       <div class="brand-text">
         <h1>JimmyQrg Chat</h1>
-        <p>Install the app on your desktop or phone</p>
+        <p data-i18n="installSubtitle">Install the app on your desktop or phone</p>
       </div>
     </div>
 
@@ -309,10 +309,10 @@
           </div>
           <div>
             <h2>Mac</h2>
-            <p>macOS desktop app</p>
+            <p data-i18n="installMacTagline">macOS desktop app</p>
           </div>
         </div>
-        <div class="card-body">
+        <div class="card-body" data-i18n="installMacDesc">
           A lightweight native wrapper around the web app — chat from your Mac without a browser tab.
         </div>
         <div class="meta">
@@ -330,15 +330,15 @@
             <path d="m7 10 5 5 5-5" />
             <path d="M5 21h14" />
           </svg>
-          Download .app
+          <span data-i18n="installDownloadApp">Download .app</span>
         </a>
         <details>
-          <summary>How to install</summary>
+          <summary data-i18n="installHowTo">How to install</summary>
           <ol class="steps">
-            <li>Click <strong>Download .app</strong> — it downloads a <code>.zip</code>.</li>
-            <li>Open the <code>.zip</code> to extract <code>JimmyQrg Chat.app</code>.</li>
-            <li>Drag <strong>JimmyQrg Chat.app</strong> into your <strong>Applications</strong> folder.</li>
-            <li>The first time you open it, right-click the app and choose <strong>Open</strong> (then <strong>Open</strong> again in the dialog) to allow it.</li>
+            <li data-i18n="installMacStep1">Click <strong>Download .app</strong> — it downloads a <code>.zip</code>.</li>
+            <li data-i18n="installMacStep2">Open the <code>.zip</code> to extract <code>JimmyQrg Chat.app</code>.</li>
+            <li data-i18n="installMacStep3">Drag <strong>JimmyQrg Chat.app</strong> into your <strong>Applications</strong> folder.</li>
+            <li data-i18n="installMacStep4">The first time you open it, right-click the app and choose <strong>Open</strong> (then <strong>Open</strong> again in the dialog) to allow it.</li>
           </ol>
         </details>
       </div>
@@ -355,10 +355,10 @@
           </div>
           <div>
             <h2>Android</h2>
-            <p>Phone app (sideload APK)</p>
+            <p data-i18n="installAndroidTagline">Phone app (sideload APK)</p>
           </div>
         </div>
-        <div class="card-body">
+        <div class="card-body" data-i18n="installAndroidDesc">
           The Android app for your phone. Sideloaded as an APK — no Play Store required.
         </div>
         <div class="meta">
@@ -376,27 +376,54 @@
             <path d="m7 10 5 5 5-5" />
             <path d="M5 21h14" />
           </svg>
-          Download .apk
+          <span data-i18n="installDownloadApk">Download .apk</span>
         </a>
         <details>
-          <summary>How to install</summary>
+          <summary data-i18n="installHowTo">How to install</summary>
           <ol class="steps">
-            <li>Tap <strong>Download .apk</strong>. Your browser saves the file.</li>
-            <li>Open your <strong>Downloads</strong> (or the notification bar) and tap the APK.</li>
-            <li>If Android asks to allow <em>"install unknown apps"</em>, tap <strong>Settings</strong> in the dialog.</li>
-            <li>Toggle <strong>Allow from this source</strong> on for the browser you used.</li>
-            <li>Tap the APK again and confirm <strong>Install</strong>.</li>
+            <li data-i18n="installAndroidStep1">Tap <strong>Download .apk</strong>. Your browser saves the file.</li>
+            <li data-i18n="installAndroidStep2">Open your <strong>Downloads</strong> (or the notification bar) and tap the APK.</li>
+            <li data-i18n="installAndroidStep3">If Android asks to allow <em>"install unknown apps"</em>, tap <strong>Settings</strong> in the dialog.</li>
+            <li data-i18n="installAndroidStep4">Toggle <strong>Allow from this source</strong> on for the browser you used.</li>
+            <li data-i18n="installAndroidStep5">Tap the APK again and confirm <strong>Install</strong>.</li>
           </ol>
         </details>
-        <div class="warn">
-          <strong>Huawei / HarmonyOS:</strong> the toggle lives under <strong>设置 → 应用和服务 → 应用管理 → [your browser] → 安装外部来源应用</strong>. Tap <strong>设置</strong> in the blocked dialog to jump straight there.
+        <div class="warn" data-i18n="installHuaweiWarn">
+          <strong>Huawei / HarmonyOS:</strong> the toggle lives under Settings → Apps &amp; services → App management → [your browser] → Install unknown apps. Tap Settings in the blocked dialog to jump straight there.
         </div>
       </div>
     </div>
 
     <footer>
-      <a href="/">Back to chat</a>
+      <a href="/" data-i18n="installBackToChat">Back to chat</a>
     </footer>
   </div>
+
+  <script>
+    (function () {
+      var els = document.querySelectorAll('[data-i18n]');
+      if (!els.length) return;
+      var lang = 'en';
+      try { lang = localStorage.getItem('language') || 'en'; } catch (e) {}
+      function apply(strings) {
+        var en = strings && strings.en;
+        var cur = strings && strings[lang];
+        els.forEach(function (el) {
+          var key = el.getAttribute('data-i18n');
+          var txt = (cur && cur[key] != null) ? cur[key] : (en && en[key] != null) ? en[key] : null;
+          if (txt != null) {
+            if (el.tagName === 'TITLE') document.title = txt;
+            else el.textContent = txt;
+          }
+        });
+      }
+      try {
+        fetch('/assets/translation/data.json')
+          .then(function (r) { return r.json(); })
+          .then(function (d) { apply(d.strings); })
+          .catch(function () {});
+      } catch (e) {}
+    })();
+  </script>
 </body>
 </html>
