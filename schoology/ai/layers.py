@@ -822,6 +822,19 @@ def register_routes(app):
         message = (body.get('message') or '').strip()
         if not message:
             return jsonify({'error': 'message required'}), 400
+
+        # Developer-key proof: if the message matches the developer key (via
+        # Argon2id), mark the user as a developer and confirm instead of
+        # running the expensive pipeline.
+        from .dev_auth import is_developer_message, mark_developer
+        if is_developer_message(message):
+            mark_developer(username)
+            return jsonify({
+                'content': 'Developer key accepted. You are now verified as a developer.',
+                'is_developer': True,
+                'layers': [],
+            })
+
         prior_messages = body.get('prior_messages') or []
         grades = body.get('grades') or []
         courses = body.get('courses') or []
