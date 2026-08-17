@@ -28,7 +28,7 @@ def _int_env(name: str, default: int) -> int:
 
 
 BASE_URL = os.getenv("SCHOOLOGY_BASE_URL", "https://pausd.schoology.com").rstrip("/")
-CLASSLINK_URL = os.getenv("CLASSLINK_URL", "https://launchpad.classlink.com/pausd")
+CLASSLINK_URL = os.getenv("CLASSLINK_URL", "https://login.classlink.com/my/pausd")
 USERNAME = os.getenv("SCHOOLOGY_USERNAME")
 HEADLESS = _flag("SCHOOLOGY_HEADLESS", True)
 
@@ -109,6 +109,42 @@ KEEPALIVE_SECONDS = max(60, _int_env("SCHOOLOGY_KEEPALIVE_MINUTES", 8) * 60)
 STORAGE_STATE_PATH = Path(
     os.getenv("SCHOOLOGY_STORAGE_STATE", str(PROJECT_ROOT / "storage_state.json"))
 )
+
+# Where downloaded/exported materials are cached (a temp area, not a store), and
+# where scripts/watch_once.py keeps its change-detection baseline. Both live
+# here rather than being read ad hoc so `.env` remains the answer to "what can I
+# configure?".
+EXPORT_DIR = os.getenv("SCHOOLOGY_EXPORT_DIR")
+WATCH_STATE_PATH = Path(
+    os.getenv("SCHOOLOGY_WATCH_STATE")
+    or (Path.home() / ".local" / "share" / "schoology-mcp" / "watch-state.json")
+)
+
+
+# --------------------------------------------------------------------------
+# Infinite Campus (optional, OFF by default)
+# --------------------------------------------------------------------------
+#
+# The district's SIS. It holds the things Schoology does not: the bell-schedule
+# with room numbers, period times and the official course roster. It is reached
+# through the same ClassLink portal as Schoology -- a different app tile, no
+# separate credentials.
+#
+# Off unless explicitly enabled: the URL is district-specific, and a tile that
+# does not exist would make every call fail for someone who forked this repo.
+CAMPUS_ENABLED = _flag("CAMPUS_ENABLED", False)
+CAMPUS_BASE_URL = os.getenv(
+    "CAMPUS_BASE_URL", "https://pausdca.infinitecampus.org"
+).rstrip("/")
+# The exact `aria-label` of the ClassLink tile that launches it.
+CAMPUS_APP_NAME = os.getenv("CAMPUS_APP_NAME", "Infinite Campus")
+
+
+def is_schoology_url(url: str) -> bool:
+    """True for an absolute URL on this Schoology host, or a bare path."""
+    if not url:
+        return False
+    return url.startswith("/") or BASE_URL.split("//")[-1] in url
 
 
 def _password_from_keyring() -> str | None:
