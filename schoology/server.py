@@ -854,7 +854,14 @@ def get_assignments():
 def get_posts():
     """Get recent posts."""
     username, password = decode_auth_header()
-    data = get_data_from_mcp_or_mock('get_recent_posts', username, password, priority=_priority_from_request())
+    # Upstream get_recent_posts now downloads embedded images by default;
+    # the dashboard only renders text/author/timestamp, so skip the image
+    # fetch (keeps /api/posts fast and avoids per-image failures).
+    data = get_data_from_mcp_or_mock(
+        'get_recent_posts', username, password,
+        priority=_priority_from_request(),
+        arguments={'download_images': False},
+    )
     return jsonify(data)
 
 
