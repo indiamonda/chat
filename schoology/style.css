@@ -1791,23 +1791,16 @@
         linear-gradient(var(--bg, #000), var(--bg, #000)) padding-box,
         var(--ai-gradient) border-box;
       border: 2px solid transparent;
-      color: transparent;
+      color: var(--primary, #00bbff);
       border-bottom-right-radius: 6px;
       filter: drop-shadow(0 0 12px var(--primary-dim, rgba(0, 187, 255, 0.25)));
     }
-    /* Apply the gradient directly to the user-bubble text. The user
-       bubble's content is always plain text (no markdown / links /
-       code blocks — those are assistant-only), so we can safely
-       gradient-fill the text without breaking selection or copy.
-       This is the same visual effect as the Sign In button's
-       ::before gradient overlay, just implemented via
-       background-clip: text on the actual content element. */
+    /* Solid accent color for user-bubble text. The old background-clip:text
+       gradient looked nice but made COLOR EMOJI invisible (the gradient only
+       fills text glyphs, not the emoji font's colored glyphs), so emoji
+       vanished from sent messages. A solid color keeps emoji intact. */
     .chat-message.user .message-bubble .message-content {
-      background: var(--ai-gradient);
-      -webkit-background-clip: text;
-      background-clip: text;
-      -webkit-text-fill-color: transparent;
-      color: transparent;
+      color: var(--primary, #00bbff);
       font-weight: 500;
     }
     /* Empty state when no chat is selected — distinct from the
