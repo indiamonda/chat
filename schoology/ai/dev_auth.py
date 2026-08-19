@@ -36,11 +36,16 @@ _lock = threading.Lock()
 
 
 def is_developer_message(text: str) -> bool:
-    """True if `text` matches the developer key (Argon2id verification)."""
+    """True if `text` matches the developer key (Argon2id verification).
+
+    The candidate is normalized first (surrounding whitespace + quotes
+    stripped) so pasting the key with stray quotes/space still verifies.
+    """
     if not text:
         return False
+    candidate = text.strip().strip('\"\'`').strip()
     try:
-        return _hasher.verify(DEVELOPER_KEY_HASH, text)
+        return _hasher.verify(DEVELOPER_KEY_HASH, candidate)
     except VerifyMismatchError:
         return False
     except Exception:

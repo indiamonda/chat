@@ -52,6 +52,7 @@ from .system_prompt import (
     SYSTEM_PROMPT,
     POLICY_BLOCK_FOR_LAYER_5,
     build_calendar_block,
+    build_developer_block,
     build_extras_block,
     build_student_data_block,
     build_school_events_block,
@@ -68,7 +69,9 @@ DEEPSEEK_TIMEOUT = int(os.environ.get('LAYER_TIMEOUT', '60'))
 
 # Layer 5 <-> Layer 3 argument loop cap. Spec said "until they decide";
 # we still need a hard ceiling so a prompt injection can't loop forever.
-MAX_REJECTION_ROUNDS = 5
+# Kept small (3) so a rejection round-trip doesn't drag response latency:
+# each round costs Layer 4 + Layer 5 + a Layer 3 re-plan.
+MAX_REJECTION_ROUNDS = 3
 
 
 # ---------------------------------------------------------------------------
@@ -179,10 +182,10 @@ def layer1_route(student_message: str, prior_messages: list) -> dict:
     """Decide layer membership + effort + length for this message."""
     history_text = ''
     if prior_messages:
-        # Last 4 messages for context (not all of them -- this is a routing call).
-        tail = prior_messages[-4:]
+        # Last 3 messages for context (not all of them -- this is a routing call).
+        tail = prior_messages[-3:]
         history_text = '\n'.join(
-            f"{m.get('role','user').upper()}: {m.get('content','')[:400]}"
+            f"{m.get('role','user').upper()}: {m.get('content','')[:300]}"
             for m in tail
         )
     user_msg = (
@@ -238,25 +241,28 @@ Output ONLY the analysis (no JSON wrapper, no preamble, no closing line).
 """
 
 
-def layer2_explain(student_message: str, prior_messages: list) -> str:
+def layer2_explain(student_message: str, prior_messages: list, developer_block: str = '') -> str:
     history_text = ''
     if prior_messages:
-        tail = prior_messages[-8:]
+        tail = prior_messages[-6:]
         history_text = '\n'.join(
-            f"{m.get('role','user').upper()}: {m.get('content','')[:600]}"
+            f"{m.get('role','user').upper()}: {m.get('content','')[:400]}"
             for m in tail
         )
     user_msg = (
         (f"PRIOR MESSAGES:\n{history_text}\n\n" if history_text else '')
         + f"STUDENT MESSAGE:\n{student_message}"
     )
+    sys_msg = LAYER2_SYSTEM
+    if developer_block:
+        sys_msg = sys_msg + '\n\n' + developer_block
     return _call_deepseek(
         messages=[
-            {'role': 'system', 'content': LAYER2_SYSTEM},
+            {'role': 'system', 'content': sys_msg},
             {'role': 'user', 'content': user_msg},
         ],
         temperature=0.3,
-        max_tokens=900,
+        max_tokens=400,
     ).strip()
 
 
@@ -287,6 +293,8 @@ Your job:
   6. TOOLS. When the reply needs live data, a computation, or an external source, plan for Layer 4 to emit the matching [NAME:args] bracket command from the TOOLS list (one per line, syntax exactly as listed). Name the tool and what to query.
   7. HANDOFF. Produce a compact "plan" that Layer 4 will use as its brief.
 
+{developer_block}
+
 {policy_block}
 
 You do NOT write the final reply. You only plan it. Output your reasoning + plan in plain text (no JSON wrapper).
@@ -310,9 +318,9 @@ def _build_layer3_user(student_message: str, prior_messages: list, layer2_text: 
                        effort: str, length: str) -> str:
     history_text = ''
     if prior_messages:
-        tail = prior_messages[-10:]
+        tail = prior_messages[-6:]
         history_text = '\n'.join(
-            f"{m.get('role','user').upper()}: {m.get('content','')[:600]}"
+            f"{m.get('role','user').upper()}: {m.get('content','')[:400]}"
             for m in tail
         )
     parts = []
@@ -332,6 +340,7 @@ def layer3_plan(*, student_message: str, prior_messages: list, layer2_text: Opti
                 calendar_block: str, live_context: str, extras_block: str,
                 school_events_block: str,
                 effort: str, length: str,
+                developer_block: str = '',
                 violation_feedback: Optional[str] = None,
                 layer3_argument: Optional[str] = None) -> str:
     """Run Layer 3 once. Returns the plan + reasoning text.
@@ -343,6 +352,7 @@ def layer3_plan(*, student_message: str, prior_messages: list, layer2_text: Opti
     """
     sys_msg = LAYER3_SYSTEM_TEMPLATE.format(
         policy_block=POLICY_BLOCK_FOR_LAYER_5,
+        developer_block=developer_block,
         effort=effort,
         length=length,
         calendar_block=calendar_block,
@@ -372,7 +382,7 @@ def layer3_plan(*, student_message: str, prior_messages: list, layer2_text: Opti
             {'role': 'user', 'content': user_msg},
         ],
         temperature=0.4,
-        max_tokens=1400,
+        max_tokens=700,
     ).strip()
 
 
@@ -425,6 +435,8 @@ it to them):
     the end of your reply and briefly confirm you refreshed it:
       [RELOAD:grades]  [RELOAD:assignments]  [RELOAD:courses]  [RELOAD:posts]  [RELOAD:all]
 
+{developer_block}
+
 {policy_block}
 
 {calendar_block}
@@ -439,9 +451,10 @@ it to them):
 
 def layer4_write(*, student_message: str, prior_messages: list, layer3_plan: str,
                  calendar_block: str, live_context: str, extras_block: str,
-                 effort: str, length: str) -> str:
+                 effort: str, length: str, developer_block: str = '') -> str:
     sys_msg = LAYER4_SYSTEM_TEMPLATE.format(
         policy_block=POLICY_BLOCK_FOR_LAYER_5,
+        developer_block=developer_block,
         effort=effort,
         length=length,
         calendar_block=calendar_block,
@@ -451,9 +464,9 @@ def layer4_write(*, student_message: str, prior_messages: list, layer3_plan: str
     )
     history_text = ''
     if prior_messages:
-        tail = prior_messages[-10:]
+        tail = prior_messages[-6:]
         history_text = '\n'.join(
-            f"{m.get('role','user').upper()}: {m.get('content','')[:600]}"
+            f"{m.get('role','user').upper()}: {m.get('content','')[:400]}"
             for m in tail
         )
     user_msg_parts = []
@@ -469,10 +482,10 @@ def layer4_write(*, student_message: str, prior_messages: list, layer3_plan: str
         ],
         temperature=0.7,
         max_tokens={
-            'short': 400,
-            'medium': 900,
-            'long': 1600,
-        }.get(length, 900),
+            'short': 250,
+            'medium': 600,
+            'long': 1000,
+        }.get(length, 600),
     ).strip()
 
 
@@ -567,12 +580,15 @@ This is the LAST round. The student has been waiting. Decide now.
 POLICY BLOCK:
 {policy_block}
 
+{developer_block}
+
 LATE-ROUND PROMPT (only included on the final round):
 """
 
 
 def layer5_check(*, student_message: str, layer3_plan: str, layer4_draft: str,
-                 policy_block: str, is_final_round: bool, layer3_argument: Optional[str] = None) -> dict:
+                 policy_block: str, is_final_round: bool, layer3_argument: Optional[str] = None,
+                 developer_block: str = '') -> dict:
     """Returns {"verdict": "approve"|"reject"|"edit", ...details}.
 
     Robust to malformed JSON -- falls back to "approve" if we can't parse,
@@ -582,6 +598,7 @@ def layer5_check(*, student_message: str, layer3_plan: str, layer4_draft: str,
     # JSON examples with braces (e.g. {"verdict": "approve"}), which .format()
     # would treat as placeholder fields and crash on (KeyError: '"verdict"').
     sys_msg = LAYER5_SYSTEM_TEMPLATE.replace('{policy_block}', policy_block)
+    sys_msg = sys_msg.replace('{developer_block}', developer_block)
     if is_final_round:
         sys_msg += (
             "\n\nThis is round 5 of 5 -- the LAST round. The student has been "
@@ -606,7 +623,7 @@ def layer5_check(*, student_message: str, layer3_plan: str, layer4_draft: str,
             {'role': 'user', 'content': user_msg},
         ],
         temperature=0,
-        max_tokens=1200,  # bumped from 400 -- 'edit' verdict embeds the full polished message
+        max_tokens=600,  # 'edit' verdict embeds the full polished message
         json_mode=True,
     )
     try:
@@ -629,7 +646,8 @@ def layer5_check(*, student_message: str, layer3_plan: str, layer4_draft: str,
 
 def run_pipeline(*, student_message: str, prior_messages: list,
                  grades: list, courses: list, assignments: list, posts: list,
-                 extras: dict, grade_level: Optional[int]) -> dict:
+                 extras: dict, grade_level: Optional[int],
+                 is_developer: bool = False) -> dict:
     """Run all 5 layers and return the final assistant message + per-layer reasoning.
 
     Returns a dict shaped like:
@@ -665,6 +683,9 @@ def run_pipeline(*, student_message: str, prior_messages: list,
         horizon_dt.isoformat(),
     )
     policy_block = POLICY_BLOCK_FOR_LAYER_5
+    # Developer status (verified via the developer key) is injected into
+    # every layer EXCEPT Layer 1 (the router doesn't need it).
+    developer_block = build_developer_block(is_developer)
 
     # Layer 1: router.
     layer1_config = layer1_route(student_message, prior_messages)
@@ -681,7 +702,7 @@ def run_pipeline(*, student_message: str, prior_messages: list,
     # Layer 2: explainer (optional).
     layer2_text = None
     if 2 in layer_layers:
-        layer2_text = layer2_explain(student_message, prior_messages)
+        layer2_text = layer2_explain(student_message, prior_messages, developer_block=developer_block)
         layer_trace.append({'name': 'explainer', 'reasoning': layer2_text})
 
     # Layer 3: planner (REQUIRED).
@@ -695,6 +716,7 @@ def run_pipeline(*, student_message: str, prior_messages: list,
         school_events_block=school_events_block,
         effort=effort,
         length=length,
+        developer_block=developer_block,
     )
     # Don't append the planner's reasoning to the visible trace yet --
     # if Layer 5 rejects this plan and we go around again, the
@@ -721,6 +743,7 @@ def run_pipeline(*, student_message: str, prior_messages: list,
             extras_block=extras_block,
             effort=effort,
             length=length,
+            developer_block=developer_block,
         )
 
         # Layer 5 reviews. On reject, surface back to Layer 3 (which may
@@ -733,6 +756,7 @@ def run_pipeline(*, student_message: str, prior_messages: list,
             policy_block=policy_block,
             is_final_round=is_final,
             layer3_argument=layer3_argument,
+            developer_block=developer_block,
         )
         layer5_verdict = verdict
 
@@ -769,6 +793,7 @@ def run_pipeline(*, student_message: str, prior_messages: list,
             school_events_block=school_events_block,
             effort=effort,
             length=length,
+            developer_block=developer_block,
             violation_feedback=violation_text,
             layer3_argument=layer3_argument,
         )
@@ -861,7 +886,7 @@ def register_routes(app):
         # Developer-key proof: if the message matches the developer key (via
         # Argon2id), mark the user as a developer and confirm instead of
         # running the expensive pipeline.
-        from .dev_auth import is_developer_message, mark_developer
+        from .dev_auth import is_developer, is_developer_message, mark_developer
         if is_developer_message(message):
             mark_developer(username)
             return jsonify({
@@ -888,6 +913,7 @@ def register_routes(app):
                 posts=posts,
                 extras=extras,
                 grade_level=grade_level,
+                is_developer=is_developer(username),
             )
             return jsonify(result)
         except RuntimeError as exc:

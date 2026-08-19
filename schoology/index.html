@@ -1966,6 +1966,10 @@
       state.currentMessages = Array.isArray(res.body.messages) ? res.body.messages : [];
       renderChatMessages();
       renderChatSidebar();
+      syncAiBusyForCurrentChat();
+      // If this chat has a generation in flight (navigated away and
+      // came back, or reloaded mid-generation), re-attach the poller.
+      ensureChatPolling(state.currentChatId);
       if (opts.recordLast !== false) {
         _apiFetch('/api/chats/last', { method: 'POST', body: JSON.stringify({ chatId: res.body.id }) }).catch(() => {});
       }
@@ -1994,6 +1998,7 @@
       state.currentMessages = [];
       renderChatMessages();
       renderChatSidebar();
+      syncAiBusyForCurrentChat();
       _apiFetch('/api/chats/last', { method: 'POST', body: JSON.stringify({ chatId: res.body.id }) }).catch(() => {});
     }
 
@@ -2023,18 +2028,16 @@
     }
 
     function scheduleSaveCurrentChat() {
-      // Debounce: many tool calls can fire per turn, so we don't want to
-      // PUT the whole messages array on every push. 500ms is short enough
-      // to feel instant for a user navigating away, long enough to batch.
+      // Real mode: the server persists every message as it happens
+      // (user messages + assistant replies via the chat-job flow,
+      // tool history + soft notes via POST /api/chats/<id>/append).
+      // Nothing to save here. Demo mode still uses localStorage.
       if (state.demoMode) {
         if (state.username) {
           localStorage.setItem(_LOCAL_CHAT_KEY(state.username), JSON.stringify(state.currentMessages));
         }
         return;
       }
-      if (!state.currentChatId) return;
-      if (_saveChatTimer) clearTimeout(_saveChatTimer);
-      _saveChatTimer = setTimeout(() => { saveCurrentChatNow(); }, 500);
     }
 
     async function saveCurrentChatNow() {
@@ -2043,27 +2046,21 @@
         if (state.username) {
           localStorage.setItem(_LOCAL_CHAT_KEY(state.username), JSON.stringify(state.currentMessages));
         }
-        return;
       }
+      // Real mode: no-op. The server is the source of truth for
+      // chat messages; sidebar meta refreshes via the poll endpoints.
+    }
+
+    // Persist a soft client-generated note (memory '_Noted', 'Stopped
+    // loading' etc.) so it survives reloads. Real mode appends it via
+    // POST /api/chats/<id>/append; demo mode uses localStorage.
+    function _persistLocalNote(text) {
+      if (state.demoMode) { scheduleSaveCurrentChat(); return; }
       if (!state.currentChatId) return;
-      const chatId = state.currentChatId;
-      // Title is owned by the AI (after the first message) or by the user
-      // (manual rename). saveCurrentChatNow only persists messages.
-      const body = { messages: state.currentMessages };
-      const res = await _apiFetch('/api/chats/' + encodeURIComponent(chatId), {
-        method: 'PUT', body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        const chat = state.chats.find(c => c.id === chatId);
-        if (chat) {
-          chat.updatedAt = res.body.updatedAt;
-          chat.summary = res.body.summary || chat.summary;
-          chat.messageCount = (res.body.messages || []).length;
-          // Re-sort by updatedAt desc.
-          state.chats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-          renderChatSidebar();
-        }
-      }
+      _apiFetch('/api/chats/' + encodeURIComponent(state.currentChatId) + '/append', {
+        method: 'POST',
+        body: JSON.stringify({ role: 'assistant', content: text }),
+      }).catch(() => {});
     }
 
     async function deleteChat(chatId) {
@@ -2595,7 +2592,13 @@
         // Skip tool/system messages in the visible UI; they only matter
         // for the model's context.
         if (m.role === 'tool' || m.role === 'system') continue;
-        addChatMessage(type, m.content, { skipHistory: true, msgIdx: i });
+        // Server-side replies carry a bracket-stripped `display` copy;
+        // fall back to stripping [TOOL:...] markers client-side for
+        // messages that predate it.
+        const display = (type === 'assistant' && m.display !== undefined)
+          ? m.display
+          : stripToolBrackets(m.content || '');
+        addChatMessage(type, display, { skipHistory: true, msgIdx: i });
       }
       // Auto-scroll to the bottom so the user lands at the latest message.
       container.scrollTop = container.scrollHeight;
@@ -4208,7 +4211,16 @@
         trimmed = trimmed.slice(0, TOOL_RESULT_HISTORY_CAP) + '... (truncated)';
       }
       state.currentMessages.push({ role: 'tool', name: toolName, content: trimmed });
-      scheduleSaveCurrentChat();
+      // Real mode: persist the tool result server-side (POST .../append)
+      // so the model sees it next turn from any device / after a reload.
+      if (!state.demoMode && state.currentChatId) {
+        _apiFetch('/api/chats/' + encodeURIComponent(state.currentChatId) + '/append', {
+          method: 'POST',
+          body: JSON.stringify({ role: 'tool', name: toolName, content: trimmed }),
+        }).catch(() => {});
+      } else {
+        scheduleSaveCurrentChat();
+      }
     }
 
     // The registry. Each entry:
@@ -5064,7 +5076,7 @@
           // Soft note in the UI so the user can see it was saved.
           addChatMessage('assistant', '_📌 Noted — saved to your memory._', { msgIdx: state.currentMessages.length });
           state.currentMessages.push({ role: 'assistant', content: '_📌 Noted — saved to your memory._' });
-          scheduleSaveCurrentChat();
+          _persistLocalNote('_📌 Noted — saved to your memory._');
         }).catch(() => {});
       }
 
@@ -5207,7 +5219,7 @@
           if (inner) inner.innerHTML = '<div class="markdown-content"><p><em>Stopped loading data. Answering with what I have.</em></p></div>';
         }
         state.currentMessages.push({ role: 'assistant', content: '_Stopped loading data. Answering with what I have._' });
-        scheduleSaveCurrentChat();
+        _persistLocalNote('_Stopped loading data. Answering with what I have._');
         await _requestAssistantReply(ctx.userFullMessage, { autoNameWith: null });
         return loaderMsg;
       }
@@ -5256,143 +5268,261 @@
       // "other chats" list automatically.
       const extras = await fetchChatContextExtras(state.currentChatId);
 
-      // AbortController so the Stop button can cancel an in-flight
-      // AI request. Only one request is in flight at a time (the
-      // send button is disabled while state._aiBusy is true) but we
-      // still want a handle to abort.
-      const abortController = new AbortController();
-      state._aiAbortController = abortController;
-      setAiBusy(true);
-
-      try {
-        // ── 5-LAYER PIPELINE PATH ─────────────────────────────────
-        // Real (non-demo) chats route through the
-        // server-side layered pipeline at /api/chat/layered. The server
-        // runs Layer 1 (router), then optionally Layer 2 (explainer),
-        // then required Layer 3 (planner), then Layer 4 (writer), then
-        // Layer 5 (compliance) with up to 5 rejection rounds. Each layer's
-        // reasoning is returned so the user can expand "Thinking..."
-        // blocks under the assistant bubble.
-        const useLayered = !state.demoMode;
-        if (useLayered) {
-          // Open the bubble immediately with a "Thinking through the
-          // layers..." placeholder. We'll replace it with the final
-          // markdown render once the pipeline returns.
-          const bubble = addChatMessage('assistant', '', {
-            skipHistory: true,
-            renderMarkdown: false,
-          });
-          const contentEl = bubble ? bubble.querySelector('.markdown-content') : null;
-          if (contentEl) {
-            contentEl.innerHTML = renderThinkingPlaceholder();
-          }
-
-          const chatScrollEl = document.getElementById('chatMessages');
-          if (chatScrollEl) chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
-
-          // Build the prior-messages slice to send to the server. Strip
-          // layer traces from old assistant messages so the model
-          // doesn't see its own internal scaffolding.
-          const priorForServer = (state.currentMessages || []).map(m => ({
-            role: m.role,
-            content: m.content || '',
-          }));
-
-          const body = {
-            message: userFullMessage,
-            prior_messages: priorForServer,
-            grades: state.grades || [],
-            courses: state.courses || [],
-            assignments: state.assignments || [],
-            posts: state.posts || [],
-            extras,
-            grade_level: state._gateGrade || null,
-          };
-
-          let response;
-          try {
-            response = await fetch(`${aiApiBase()}/api/chat/layered`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(getAuthHeader() || {}),
-                ...(state.gateToken ? { 'X-Gate-Token': state.gateToken } : {}),
-              },
-              body: JSON.stringify(body),
-              signal: abortController.signal,
-            });
-          } catch (fetchErr) {
-            if (bubble && contentEl && !contentEl.textContent) bubble.remove();
-            throw fetchErr;
-          }
-          if (!response.ok) {
-            // Show the error message in the bubble instead of leaving it
-            // empty.
-            if (contentEl) {
-              contentEl.innerHTML = `<em>(request failed: ${response.status})</em>`;
-            }
-            throw new Error(`layered endpoint returned ${response.status}`);
-          }
-          const result = await response.json();
-          const visible = stripToolBrackets(result.content || '');
-
-          if (contentEl) {
-            if (!visible) {
-              contentEl.innerHTML = '<em>(no response)</em>';
-            } else {
-              contentEl.innerHTML = renderMarkdown(visible);
-              contentEl.style.transition = 'opacity 0.3s ease-out';
-              contentEl.style.opacity = '0';
-              void contentEl.offsetHeight;
-              contentEl.style.opacity = '1';
-            }
-          }
-
-          // Only the final response is shown to the student. The layer
-          // trace (router / planner / writer / compliance reasoning) is
-          // internal scaffolding and is deliberately NOT rendered.
-          state.currentMessages.push({
-            role: 'assistant',
-            content: visible,
-          });
-          scheduleSaveCurrentChat();
-          // Dispatch tools on the RAW reply (with brackets intact) — the
-          // `visible` copy already had [TOOL:...] markers stripped, so
-          // dispatching on it would never fire any tool.
-          handleAICommands(result.content || '');
-
-          if (opts.autoNameWith && state.currentChatId && !state.demoMode) {
-            const userCount = state.currentMessages.filter(m => m.role === 'user').length;
-            const meta = state.chats.find(c => c.id === state.currentChatId);
-            if (userCount === 1 && meta && (!meta.title || meta.title === 'New chat')) {
-              aiNameChat(state.currentChatId, opts.autoNameWith);
-            }
-          }
-        } else if (state.demoMode) {
+      // ── DEMO MODE: synchronous, unchanged ────────────────────────
+      if (state.demoMode) {
+        setAiBusy(true);
+        try {
           const demoResponse = generateDemoResponse(userFullMessage);
           addChatMessage('assistant', demoResponse, { msgIdx: state.currentMessages.length });
           state.currentMessages.push({ role: 'assistant', content: demoResponse });
           scheduleSaveCurrentChat();
-        } else {
-          addChatMessage('error', 'The AI assistant is unavailable right now. Please try again.');
-          state.currentMessages.push({ role: 'assistant', content: '[Error: AI unavailable]' });
-          scheduleSaveCurrentChat();
-        }
-      } catch (e) {
-        // AbortError is expected when the user hits Stop -- end the
-        // response in place with no "cancelled" notice. Whatever
-        // streamed into the bubble before the abort stays visible;
-        // an empty bubble was already removed by the inner stream
-        // catch above.
-        if (e && (e.name === 'AbortError' || /aborted/i.test(e.message || ''))) {
-          // intentionally silent
-        } else {
+        } catch (e) {
           addChatMessage('error', `Error: ${e.message}`);
+        } finally {
+          setAiBusy(false);
         }
-      } finally {
-        // Always clear the busy flag + drop the abort controller so
-        // the input row can become a Send button again.
-        state._aiAbortController = null;
+        return;
+      }
+
+      // ── REAL MODE: server-side background generation ────────────
+      // The message goes to POST /api/chats/<id>/messages; the server
+      // appends it and runs the 5-layer pipeline in a background job.
+      // We poll GET /api/chats/<id>/status until the reply lands, so
+      // generation survives switching chats / menus and multiple
+      // chats can generate at the same time.
+      const chatId = state.currentChatId;
+      if (!chatId) {
+        addChatMessage('error', 'No chat open. Start or pick a chat first.');
+        return;
+      }
+
+      // Build the prior-messages slice to send to the server. Use the
+      // bracket-stripped copy for assistant messages so the model
+      // doesn't see its own internal scaffolding.
+      const priorForServer = (state.currentMessages || []).map(m => ({
+        role: m.role,
+        content: (m.role === 'assistant' && m.display !== undefined
+          ? m.display : m.content) || '',
+      }));
+
+      const body = {
+        message: userFullMessage,
+        prior_messages: priorForServer,
+        grades: state.grades || [],
+        courses: state.courses || [],
+        assignments: state.assignments || [],
+        posts: state.posts || [],
+        extras,
+        grade_level: state._gateGrade || null,
+      };
+
+      let submit;
+      try {
+        submit = await _apiFetch('/api/chats/' + encodeURIComponent(chatId) + '/messages', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+      } catch (fetchErr) {
+        addChatMessage('error', `Error: ${fetchErr.message || fetchErr}`);
+        return;
+      }
+      if (!submit.ok) {
+        if (submit.status === 409) {
+          // A job is already generating in this chat (e.g. another tab).
+          // Un-push the local user message so we stay in sync with the
+          // server's copy.
+          if (state.currentMessages.length) state.currentMessages.pop();
+          renderChatMessages();
+          showNotification('A reply is already being generated in this chat.', 'error');
+          return;
+        }
+        addChatMessage('error', `Couldn't reach the assistant: ${submit.status}`);
+        return;
+      }
+
+      // Thinking placeholder until the job lands.
+      const bubble = addChatMessage('assistant', '', {
+        skipHistory: true,
+        renderMarkdown: false,
+      });
+      const contentEl = bubble ? bubble.querySelector('.markdown-content') : null;
+      if (contentEl) contentEl.innerHTML = renderThinkingPlaceholder();
+      const chatScrollEl = document.getElementById('chatMessages');
+      if (chatScrollEl) chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
+
+      setAiBusy(true);
+      startChatPolling(chatId, { bubble, autoNameWith: opts.autoNameWith });
+    }
+    // ── Chat generation polling ───────────────────────────────────
+    // Each chat with a pending server-side job gets a poller. Pollers
+    // run regardless of which chat is open (generation continues when
+    // the user switches chats or menus); when the job finishes and the
+    // chat is open, its messages are applied + rendered and the reply's
+    // [TOOL:...] commands are dispatched once.
+    const CHAT_POLL_INTERVAL_MS = 1500;
+    state._chatPollers = state._chatPollers || {};
+    state._toolHandled = state._toolHandled || {}; // chatId -> Set(msgIdx)
+
+    function startChatPolling(chatId, opts) {
+      if (state.demoMode || !chatId || state._chatPollers[chatId]) return;
+      state._chatPollers[chatId] = {
+        timer: null,
+        stopped: false,
+        bubble: (opts && opts.bubble) || null,
+        autoNameWith: (opts && opts.autoNameWith) || null,
+        retries: 0,
+      };
+      _chatPollTick(chatId);
+    }
+
+    async function _chatPollTick(chatId) {
+      const p = state._chatPollers[chatId];
+      if (!p || p.stopped) return;
+      let res;
+      try {
+        res = await _apiFetch('/api/chats/' + encodeURIComponent(chatId) + '/status');
+      } catch (e) {
+        res = null;
+      }
+      if (!p || p.stopped) return;
+      if (!res || !res.ok) {
+        p.retries = (p.retries || 0) + 1;
+        if (p.retries > 20) {
+          // ~30s of failures: stop polling quietly. The job may still
+          // be running server-side; reopening the chat re-attaches.
+          stopChatPolling(chatId, { restoreBusy: chatId === state.currentChatId });
+          return;
+        }
+        p.timer = setTimeout(() => _chatPollTick(chatId), CHAT_POLL_INTERVAL_MS);
+        return;
+      }
+      p.retries = 0;
+      const messages = Array.isArray(res.body.messages) ? res.body.messages : [];
+      const job = res.body.pendingJob || null;
+      const isCurrent = (chatId === state.currentChatId) && !state.demoMode;
+
+      if (isCurrent) {
+        state.currentMessages = messages;
+        renderChatMessages();
+        // Dispatch tools for newly-arrived assistant replies (once each).
+        const handled = state._toolHandled[chatId] || (state._toolHandled[chatId] = new Set());
+        messages.forEach((m, i) => {
+          if (m.role === 'assistant' && m.content && !handled.has(i)) {
+            handled.add(i);
+            handleAICommands(m.content);
+          }
+        });
+      }
+      // Sidebar meta refresh for this chat.
+      const chatMeta = state.chats.find(c => c.id === chatId);
+      if (chatMeta) {
+        chatMeta.messageCount = messages.length;
+        if (res.body.updatedAt) chatMeta.updatedAt = res.body.updatedAt;
+        state.chats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        renderChatSidebar();
+      }
+
+      const status = job ? job.status : 'done';
+      if (status === 'queued' || status === 'running') {
+        p.timer = setTimeout(() => _chatPollTick(chatId), CHAT_POLL_INTERVAL_MS);
+        return;
+      }
+
+      // Terminal states: done / failed / cancelled.
+      if (isCurrent) {
+        if (status === 'failed') {
+          renderRetryBubble(p.bubble, chatId, job.error || 'unknown error');
+        } else if (status === 'cancelled') {
+          const bubbleEl = p.bubble && document.contains(p.bubble) ? p.bubble : null;
+          if (bubbleEl) {
+            const inner = bubbleEl.querySelector('.message-bubble .markdown-content');
+            if (inner) inner.innerHTML = '<em>Stopped.</em>';
+          }
+        }
+      }
+      if (status === 'done' && p.autoNameWith) {
+        const userCount = messages.filter(m => m.role === 'user').length;
+        const meta = state.chats.find(c => c.id === chatId);
+        if (userCount === 1 && meta && (!meta.title || meta.title === 'New chat')) {
+          aiNameChat(chatId, p.autoNameWith);
+        }
+      }
+      stopChatPolling(chatId, { restoreBusy: isCurrent });
+    }
+
+    function stopChatPolling(chatId, opts) {
+      const p = state._chatPollers[chatId];
+      if (!p) return;
+      p.stopped = true;
+      if (p.timer) { clearTimeout(p.timer); p.timer = null; }
+      delete state._chatPollers[chatId];
+      if (opts && opts.restoreBusy) setAiBusy(false);
+    }
+
+    // Render a "generation failed + Retry" bubble. Used when a job ends
+    // in the failed state (either live in the poller or on re-open).
+    function renderRetryBubble(bubble, chatId, reason) {
+      const short = String(reason || 'unknown error').slice(0, 160);
+      const bubbleEl = bubble && document.contains(bubble) ? bubble : null;
+      let contentEl = null;
+      if (bubbleEl) {
+        contentEl = bubbleEl.querySelector('.message-bubble .markdown-content');
+      }
+      if (!contentEl) {
+        const fresh = addChatMessage('assistant', '', { skipHistory: true, renderMarkdown: false });
+        contentEl = fresh ? fresh.querySelector('.markdown-content') : null;
+      }
+      if (contentEl) {
+        contentEl.innerHTML = '<em>Something went wrong generating the reply ('
+          + escapeHtml(short) + ').</em> '
+          + '<button type="button" class="retry-gen-btn" data-action="retry">Retry</button>';
+        const btn = contentEl.querySelector('.retry-gen-btn');
+        if (btn) btn.onclick = () => retryChatGeneration(chatId);
+      }
+    }
+
+    async function retryChatGeneration(chatId) {
+      if (state.demoMode || !chatId) return;
+      const res = await _apiFetch('/api/chats/' + encodeURIComponent(chatId) + '/retry', {
+        method: 'POST', body: '{}',
+      });
+      if (!res.ok) {
+        showNotification('Could not retry: ' + ((res.body && res.body.error) || res.status), 'error');
+        return;
+      }
+      const bubble = addChatMessage('assistant', '', { skipHistory: true, renderMarkdown: false });
+      const contentEl = bubble ? bubble.querySelector('.markdown-content') : null;
+      if (contentEl) contentEl.innerHTML = renderThinkingPlaceholder();
+      setAiBusy(true);
+      startChatPolling(chatId, { bubble });
+    }
+
+    // Called when a chat is opened: re-attach a poller if a generation
+    // is in flight (e.g. the user navigated away and came back, or
+    // reloaded the page while the job was still running).
+    async function ensureChatPolling(chatId) {
+      if (state.demoMode || !chatId || state._chatPollers[chatId]) return;
+      let res;
+      try {
+        res = await _apiFetch('/api/chats/' + encodeURIComponent(chatId) + '/status');
+      } catch (e) { return; }
+      if (!res || !res.ok) return;
+      const job = res.body && res.body.pendingJob;
+      if (!job) return;
+      if (job.status === 'queued' || job.status === 'running') {
+        const last = (state.currentMessages || [])[state.currentMessages.length - 1];
+        let bubble = null;
+        if (!last || last.role !== 'assistant') {
+          bubble = addChatMessage('assistant', '', { skipHistory: true, renderMarkdown: false });
+          const contentEl = bubble ? bubble.querySelector('.markdown-content') : null;
+          if (contentEl) contentEl.innerHTML = renderThinkingPlaceholder();
+        }
+        setAiBusy(true);
+        startChatPolling(chatId, { bubble });
+      } else if (job.status === 'failed') {
+        setAiBusy(false);
+        renderRetryBubble(null, chatId, job.error || 'unknown error');
+      } else if (job.status === 'cancelled') {
         setAiBusy(false);
       }
     }
@@ -5655,19 +5785,53 @@
         return;
       }
       if (msgIdx < 0 || msgIdx >= state.currentMessages.length) return;
-      // Update the user message in state. We don't re-attach file contexts
-      // (the file picker is gone by the time the user is editing), so the
-      // full model-facing content is just the edited text.
-      state.currentMessages[msgIdx].content = edited;
-      // Drop everything after the edited message -- the AI's previous
-      // reply and any follow-ups are stale.
-      state.currentMessages = state.currentMessages.slice(0, msgIdx + 1);
-      scheduleSaveCurrentChat();
-      // Re-render to show the updated message bubble (no edit form).
+
+      if (state.demoMode) {
+        // Demo: local-only edit, unchanged behavior.
+        state.currentMessages[msgIdx].content = edited;
+        state.currentMessages = state.currentMessages.slice(0, msgIdx + 1);
+        scheduleSaveCurrentChat();
+        renderChatMessages();
+        await _requestAssistantReply(edited, { autoNameWith: null });
+        return;
+      }
+
+      // Real mode: the server owns the message list. Ask it to truncate
+      // at the edited message, append the new text, and queue a fresh
+      // background job.
+      const chatId = state.currentChatId;
+      if (!chatId) return;
+      const extras = await fetchChatContextExtras(chatId);
+      const res = await _apiFetch('/api/chats/' + encodeURIComponent(chatId) + '/edit', {
+        method: 'POST',
+        body: JSON.stringify({
+          index: msgIdx,
+          content: edited,
+          grades: state.grades || [],
+          courses: state.courses || [],
+          assignments: state.assignments || [],
+          posts: state.posts || [],
+          extras,
+          grade_level: state._gateGrade || null,
+        }),
+      });
+      if (!res.ok) {
+        if (res.status === 409) {
+          showNotification('A reply is still being generated — stop it first, then edit.', 'error');
+        } else {
+          showNotification('Could not save the edit (' + res.status + ')', 'error');
+        }
+        return;
+      }
+      // Update local state to match the server truncation + append.
+      state.currentMessages = state.currentMessages.slice(0, msgIdx);
+      state.currentMessages.push({ role: 'user', content: edited });
       renderChatMessages();
-      // Regenerate the AI response. Skip auto-naming on edits -- the chat
-      // already has a title from its first message.
-      await _requestAssistantReply(edited, { autoNameWith: null });
+      const bubble = addChatMessage('assistant', '', { skipHistory: true, renderMarkdown: false });
+      const contentEl = bubble ? bubble.querySelector('.markdown-content') : null;
+      if (contentEl) contentEl.innerHTML = renderThinkingPlaceholder();
+      setAiBusy(true);
+      startChatPolling(chatId, { bubble });
     }
 
     // Fade-in effect for AI responses
@@ -5699,21 +5863,33 @@
     // Toggle the input-row send button between "Send" and "Stop", and
     // also disable the Enter keyboard shortcut while busy. Called from
     // the start of _requestAssistantReply and from the finally block.
+    // Per-chat: generation runs per chat in the background, so the busy
+    // flag is tracked per chatId; state._aiBusy mirrors the CURRENT
+    // chat's flag. Switching chats re-syncs via syncAiBusyForCurrentChat().
     function setAiBusy(busy) {
-      state._aiBusy = !!busy;
+      state._genBusy = state._genBusy || {};
+      if (state.currentChatId) state._genBusy[state.currentChatId] = !!busy;
+      syncAiBusyForCurrentChat();
+    }
+
+    // Re-sync state._aiBusy + the send/stop button when the open chat
+    // changes (called from loadCurrentChat / createNewChat).
+    function syncAiBusyForCurrentChat() {
+      state._genBusy = state._genBusy || {};
+      state._aiBusy = !!(state.currentChatId && state._genBusy[state.currentChatId]);
       const btn = document.getElementById('chatSendBtn');
       const input = document.getElementById('chatInput');
       if (btn) {
-        btn.classList.toggle('is-stop', busy);
-        btn.setAttribute('aria-label', busy ? 'Stop generating' : 'Send message');
-        btn.title = busy ? 'Stop generating' : 'Send message';
+        btn.classList.toggle('is-stop', state._aiBusy);
+        btn.setAttribute('aria-label', state._aiBusy ? 'Stop generating' : 'Send message');
+        btn.title = state._aiBusy ? 'Stop generating' : 'Send message';
         btn.disabled = false; // stop button stays clickable to cancel
       }
       if (input) {
         // Visually show the input is "locked" while a request is in
         // flight. The user can still edit the text but cannot submit.
-        input.classList.toggle('is-busy', busy);
-        input.setAttribute('aria-busy', busy ? 'true' : 'false');
+        input.classList.toggle('is-busy', state._aiBusy);
+        input.setAttribute('aria-busy', state._aiBusy ? 'true' : 'false');
       }
       updateSendButtonEnabled();
     }
@@ -5736,14 +5912,33 @@
       btn.disabled = empty;
     }
 
-    // Cancel the in-flight AI request. Called from the Stop button
-    // (and indirectly from Enter while busy, which we no-op).
+    // Cancel the in-flight generation for the CURRENT chat. Called from
+    // the Stop button (and indirectly from Enter while busy, which we
+    // no-op). The server marks the job cancelled; the worker discards
+    // its result. Jobs in OTHER chats keep running.
     function stopAiGeneration() {
-      if (state._aiAbortController) {
-        try { state._aiAbortController.abort(); } catch (_) {}
-      }
-      // The finally{} in _requestAssistantReply will reset the busy
-      // state and button.
+      if (state.demoMode) return;
+      const chatId = state.currentChatId;
+      if (!chatId) return;
+      const p = state._chatPollers[chatId];
+      if (!p) return;
+      _apiFetch('/api/chats/' + encodeURIComponent(chatId) + '/cancel', {
+        method: 'POST', body: '{}',
+      }).then((res) => {
+        if (res.ok && res.body && res.body.status === 'cancelled') {
+          // Immediate UI restore; the next poll tick (or the worker)
+          // finalizes server-side cleanup.
+          const bubbleEl = p.bubble && document.contains(p.bubble) ? p.bubble : null;
+          if (bubbleEl) {
+            const inner = bubbleEl.querySelector('.message-bubble .markdown-content');
+            if (inner) inner.innerHTML = '<em>Stopped.</em>';
+          }
+          setAiBusy(false);
+          stopChatPolling(chatId, {});
+        }
+        // If the server answered anything else (e.g. already done),
+        // keep polling -- the reply will render on the next tick.
+      }).catch(() => {});
     }
 
     // Emoji picker

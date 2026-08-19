@@ -1417,6 +1417,449 @@ def auto_title_chat():
     return jsonify({'title': title})
 
 
+# ---------------------------------------------------------------------------
+# Async chat generation: server-side background AI jobs
+# ---------------------------------------------------------------------------
+#
+# Each AI turn runs as a BACKGROUND JOB on the server. The client POSTs a
+# message, then polls GET /api/chats/<chat_id>/status. The job keeps running
+# even when the user switches chats / dashboard menus / closes the tab, and
+# multiple chats can generate at the same time (bounded by
+# AI_JOB_MAX_CONCURRENT worker threads).
+#
+# Persistence model:
+#   - The chat file is the single source of truth. Every message (user,
+#     assistant, tool history) is appended server-side.
+#   - A chat with an in-flight turn carries a `pendingJob` object in its
+#     file: {status: queued|running|failed|cancelled, payload, error}.
+#     The payload holds everything the pipeline needs, so a retry after a
+#     crash/restart re-runs without the client re-posting anything.
+#   - On process start, any leftover queued/running jobs are marked failed
+#     (their worker thread died with the old process); the client offers a
+#     retry via POST /api/chats/<chat_id>/retry.
+#   - Cancellation is cooperative: POST cancel sets the file status to
+#     cancelled and flags an in-memory Event; the worker checks both before
+#     persisting its result.
+
+AI_JOB_MAX_CONCURRENT = int(os.environ.get('AI_JOB_MAX_CONCURRENT', '4'))
+
+_job_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=AI_JOB_MAX_CONCURRENT,
+    thread_name_prefix='ai-chat-job',
+)
+_job_cancel_events: dict[tuple, threading.Event] = {}
+_job_cancel_guard = threading.Lock()
+
+_chat_locks: dict[str, threading.Lock] = {}
+_chat_locks_guard = threading.Lock()
+
+
+def _chat_file_lock(username: str, chat_id: str) -> threading.Lock:
+    """One lock per chat file; serializes all read-modify-write cycles."""
+    key = f'{_safe_username(username)}:{chat_id}'
+    with _chat_locks_guard:
+        lock = _chat_locks.setdefault(key, threading.Lock())
+    return lock
+
+
+def _register_cancel_event(username: str, chat_id: str) -> threading.Event:
+    key = (username, chat_id)
+    with _job_cancel_guard:
+        evt = _job_cancel_events.setdefault(key, threading.Event())
+    return evt
+
+
+def _clear_cancel_event(username: str, chat_id: str) -> None:
+    key = (username, chat_id)
+    with _job_cancel_guard:
+        _job_cancel_events.pop(key, None)
+
+
+def _strip_tool_brackets(text):
+    """Remove [NAME:args] bracket commands from a reply for display.
+
+    Mirrors the client's stripToolBrackets(), using the server-side tool
+    list (schoology.ai.system_prompt._TOOLS) as the name source.
+    """
+    if not text:
+        return text
+    try:
+        from schoology.ai.system_prompt import _TOOLS
+        names = [syntax.split(':')[0] for syntax, _desc in _TOOLS]
+    except Exception:  # noqa: BLE001 - cosmetic helper; never fail the job
+        names = []
+    out = str(text)
+    for name in names:
+        out = re.sub(r'\[' + re.escape(name) + r'(?::[^\]]*)?\]', '', out)
+    return re.sub(r'\n{3,}', '\n\n', out).strip()
+
+
+def _chat_maybe_update_summary(chat: dict) -> None:
+    """Refresh the cross-chat summary once there's enough material."""
+    msgs = chat.get('messages') or []
+    non_system = [m for m in msgs if m.get('role') != 'system']
+    if len(non_system) >= SUMMARIZE_MIN_MESSAGES:
+        chat['summary'] = _summarize_chat(msgs)
+        chat['summaryUpdatedAt'] = int(time.time() * 1000)
+
+
+def _job_payload_from_body(body: dict, message: str, prior_messages: list) -> dict:
+    return {
+        'message': message,
+        'prior_messages': prior_messages,
+        'grades': body.get('grades') if isinstance(body.get('grades'), list) else [],
+        'courses': body.get('courses') if isinstance(body.get('courses'), list) else [],
+        'assignments': body.get('assignments') if isinstance(body.get('assignments'), list) else [],
+        'posts': body.get('posts') if isinstance(body.get('posts'), list) else [],
+        'extras': body.get('extras') if isinstance(body.get('extras'), dict) else {},
+        'grade_level': body.get('grade_level'),
+    }
+
+
+def _submit_chat_job(username: str, chat_id: str) -> None:
+    """Queue the chat's pendingJob for background execution."""
+    _register_cancel_event(username, chat_id)
+    _job_executor.submit(_run_chat_job, username, chat_id)
+
+
+def _run_chat_job(username: str, chat_id: str) -> None:
+    """Background worker: run the layered pipeline and persist the reply."""
+    lock = _chat_file_lock(username, chat_id)
+    path = _chat_path(username, chat_id)
+
+    with lock:
+        chat = _read_json(path, None)
+        if not chat or not isinstance(chat, dict):
+            _clear_cancel_event(username, chat_id)
+            return
+        pj = chat.get('pendingJob')
+        if not pj or pj.get('status') != 'queued':
+            # Cancelled (or otherwise superseded) before we started.
+            _clear_cancel_event(username, chat_id)
+            return
+        pj['status'] = 'running'
+        pj['startedAt'] = int(time.time() * 1000)
+        chat['pendingJob'] = pj
+        _atomic_write_json(path, chat)
+
+    payload = pj.get('payload') or {}
+    message = (payload.get('message') or '').strip()
+    result = None
+    error = None
+    try:
+        from schoology.ai.layers import run_pipeline
+        from schoology.ai.dev_auth import is_developer
+        result = run_pipeline(
+            student_message=message,
+            prior_messages=payload.get('prior_messages') or [],
+            grades=payload.get('grades') or [],
+            courses=payload.get('courses') or [],
+            assignments=payload.get('assignments') or [],
+            posts=payload.get('posts') or [],
+            extras=payload.get('extras') or {},
+            grade_level=payload.get('grade_level'),
+            is_developer=is_developer(username),
+        )
+    except Exception as exc:  # noqa: BLE001 - worker must never raise
+        error = f'{type(exc).__name__}: {exc}'
+        print(f'[CHAT-JOB] pipeline failed for {_safe_username(username)}/{chat_id}: {error}', file=sys.stderr)
+
+    with lock:
+        chat = _read_json(path, None)
+        if not chat or not isinstance(chat, dict):
+            _clear_cancel_event(username, chat_id)
+            return
+        pj = chat.get('pendingJob') or {}
+
+        # Cooperative cancellation: the user cancelled while the pipeline
+        # was running. Drop the result silently.
+        cancel_event = None
+        with _job_cancel_guard:
+            cancel_event = _job_cancel_events.get((username, chat_id))
+        if pj.get('status') == 'cancelled' or (cancel_event is not None and cancel_event.is_set()):
+            _clear_cancel_event(username, chat_id)
+            return
+
+        if error:
+            chat['pendingJob'] = {**pj, 'status': 'failed', 'error': error[:500]}
+            chat['updatedAt'] = int(time.time() * 1000)
+            _atomic_write_json(path, chat)
+            _clear_cancel_event(username, chat_id)
+            return
+
+        raw = (result.get('content') or '') if isinstance(result, dict) else ''
+        display = _strip_tool_brackets(raw)
+        chat['messages'] = (chat.get('messages') or []) + [{
+            'role': 'assistant',
+            'content': raw,
+            'display': display,
+        }]
+        chat['messages'] = chat['messages'][-MAX_MESSAGES_PER_CHAT:]
+        chat.pop('pendingJob', None)
+        chat['updatedAt'] = int(time.time() * 1000)
+        _chat_maybe_update_summary(chat)
+        _atomic_write_json(path, chat)
+        _clear_cancel_event(username, chat_id)
+        print(f'[CHAT-JOB] finished {_safe_username(username)}/{chat_id}', file=sys.stderr)
+
+
+def _fail_stale_chat_jobs() -> None:
+    """Mark queued/running jobs from a previous process as failed.
+
+    Chat files persist across restarts but worker threads don't, so any
+    pendingJob left in queued/running state after a boot belongs to a
+    dead process. Mark them failed; the client offers a retry.
+    """
+    try:
+        if not AI_CHATS_DIR.exists():
+            return
+        for user_dir in AI_CHATS_DIR.iterdir():
+            if not user_dir.is_dir():
+                continue
+            for p in user_dir.glob('*.json'):
+                if p.name.startswith('_'):
+                    continue
+                chat = _read_json(p, None)
+                if not chat or not isinstance(chat, dict):
+                    continue
+                pj = chat.get('pendingJob')
+                if pj and pj.get('status') in ('queued', 'running'):
+                    pj['status'] = 'failed'
+                    pj['error'] = 'server_restarted'
+                    _atomic_write_json(p, chat)
+                    print(f'[CHAT-JOB] marked stale job failed: {p.name}', file=sys.stderr)
+    except OSError as exc:
+        print(f'[CHAT-JOB] stale-job scan skipped: {exc}', file=sys.stderr)
+
+
+@app.route('/api/chats/<chat_id>/messages', methods=['POST'])
+def chat_submit_message(chat_id):
+    """Append a user message + queue a background AI job for this chat.
+
+    Body: {message, prior_messages, grades, courses, assignments, posts,
+    extras, grade_level}. Returns 202 {status:'queued'} immediately; the
+    pipeline runs in the background. 409 if a job is already active for
+    this chat (one generation per chat at a time -- other chats generate
+    in parallel).
+    """
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    body = request.get_json(silent=True) or {}
+    message = (body.get('message') or '').strip()
+    if not message:
+        return jsonify({'error': 'message required'}), 400
+
+    lock = _chat_file_lock(username, chat_id)
+    path = _chat_path(username, chat_id)
+    with lock:
+        chat = _read_json(path, None)
+        if not chat:
+            return jsonify({'error': 'not_found'}), 404
+        pj = chat.get('pendingJob')
+        if pj and pj.get('status') in ('queued', 'running'):
+            return jsonify({'error': 'busy'}), 409
+
+        # Developer-key proof: answer inline, no pipeline needed.
+        from schoology.ai.dev_auth import is_developer_message, mark_developer
+        if is_developer_message(message):
+            mark_developer(username)
+            reply = 'Developer key accepted. You are now verified as a developer.'
+            chat['messages'] = (chat.get('messages') or []) + [
+                {'role': 'user', 'content': message},
+                {'role': 'assistant', 'content': reply, 'display': reply},
+            ]
+            chat['messages'] = chat['messages'][-MAX_MESSAGES_PER_CHAT:]
+            chat['updatedAt'] = int(time.time() * 1000)
+            _atomic_write_json(path, chat)
+            return jsonify({'status': 'done'})
+
+        prior = [
+            {'role': m.get('role'), 'content': m.get('content') or ''}
+            for m in (body.get('prior_messages') or [])
+            if isinstance(m, dict)
+        ]
+        chat['messages'] = (chat.get('messages') or []) + [
+            {'role': 'user', 'content': message}
+        ]
+        chat['messages'] = chat['messages'][-MAX_MESSAGES_PER_CHAT:]
+        chat['pendingJob'] = {
+            'status': 'queued',
+            'createdAt': int(time.time() * 1000),
+            'payload': _job_payload_from_body(body, message, prior),
+        }
+        chat['updatedAt'] = int(time.time() * 1000)
+        _atomic_write_json(path, chat)
+
+    _submit_chat_job(username, chat_id)
+    return jsonify({'status': 'queued'}), 202
+
+
+@app.route('/api/chats/<chat_id>/status', methods=['GET'])
+def chat_status(chat_id):
+    """Poll endpoint: messages + slim pendingJob status for one chat.
+
+    {messages: [...], pendingJob: {status, error, createdAt} | null,
+    updatedAt: ms}. pendingJob is null once the turn is done (the reply
+    has been appended to messages).
+    """
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    chat = _read_json(_chat_path(username, chat_id), None)
+    if not chat:
+        return jsonify({'error': 'not_found'}), 404
+    pj = chat.get('pendingJob')
+    slim = None
+    if pj:
+        slim = {
+            'status': pj.get('status'),
+            'error': pj.get('error'),
+            'createdAt': pj.get('createdAt'),
+        }
+    return jsonify({
+        'messages': chat.get('messages') or [],
+        'pendingJob': slim,
+        'updatedAt': chat.get('updatedAt'),
+    })
+
+
+@app.route('/api/chats/<chat_id>/cancel', methods=['POST'])
+def chat_cancel(chat_id):
+    """Cancel the chat's in-flight generation (cooperative)."""
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    lock = _chat_file_lock(username, chat_id)
+    path = _chat_path(username, chat_id)
+    with lock:
+        chat = _read_json(path, None)
+        if not chat:
+            return jsonify({'error': 'not_found'}), 404
+        pj = chat.get('pendingJob')
+        if not pj or pj.get('status') in ('failed', 'cancelled'):
+            return jsonify({'status': 'idle'}), 409
+        pj['status'] = 'cancelled'
+        chat['pendingJob'] = pj
+        _atomic_write_json(path, chat)
+    with _job_cancel_guard:
+        evt = _job_cancel_events.get((username, chat_id))
+    if evt is not None:
+        evt.set()
+    return jsonify({'status': 'cancelled'})
+
+
+@app.route('/api/chats/<chat_id>/retry', methods=['POST'])
+def chat_retry(chat_id):
+    """Re-run the last failed/cancelled turn from its stored payload."""
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    lock = _chat_file_lock(username, chat_id)
+    path = _chat_path(username, chat_id)
+    with lock:
+        chat = _read_json(path, None)
+        if not chat:
+            return jsonify({'error': 'not_found'}), 404
+        pj = chat.get('pendingJob')
+        if not pj or pj.get('status') not in ('failed', 'cancelled'):
+            return jsonify({'error': 'nothing_to_retry'}), 409
+        pj['status'] = 'queued'
+        pj['error'] = None
+        pj['createdAt'] = int(time.time() * 1000)
+        chat['pendingJob'] = pj
+        _atomic_write_json(path, chat)
+    _submit_chat_job(username, chat_id)
+    return jsonify({'status': 'queued'}), 202
+
+
+@app.route('/api/chats/<chat_id>/edit', methods=['POST'])
+def chat_edit_message(chat_id):
+    """Replace a user message (edit & resend): truncate the chat at
+    ``index``, append the edited message, queue a fresh background job.
+    Body: {index, content, grades, courses, assignments, posts, extras,
+    grade_level}.
+    """
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    body = request.get_json(silent=True) or {}
+    try:
+        index = int(body.get('index'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'index must be an integer'}), 400
+    content = (body.get('content') or '').strip()
+    if not content:
+        return jsonify({'error': 'content is required'}), 400
+
+    lock = _chat_file_lock(username, chat_id)
+    path = _chat_path(username, chat_id)
+    with lock:
+        chat = _read_json(path, None)
+        if not chat:
+            return jsonify({'error': 'not_found'}), 404
+        msgs = chat.get('messages') or []
+        if index < 0 or index >= len(msgs) or msgs[index].get('role') != 'user':
+            return jsonify({'error': 'bad_index'}), 400
+        pj = chat.get('pendingJob')
+        if pj and pj.get('status') in ('queued', 'running'):
+            return jsonify({'error': 'busy'}), 409
+        prior = [
+            {'role': m.get('role'), 'content': m.get('content') or ''}
+            for m in msgs[:index]
+        ]
+        msgs = msgs[:index] + [{'role': 'user', 'content': content}]
+        chat['messages'] = msgs[-MAX_MESSAGES_PER_CHAT:]
+        chat['pendingJob'] = {
+            'status': 'queued',
+            'createdAt': int(time.time() * 1000),
+            'payload': _job_payload_from_body(body, content, prior),
+        }
+        chat['updatedAt'] = int(time.time() * 1000)
+        _atomic_write_json(path, chat)
+    _submit_chat_job(username, chat_id)
+    return jsonify({'status': 'queued'}), 202
+
+
+@app.route('/api/chats/<chat_id>/append', methods=['POST'])
+def chat_append(chat_id):
+    """Append a synthetic message (tool history / soft UI notes).
+
+    Body: {role: 'assistant'|'tool', content, name?}. Used by the client
+    for tool results and '_Noted'/'_Stopped' notes so everything the user
+    sees is persisted server-side.
+    """
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    body = request.get_json(silent=True) or {}
+    role = (body.get('role') or '').strip()
+    if role not in ('assistant', 'tool'):
+        return jsonify({'error': 'role must be assistant or tool'}), 400
+    content = str(body.get('content') or '').strip()[:8000]
+    if not content:
+        return jsonify({'error': 'content is required'}), 400
+
+    lock = _chat_file_lock(username, chat_id)
+    path = _chat_path(username, chat_id)
+    with lock:
+        chat = _read_json(path, None)
+        if not chat:
+            return jsonify({'error': 'not_found'}), 404
+        msg = {'role': role, 'content': content}
+        name = (body.get('name') or '').strip()[:40]
+        if role == 'tool' and name:
+            msg['name'] = name
+        chat['messages'] = (chat.get('messages') or []) + [msg]
+        chat['messages'] = chat['messages'][-MAX_MESSAGES_PER_CHAT:]
+        chat['updatedAt'] = int(time.time() * 1000)
+        _atomic_write_json(path, chat)
+    return jsonify({'status': 'ok'})
+
+
+_fail_stale_chat_jobs()
+
+
 if __name__ == '__main__':
     print("""
     ╔═══════════════════════════════════════════════════════════╗

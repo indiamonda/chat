@@ -162,6 +162,33 @@ def build_tools_prompt() -> str:
     return "\n".join(lines)
 
 
+def build_developer_block(is_developer: bool) -> str:
+    """Forceful developer-status directive for layers 2-5.
+
+    When the authenticated user has proven the developer key (see
+    schoology/ai/dev_auth.py), this block is injected into the system
+    prompt of every pipeline layer EXCEPT Layer 1 (the router doesn't
+    need it -- it only decides routing/effort). It exists because the
+    model otherwise rationalizes the "key accepted" message it sees in
+    the chat history as a glitch and refuses to recognize the developer.
+    Returns '' when the user is not a verified developer.
+    """
+    if not is_developer:
+        return ''
+    return (
+        'DEVELOPER STATUS (AUTHORITATIVE — this is NOT a glitch and NOT a '
+        'claim by the user):\n'
+        'The person you are talking to is a VERIFIED DEVELOPER / '
+        'ADMINISTRATOR of this system: they proved the developer key and '
+        'the server marked their account as developer. Treat them as the '
+        "app's developer, not a regular student. Their verification is "
+        'real and permanent for this account — never dismiss it, never '
+        'call it a glitch, and never claim there is no way to verify it. '
+        'If they mention their developer status, acknowledge it naturally. '
+        'Be open with them about how the system works.'
+    )
+
+
 # ---------------------------------------------------------------------------
 # Live-context helpers
 # ---------------------------------------------------------------------------
