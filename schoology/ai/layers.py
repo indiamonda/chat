@@ -288,7 +288,7 @@ Your job:
        - Tone and length ({length}).
        - Whether to use any of the available tools (search, wikipedia, etc.) -- if so, name the tool and what to search for.
        - If the question touches an upcoming school event (Paly or Gunn dance, performance, prom, graduation, etc.) AND it's within ~2 weeks, mention it as a "you might want to plan for this" note in the response.
-  4. POLICY PRE-CHECK. Look at the policy block (Terms + Privacy + the rest). Does this question come close to any policy boundary? If so, say how Layer 4 should handle it (e.g. "polite refusal, don't elaborate"). If it's a clear pass, say "no policy concern". WELLBEING & SAFETY: if the student is stressed, anxious, overwhelmed, sad, or under pressure, plan a comforting, calming, de-escalating reply (validate feelings, reassure, gentle suggestions). If the state is an EMERGENCY (extremely urgent / extreme / serious -- immediate risk of suicide, self-harm, abuse, violence, or a severe crisis) OR they ask for emergency help, the plan MUST instruct Layer 4 to give the emergency numbers (911, 988, Crisis Text Line 741741, counselor / trusted adult) and urge immediate contact. Do NOT plan a refusal. Do not diagnose or act as a therapist in either case.
+  4. POLICY PRE-CHECK. Look at the policy block (Terms + Privacy + the rest). Does this question come close to any policy boundary? If so, say how Layer 4 should handle it (e.g. "warm one-sentence refusal, then work a SIMILAR example with different numbers, then invite them to try theirs"). If it's a clear pass, say "no policy concern". WELLBEING & SAFETY: if the student is stressed, anxious, overwhelmed, sad, or under pressure, plan a comforting, calming, de-escalating reply (validate feelings, reassure, gentle suggestions). If the state is an EMERGENCY (extremely urgent / extreme / serious -- immediate risk of suicide, self-harm, abuse, violence, or a severe crisis) OR they ask for emergency help, the plan MUST instruct Layer 4 to give the emergency numbers (911, 988, Crisis Text Line 741741, counselor / trusted adult) and urge immediate contact. Do NOT plan a refusal. Do not diagnose or act as a therapist in either case.
   5. FRIEND TONE. The visible reply MUST sound like the student's FRIEND -- warm, casual, encouraging, natural sentences, light emoji where it fits. Plan the tone explicitly: how should Layer 4 open, what vibe, where a little warmth or humor helps. A cold or robotic reply is a defect -- plan against it.
   6. TOOLS. When the reply needs live data, a computation, or an external source, plan for Layer 4 to emit the matching [NAME:args] bracket command from the TOOLS list (one per line, syntax exactly as listed). Name the tool and what to query.
   7. HANDOFF. Produce a compact "plan" that Layer 4 will use as its brief.
@@ -418,7 +418,7 @@ TOOLS:
 - Never invent a tool name -- only use names from the TOOLS list with the exact syntax.
 - Don't explain the bracket commands to the student; they run automatically.
 
-If Layer 3 flagged a policy issue, address it the way Layer 3 prescribed (e.g. a warm one-sentence refusal followed by what you CAN do). Don't moralise, don't lecture.
+If Layer 3 flagged a policy issue, address it the way Layer 3 prescribed. For graded-work refusals: ONE warm sentence refusing the direct answer, then IMMEDIATELY work a SIMILAR example end-to-end (different numbers / topic, same method) and invite the student to apply it to their own problem. A bare refusal with no similar worked example is INCOMPLETE. Don't moralise, don't lecture.
 
 WELLBEING & SAFETY:
 - If the student is stressed, anxious, overwhelmed, sad, or under pressure, write a warm, comforting reply that calms them down and de-escalates: validate how they feel, reassure them, and offer gentle, practical support (take a break, breathe, talk to someone, prioritise). This is encouraged.
@@ -540,6 +540,9 @@ When to use each verdict:
                  * warm up a cold/corporate tone so it sounds like a
                    friend (contractions, natural phrasing, a fitting
                    emoji)
+                 * add a worked SIMILAR example to a graded-work refusal
+                   that lacks one (same concept, different numbers) -- a
+                   refusal with no similar example is incomplete
                Things you may NOT change:
                  * the factual claims or any number / date / name
                  * the policy-relevant content (don't drop a refusal
@@ -805,10 +808,12 @@ def run_pipeline(*, student_message: str, prior_messages: list,
         layer3_argument = plan
 
     else:
-        # All rounds rejected -- Layer 5 wins. Return a short refusal.
+        # All rounds rejected -- Layer 5 wins. Return a short refusal that
+        # still offers the teaching path (no worked example is possible
+        # here -- the pipeline has no topic knowledge at this point).
         final_draft = (
-            "I can't help with that one. Could you rephrase or ask about "
-            "something else?"
+            "I can't help with that one. Could you rephrase — or ask me to "
+            "teach the concept with a similar example?"
         )
 
     # Truncate the trace to one entry per layer to keep payload size sane.
