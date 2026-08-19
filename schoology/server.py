@@ -23,11 +23,14 @@ import base64
 import concurrent.futures
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
 import time
 import traceback
+import urllib.error
+import urllib.request
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -1332,6 +1335,86 @@ def get_last_chat():
     if not data:
         return jsonify({'chatId': None})
     return jsonify({'chatId': data.get('chatId')})
+
+
+# ---------------------------------------------------------------------------
+# AI chat auto-titling (server-side only)
+# ---------------------------------------------------------------------------
+# The client used to call the DeepSeek proxy from the browser with a
+# client-side prompt. The prompt now lives here; the client just posts
+# the chat id + first message and we title it server-side.
+
+_AUTO_TITLE_SYSTEM = (
+    'You generate very short chat titles (2-5 words). Reply with ONLY the '
+    'title text: no quotes, no leading emoji, no trailing punctuation, no '
+    'prefix like "Title:".'
+)
+
+
+def _deepseek_auto_title(first_user_message: str):
+    """Return a short title for a chat's first message, or None."""
+    api_key = os.environ.get('DEEPSEEK_KEY')
+    seed = (first_user_message or '').strip()[:400]
+    if not seed or not api_key:
+        return None
+    body = {
+        'model': os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat'),
+        'messages': [
+            {'role': 'system', 'content': _AUTO_TITLE_SYSTEM},
+            {'role': 'user', 'content': f'First message in the chat:\n"""{seed}"""\n\nTitle:'},
+        ],
+        'temperature': 0.4,
+        'max_tokens': 20,
+        'stream': False,
+    }
+    req = urllib.request.Request(
+        'https://api.deepseek.com/v1/chat/completions',
+        data=json.dumps(body).encode('utf-8'),
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {api_key}',
+        },
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode('utf-8')
+        data = json.loads(raw)
+        title = str(data['choices'][0]['message']['content'] or '').strip()
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, KeyError, json.JSONDecodeError) as exc:
+        print(f'[auto-title] DeepSeek call failed: {type(exc).__name__}: {exc}', file=sys.stderr)
+        return None
+    # Same cleanup the client used to do: strip quotes, leading emoji,
+    # trailing punctuation.
+    title = title.strip().strip('"\'`')
+    title = re.sub(r'^[\U0001F300-\U0001FAFF\u2600-\u27BF\s]+', '', title)
+    title = re.sub(r'[.!?,;:\-\u2013\u2014]+$', '', title).strip()
+    if not title:
+        return None
+    return title[:60]
+
+
+@app.route('/api/chats/auto-title', methods=['POST'])
+def auto_title_chat():
+    """POST {chatId, first_user_message} -> titles the chat server-side."""
+    username = _require_username()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    body = request.get_json(silent=True) or {}
+    chat_id = (body.get('chatId') or '').strip()
+    if not chat_id:
+        return jsonify({'error': 'chatId is required'}), 400
+    path = _chat_path(username, chat_id)
+    chat = _read_json(path, None)
+    if not chat:
+        return jsonify({'error': 'not_found'}), 404
+    title = _deepseek_auto_title(body.get('first_user_message') or '')
+    if not title:
+        return jsonify({'title': None})
+    chat['title'] = title
+    chat['updatedAt'] = int(time.time() * 1000)
+    _atomic_write_json(path, chat)
+    return jsonify({'title': title})
 
 
 if __name__ == '__main__':

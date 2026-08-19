@@ -106,13 +106,16 @@ A real-time multiplayer FPS built on Socket.IO's `/game` namespace, unrelated to
 - **Teleport command** (`/tp`): disabled in quickplay rooms (`!roomKey.startsWith('qp:')`). In private rooms, supports source selectors (`@s`, `@a`, `@e`, `@p`, `@r`, or player name) and destination selectors — see `parseTeleportCommand` and `executeTeleport` in `server/index.js`.
 
 ### AI Assistant architecture (`schoology/index.html` + `schoology/ai/`)
-- **Tool protocol** is bracket commands emitted by the model: `[CALC:expr]`, `[WIKI:topic]`, `[FILE:id|name|type|size]`, etc. A `TOOL_REGISTRY` at the top of `schoology/index.html` is the single source of truth: the system prompt, welcome message, `generateDemoResponse` help branch, and `handleAICommands` dispatcher all read from it. Adding a new tool = one registry entry.
+- **Tool protocol** is bracket commands emitted by the model: `[CALC:expr]`, `[WIKI:topic]`, `[FILE:id|name|type|size]`, etc. As of 2026-08 the tool DESCRIPTIONS live SERVER-SIDE in `schoology/ai/system_prompt.py::build_tools_prompt()` (injected into Layer 3/4 prompts); the client-side `TOOL_REGISTRY` in `schoology/index.html` keeps only the executors (regex + handler + user-facing blurbs), no prompt text. Adding a new tool = one entry in BOTH the server tool list and the client executor registry, plus the backend route in `schoology/ai/<family>.py`.
+- **All AI prompts are server-side only** (2026-08 change). The client no longer builds or sends system prompts: the old `buildContextMessages` / `buildToolsPrompt` / `buildCalendarPromptSection` / `buildContextExtrasSystemMessage` and the legacy worker-proxy streaming path were removed. `sendChatMessage()` posts only `{message, prior_messages, grades, courses, assignments, posts, extras, grade_level}` to `/api/chat/layered`. Chat auto-titling (`POST /api/chats/auto-title`), soft-fail grade re-detection (`POST /api/grade/redetect`), and the agent password check (`POST /api/agent-verify`) all run server-side now.
 - **Tool results go into `state.currentMessages`** with `role: 'tool'` so the model sees them on the next turn. Cap each at 2,000 chars in history; the full result stays in the chat UI.
 - **File upload** is real: `handleFileUpload` POSTs to `/api/file/ingest`, gets a `file_id`, and on send appends `[FILE:id|name|type|size]` markers. `/api/file/context` expands markers into extracted text (PDF, OCR, Whisper transcription, etc.) before the model sees the message. Files are stored in `/data/ai_uploads/<uuid>` and auto-purged after 1 hour.
 - **New AI routes** live in `schoology/ai/*.py` (math, geometry, knowledge, science, files, code, integrations, basics, web) and self-register via `register_routes(app)` from `schoology/ai/__init__.py`. `schoology/server.py` calls `register_ai_routes(app)` once near the bottom of its route block.
 - **Auth** for AI routes is the same `decode_auth_header()` Basic-auth pattern as the rest of the API.
 - **No rate limiting in v1**; most routes hit free public APIs with their own quotas (Wikipedia, Open-Meteo, MyMemory, arXiv). GitHub is 60/hr unauth.
-- **Adding a new tool = one `TOOL_REGISTRY` entry** (at the top of `schoology/index.html`). The system prompt, welcome message, `generateDemoResponse` help branch, and `handleAICommands` dispatcher all read from it. Then add the implementation in `schoology/ai/<family>.py` and register it via `register_routes(app)`. Don't sprinkle the tool name across files — it's a single source of truth.
+- **Adding a new tool** = one entry in `build_tools_prompt()` in `schoology/ai/system_prompt.py` (server prompt) + one entry in the client `TOOL_REGISTRY` executor table (regex + executor + userBlurb; NO prompt field -- prompts never ship to the client). Then add the implementation in `schoology/ai/<family>.py` and register it via `register_routes(app)`. Don't sprinkle the tool name across files.
+- **AI tone**: the assistant is the student's FRIEND (warm, casual, supportive). Tone rules live in `schoology/ai/system_prompt.py` (SYSTEM_PROMPT + POLICY_BLOCK_FOR_LAYER_5) and in the Layer 3/4/5 templates in `schoology/ai/layers.py`; Layer 5 may EDIT a compliant-but-cold draft to warm it up.
+- **Developer/admin key**: proving the developer key sends it as a chat message; `schoology/ai/dev_auth.py` verifies it via Argon2id (hash stored, key never stored). The hash was rotated 2026-08-18.
 - **Multi-chat state** is server-persisted per user. See "Multi-chat AI assistant" below for storage layout, endpoints, and the heuristic remember/cross-chat context system.
 - **Dashboard section cache** (`localStorage`): each section's last successful response is persisted under `schoology_section_cache_<username>_<section>`. `hydrateFromCache()` reads it on dashboard open and renders instantly while `loadSection()` runs in the background — without this, the user stares at skeletons for 60-90s on every cold start. The cache is per-user; don't surface another user's data.
 
@@ -141,7 +144,7 @@ A user can have many chats; each chat has its own history. A "global memory" of 
   - `state.currentMessages: []` — messages of the open chat (loaded lazily via `loadCurrentChat`)
   - `state.globalMemory: []` — remembered facts
   - `loadChats()` always ensures one default chat exists (creates one if list is empty) so the sidebar is never blank.
-  - `sendChatMessage()` POSTs `/api/chats` on first send to mint an id, then PUTs the updated messages on every reply. After the first assistant reply, `aiNameChat()` (model call) auto-titles the chat if the user hasn't renamed it.
+  - `sendChatMessage()` POSTs `/api/chats` on first send to mint an id, then PUTs the updated messages on every reply. After the first assistant reply, `aiNameChat()` auto-titles the chat if the user hasn't renamed it -- via `POST /api/chats/auto-title` (DeepSeek call + title prompt are SERVER-SIDE).
   - Saves are debounced 500ms via `scheduleSaveCurrentChat()` so rapid sends don't hammer the server.
   - **Demo mode** (`state.demoMode === true`) bypasses all `/api/chats` and `/api/memory` calls and uses one localStorage chat under `schoology_chat_history_<username>`. The sidebar shows a "(demo mode)" notice in that case.
 
@@ -172,12 +175,12 @@ The correct call is:
 const auth = getAuthHeader();
 if (auth && auth.Authorization) headers['Authorization'] = auth.Authorization;
 ```
-The **wrong** pattern (which has shipped before and produced silent 401s across `/api/chats`, `/api/memory`, AND pre-existing `/api/file/ingest` and the AI worker fetch):
+The **wrong** pattern (which has shipped before and produced silent 401s across `/api/chats`, `/api/memory`, AND pre-existing `/api/file/ingest` and the tool-executor fetch (aiFetch)):
 ```js
 const auth = getAuthHeader();
 headers['Authorization'] = auth;  // coerces object to "[object Object]"
 ```
-Flask's `decode_auth_header()` then sees no `Basic ` prefix and returns 401; the symptom also cascades to 500s on `/api/grades` etc. because the MCP daemon gets `None` credentials. Three call sites in `schoology/index.html` already use the correct pattern: `_apiFetch` (multi-chat), `aiFetch` (AI worker), and the file upload `fetch` — keep new code aligned with these.
+Flask's `decode_auth_header()` then sees no `Basic ` prefix and returns 401; the symptom also cascades to 500s on `/api/grades` etc. because the MCP daemon gets `None` credentials. Three call sites in `schoology/index.html` already use the correct pattern: `_apiFetch` (multi-chat), `aiFetch` (tool executors), and the file upload `fetch` — keep new code aligned with these.
 
 ### Theme system in `schoology/`
 CSS variables on `:root` / `[data-theme="light"]` / `[data-theme="dark"]`. `--surface` is used for chat message backgrounds. Toggle: `#darkModeToggle` checkbox; init: `initDarkMode()` reads localStorage or `prefers-color-scheme`.
@@ -229,5 +232,5 @@ Errors render as a red box with the exact message — no generic "something went
 - Do not add `exec` to the Dockerfile `CMD` — `&` is the right pattern for running gunicorn and node in one container.
 - Do not assume the chat app can be suspended — `agent.md` says "this app cannot suspend - it powers other applications".
 - Do not use demo/placeholder data in production paths (e.g. schoology grades). The `generateDemoResponse` AI fallback is for the AI tab only, and even there, "DO NOT USE DEMO INFORMATION UNLESS IS IN THE DEMO MODE".
-- Do not write `headers['Authorization'] = auth` from `getAuthHeader()` — it returns an **object**, not a string. Use `auth.Authorization`. See "Auth-header gotcha" above; this bug shipped before and produced silent 401s across `/api/chats`, `/api/memory`, `/api/file/ingest`, and the AI worker fetch.
+- Do not write `headers['Authorization'] = auth` from `getAuthHeader()` — it returns an **object**, not a string. Use `auth.Authorization`. See "Auth-header gotcha" above; this bug shipped before and produced silent 401s across `/api/chats`, `/api/memory`, `/api/file/ingest`, and the tool-executor fetch (aiFetch).
 - Do not return HTTP 410 for removed-upstream endpoints. 410 logs as a browser console error; return 200 with a `{"removed": true}` body and let the frontend soft-skip. See "Schoology basic-info pattern" above.

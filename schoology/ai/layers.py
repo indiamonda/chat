@@ -55,6 +55,7 @@ from .system_prompt import (
     build_extras_block,
     build_student_data_block,
     build_school_events_block,
+    build_tools_prompt,
 )
 
 # Reuse the same env vars the gate uses for the DeepSeek key.
@@ -282,7 +283,9 @@ Your job:
        - Whether to use any of the available tools (search, wikipedia, etc.) -- if so, name the tool and what to search for.
        - If the question touches an upcoming school event (Paly or Gunn dance, performance, prom, graduation, etc.) AND it's within ~2 weeks, mention it as a "you might want to plan for this" note in the response.
   4. POLICY PRE-CHECK. Look at the policy block (Terms + Privacy + the rest). Does this question come close to any policy boundary? If so, say how Layer 4 should handle it (e.g. "polite refusal, don't elaborate"). If it's a clear pass, say "no policy concern". WELLBEING & SAFETY: if the student is stressed, anxious, overwhelmed, sad, or under pressure, plan a comforting, calming, de-escalating reply (validate feelings, reassure, gentle suggestions). If the state is an EMERGENCY (extremely urgent / extreme / serious -- immediate risk of suicide, self-harm, abuse, violence, or a severe crisis) OR they ask for emergency help, the plan MUST instruct Layer 4 to give the emergency numbers (911, 988, Crisis Text Line 741741, counselor / trusted adult) and urge immediate contact. Do NOT plan a refusal. Do not diagnose or act as a therapist in either case.
-  5. HANDOFF. Produce a compact "plan" that Layer 4 will use as its brief.
+  5. FRIEND TONE. The visible reply MUST sound like the student's FRIEND -- warm, casual, encouraging, natural sentences, light emoji where it fits. Plan the tone explicitly: how should Layer 4 open, what vibe, where a little warmth or humor helps. A cold or robotic reply is a defect -- plan against it.
+  6. TOOLS. When the reply needs live data, a computation, or an external source, plan for Layer 4 to emit the matching [NAME:args] bracket command from the TOOLS list (one per line, syntax exactly as listed). Name the tool and what to query.
+  7. HANDOFF. Produce a compact "plan" that Layer 4 will use as its brief.
 
 {policy_block}
 
@@ -293,6 +296,8 @@ EFFORT LEVEL: {effort}. Adjust depth accordingly (low = brief, high = thorough).
 {calendar_block}
 
 {live_context}
+
+{tools_block}
 
 {extras_block}
 
@@ -342,6 +347,7 @@ def layer3_plan(*, student_message: str, prior_messages: list, layer2_text: Opti
         length=length,
         calendar_block=calendar_block,
         live_context=live_context,
+        tools_block=build_tools_prompt(),
         extras_block=extras_block,
         school_events_block=school_events_block,
     )
@@ -387,14 +393,22 @@ EFFORT: {effort}. TARGET LENGTH: {length}.
 
 Write the reply. Don't expose internal pipeline labels to the student -- they should read it as a single, polished answer.
 
-TONE -- be warm, never cold:
-- You are talking to a real high-school student who is often stressed about grades, deadlines and the future. Sound like a friendly, encouraging human -- never a cold robot, a corporate helpdesk, or a dry FAQ.
+TONE -- you are the student's FRIEND:
+- Talk like a close, supportive friend who happens to be great at school stuff. Warm, casual, a little playful when the mood fits. Never a cold robot, never a corporate helpdesk, never a dry FAQ.
+- Use contractions and short, natural sentences. Vary how you open and close. If the student's name is in the live context, use it when it feels natural (not every message).
 - Be warm, kind and supportive in EVERY reply: greet naturally where it fits, show you genuinely care, and close on an encouraging note when appropriate.
 - Use a little emoji to feel friendly and approachable (e.g. 🙂 💪 📚 ✨ 🎉), but don't overdo it, and never use emoji in a crisis or a policy refusal.
-- Match the student's energy: casual if they're casual, gentle if they're worried, celebratory if they're celebrating.
-- Avoid mechanical phrasing. Vary how you open and close, use contractions and short, natural sentences, and let a light, human touch come through.
+- Match the student's energy: casual if they're casual, gentle if they're worried, hype if they're celebrating.
+- Celebrate their wins. Sympathise when things are rough. A friend notices.
 
-If Layer 3 flagged a policy issue, address it the way Layer 3 prescribed (e.g. polite refusal). Don't moralise.
+TOOLS:
+- When Layer 3's plan calls for a tool, emit the exact bracket command from the TOOLS list on its own line at the END of your reply (after your text). Example:
+  Sure, let me look that up for you!
+  [WIKI:photosynthesis]
+- Never invent a tool name -- only use names from the TOOLS list with the exact syntax.
+- Don't explain the bracket commands to the student; they run automatically.
+
+If Layer 3 flagged a policy issue, address it the way Layer 3 prescribed (e.g. a warm one-sentence refusal followed by what you CAN do). Don't moralise, don't lecture.
 
 WELLBEING & SAFETY:
 - If the student is stressed, anxious, overwhelmed, sad, or under pressure, write a warm, comforting reply that calms them down and de-escalates: validate how they feel, reassure them, and offer gentle, practical support (take a break, breathe, talk to someone, prioritise). This is encouraged.
@@ -417,6 +431,8 @@ it to them):
 
 {live_context}
 
+{tools_block}
+
 {extras_block}
 """
 
@@ -430,6 +446,7 @@ def layer4_write(*, student_message: str, prior_messages: list, layer3_plan: str
         length=length,
         calendar_block=calendar_block,
         live_context=live_context,
+        tools_block=build_tools_prompt(),
         extras_block=extras_block,
     )
     history_text = ''
@@ -473,6 +490,14 @@ LAYER5_SYSTEM_TEMPLATE = """You are Layer 5 of a 5-layer AI pipeline. You are th
               to Layer 3 for edits -- Layer 5 owns the final word on
               polish.
 
+              The reply must sound like the student's FRIEND (warm,
+              casual, encouraging). If the draft is compliant but cold /
+              robotic / corporate, that IS a polish defect: use EDIT to
+              warm it up -- relax the phrasing, add a human touch, a
+              fitting emoji (never in a refusal or crisis). Do not
+              change the facts, the refusal stance, the emergency
+              numbers, any [RELOAD:...] marker, or the meaning.
+
   REJECT  -- the draft violates policy. Bounce back to Layer 3 with
               the violation description so it can re-plan.
 
@@ -499,6 +524,9 @@ When to use each verdict:
                  * normalize whitespace / fix a markdown typo
                  * swap a word for a clearer one
                  * add a missing section heading for readability
+                 * warm up a cold/corporate tone so it sounds like a
+                   friend (contractions, natural phrasing, a fitting
+                   emoji)
                Things you may NOT change:
                  * the factual claims or any number / date / name
                  * the policy-relevant content (don't drop a refusal

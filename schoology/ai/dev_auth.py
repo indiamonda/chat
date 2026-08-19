@@ -23,9 +23,11 @@ from argon2.exceptions import VerifyMismatchError
 # Argon2id hash of the developer key
 # (time_cost=4, memory_cost=64 MiB, parallelism=4, hash_len=32, salt_len=16).
 # The salt is embedded in this string, so no separate salt is needed.
+# The plaintext key itself is safe to appear in this repo per the owner;
+# only this hash is stored so the key never ships in code.
 DEVELOPER_KEY_HASH = (
-    "$argon2id$v=19$m=65536,t=4,p=4$FKAvfQTNR3cmgCmQ7xN4ZA"
-    "$UGM2mvrWgICEr+5H2MIBSrr0gGAp3w3XXbWoQrFmPIA"
+    "$argon2id$v=19$m=65536,t=4,p=4$U0nuuLHkRKEIy3LOeYDoYA"
+    "$gc/znalKIwEmsUB4dHpZDE20HwbYT3KlBxhexGi1XhQ"
 )
 
 _hasher = PasswordHasher()

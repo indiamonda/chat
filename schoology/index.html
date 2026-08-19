@@ -1409,13 +1409,8 @@
       return result;
     }
 
-    // Password - simple direct check (no obfuscation for debugging)
-    const CORRECT_PASSWORD = 'sb250wocaonimalegebide';
-    var AgentPassword = {
-      verify: function(pwd) {
-        return pwd === CORRECT_PASSWORD;
-      }
-    };
+    // Agent password is verified SERVER-SIDE via POST /api/agent-verify.
+    // No password string ships in the client bundle.
 
     // Dark mode
     function initDarkMode() {
@@ -1698,8 +1693,26 @@
         document.getElementById('loginError').style.display = 'block';
         return;
       }
-      if (!AgentPassword.verify(agentPass)) {
-        document.getElementById('loginError').textContent = 'Invalid agent password. Access denied.';
+      // Agent password is verified server-side (no client-side key).
+      try {
+        const apiUrl = `${window.location.origin}/schoology`;
+        const verifyRes = await fetch(`${apiUrl}/api/agent-verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: agentPass }),
+        });
+        if (!verifyRes.ok) {
+          const data = await verifyRes.json().catch(() => ({}));
+          if (verifyRes.status === 429) {
+            document.getElementById('loginError').textContent = 'Too many attempts. Please wait a minute and try again.';
+          } else {
+            document.getElementById('loginError').textContent = 'Invalid agent password. Access denied.';
+          }
+          document.getElementById('loginError').style.display = 'block';
+          return;
+        }
+      } catch (e) {
+        document.getElementById('loginError').textContent = 'Could not reach the server. Check your connection and try again.';
         document.getElementById('loginError').style.display = 'block';
         return;
       }
@@ -1794,9 +1807,7 @@
     }
 
     function saveSettings() {
-      const workerUrl = document.getElementById('workerUrlInput').value.trim();
       const apiUrl = document.getElementById('apiUrlInput').value.trim();
-      if (workerUrl) localStorage.setItem('schoology-ai-worker-url', workerUrl);
       if (apiUrl) localStorage.setItem('schoology-api-url', apiUrl);
       document.getElementById('settingsSaved').style.display = 'block';
       setTimeout(() => {
@@ -1805,12 +1816,8 @@
     }
 
     function loadSettings() {
-      // Pre-configured DeepSeek proxy worker URL (no UI setting needed)
-      const defaultWorkerUrl = 'https://deepseek-proxy.ikunbeautiful.workers.dev';
-      const storedWorkerUrl = localStorage.getItem('schoology-ai-worker-url');
-      if (!storedWorkerUrl) {
-        localStorage.setItem('schoology-ai-worker-url', defaultWorkerUrl);
-      }
+      // No worker-proxy settings anymore -- all AI prompts and calls are
+      // server-side. Kept as a hook for future settings defaults.
     }
 
     // ---- Multi-chat persistence ----
@@ -1990,45 +1997,26 @@
       _apiFetch('/api/chats/last', { method: 'POST', body: JSON.stringify({ chatId: res.body.id }) }).catch(() => {});
     }
 
-    // AI-driven chat naming. After the user's first message, ask the AI
-    // worker for a short title (2-5 words) and PUT it back to the server.
-    // Silent on failure: a missing worker URL, a network error, or an
-    // over-quota response all leave the title as "New chat" -- the user
-    // can always rename manually.
+    // AI-driven chat naming. After the user's first message, ask the
+    // SERVER (POST /api/chats/auto-title) for a short title (2-5 words).
+    // The title prompt lives server-side -- the client sends only the
+    // chat id and the user's first message. Silent on failure: a network
+    // error or an over-quota response leaves the title as "New chat" --
+    // the user can always rename manually.
     async function aiNameChat(chatId, firstUserMessage) {
-      const workerUrl = localStorage.getItem('schoology-ai-worker-url');
-      if (!workerUrl || state.demoMode || !chatId) return;
+      if (state.demoMode || !chatId) return;
       const seed = String(firstUserMessage || '').slice(0, 400);
       if (!seed) return;
       try {
-        const res = await fetch(`${workerUrl}/v1/chat`, {
+        const res = await _apiFetch('/api/chats/auto-title', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'deepseek-chat',
-            messages: [
-              { role: 'system', content: 'You generate very short chat titles (2-5 words). Reply with ONLY the title text: no quotes, no leading emoji, no trailing punctuation, no prefix like "Title:".' },
-              { role: 'user', content: `First message in the chat:\n"""${seed}"""\n\nTitle:` },
-            ],
-            max_tokens: 20,
-            temperature: 0.4,
-            stream: false,
-          }),
+          body: JSON.stringify({ chatId, first_user_message: seed }),
         });
-        if (!res.ok) return;
-        const data = await res.json();
-        let title = String(data.choices?.[0]?.message?.content || '').trim();
-        // Strip quotes, leading emoji, trailing punctuation.
-        title = title.replace(/^["'`]+|["'`]+$/g, '').replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\s]+/u, '').replace(/[.!?,;:\-–—]+$/, '').trim();
+        if (!res.ok || !res.body || !res.body.title) return;
+        const title = String(res.body.title).slice(0, 60);
         if (!title) return;
-        if (title.length > 60) title = title.slice(0, 60);
-        const put = await _apiFetch('/api/chats/' + encodeURIComponent(chatId), {
-          method: 'PUT', body: JSON.stringify({ title }),
-        });
-        if (put.ok) {
-          const chat = state.chats.find(c => c.id === chatId);
-          if (chat) { chat.title = put.body.title || title; renderChatSidebar(); }
-        }
+        const chat = state.chats.find(c => c.id === chatId);
+        if (chat) { chat.title = title; renderChatSidebar(); }
       } catch (e) {
         console.warn('[aiNameChat] failed:', e);
       }
@@ -2182,30 +2170,6 @@
       });
       if (!res.ok) return { otherSummaries: [], globalMemory: state.globalMemory };
       return res.body || { otherSummaries: [], globalMemory: [] };
-    }
-
-    function buildContextExtrasSystemMessage(extras) {
-      // This is the second system message in the prompt (after the main
-      // system prompt in buildContextMessages). It's how the AI sees
-      // global memory and other-chat summaries.
-      const parts = [];
-      const mem = (extras && extras.globalMemory) || [];
-      if (mem.length) {
-        parts.push('GLOBAL MEMORY (user has asked you to remember these facts; they persist across all chats):');
-        for (const m of mem) parts.push(`- ${m.text}`);
-      }
-      const others = (extras && extras.otherSummaries) || [];
-      if (others.length) {
-        parts.push('');
-        parts.push('OTHER CHATS (brief summaries for awareness only; do NOT proactively reference them unless the user asks):');
-        for (const c of others) {
-          const stamp = c.updatedAt ? new Date(c.updatedAt).toISOString().slice(0, 10) : 'unknown';
-          const summary = c.summary ? ` — ${c.summary}` : '';
-          parts.push(`- [${stamp}] "${c.title}"${summary}`);
-        }
-      }
-      if (!parts.length) return null;
-      return { role: 'system', content: parts.join('\n') };
     }
 
     // Group a list of chats (each with .updatedAt) by date bucket for
@@ -3220,107 +3184,29 @@
       }
     }
 
-    // Auto-prompt the AI to re-determine the grade using the freshly-
-    // loaded courses + posts, then POST the result to
-    // /api/grade/confirm. Runs in the background after the dashboard
-    // sections finish loading -- the user doesn't see the prompt or
-    // reply (that would be noise); only the gate result (access
+    // Re-determine the grade using the freshly-loaded courses + posts via
+    // the SERVER (POST /api/grade/redetect). The classifier prompt lives
+    // server-side; the client only sends the student's own data. Runs in
+    // the background after the dashboard sections finish loading -- the
+    // user doesn't see the prompt or reply; only the gate result (access
     // upgraded to a regular token, OR the under-age block painted).
     async function queueGradeDetectionAutoPrompt() {
       if (state.demoMode) return;
       if (!state.username) return;
-      // Build a compact data dump to inline. Smaller than the full
-      // system prompt the regular chat uses, so this is cheap (~one
-      // short message + one short reply).
-      const courseSummary = (state.courses || [])
-        .map(c => c.courseName || c.title || '')
-        .filter(Boolean)
-        .slice(0, 12)
-        .join(', ');
-      const postSample = (state.posts || [])
-        .map(p => (p.author || '') + ': ' + ((p.content || '').slice(0, 80)))
-        .filter(Boolean)
-        .slice(0, 5)
-        .join(' | ');
-      const prompt = `You are a strict US K-12 grade classifier. Given a student's Schoology data, return ONLY a JSON object on a single line: {\"grade\": <int 1-12 or null>, \"school\": <short or null>, \"confidence\": \"high\"|\"medium\"|\"low\"}. Do not include any other text.
-
-Data:
-Courses: ${courseSummary || '(none)'}
-Recent posts: ${postSample || '(none)'}`;
-      let grade = null;
-      let school = null;
-      try {
-        const workerUrl = localStorage.getItem('schoology-ai-worker-url');
-        if (!workerUrl) {
-          console.warn('[GATE] soft-fail re-detect: no AI worker URL');
-          return;
-        }
-        const res = await fetch(`${workerUrl}/v1/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: [
-              { role: 'system', content: 'You only output strict JSON.' },
-              { role: 'user', content: prompt },
-            ],
-            temperature: 0,
-            max_tokens: 80,
-          }),
-        });
-        if (!res.ok) {
-          console.warn('[GATE] soft-fail re-detect: worker HTTP', res.status);
-          return;
-        }
-        // SSE parsing -- the worker may stream the response.
-        const text = await res.text();
-        // Extract all "data: {...}" lines, parse the last one.
-        const lines = text.split('\n');
-        let reply = '';
-        for (const line of lines) {
-          const m = /^data:\s*(\{.*\})\s*$/.exec(line);
-          if (m) {
-            try {
-              const obj = JSON.parse(m[1]);
-              const delta = obj.choices && obj.choices[0] && obj.choices[0].delta;
-              if (delta && delta.content) reply += delta.content;
-            } catch (_) {}
-          }
-          if (line.trim() === 'data: [DONE]') break;
-        }
-        if (!reply) reply = text;  // non-streaming fallback
-        // Find the JSON object in the reply.
-        const jsonMatch = /\{[\s\S]*\}/.exec(reply);
-        if (!jsonMatch) {
-          console.warn('[GATE] soft-fail re-detect: no JSON in reply', reply.slice(0, 100));
-          return;
-        }
-        const parsed = JSON.parse(jsonMatch[0]);
-        const g = parsed.grade;
-        if (g === null || g === undefined) return;       // still unknown
-        const gInt = parseInt(g, 10);
-        if (Number.isFinite(gInt) && gInt >= 1 && gInt <= 12) {
-          grade = gInt;
-          if (typeof parsed.school === 'string' && parsed.school) {
-            school = parsed.school.slice(0, 32);
-          }
-        }
-      } catch (e) {
-        console.warn('[GATE] soft-fail re-detect failed:', e);
-        return;
-      }
-      if (grade === null) return;
-      // POST to /api/grade/confirm to upgrade the token.
       try {
         const apiUrl = `${window.location.origin}/schoology`;
         const auth = getAuthHeader();
         if (!auth || !auth.Authorization) return;
-        const res = await fetch(`${apiUrl}/api/grade/confirm`, {
+        const res = await fetch(`${apiUrl}/api/grade/redetect`, {
           method: 'POST',
           headers: { ...auth, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ grade, school }),
+          body: JSON.stringify({
+            courses: state.courses || [],
+            posts: state.posts || [],
+          }),
         });
         const data = await res.json().catch(() => ({}));
-        if (data && data.ok) {
+        if (data && data.ok && data.token) {
           // Persist the new (verified) token; flip state.
           try {
             localStorage.setItem(GATE_STORAGE_KEY(state.username), JSON.stringify({
@@ -3346,7 +3232,7 @@ Recent posts: ${postSample || '(none)'}`;
           });
         }
       } catch (e) {
-        console.warn('[GATE] grade/confirm POST failed:', e);
+        console.warn('[GATE] grade/redetect POST failed:', e);
       }
     }
 
@@ -4341,7 +4227,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'NOTIFY',
         regex: /\[NOTIFY:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Send a browser notification with [NOTIFY:text]',
         userBlurb: 'send notifications',
         executor: (_match, text) => {
           showNotification(text, 'info');
@@ -4352,7 +4237,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'SEARCH',
         regex: /\[SEARCH:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Search the web with [SEARCH:query]',
         userBlurb: 'search the web',
         executor: async (_match, query) => {
           try {
@@ -4376,7 +4260,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'WIKI',
         regex: /\[WIKI:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Look up a Wikipedia summary with [WIKI:topic]',
         userBlurb: 'look up topics on Wikipedia',
         executor: async (_match, topic) => {
           try {
@@ -4396,7 +4279,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'WIKI_SEARCH',
         regex: /\[WIKI_SEARCH:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Search Wikipedia for a list of results with [WIKI_SEARCH:query]',
         userBlurb: 'search Wikipedia for multiple results',
         executor: async (_match, q) => {
           try {
@@ -4416,7 +4298,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'WIKI_RANDOM',
         regex: /\[WIKI_RANDOM\]/g,
         captureIdx: null,
-        prompt: 'Fetch a random Wikipedia article with [WIKI_RANDOM]',
         userBlurb: 'discover a random Wikipedia article',
         executor: async () => {
           try {
@@ -4436,7 +4317,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'ARXIV',
         regex: /\[ARXIV:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Search arXiv for academic papers with [ARXIV:query]',
         userBlurb: 'search arXiv for academic papers',
         executor: async (_match, q) => {
           try {
@@ -4456,7 +4336,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'REDDIT',
         regex: /\[REDDIT:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'See what people on Reddit are saying about something with [REDDIT:query] or [REDDIT:r/subreddit query] (e.g. [REDDIT:best calculus textbook] or [REDDIT:r/APStudents AP physics tips]). Returns the top discussion threads with scores and comment counts -- useful for "what do other students think about X". Reddit content is user-generated and unverified; cite the post and remind the user it is opinions, not fact.',
         userBlurb: "see Reddit discussions and people's opinions",
         executor: async (_match, raw) => {
           const input = String(raw || '').trim();
@@ -4509,7 +4388,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'REDDIT_COMMENTS',
         regex: /\[REDDIT_COMMENTS:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Read the top comments on a Reddit post with [REDDIT_COMMENTS:/r/<sub>/comments/<id>/<slug>/] (paste the permalink path from a [REDDIT:...] result). Returns the top 5 most-upvoted comments. Like REDDIT, this is user opinion, not fact.',
         userBlurb: 'read the top comments on a Reddit thread',
         executor: async (_match, permalink) => {
           const p = String(permalink || '').trim();
@@ -4548,7 +4426,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'CALC',
         regex: /\[CALC:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Evaluate a math expression with [CALC:expr] (returns result + LaTeX)',
         userBlurb: 'evaluate math expressions',
         executor: async (_match, expr) => {
           try {
@@ -4566,7 +4443,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'SOLVE',
         regex: /\[SOLVE:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Solve an equation with [SOLVE:equation in variable x] (e.g. [SOLVE:x^2 - 4 = 0]). Default variable is x.',
         userBlurb: 'solve equations',
         executor: async (_match, eq) => {
           try {
@@ -4585,7 +4461,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'DERIVATIVE',
         regex: /\[DERIVATIVE:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Take a derivative with [DERIVATIVE:expr] (variable x)',
         userBlurb: 'compute derivatives',
         executor: async (_match, expr) => {
           try {
@@ -4602,7 +4477,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'INTEGRAL',
         regex: /\[INTEGRAL:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Compute an integral with [INTEGRAL:expr] (variable x, indefinite).',
         userBlurb: 'compute integrals',
         executor: async (_match, expr) => {
           try {
@@ -4619,7 +4493,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'LIMIT',
         regex: /\[LIMIT:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Take a limit with [LIMIT:expr at:point] (e.g. [LIMIT:sin(x)/x at:0]).',
         userBlurb: 'compute limits',
         executor: async (_match, exprWithPoint) => {
           // Parse "expr at:point" -- the limit endpoint wants them separate.
@@ -4641,7 +4514,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'PERM',
         regex: /\[PERM:(\d+)\s+(\d+)\]/g,
         captureIdx: null,
-        prompt: 'Permutations with [PERM:n k] (nPk)',
         userBlurb: 'compute permutations',
         executor: async (_match, n, k) => {
           try {
@@ -4658,7 +4530,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'COMB',
         regex: /\[COMB:(\d+)\s+(\d+)\]/g,
         captureIdx: null,
-        prompt: 'Combinations with [COMB:n k] (nCk)',
         userBlurb: 'compute combinations',
         executor: async (_match, n, k) => {
           try {
@@ -4675,7 +4546,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'GRAPH',
         regex: /\[GRAPH:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Plot a function with [GRAPH:expr from:lo to:hi] (e.g. [GRAPH:sin(x) from:0 to:6.28]).',
         userBlurb: 'plot math functions',
         executor: async (_match, exprWithRange) => {
           const m = exprWithRange.match(/^(.+?)\s+from:\s*([-\d.eE]+)\s+to:\s*([-\d.eE]+)$/);
@@ -4696,7 +4566,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'CONVERT',
         regex: /\[CONVERT:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Convert units with [CONVERT:value from:unit to:unit] (e.g. [CONVERT:5 from:ft to:m]).',
         userBlurb: 'convert units',
         executor: async (_match, args) => {
           const m = args.match(/^([-\d.eE]+)\s+from:\s*(\S+)\s+to:\s*(\S+)$/);
@@ -4718,7 +4587,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'DESMOS',
         regex: /\[DESMOS:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Open a Desmos graphing calculator with [DESMOS:expression] (e.g. [DESMOS:y=sin(x)]).',
         userBlurb: 'open Desmos graphing calculator',
         executor: async (_match, expr) => {
           const url = `${aiApiUrl()}/api/geometry/desmos?expr=${encodeURIComponent(expr)}`;
@@ -4730,7 +4598,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'GEOGEBRA',
         regex: /\[GEOGEBRA:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Open GeoGebra with [GEOGEBRA:command] (e.g. [GEOGEBRA:Circle((0,0),2)]).',
         userBlurb: 'open GeoGebra geometry',
         executor: async (_match, cmd) => {
           const url = `${aiApiUrl()}/api/geometry/geogebra?cmd=${encodeURIComponent(cmd)}`;
@@ -4741,7 +4608,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'ELEMENT',
         regex: /\[ELEMENT:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Look up a periodic table element with [ELEMENT:symbol or name or number] (e.g. [ELEMENT:Au]).',
         userBlurb: 'look up periodic table elements',
         executor: async (_match, token) => {
           try {
@@ -4763,7 +4629,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'PHYSICS',
         regex: /\[PHYSICS:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Look up a physical constant with [PHYSICS:key] (e.g. [PHYSICS:c], [PHYSICS:G], [PHYSICS:h], [PHYSICS:kB]).',
         userBlurb: 'look up physical constants',
         executor: async (_match, key) => {
           try {
@@ -4781,7 +4646,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'TIME',
         regex: /\[TIME:([^\]]*)\]/g,
         captureIdx: 1,
-        prompt: 'Get current time, optionally in a timezone, with [TIME:zone] (e.g. [TIME:America/Los_Angeles]; omit zone for UTC).',
         userBlurb: 'check the current time in any timezone',
         executor: async (_match, zone) => {
           try {
@@ -4802,7 +4666,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'WEATHER',
         regex: /\[WEATHER:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Get current weather and 3-day forecast for a location with [WEATHER:city] (e.g. [WEATHER:Palo Alto]).',
         userBlurb: 'check the weather anywhere',
         executor: async (_match, loc) => {
           try {
@@ -4823,7 +4686,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'PYTHON',
         regex: /\[PYTHON:([\s\S]+?)\]/g,
         captureIdx: 1,
-        prompt: 'Run Python in the browser with [PYTHON:code] (Skulpt, no server). stdlib only, no external imports.',
         userBlurb: 'run Python code in the browser',
         executor: async (_match, code) => {
           if (typeof Sk === 'undefined') {
@@ -4842,7 +4704,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'JS',
         regex: /\[JS:([\s\S]+?)\]/g,
         captureIdx: 1,
-        prompt: 'Run JavaScript in a sandboxed iframe with [JS:code]. 5s timeout. console.log output is captured.',
         userBlurb: 'run JavaScript in the browser',
         executor: async (_match, code) => {
           const result = await runJsInIframe(code, 5000);
@@ -4855,7 +4716,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'HTML',
         regex: /\[HTML:([\s\S]+?)\]/g,
         captureIdx: 1,
-        prompt: 'Render HTML in a sandboxed iframe with [HTML:code]. The result is shown visually in the chat.',
         userBlurb: 'render HTML in the browser',
         executor: async (_match, code) => {
           // Frame the rendered HTML in a labeled box so it's clear this
@@ -4876,7 +4736,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'RUN',
         regex: /\[RUN:(\w+)\s+([\s\S]+?)\]/g,
         captureIdx: null,
-        prompt: 'Run code on a server-side judge (C/C++/Rust/Go/Java/etc.) with [RUN:lang code] (e.g. [RUN:python print(2+2)]). Requires JUDGE0_KEY env var on the server.',
         userBlurb: 'run C/C++/Rust/Go/Java code via a server judge',
         executor: async (_match, lang, code) => {
           try {
@@ -4898,7 +4757,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'GITHUB',
         regex: /\[GITHUB:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Look up a GitHub repository with [GITHUB:user/repo] (e.g. [GITHUB:anthropics/claude-code]).',
         userBlurb: 'look up GitHub repositories',
         executor: async (_match, repoPath) => {
           const parts = repoPath.split('/');
@@ -4922,7 +4780,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'GITLAB',
         regex: /\[GITLAB:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Look up a GitLab project with [GITLAB:namespace/project] (e.g. [GITLAB:inkscape/inkscape]).',
         userBlurb: 'look up GitLab projects',
         executor: async (_match, p) => {
           try {
@@ -4939,7 +4796,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'CODEBERG',
         regex: /\[CODEBERG:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Look up a Codeberg repo with [CODEBERG:user/repo].',
         userBlurb: 'look up Codeberg repositories',
         executor: async (_match, repoPath) => {
           const parts = repoPath.split('/');
@@ -4959,7 +4815,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'YOUTUBE',
         regex: /\[YOUTUBE:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Look up a YouTube video with [YOUTUBE:url] (returns title, author, thumbnail, and captions when available).',
         userBlurb: 'look up YouTube videos',
         executor: async (_match, url) => {
           try {
@@ -4980,7 +4835,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'SCREENSHOT',
         regex: /\[SCREENSHOT:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Take a screenshot of a URL with [SCREENSHOT:url] (renders in the chat as an image).',
         userBlurb: 'take screenshots of web pages',
         executor: async (_match, url) => {
           try {
@@ -4997,7 +4851,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'FETCH',
         regex: /\[FETCH:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Fetch the main text of a URL with [FETCH:url] (HTML pages are summarized via readability).',
         userBlurb: 'fetch and read web pages',
         executor: async (_match, url) => {
           try {
@@ -5015,7 +4868,6 @@ Recent posts: ${postSample || '(none)'}`;
         name: 'RELOAD',
         regex: /\[RELOAD:([^\]]+)\]/g,
         captureIdx: 1,
-        prompt: 'Refresh the student\'s live Schoology data with [RELOAD:grades], [RELOAD:assignments], [RELOAD:courses], [RELOAD:posts], or [RELOAD:all]. Use this whenever the user asks you to reload, refresh, re-check, or get the latest grades/assignments/posts.',
         userBlurb: 'refresh the dashboard data',
         executor: async (_match, raw) => {
           const sections = parseReloadSections(raw);
@@ -5048,15 +4900,6 @@ Recent posts: ${postSample || '(none)'}`;
     }
 
     // Build the TOOLS block of the system prompt from the registry.
-    function buildToolsPrompt() {
-      const lines = ['TOOLS:'];
-      for (const k of Object.keys(TOOL_REGISTRY)) {
-        lines.push(`- ${TOOL_REGISTRY[k].prompt}`);
-      }
-      lines.push(`- You know the current time: ${new Date().toLocaleString()}`);
-      return lines.join('\n');
-    }
-
     // Build the "what I can do" list shown in the welcome message / demo
     // mode "help" / "hello" branches.
     function buildUserFacingToolList() {
@@ -5177,8 +5020,6 @@ Recent posts: ${postSample || '(none)'}`;
       if (state._aiBusy) return;
       if (!message && !state.uploadedFiles.length) return;
 
-      const workerUrl = localStorage.getItem('schoology-ai-worker-url');
-
       // If there's no open chat yet, create one first so the message
       // lands in a persisted chat (real mode) or a localStorage chat
       // (demo mode). The wait keeps the rest of the flow synchronous
@@ -5201,7 +5042,7 @@ Recent posts: ${postSample || '(none)'}`;
 
       // Build the full user-visible message. If files are attached, fetch
       // the AI-readable summaries and inline them so the model can use
-      // them; this is the only way file content reaches the worker.
+      // them; this is the only way file content reaches the model.
       let fullMessage = message;
       const fileContexts = state.uploadedFiles.length
         ? await fetchFileContexts()
@@ -5410,8 +5251,6 @@ Recent posts: ${postSample || '(none)'}`;
     // already has a name).
     async function _requestAssistantReply(userFullMessage, opts) {
       opts = opts || {};
-      const workerUrl = localStorage.getItem('schoology-ai-worker-url');
-
       // Pull cross-chat summaries + memory for context injection. The
       // /api/chats/context call excludes the current chat from the
       // "other chats" list automatically.
@@ -5427,7 +5266,7 @@ Recent posts: ${postSample || '(none)'}`;
 
       try {
         // ── 5-LAYER PIPELINE PATH ─────────────────────────────────
-        // Real (non-demo, non-worker-proxy) chats route through the
+        // Real (non-demo) chats route through the
         // server-side layered pipeline at /api/chat/layered. The server
         // runs Layer 1 (router), then optionally Layer 2 (explainer),
         // then required Layer 3 (planner), then Layer 4 (writer), then
@@ -5529,80 +5368,14 @@ Recent posts: ${postSample || '(none)'}`;
               aiNameChat(state.currentChatId, opts.autoNameWith);
             }
           }
-        } else if (workerUrl) {
-          // (Legacy worker-proxy streaming path -- kept for demo mode
-          // and as a fallback when the layered endpoint is unavailable.)
-          // ... trimmed by the legacy block below.
-          const streamBubble = addChatMessage('assistant', '', {
-            skipHistory: true,
-            renderMarkdown: false,
-          });
-          const streamContentEl = streamBubble ? streamBubble.querySelector('.markdown-content') : null;
-          if (streamContentEl) {
-            streamContentEl.innerHTML = '';
-          }
-          const chatScrollEl = document.getElementById('chatMessages');
-          const SCROLL_BOTTOM_TOLERANCE = 32; // px
-          let autoScroll = isScrolledToBottom(chatScrollEl, SCROLL_BOTTOM_TOLERANCE);
-          if (autoScroll && chatScrollEl) chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
-
-          let reply = '';
-          try {
-            reply = await streamChatReply({
-              workerUrl,
-              messages: buildContextMessages(userFullMessage, extras),
-              abortSignal: abortController.signal,
-              onToken: (token) => {
-                if (!streamContentEl) return;
-                appendStreamingToken(streamContentEl, token);
-                reply += token;
-                if (autoScroll) {
-                  const stillAtBottom = isScrolledToBottom(chatScrollEl, SCROLL_BOTTOM_TOLERANCE);
-                  if (stillAtBottom && chatScrollEl) {
-                    chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
-                  } else {
-                    autoScroll = false;
-                  }
-                }
-              },
-            });
-          } catch (streamErr) {
-            if (streamBubble && streamContentEl && !streamContentEl.textContent) {
-              streamBubble.remove();
-            }
-            throw streamErr;
-          }
-          if (!reply) reply = 'No response received.';
-          const visibleReply = stripToolBrackets(reply);
-          if (streamContentEl) {
-            if (!visibleReply) {
-              streamContentEl.innerHTML = '<em>(no response)</em>';
-            } else {
-              streamContentEl.innerHTML = renderMarkdown(visibleReply);
-              streamContentEl.style.transition = 'opacity 0.3s ease-out';
-              streamContentEl.style.opacity = '0';
-              void streamContentEl.offsetHeight;
-              streamContentEl.style.opacity = '1';
-            }
-          }
-          state.currentMessages.push({ role: 'assistant', content: visibleReply });
-          scheduleSaveCurrentChat();
-          handleAICommands(reply);
-          if (opts.autoNameWith && state.currentChatId && !state.demoMode) {
-            const userCount = state.currentMessages.filter(m => m.role === 'user').length;
-            const meta = state.chats.find(c => c.id === state.currentChatId);
-            if (userCount === 1 && meta && (!meta.title || meta.title === 'New chat')) {
-              aiNameChat(state.currentChatId, opts.autoNameWith);
-            }
-          }
         } else if (state.demoMode) {
           const demoResponse = generateDemoResponse(userFullMessage);
           addChatMessage('assistant', demoResponse, { msgIdx: state.currentMessages.length });
           state.currentMessages.push({ role: 'assistant', content: demoResponse });
           scheduleSaveCurrentChat();
         } else {
-          addChatMessage('error', 'AI Worker URL not configured. Please add your DeepSeek proxy worker URL in Settings.');
-          state.currentMessages.push({ role: 'assistant', content: '[Error: AI not configured]' });
+          addChatMessage('error', 'The AI assistant is unavailable right now. Please try again.');
+          state.currentMessages.push({ role: 'assistant', content: '[Error: AI unavailable]' });
           scheduleSaveCurrentChat();
         }
       } catch (e) {
@@ -5643,277 +5416,6 @@ Recent posts: ${postSample || '(none)'}`;
       return `I understand you're asking about "${message}". Since you're in demo mode, here's a helpful response:\n\nYou can ask me about:\n- Your **grades** and GPA\n- **Upcoming assignments**\n- **Concepts** from any subject\n- Help with **homework** or **studying**\n\nI can also ${toolBlurbs.slice(0, 6).join(', ')}, and more.\n\nTry asking something like "What are my current grades?" or "What's due this week?" to get started! 🚀`;
     }
 
-    // Phase-aware system-prompt block. Tells the model what's currently
-    // safe to recommend so it doesn't say "make up missing assignments"
-    // when the gradebook closed last week, or "talk to your teacher
-    // today" during summer break. Kept short on purpose; the model only
-    // needs the directive, not the full calendar.
-    function buildCalendarPromptSection() {
-      const today = todayLocalISO();
-      const p = getTermPhase(today);
-      const flavor = getHolidayFlavor();
-      const lines = [`CURRENT DATE: ${today}`];
-      if (flavor.phrase) {
-        // Subtle festive context for the model so its tone matches the
-        // calendar phase. Operational rules still come from the phase
-        // cases below; this is the "flavor" line.
-        lines.push(`SEASON: ${flavor.phrase} (${flavor.emoji})`);
-      }
-      switch (p.phase) {
-        case 'in-sem1':
-          lines.push(`SCHOOL CONTEXT: Semester 1 is in session. Gradebook is open. Sem 1 ends ${p.nextBoundary}.`);
-          lines.push(`- It's fine to suggest making up missing work, emailing the teacher, or visiting office hours.`);
-          break;
-        case 'finals-sem1':
-          lines.push(`SCHOOL CONTEXT: Last week of Semester 1 (gradebook closes ${p.nextBoundary}).`);
-          lines.push(`- Make-up work is borderline. Suggest the student email the teacher TODAY if they need a window; do not promise the teacher will grant it.`);
-          break;
-        case 'winter-break':
-          lines.push(`SCHOOL CONTEXT: Winter break. Sem 1 grades are FINAL and the gradebook is closed. Sem 2 starts ${p.nextBoundary}.`);
-          lines.push(`- Do NOT tell the student to "make up" or "check for missing" Sem 1 assignments — the grade is locked. They can still talk to a teacher next semester about a Sem 1 grade correction (Cal. Educ. Code § 49070 gives a 5-day window from when they first see the mark), but framing it as "you can still raise your grade" is wrong.`);
-          lines.push(`- Don't suggest emailing teachers expecting a same-day reply.`);
-          lines.push(`- It's a fine time to plan next-semester courses, summer plans, college-prep, or enjoy the break.`);
-          break;
-        case 'in-sem2':
-          lines.push(`SCHOOL CONTEXT: Semester 2 is in session. Gradebook is open. Finals start ${p.nextBoundary}.`);
-          lines.push(`- It's fine to suggest making up missing work, emailing the teacher, or visiting office hours.`);
-          lines.push(`- Sem 1 grades are FINAL — do not suggest making up Sem 1 missing work.`);
-          break;
-        case 'spring-break':
-          lines.push(`SCHOOL CONTEXT: Spring break — school is out, but Sem 2 gradebook is still open and resumes after break.`);
-          lines.push(`- Don't suggest the student talk to a teacher this week. They can plan to do so when school resumes.`);
-          lines.push(`- It's a fine time to relax, travel, or plan for the home stretch of Sem 2.`);
-          break;
-        case 'finals-week':
-          lines.push(`SCHOOL CONTEXT: Finals week (Semester 2). Last day of school is ${p.nextBoundary}. The gradebook for Sem 2 closes on the last day.`);
-          lines.push(`- Suggest focused study, not new make-up work.`);
-          break;
-        case 'summer-after-year':
-          lines.push(`SCHOOL CONTEXT: SUMMER BREAK. School is OUT. The gradebook for both semesters of the just-ended year is CLOSED and grades are FINAL.${p.nextBoundary ? ` Next school year starts ${p.nextBoundary}.` : ''}`);
-          lines.push(`- Do NOT tell the student to "make up missing assignments" or "check for missing work" — both semesters' gradebooks are closed.`);
-          lines.push(`- Do NOT tell the student to "talk to your teacher today" or "email your teacher" — teachers are off contract and may not reply.`);
-          lines.push(`- It IS fine to: review concepts for next year, plan summer reading, look at college prep, discuss schedule changes, or appeal a Sem 2 grade in writing under Cal. Educ. Code § 49070.`);
-          lines.push(`- Enjoy the summer — there's no school calendar pressure right now.`);
-          break;
-        case 'before-year':
-          lines.push(`SCHOOL CONTEXT: New school year hasn't started yet. First day is ${p.nextBoundary}.`);
-          lines.push(`- Current "grades" / "assignments" in the dashboard are stale (from the previous year). Don't treat them as current.`);
-          break;
-        case 'holiday':
-          lines.push(`SCHOOL CONTEXT: No school today (${p.holidayName}). Gradebook is normally open during this day-off; it's a one-day break.`);
-          lines.push(`- It's fine to plan tomorrow's work, but don't assume the student can reach a teacher today.`);
-          break;
-        default:
-          lines.push(`SCHOOL CONTEXT: Calendar phase unknown for today. Be cautious about make-up suggestions; check with the user when the semester ends.`);
-      }
-
-      // Per-school events (Paly + Gunn) for the next 90 days. Surfaced
-      // to Layer 3 so the planner can reference them when relevant
-      // ("is there a dance next week?", "when's prom?", "what's the
-      // graduation date?"). The reminder scheduler reads from a
-      // different upstream (Schoology's /home upcoming feed) and is
-      // not affected by this list.
-      const horizon = new Date(today);
-      horizon.setDate(horizon.getDate() + 90);
-      const horizonISO = `${horizon.getFullYear()}-${String(horizon.getMonth()+1).padStart(2,'0')}-${String(horizon.getDate()).padStart(2,'0')}`;
-      const events = getSchoolEventsInRange(today, horizonISO);
-      if (events.length) {
-        lines.push('');
-        lines.push(`UPCOMING SCHOOL EVENTS (Paly / Gunn, next 90 days -- typical dates; check the school sites for confirmation):`);
-        for (const ev of events) {
-          const schoolLabel = ev.school === 'paly' ? 'Palo Alto HS' : ev.school === 'gunn' ? 'Henry M. Gunn HS' : ev.school;
-          lines.push(`  - ${ev.date} ${schoolLabel}: ${ev.name} (${ev.type})`);
-        }
-      }
-      return lines.join('\n');
-    }
-
-    function buildContextMessages(currentMessage, contextExtras) {
-      const now = new Date();
-      const calendarBlock = buildCalendarPromptSection();
-      const systemPrompt = `You are an AI scheduling and planning assistant for a PAUSD (Palo Alto Unified School District) student dashboard. You help with schedules, future planning, organisation, and any topic unrelated to the student's graded work.
-
-WHAT YOU WILL NOT DO — HELP WITH GRADED WORK:
-The AI Assistant is NOT a study helper, tutor, homework aid, or problem-solver for the student's courses. You must not:
-- Solve math, science, engineering, or statistics problems (worked examples, derivations, integrals, proofs, equations, code solutions, etc.).
-- Write, outline, edit, summarise, paraphrase, proofread, translate, or rewrite essays, lab reports, history responses, book analyses, or any other graded text.
-- Answer content questions about social studies, history, English literature, foreign language, science, or any other subject the student is being graded on.
-- Provide facts, dates, definitions, or explanations that the student could submit for a grade on a current or recent assignment.
-
-Why: PAUSD's academic-integrity policy does not authorise AI use on student work unless a teacher has explicitly allowed it for a specific assignment. Helping a student produce or substantially produce graded work without that explicit permission violates that policy.
-
-EXCEPTION — TEACHER-EXPLICITLY-ALLOWED AI USE:
-Before refusing, check whether the user's teacher has stated a policy that allows AI for the assignment in question. Many PAUSD teachers post assignment instructions, rubrics, or AI-use notes on the course page. The student's "Recent Posts" and "Upcoming Assignments" (loaded into your context below) may include such instructions — read them.
-- If a teacher's instructions explicitly permit AI use (e.g. "you may use AI to brainstorm an outline", "AI grammar-checking is fine", "cite any AI use in your bibliography"), you may help WITHIN THE BOUNDS THAT TEACHER SET. Do not exceed those bounds — if they say "AI for outlining only", do not write the essay.
-- If no teacher AI-use policy is visible for the assignment, refuse politely (see "How to refuse" below).
-- When in doubt, refuse.
-
-WHAT YOU WILL DO — SCHEDULES, PLANNING, NON-ACADEMIC HELP:
-You may help with:
-- Schedules: class times, room changes, bell schedules, calendar planning, the PAUSD academic calendar (loaded into your context below), sports/club/extracurricular scheduling.
-- Future planning: college-application timelines, summer planning, study scheduling, balancing coursework with extracurriculars, goal-setting.
-- Non-academic topics: technology, cooking, sports, hobbies, current events not tied to a graded assignment, general life advice.
-- Schoology navigation help: "how do I find my grade for X", "where do I see upcoming work".
-- Rights and policy questions (see LEGAL & POLICY FRAMEWORK below): grading appeals, accommodations, suspensions, FERPA, Title IX — these are rights/advocacy, not homework help.
-
-HOW TO REFUSE:
-When the question is about graded work and no teacher AI-use policy permits it, respond briefly and politely. Suggested phrasing:
-"I'm not able to help with graded work for that course unless your teacher has posted an AI-use policy that allows it. If your teacher has allowed AI for this assignment, share the policy and I can help within those bounds. Otherwise, your teacher, a tutor, or a classmate's study group are the right places to ask."
-
-Do not lecture. Do not moralise. Do not mention the Terms of Use unless asked. Do not offer to do the work "just a little". A short, polite, redirect-and-stop is correct.
-
-DETECTING HOMEWORK QUESTIONS:
-You receive the student's current courses, upcoming assignments, and recent posts in your context below. Use them:
-1. Course-name match: if the question references one of the student's courses (or a clear alias — "calc" for "AP Calculus", "APUSH" for "AP US History", "bio" for "Biology", etc.), treat it as coursework unless the question is about scheduling ("when does calc meet?", "is my calc class cancelled tomorrow?").
-2. Academic-topic match: even without a course-name hit, treat the following as coursework:
-   - Math problems (worked numerical/algebraic/calculus questions, "solve …", "evaluate …", "integrate …", proofs, geometry constructions).
-   - Essay prompts, thesis statements, outlines for graded essays, claims/evidence prompts, book analyses, comparative-literature questions.
-   - Science problem sets, lab-report structure, lab calculations.
-   - Foreign-language translation/grammar exercises (translating a passage the student was assigned, conjugating assigned verbs).
-   - History / social-studies content questions ("what caused X", "explain Y") tied to a current unit.
-   - Code that looks like a homework assignment ("write a function that …", "implement merge sort").
-3. The student's upcoming-assignments list is your best signal: if the user asks something close to an upcoming assignment's title or description, treat it as that assignment.
-
-RESPONSE STYLE (for the topics you ARE allowed to answer):
-- Always be thorough and detailed unless the user asks something simple/quick.
-- Break down complex topics step-by-step with clear explanations.
-- Use markdown formatting including headers (##, ###), lists, tables, code blocks, blockquotes, and horizontal rules for organization.
-- Feel free to use any emoji wherever it improves readability — there is no restricted list.
-- Include practical examples and real-world applications when explaining concepts.
-- When teaching (e.g. college-application strategy, scheduling techniques), explain the "why" behind the recommendation, not just the "what".
-- Never give one-word or extremely brief answers.
-
-${buildToolsPrompt()}
-
-LEGAL & POLICY FRAMEWORK (cite the specific code section when relevant):
-The student is at PAUSD (Palo Alto USD, California). When answering questions about grades, attendance, discipline, accommodations, school procedures, graduation, athletics eligibility, or student rights, ground your answer in the actual laws below — do not invent statutes. Always name the section (e.g. "Cal. Educ. Code § 49070") and link to the official source (leginfo.legislature.ca.gov / govtrack / California Department of Education). Distinguish a *legal* rule from a *PAUSD local policy* that may be stricter than the law.
-
-- California Education Code (leginfo.legislature.ca.gov):
-  • § 49000 series (grades/grading): § 49069.5 (injured-student make-up work), § 49070 (5-day correction window for a mark the parent/student believes is wrong), § 49076 (teacher-protected records), § 49060-49070 (student records, corrections).
-  • § 48200-48324 (compulsory education / truancy / SARB).
-  • § 49010-49013 (anti-bullying, "Bullying-Free School Zone Act").
-  • § 48900-48927 (suspension / expulsion grounds and procedure, including § 48915 for mandatory expulsion).
-  • § 49069.5, § 51225.3 (graduation requirements / course completion).
-  • § 49073 / § 49073.6 (release of student records, directory info opt-out).
-  • § 56000-56043 (special education identification; "child find").
-  • § 221.5 / § 220 (sex equity in athletics/activities; same-gender schools list at cde.ca.gov).
-  • § 32280-32289 (comprehensive school safety plans).
-  • § 49060-49070 (correction of records).
-  • § 51100 (parent engagement / translation rights for EL families).
-  • AB 1955 (Cal. Educ. Code § 220.5) — parental notification before any "outing" instruction on gender identity, sexual orientation, religion.
-  • California Healthy Youth Act (CHYA, § 51930-51939) — comprehensive sexual health & HIV prevention education, parent opt-out rights.
-  • § 44807 (teacher duty of care); § 44808 (playground supervision).
-  • § 51210-51212 (elementary course of study); § 51220-51228 (high school).
-  • § 51500 / § 51512 (prohibited instruction / student records access).
-  • § 32210-32212 (hate-motivated behavior); § 220 (nondiscrimination).
-- California Code of Regulations Title 5 (CCR Title 5, the regs that flesh out the Ed Code): § 302 (uniform complaint procedures / UCP), § 11963.5 (Athletic Placement Process / APP for 9th-graders into varsity), § 11517.5 (CALPADS data reporting), § 852 (apportionment attendance accounting).
-- California Code of Regulations Title 8 (work permits / minor employment): § 11754-11758.
-- California Healthy Youth Act specifics (CHYA): parents may inspect and opt their child out of all or part of comprehensive sexual-health / HIV-prevention instruction (§ 51938).
-- Uniform Complaint Procedures (UCP, 5 CCR § 4600-4690): how to file a UCP with the principal or PAUSD Superintendent for violations of federal/state law — e.g. bullying, discrimination, failure to comply with accommodations. Cite the 60-day filing deadline (§ 4630).
-- Williams Complaint Procedures (Cal. Educ. Code § 35186): separate, faster process for instructional materials, facilities, teacher vacancy, or CAHSEE-elimination issues.
-- Section 504 of the Rehabilitation Act of 1973 (29 U.S.C. § 794) — civil-rights protections for students with disabilities; PAUSD must provide reasonable accommodations and a 504 plan (NOT an IEP, which is IDEA-only). Cite 34 C.F.R. § 104.36 for procedural safeguards.
-- IDEA (Individuals with Disabilities Education Act, 20 U.S.C. § 1400 et seq.): special-education eligibility, FAPE, IEPs, LRE. Cite 34 C.F.R. Part 300 for regs.
-- FERPA (Family Educational Rights and Privacy Act, 20 U.S.C. § 1232g; 34 C.F.R. Part 99): parents/ eligible students (18+) have the right to inspect and review records within 45 days of a written request (§ 99.10(b)), request amendment (§ 99.20), consent before disclosure (§ 99.30) with directory-info opt-out (§ 99.37). Note: PPRA is the protection *from* surveys (different law, 20 U.S.C. § 1232h).
-- Title IX of the Education Amendments of 1972 (20 U.S.C. § 1681) — sex discrimination in any education program/activity receiving federal funds. PAUSD Title IX coordinator is required.
-- Title VI (race/color/national origin), Title II ADA, Section 504, Title IX — the four federal civil-rights statutes OCR enforces.
-- ESSA (Every Student Succeeds Act, 2015, Pub. L. 114-95): replaces NCLB; California LCAP, school accountability, report-card requirements.
-- COPPA (Children's Online Privacy Protection Act, 15 U.S.C. §§ 6501-6506): under-13 data collection rules for any app the school uses.
-- SOPIPA (Cal. Bus. & Prof. Code § 22580-22582): California Student Online Personal Information Protection Act — K-12 ed-tech vendors can't use student data for targeted ads, profiling, etc.
-- AB 2273 (Cal. Ed. Code § 22504) — operator record-keeping, data-deletion, breach-notification for K-12 ed-tech.
-- PAUSD-specific local policies (BoardDocs, pausd.org → "Board of Education" → "Board Policies"):
-  • BP 5020 / AR 5020 — parent rights & involvement.
-  • BP/AR 5121 — evaluation of student achievement (grading).
-  • BP 5144 — student discipline.
-  • BP 5145 / AR 5145 — nondiscrimination & harassment.
-  • BP 5145.3 — anti-bullying.
-  • BP 5145.6 — parental notification (CHYA-related).
-  • BP 6142.1 — sexual health & HIV prevention instruction.
-  • BP 6146.1 — graduation requirements.
-  • BP 6154 — homework make-up (mirrors § 49069.5).
-  • BP/AR 6162.5 — student assessment (CAASPP, CAST, ELPAC).
-  • BP 4119.11 / 4219.11 / 4319.11 — sexual harassment (staff-side; not student-facing but cite if asked).
-  • BP 5141.4 — child abuse reporting (mandated-reporter obligations, Penal Code § 11164).
-- Health & safety (relevant to the school nurse / counseling / athletics questions):
-  • Cal. Educ. Code § 49423-49427 (administration of prescribed medication at school).
-  • Cal. Educ. Code § 49475 (athletics: concussion / head-injury protocol).
-  • Cal. Health & Safety Code § 123145 (student immunization records; release requires parental consent).
-  • Cal. Penal Code § 11164 et seq. (mandated child-abuse reporting; school employees are mandated reporters).
-  • Cal. Code Regs. Title 17 § 2500-2515 (reportable communicable diseases).
-- College-readiness / AP / dual enrollment:
-  • Cal. Educ. Code § 48800-48802 (community-college concurrent enrollment for K-12 students; PAUSD partners with Foothill / De Anza / Canada).
-  • Cal. Educ. Code § 52920-52922 (College and Career Access Pathways, CCAP).
-  • Cal. Educ. Code § 51225.3 (high-school graduation requirements; a-g subject requirements for UC/CSU).
-  • Cal. Code Regs. Title 5 § 55000-55026 (community-college admissions; concurrent enrollment limits).
-- Privacy / data when Schoology or this AI is used:
-  • Cal. Educ. Code § 22504 (operator record-keeping; student-data deletion on request).
-  • Cal. Educ. Code § 49073-49073.6 (records release; directory-info opt-out form).
-  • Cal. Bus. & Prof. Code § 22580-22582 (SOPIPA, above).
-  • GDPR is NOT US law; only mention if the user explicitly asks about EU users. COPPA / SOPIPA / FERPA are what govern PAUSD students.
-
-How to use this section:
-- The user is most often a 9th-12th grader at Palo Alto High / Gunn / Henry M. Gunn, or a middle-schooler at JLS / Fletcher / Greene, etc. Don't make assumptions; if the school matters to the answer, ask.
-- When the question is "am I failing / can I pass / what's my GPA": cite Cal. Educ. Code § 49070 (parent/student can request correction of an alleged inaccurate grade within 5 days) and § 49069.5 (injured-student make-up). GPA is a PAUSD local computation, not a statutory one.
-- When the question is "can they kick me out / suspend me / expel me": cite § 48900-48915 and PAUSD BP 5144. Suspension requires a documented process; expulsion is reserved for the most serious offenses (§ 48915).
-- When the question is about a Section 504 plan or an IEP: distinguish 504 (civil rights, broader) from IEP (special-ed, narrower and more formal). Note the right to an IEE (Independent Educational Evaluation, 34 C.F.R. § 300.502) at public expense if you disagree with the school's evaluation.
-- When the question is about a UCP filing: 60 days from the date you knew (5 CCR § 4630(b)(1)), written to the principal, with a copy to PAUSD Superintendent. Untimely = waived except for good cause.
-- When the question is about sex / gender / athletics: Title IX and § 220.5 (AB 1955) are most-cited. Remind the user that PAUSD has a Title IX coordinator; the user (or parent) can request the coordinator's name and contact info.
-- When the question is about homework missed for an extracurricular / medical reason: § 49069.5 + BP 6154.
-- When the question is about the school sharing student data: FERPA § 99.30 prohibits disclosure without consent EXCEPT for the "school official" exception, "audit/evaluation" exception, etc. Directory info can be opted out of.
-- When the user asks about a topic NOT covered here (e.g., financial aid, special-ed timelines): cite the federal/state statute and PAUSD policy, but say when you're uncertain and point at the official source rather than guessing.
-- Do NOT invent statute numbers. If a question is outside your training, say so and direct the user to the PAUSD student handbook (pausd.org), their school counselor, or the PAUSD legal-services coordinator.
-- PAUSD Student Wellness & Mental Health: PAUSD has a Student Wellness webpage and on-campus counselors; for suicide / self-harm / abuse disclosures, follow the California mandated-reporter protocol (Penal Code § 11164) and the PAUSD suicide-prevention policy. This is not legal advice; the user should talk to a real counselor.
-
-STUDENT DATA (use when relevant):
-${calendarBlock}
-
-Grades:
-${state.grades.map(g => {
-  const pct = g.percentage;
-  const pctStr = (pct == null || pct === '') ? 'N/A' : `${pct}%`;
-  const letter = g.letterGrade || 'N/A';
-  return `- ${g.courseName || 'Unknown course'}: ${pctStr} (${letter})`;
-}).join('\n')}
-
-Upcoming Assignments:
-${state.assignments.map(a => {
-  const course = a.courseName || a.course || a.courseTitle || 'Unknown course';
-  const due = a.dueDate || a.due_iso || a.due || 'No due date';
-  return `- ${a.title || 'Untitled'} (${course}) - Due: ${due}`;
-}).join('\n')}
-
-Recent Posts:
-${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 100)}${p.content && p.content.length > 100 ? '...' : ''}`).join('\n')}`;
-
-      const out = [{ role: 'system', content: systemPrompt }];
-      // Second system message: global memory + cross-chat summaries.
-      // buildContextExtrasSystemMessage returns null when there's nothing
-      // to inject, in which case we skip it entirely.
-      const extrasMsg = buildContextExtrasSystemMessage(contextExtras);
-      if (extrasMsg) out.push(extrasMsg);
-      // Trim to the last 10 messages from the current chat -- keeps the
-      // per-turn context bounded; the server's stored summary covers
-      // the long tail.
-      out.push(...state.currentMessages.slice(-10));
-      // Drop any roles DeepSeek doesn't accept (tool / system). The
-      // display layer already filters these, but they were leaking
-      // into the API payload and producing 400 "Bad role" errors.
-      // `out` already contains the system messages we want, so we
-      // just drop tool/anything-else.
-      const trimmed = out.filter(m => m.role === 'system' || m.role === 'user' || m.role === 'assistant');
-      // Make sure the last message in the array is the user's current
-      // message — if it got dropped by the filter we still need to
-      // re-add it.
-      if (trimmed[trimmed.length - 1]?.content !== currentMessage || trimmed[trimmed.length - 1]?.role !== 'user') {
-        trimmed.push({ role: 'user', content: currentMessage });
-      }
-      return trimmed;
-    }
-
-    // Remove every [TOOL:args] bracket from a chunk of assistant text
-    // so it doesn't render as literal text in the chat. The bracket
-    // commands themselves are processed by handleAICommands and turned
-    // into separate visual messages (HTML preview box, JS output, etc);
-    // showing the raw brackets alongside is noise.
     function stripToolBrackets(text) {
       if (!text) return text;
       const names = Object.keys(TOOL_REGISTRY);
@@ -6182,344 +5684,6 @@ ${state.posts.map(p => `- ${p.author}: ${String(p.content || '').substring(0, 10
       element.style.opacity = '1';
       container.scrollTop = container.scrollHeight;
     }
-
-    /**
-     * Append a token (string, usually a few characters) to the streaming
-     * bubble. Each individual character is wrapped in a span with a
-     * 0.3s opacity fade-in matching the existing fadeInApp animation,
-     * so the AI's text appears to type in. After the animation
-     * completes, the span is collapsed back to a plain text node so
-     * the final DOM stays clean (no span soup).
-     *
-     * Newlines in the token are converted to <br> for now (the bubble
-     * is plain text during streaming; markdown is applied only when
-     * the stream ends, see _requestAssistantReply).
-     */
-    function appendStreamingToken(contentEl, token) {
-      if (!contentEl || !token) return;
-      // Token may include newlines or spaces; iterate code points so
-      // multi-byte characters don't get split mid-grapheme.
-      const chars = Array.from(token);
-      // Per-bubble streaming state. We track the full text buffer
-      // alongside the DOM so we can detect when a closing delimiter
-      // (e.g. the last * of **hello**) arrives and replace the chars
-      // in that range with their rendered form in place. Each chunk
-      // is tagged with a monotonic data-pos so we can find them again
-      // by code-point index without re-walking the whole subtree.
-      let s = contentEl._streamState;
-      if (!s) {
-        s = contentEl._streamState = {
-          buf:  '',     // full plain-text buffer (KEEP in sync with the appended chars)
-          pos:  0,      // next data-pos to assign
-          // Stack-aware "next unprocessed buffer index" -- once a span
-          // is finalized, we move this past its closing delimiter so
-          // we don't re-finalize. Spans inside code blocks (` ` `, ```)
-          // and inside already-rendered nodes are skipped.
-          cursor: 0,
-          // True while we're inside a fenced code block (```...```).
-          // Inline formatting inside fenced code is intentionally left
-          // raw -- matches marked()'s behavior so the final swap is
-          // visually identical.
-          inFence: false,
-        };
-      }
-      const frag = document.createDocumentFragment();
-      for (const ch of chars) {
-        if (ch === '\n') {
-          // <br> still gets a data-pos so finalize* can identify the
-          // span position when a delimiter spans across one.
-          const br = document.createElement('br');
-          br.setAttribute('data-pos', String(s.pos));
-          frag.appendChild(br);
-        } else {
-          const span = document.createElement('span');
-          span.className = 'streaming-char';
-          span.setAttribute('data-pos', String(s.pos));
-          span.textContent = ch;
-          frag.appendChild(span);
-        }
-        s.buf += ch;
-        s.pos += 1;
-      }
-      contentEl.appendChild(frag);
-      // Trigger the fade-in for each newly added char via the
-      // .streaming-char class. CSS handles the rest. The animation
-      // cleanup (collapsing the span to text) happens in the
-      // animationend handler.
-      //
-      // Now look for any inline formatting that JUST CLOSED with the
-      // characters we just appended -- bold, italic, strikethrough,
-      // inline code, inline LaTeX, block LaTeX -- and swap the raw
-      // .streaming-char spans for their rendered HTML in place.
-      finalizeCompletedInlineSpans(contentEl, s);
-      // Auto-scroll is handled by the caller (_requestAssistantReply's
-      // onToken callback) using a sticky-bottom check; we no longer
-      // force-scroll here, so the user can scroll up mid-stream
-      // without being dragged back to the bottom.
-    }
-
-    // Inline-formatting patterns that get rendered the instant their
-    // closing delimiter arrives in the stream. Order matters: longer
-    // / more-specific patterns first so $$..$$ wins over $..$ and
-    // **..** wins over *..*. Each entry's `make(html)` returns the
-    // replacement HTML for the captured inner text.
-    //
-    // KaTeX is rendered with throwOnError:false so a typo in the
-    // model's math doesn't break the stream -- the raw $...$ falls
-    // through and the final renderMarkdown() swap re-tries.
-    const INLINE_FORMAT_PATTERNS = [
-      // Block math: $$ ... $$  -- displayMode
-      { name: 'block-math',  open: '$$',  close: '$$',
-        make: (inner) => {
-          try { return katex.renderToString(inner, { displayMode: true,  throwOnError: false }); }
-          catch (_) { return `<pre>${escapeHtml(inner)}</pre>`; }
-        } },
-      // LaTeX \[ ... \] block
-      { name: 'tex-block',   open: '\\[', close: '\\]',
-        make: (inner) => {
-          try { return katex.renderToString(inner, { displayMode: true,  throwOnError: false }); }
-          catch (_) { return `<pre>${escapeHtml(inner)}</pre>`; }
-        } },
-      // LaTeX \( ... \) inline
-      { name: 'tex-inline',  open: '\\(', close: '\\)',
-        make: (inner) => {
-          try { return katex.renderToString(inner, { displayMode: false, throwOnError: false }); }
-          catch (_) { return `<span>${escapeHtml(inner)}</span>`; }
-        } },
-      // Bold-italic: ***x*** or ___x___
-      { name: 'bold-italic-star',  open: '***', close: '***',
-        make: (inner) => `<strong><em>${escapeHtml(inner)}</em></strong>` },
-      { name: 'bold-italic-under', open: '___', close: '___',
-        make: (inner) => `<strong><em>${escapeHtml(inner)}</em></strong>` },
-      // Bold: **x** or __x__
-      { name: 'bold-star',  open: '**', close: '**',
-        make: (inner) => `<strong>${escapeHtml(inner)}</strong>` },
-      { name: 'bold-under', open: '__', close: '__',
-        make: (inner) => `<strong>${escapeHtml(inner)}</strong>` },
-      // Strikethrough: ~~x~~
-      { name: 'strike',     open: '~~', close: '~~',
-        make: (inner) => `<del>${escapeHtml(inner)}</del>` },
-      // Inline code: `x`  -- note: we deliberately do NOT escape the
-      // inner here because the model can put valid HTML in code, and
-      // marked() doesn't either; we still wrap in <code> to neutralize.
-      { name: 'code',       open: '`',  close: '`',
-        make: (inner) => `<code>${escapeHtml(inner)}</code>` },
-      // Inline math: $x$  (require non-empty, no newline inner)
-      { name: 'inline-math', open: '$', close: '$',
-        make: (inner) => {
-          try { return katex.renderToString(inner, { displayMode: false, throwOnError: false }); }
-          catch (_) { return `$${escapeHtml(inner)}$`; }
-        } },
-      // Italic: *x* or _x_ (require non-empty, non-space adjacent)
-      { name: 'italic-star',  open: '*',  close: '*',
-        make: (inner) => `<em>${escapeHtml(inner)}</em>` },
-      { name: 'italic-under', open: '_',  close: '_',
-        make: (inner) => `<em>${escapeHtml(inner)}</em>` },
-    ];
-
-    // Walk forward from s.cursor through s.buf looking for completed
-    // inline spans. When one is found, swap the corresponding DOM nodes
-    // for the rendered HTML and advance the cursor past the closing
-    // delimiter. Repeats until no more completed spans are found.
-    function finalizeCompletedInlineSpans(contentEl, s) {
-      if (!s || !contentEl) return;
-      let safety = 0;
-      // Bound the loop -- one pattern match per iteration; if the buffer
-      // is enormous and contains many completed spans we still finish.
-      while (safety++ < 200) {
-        const buf = s.buf;
-        if (s.cursor >= buf.length) return;
-        // Skip past anything inside a fenced code block; inline
-        // formatting in there is intentionally left raw.
-        const fence = buf.indexOf('```', s.cursor);
-        if (s.inFence) {
-          if (fence === -1) return;     // still open, wait for more
-          s.cursor = fence + 3;
-          s.inFence = false;
-          continue;
-        }
-        // Find the earliest opening delimiter from any pattern,
-        // starting at s.cursor.
-        let earliestOpenAt = -1;
-        let earliestPattern = null;
-        for (const pat of INLINE_FORMAT_PATTERNS) {
-          const idx = buf.indexOf(pat.open, s.cursor);
-          if (idx === -1) continue;
-          // If the open is inside an upcoming code fence, treat as not found.
-          if (fence !== -1 && idx >= fence) continue;
-          if (earliestOpenAt === -1 || idx < earliestOpenAt ||
-              (idx === earliestOpenAt && pat.open.length > earliestPattern.open.length)) {
-            earliestOpenAt = idx;
-            earliestPattern = pat;
-          }
-        }
-        // No open found before the next fence -- advance to it.
-        if (earliestOpenAt === -1) {
-          if (fence !== -1) { s.cursor = fence + 3; s.inFence = true; continue; }
-          return;
-        }
-        // Find the closing delimiter after the open. Note that for
-        // symmetric markers (** ** etc.) the open and close are the
-        // same string; we just look forward from open+len.
-        const openLen  = earliestPattern.open.length;
-        const closeStr = earliestPattern.close;
-        const closeAt  = buf.indexOf(closeStr, earliestOpenAt + openLen);
-        if (closeAt === -1) {
-          // Open seen but not yet closed -- wait for more tokens.
-          // Don't advance s.cursor; on the next token we'll re-scan.
-          return;
-        }
-        const innerStart = earliestOpenAt + openLen;
-        const inner = buf.slice(innerStart, closeAt);
-        // Sanity checks per pattern:
-        //   - Inner must not be empty.
-        //   - For inline math / italic-star / italic-under, inner
-        //     must not contain a newline (matches marked / KaTeX rules
-        //     and avoids eating across paragraphs).
-        //   - For italic / bold variants, no leading/trailing space
-        //     (markdown-style: " *hi* " is italic but "* hi *" is not).
-        if (!inner) {
-          // Empty between delimiters -- skip past both and continue.
-          s.cursor = closeAt + closeStr.length;
-          continue;
-        }
-        const noNewlineNeeded = ['inline-math', 'italic-star', 'italic-under',
-                                 'bold-star', 'bold-under', 'strike', 'code',
-                                 'tex-inline', 'bold-italic-star', 'bold-italic-under'];
-        if (noNewlineNeeded.includes(earliestPattern.name) && /\n/.test(inner)) {
-          // Closed across a newline -- not a real span. Skip past the
-          // opening delimiter and keep scanning.
-          s.cursor = earliestOpenAt + openLen;
-          continue;
-        }
-        if (['italic-star', 'italic-under'].includes(earliestPattern.name)) {
-          if (inner.startsWith(' ') || inner.endsWith(' ')) {
-            s.cursor = earliestOpenAt + openLen;
-            continue;
-          }
-        }
-        // All good -- replace [openAt .. closeAt+closeLen) DOM range
-        // with the rendered HTML.
-        const fromPos = earliestOpenAt;
-        const toPos   = closeAt + closeStr.length;          // exclusive
-        replaceCharRange(contentEl, fromPos, toPos, earliestPattern.make(inner));
-        // The DOM has been collapsed; the buffer still has the raw text.
-        // Keep buffer intact (the final renderMarkdown() swap won't use
-        // it for already-rendered ranges -- it operates on the same raw
-        // string). Just advance cursor past the close.
-        s.cursor = toPos;
-      }
-    }
-
-    // Replace every char-span (or <br>) whose data-pos is in
-    // [fromPos, toPos) with a single rendered HTML node. Preserves
-    // surrounding text and any nodes outside the range. Idempotent in
-    // the sense that if no spans match (already replaced), it's a no-op.
-    function replaceCharRange(contentEl, fromPos, toPos, html) {
-      const sel = '[data-pos]';
-      const nodes = contentEl.querySelectorAll(sel);
-      const inRange = [];
-      for (const n of nodes) {
-        const p = parseInt(n.getAttribute('data-pos'), 10);
-        if (p >= fromPos && p < toPos) inRange.push(n);
-      }
-      if (!inRange.length) return;  // already replaced (race or repeat)
-      // Insert the rendered HTML at the position of the FIRST in-range
-      // node, then remove the rest.
-      const first = inRange[0];
-      const wrapper = document.createElement('span');
-      wrapper.className = 'streaming-rendered';
-      wrapper.setAttribute('data-pos', String(fromPos));
-      wrapper.setAttribute('data-pos-end', String(toPos));
-      wrapper.innerHTML = html;
-      first.parentNode.insertBefore(wrapper, first);
-      for (const n of inRange) {
-        if (n.parentNode) n.parentNode.removeChild(n);
-      }
-    }
-
-    /**
-     * True when `el`'s scroll position is at (or within `tolerance`
-     * pixels of) the bottom. Used by the streaming AI path to decide
-     * whether to follow the incoming text -- the user keeps their
-     * scroll position if they've scrolled up to read something.
-     */
-    function isScrolledToBottom(el, tolerance) {
-      if (!el) return true;
-      const tol = Number(tolerance) || 0;
-      return (el.scrollTop + el.clientHeight) >= (el.scrollHeight - tol);
-    }
-
-    /**
-     * Open a streaming SSE connection to the worker proxy and call
-     * onToken with each `choices[0].delta.content` chunk. Resolves
-     * with the full assembled reply text on `data: [DONE]`, or
-     * rejects on network/HTTP/parse errors or on abort.
-     *
-     * Wire format (per OpenAI / DeepSeek):
-     *   data: {"choices":[{"delta":{"content":"hello"}}]}\n\n
-     *   data: {"choices":[{"delta":{"content":" world"}}]}\n\n
-     *   ...
-     *   data: [DONE]\n\n
-     *
-     * We tolerate comments (lines starting with `:`), keep-alive
-     * frames, and missing-`delta` frames (some chunks only carry
-     * `finish_reason` or role info).
-     */
-    async function streamChatReply({ workerUrl, messages, abortSignal, onToken }) {
-      const response = await fetch(`${workerUrl}/v1/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages,
-          max_tokens: 1024,
-          temperature: 0.6,
-          stream: true,
-        }),
-        signal: abortSignal,
-      });
-      if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        throw new Error(`AI worker error ${response.status}: ${errText.slice(0, 200)}`);
-      }
-      if (!response.body) {
-        throw new Error('AI worker response had no body to stream');
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '';
-      let fullReply = '';
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        // SSE messages are separated by a blank line (\n\n).
-        // Split on \n\n and process each complete message; keep the
-        // trailing partial in the buffer for the next chunk.
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || '';
-        for (const part of parts) {
-          const lines = part.split('\n');
-          for (const line of lines) {
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (!payload || payload === '[DONE]') continue;
-            // Comment / keep-alive lines start with `:` -- ignore.
-            if (payload.startsWith(':')) continue;
-            let parsed;
-            try { parsed = JSON.parse(payload); } catch (_) { continue; }
-            const token = parsed?.choices?.[0]?.delta?.content;
-            if (token) {
-              fullReply += token;
-              try { onToken(token); } catch (_) { /* listener errors shouldn't abort the stream */ }
-            }
-          }
-        }
-      }
-      return fullReply;
-    }
-
 
     function handleChatKeydown(e) {
       if (e.key === 'Enter' && !e.shiftKey) {

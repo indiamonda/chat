@@ -89,6 +89,15 @@ PAUSD_CALENDAR = {
 MIN_GRADE = 9
 TERMS_VERSION = 3   # bumped when the gate policy or Terms wording changes; old tokens invalidate
 
+# Agent password: the pre-login gate for opening the dashboard at all.
+# SERVER-SIDE ONLY -- the client no longer embeds this string, it POSTs
+# to /api/agent-verify instead. (The value itself is not secret-grade;
+# it exists to keep casual visitors out of the dashboard.)
+AGENT_PASSWORD = 'sb250wocaonimalegebide'
+_agent_attempts: dict[str, list[float]] = {}
+_AGENT_RATE_WINDOW_S = 60
+_AGENT_RATE_MAX = 10
+
 GATE_DIR = Path(os.environ.get('DATA_DIR', '/data')) / 'ai_gate'
 
 # DeepSeek -- same key the Node app uses (DEEPSEEK_KEY env var).
@@ -589,6 +598,8 @@ _GATE_EXEMPT_PREFIXES = (
     # The endpoint itself re-validates the input and only mints a
     # regular token if grade >= MIN_GRADE.
     '/api/grade/confirm',
+    '/api/grade/redetect',
+    '/api/agent-verify',
     '/api/basic-info',
     '/api/courses',
     '/api/grades',
@@ -644,6 +655,81 @@ def install_gate_middleware(app):
             print(f'[GATE] reject {request.method} {path} user={username!r}: token bound to {payload.get("u")!r}')
             return jsonify({'error': 'gate_wrong_user'}), 403
         return None
+
+
+def _agent_verify_view():
+    """Verify the agent password server-side. Rate-limited per IP."""
+    body = request.get_json(silent=True) or {}
+    pwd = str(body.get('password') or '')
+    ip = (request.headers.get('X-Forwarded-For') or request.remote_addr or '').split(',')[0].strip()
+    now = time.monotonic()
+    bucket = [t for t in _agent_attempts.get(ip, []) if now - t < _AGENT_RATE_WINDOW_S]
+    if len(bucket) >= _AGENT_RATE_MAX:
+        return jsonify({'ok': False, 'error': 'rate_limited'}), 429
+    bucket.append(now)
+    _agent_attempts[ip] = bucket
+    if not pwd or not hmac.compare_digest(pwd, AGENT_PASSWORD):
+        return jsonify({'ok': False, 'error': 'invalid_password'}), 403
+    return jsonify({'ok': True})
+
+
+def _grade_redetect_view():
+    """Re-run grade detection SERVER-SIDE for soft-fail gate tokens.
+
+    The client used to call the DeepSeek proxy directly from the browser
+    with a client-side prompt (a prompt + credential leak). It now posts
+    the freshly-loaded courses/posts here; the classifier runs server-side
+    and this endpoint mints a regular gate token on pass, reports
+    under_age on fail, or detection_failed so the client can retry later.
+    """
+    from .server import decode_auth_header
+
+    username, _ = decode_auth_header()
+    if not username:
+        return jsonify({'ok': False, 'reason': 'auth_required'}), 401
+
+    body = request.get_json(silent=True) or {}
+    courses = body.get('courses') if isinstance(body.get('courses'), list) else []
+    posts = body.get('posts') if isinstance(body.get('posts'), list) else []
+    if not courses and not posts:
+        return jsonify({'ok': False, 'reason': 'no_data'}), 400
+
+    semester_end = current_semester_end_iso() or (
+        datetime.now().replace(year=datetime.now().year + 1).strftime('%Y-%m-%d')
+    )
+
+    result = _call_deepseek_detect(courses, posts)
+    if not result:
+        return jsonify({'ok': False, 'reason': 'detection_failed'}), 200
+
+    grade = result['grade']
+    school = result['school']
+
+    if grade is None:
+        return jsonify({'ok': False, 'reason': 'unknown_grade'}), 200
+
+    if grade < MIN_GRADE:
+        _write_cache(username, {
+            'grade': grade, 'school': school,
+            'reason': 'under_age',
+            'message': f'This AI assistant is available to students in grade {MIN_GRADE} and up. Detected grade: {grade}.',
+            'semester_end': semester_end,
+            'terms_version': TERMS_VERSION,
+        })
+        return jsonify({
+            'ok': False,
+            'reason': 'under_age',
+            'grade': grade,
+            'message': f'This AI assistant is available to students in grade {MIN_GRADE} and up. Detected grade: {grade}.',
+        }), 200
+
+    _write_cache(username, {
+        'grade': grade, 'school': school,
+        'reason': 'ok',
+        'semester_end': semester_end,
+        'terms_version': TERMS_VERSION,
+    })
+    return jsonify(_ok_token(username, grade, school, semester_end))
 
 
 def _grade_confirm_view():
@@ -721,4 +807,6 @@ def register_routes(app):
     app.add_url_rule('/api/gate-check',      view_func=_gate_check_view,      methods=['POST'])
     app.add_url_rule('/api/gate-verify',     view_func=_gate_verify_view,     methods=['POST'])
     app.add_url_rule('/api/grade/confirm',   view_func=_grade_confirm_view,   methods=['POST'])
+    app.add_url_rule('/api/grade/redetect',  view_func=_grade_redetect_view,  methods=['POST'])
+    app.add_url_rule('/api/agent-verify',    view_func=_agent_verify_view,    methods=['POST'])
     install_gate_middleware(app)
