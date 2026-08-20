@@ -401,7 +401,7 @@
           <div id="ocrProgress" class="ocr-progress" style="display: none;"></div>
           <div class="chat-input-area">
             <div class="chat-input-row">
-              <input type="text" id="chatInput" placeholder="Ask anything about your courses, grades, or assignments..." onkeydown="handleChatKeydown(event)" oninput="updateSendButtonEnabled()">
+              <textarea id="chatInput" rows="1" placeholder="Ask anything about your courses, grades, or assignments... (Shift+Enter for a new line)" onkeydown="handleChatKeydown(event)" oninput="onChatInputChange()"></textarea>
               <button type="button" id="chatSendBtn" class="chat-send-btn" onclick="if (state._aiBusy) { stopAiGeneration(); } else { sendChatMessage(); }" aria-label="Send message" title="Send message" disabled>
                 <svg class="chat-send-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <line x1="22" y1="2" x2="11" y2="13"/>
@@ -5091,6 +5091,7 @@
       }
 
       input.value = '';
+      autoResizeChatInput();
       clearFilePreviews();
       updateSendButtonEnabled();
 
@@ -5850,7 +5851,10 @@
     }
 
     function handleChatKeydown(e) {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // Enter alone sends; Shift+Enter inserts a newline (native textarea
+      // behavior, so multi-line messages are possible). Never send while
+      // an IME composition is confirming an Enter.
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
         // While a previous AI response is still being generated, do
         // not let Enter queue another message. The Stop button is the
@@ -5858,6 +5862,23 @@
         if (state._aiBusy) return;
         sendChatMessage();
       }
+    }
+
+    // Chat input is a textarea now (multi-line). Auto-grow up to ~5
+    // lines, then scroll. Called from the input event + after send/
+    // emoji inserts so the box never shows a stale height.
+    const CHAT_INPUT_MAX_HEIGHT = 136;
+    function autoResizeChatInput() {
+      const input = document.getElementById('chatInput');
+      if (!input) return;
+      input.style.height = 'auto';
+      const h = Math.min(input.scrollHeight, CHAT_INPUT_MAX_HEIGHT);
+      input.style.height = h + 'px';
+      input.style.overflowY = input.scrollHeight > CHAT_INPUT_MAX_HEIGHT ? 'auto' : 'hidden';
+    }
+    function onChatInputChange() {
+      autoResizeChatInput();
+      updateSendButtonEnabled();
     }
 
     // Toggle the input-row send button between "Send" and "Stop", and
@@ -5967,6 +5988,7 @@
     function insertEmoji(emoji) {
       const input = document.getElementById('chatInput');
       input.value += emoji;
+      autoResizeChatInput();
       input.focus();
       toggleEmojiPicker();
     }

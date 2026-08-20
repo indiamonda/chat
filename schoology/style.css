@@ -1802,6 +1802,10 @@
     .chat-message.user .message-bubble .message-content {
       color: var(--primary, #00bbff);
       font-weight: 500;
+      /* Multi-line messages (Shift+Enter in the composer) keep their
+         line breaks instead of collapsing into one run-on line. */
+      white-space: pre-wrap;
+      word-break: break-word;
     }
     /* Empty state when no chat is selected — distinct from the
        "welcome bubble" shown for an open-but-empty chat. Centered,
@@ -2235,13 +2239,18 @@
       gap: 12px;
       align-items: center;
     }
-    .chat-input-row input {
+    .chat-input-row textarea {
       flex: 1;
-      padding: 16px 22px;
+      padding: 14px 22px;
       border: 1px solid var(--border);
-      border-radius: 50px;
+      border-radius: 24px;
       font-size: 1rem;
       font-family: inherit;
+      line-height: 1.5;
+      resize: none;
+      min-height: 52px;
+      max-height: 136px;
+      overflow-y: hidden;
       /* Use --bg (darker page bg) so the input has a visible surface
          against the .chat-input-area's --surface-elevated container.
          Previously this was also --surface-elevated, which made the
@@ -2250,16 +2259,16 @@
       color: var(--text);
       transition: all var(--transition-slow);
     }
-    .chat-input-row input:focus {
+    .chat-input-row textarea:focus {
       outline: none;
       border-color: var(--primary);
       box-shadow: 0 0 0 4px var(--primary-dim);
     }
-    .chat-input-row input::placeholder { color: var(--text-muted); }
+    .chat-input-row textarea::placeholder { color: var(--text-muted); }
     /* Locked state while a request is in flight -- subtle dim so the
        user can still see they're typing but understands the previous
        message hasn't been answered yet. */
-    .chat-input-row input.is-busy { opacity: 0.7; }
+    .chat-input-row textarea.is-busy { opacity: 0.7; }
     /* Send / Stop button. The two SVGs inside (send-icon, stop-icon)
        are swapped by the .is-stop class on the parent. */
     .chat-send-btn {
