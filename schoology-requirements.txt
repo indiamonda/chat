@@ -22,7 +22,11 @@ pytesseract>=0.3.10
 Pillow>=10.0
 pydub>=0.25
 librosa>=0.10
-openai-whisper
+# openai-whisper is heavy (pulls torch ~2.5GB) and pushes the image past Fly's
+# 8GB uncompressed deploy limit. Audio transcription is lazy-loaded and degrades
+# gracefully to "whisper unavailable" when absent. Uncomment to re-enable, but
+# deploys will revert until the image is slimmed elsewhere.
+# openai-whisper
 # open_clip_torch is heavy; lazy-loaded, optional
 # open_clip_torch>=2.24
 
