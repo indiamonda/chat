@@ -33,8 +33,14 @@ function ensureStoreWithOn(store) {
 }
 
 export function sessionMiddleware() {
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret && process.env.NODE_ENV === 'production') {
+    // Fail fast: never run production with the public dev fallback secret,
+    // which would let anyone forge session cookies.
+    throw new Error('SESSION_SECRET is not set. In production, set it as a Fly secret: fly secrets set SESSION_SECRET="$(openssl rand -base64 32)"');
+  }
   return session({
-    secret: process.env.SESSION_SECRET || 'jimmyqrg-chat-secret-change-in-production',
+    secret: sessionSecret || 'dev-only-jimmyqrg-chat-secret',
     store: ensureStoreWithOn(createSessionStore()),
     resave: false,
     saveUninitialized: false,
