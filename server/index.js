@@ -26,7 +26,7 @@ import reportsRoutes from './routes/reports.js';
 import { recordAuditLog } from './audit.js';
 import { recordUploadRef, markUploadOrphan } from './uploads-tracker.js';
 import { findMentionUserIds, MENTION_INCLUDES_ALL_RE, MENTION_INCLUDES_ADMINS_RE } from './mentions.js';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import tzLookup from 'tz-lookup';
 
 /** Anti-spam: if user sent 2+ same messages in a short window, block for 5s. jimmyqrg excluded. */
@@ -354,9 +354,25 @@ function createInboxForNewMessage(messageId, content, replyToId, senderId, roomT
  * and post the response as a message from the "helper" user.
  * ==================================================================*/
 const HELPER_RE = /(^|\s)@(?:helper|venory)\b/i;
+
+// ── OpenClaw bridge ──────────────────────────────────────────────────────
+// When OPENCLAW_HELPER_TOKEN and OPENCLAW_BRIDGE_SECRET are both set, DM
+// messages from OPENCLAW_OWNER_ID to the helper are routed through an
+// authenticated bridge socket to the owner's private OpenClaw gateway (the
+// bridge runs on the owner's machine and is the only place that holds the
+// gateway token). Other users keep the normal DeepSeek helper unchanged.
+// Without these env vars the server behaves exactly as before, so anyone
+// deploying this code gets no OpenClaw access and no key leaks.
+const OPENCLAW_OWNER_ID = process.env.OPENCLAW_OWNER_ID || 'jimmyqrg';
+const OPENCLAW_HELPER_TOKEN = process.env.OPENCLAW_HELPER_TOKEN || '';
+const OPENCLAW_BRIDGE_SECRET = process.env.OPENCLAW_BRIDGE_SECRET || '';
+const OPENCLAW_BRIDGE_TIMEOUT_MS = Number(process.env.OPENCLAW_BRIDGE_TIMEOUT_MS || 10 * 60 * 1000);
+const OPENCLAW_BRIDGE_FALLBACK = (process.env.OPENCLAW_BRIDGE_FALLBACK || 'deepseek') === 'offline-note' ? 'offline-note' : 'deepseek';
+const OPENCLAW_BRIDGE_ENABLED = !!(OPENCLAW_HELPER_TOKEN && OPENCLAW_BRIDGE_SECRET);
+const openclawBridgeTasks = new Map(); // taskId -> { resolve, timer }
 const DEEPSEEK_API = process.env.DEEPSEEK_KEY
   ? 'https://api.deepseek.com/v1/chat/completions'
-  : 'https://deepseek-proxy.ikunbeautiful.workers.dev/v1/chat';
+  : (process.env.DEEPSEEK_API_URL || ''); // No public fallback: without a key, AI is disabled (deployers bring their own key).
 
 function helperSystemPrompt(roomType) {
   var context = roomType === 'dm'
@@ -998,6 +1014,20 @@ function ackOrHttp(res, ack, status, body) {
 
 async function helperReply(triggerMsgId, content, roomType, roomId, userId) {
   try {
+    // ── OpenClaw bridge: the owner's private full assistant (DM only) ──
+    if (OPENCLAW_BRIDGE_ENABLED && roomType === 'dm' && userId === OPENCLAW_OWNER_ID) {
+      const routed = await routeViaOpenClawBridge(triggerMsgId, content, roomId);
+      if (routed) return;
+      if (OPENCLAW_BRIDGE_FALLBACK === 'offline-note') {
+        insertHelperReply(triggerMsgId, 'My full assistant is offline right now (the OpenClaw bridge is not connected). I will be right back once it reconnects.', roomType, roomId);
+        return;
+      }
+      // Otherwise fall back to the normal DeepSeek helper below.
+    }
+    if (!DEEPSEEK_API) {
+      console.warn('[helper-bot] no DeepSeek endpoint configured; helper AI disabled');
+      return;
+    }
     let maxMessages = 14;
     if (roomType === 'dm' && userId) {
       const userRow = db.prepare('SELECT memory_message_length FROM users WHERE id = ?').get(userId);
@@ -1044,23 +1074,88 @@ async function helperReply(triggerMsgId, content, roomType, roomId, userId) {
 
     if (!reply || !reply.trim()) return;
 
-    const id = randomUUID();
-    const now = Date.now();
-    db.prepare(`
-      INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'text', ?, ?, ?)
-    `).run(id, roomType, roomId, HELPER_USER_ID, reply.trim(), triggerMsgId, now, now);
-
-    const row = db.prepare(`
-      SELECT m.*, u.username, u.display_name, u.avatar_url, u.chatbox_style
-      FROM messages m LEFT JOIN users u ON u.id = m.sender_id WHERE m.id = ?
-    `).get(id);
-    const msg = { ...row, likes: 0, edit_history: null };
-    const io = app.get('io');
-    const emitRoom = roomType === 'dm' ? `dm:${roomId}` : `group:${GROUP_ID}`;
-    io?.to(emitRoom).emit('message', msg);
+    insertHelperReply(triggerMsgId, reply.trim(), roomType, roomId);
   } catch (err) {
     console.error('[helper-bot] Error:', err);
+  }
+}
+
+/** Insert a helper-authored message and emit it to the room (shared by the
+ *  DeepSeek helper and the OpenClaw bridge paths). */
+function insertHelperReply(triggerMsgId, text, roomType, roomId) {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 'text', ?, ?, ?)
+  `).run(id, roomType, roomId, HELPER_USER_ID, text, triggerMsgId, now, now);
+
+  const row = db.prepare(`
+    SELECT m.*, u.username, u.display_name, u.avatar_url, u.chatbox_style
+    FROM messages m LEFT JOIN users u ON u.id = m.sender_id WHERE m.id = ?
+  `).get(id);
+  const msg = { ...row, likes: 0, edit_history: null };
+  const io = app.get('io');
+  const emitRoom = roomType === 'dm' ? `dm:${roomId}` : `group:${GROUP_ID}`;
+  io?.to(emitRoom).emit('message', msg);
+}
+
+/** Register helper:reply / helper:error handlers for an authenticated bridge
+ *  socket. Replies are only accepted from bridge sockets, and only for
+ *  pending tasks, so no regular client can inject helper messages. */
+function registerBridgeSocket(socket) {
+  socket.on('helper:reply', (p) => {
+    const task = openclawBridgeTasks.get(p?.taskId);
+    if (!task) return;
+    openclawBridgeTasks.delete(p.taskId);
+    clearTimeout(task.timer);
+    task.resolve({ kind: 'reply', text: typeof p?.text === 'string' ? p.text : '' });
+  });
+  socket.on('helper:error', (p) => {
+    const task = openclawBridgeTasks.get(p?.taskId);
+    if (!task) return;
+    openclawBridgeTasks.delete(p.taskId);
+    clearTimeout(task.timer);
+    task.resolve({ kind: 'error', message: typeof p?.message === 'string' ? p.message : 'bridge error' });
+  });
+}
+
+/** Emit a helper:task to the bridge room and wait for the bridge's reply.
+ *  Returns true when a reply was inserted, false on timeout/error/no bridge. */
+async function routeViaOpenClawBridge(triggerMsgId, content, convId) {
+  const io = app.get('io');
+  const bridgeRoom = io?.sockets?.adapter?.rooms?.get('bridge:openclaw');
+  if (!bridgeRoom || bridgeRoom.size === 0) return false;
+
+  const taskId = randomUUID();
+  let resolveTask;
+  const taskPromise = new Promise((resolve) => { resolveTask = resolve; });
+  const timer = setTimeout(() => {
+    openclawBridgeTasks.delete(taskId);
+    resolveTask({ kind: 'timeout' });
+  }, OPENCLAW_BRIDGE_TIMEOUT_MS);
+  openclawBridgeTasks.set(taskId, { resolve: resolveTask, timer });
+
+  try {
+    io.to('bridge:openclaw').emit('helper:task', {
+      taskId,
+      secret: OPENCLAW_BRIDGE_SECRET,
+      convId,
+      triggerMsgId,
+      content: String(content),
+      ownerId: OPENCLAW_OWNER_ID,
+    });
+    const result = await taskPromise;
+    if (result.kind === 'reply' && result.text && result.text.trim()) {
+      insertHelperReply(triggerMsgId, result.text.trim(), 'dm', convId);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    clearTimeout(timer);
+    openclawBridgeTasks.delete(taskId);
+    console.error('[openclaw-bridge] route error:', err);
+    return false;
   }
 }
 
@@ -2694,6 +2789,17 @@ app.set('disconnectAllSocketsFor', (uid) => disconnectAllSocketsFor(uid));
 app.set('refreshUserSocketState', (uid) => refreshUserSocketState(uid));
 
 io.use((socket, next) => {
+  // Bridge authentication: the OpenClaw bridge socket proves possession of
+  // OPENCLAW_HELPER_TOKEN from the handshake. Env-gated, constant-time.
+  const handshakeToken = socket.handshake?.auth?.token;
+  if (OPENCLAW_BRIDGE_ENABLED && typeof handshakeToken === 'string' && handshakeToken.length === OPENCLAW_HELPER_TOKEN.length
+      && timingSafeEqual(Buffer.from(handshakeToken), Buffer.from(OPENCLAW_HELPER_TOKEN))) {
+    socket.userId = HELPER_USER_ID;
+    socket.isBridge = true;
+    socket.user = db.prepare('SELECT id, username, display_name, avatar_url, deleted_at, is_allowed, can_send_inbox, can_broadcast, can_edit_docs, can_kick, can_delete_messages, can_timeout, can_pin_messages, can_unlimited_edit_recall FROM users WHERE id = ?').get(HELPER_USER_ID);
+    if (!socket.user) return next(new Error('User not found'));
+    return next();
+  }
   const fakeRes = {
     setHeader: () => {},
     getHeader: () => undefined,
@@ -3015,6 +3121,10 @@ function voiceLeave(socket) {
 }
 
 io.on('connection', (socket) => {
+  if (socket.isBridge) {
+    socket.join('bridge:openclaw');
+    registerBridgeSocket(socket);
+  }
   socket.join(`user:${socket.userId}`);
   if (!isBlacklisted(socket.userId)) {
     socket.join(`group:${GROUP_ID}`);

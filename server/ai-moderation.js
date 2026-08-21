@@ -23,11 +23,12 @@ import {
   getUserModerationSeverity,
 } from './db.js';
 
-// Same endpoint the helper bot uses, so a single DEEPSEEK_KEY (or the public
-// proxy when no key is set) works for both flows.
+// Same endpoint the helper bot uses. No public fallback: without a
+// DEEPSEEK_KEY (or explicit DEEPSEEK_API_URL), AI moderation is disabled
+// and messages are allowed through (fail-open). Deployers bring their own key.
 const DEEPSEEK_API = process.env.DEEPSEEK_KEY
   ? 'https://api.deepseek.com/v1/chat/completions'
-  : 'https://deepseek-proxy.ikunbeautiful.workers.dev/v1/chat';
+  : (process.env.DEEPSEEK_API_URL || '');
 
 const MOD_MODEL = process.env.AI_MOD_MODEL || 'deepseek-chat';
 const MOD_TIMEOUT_MS = 8000;
@@ -245,6 +246,7 @@ function safeJsonParse(text) {
 }
 
 async function callDeepseekJson(payload) {
+  if (!DEEPSEEK_API) return null; // no key configured: moderation disabled (fail-open)
   const headers = { 'Content-Type': 'application/json' };
   if (process.env.DEEPSEEK_KEY) headers['Authorization'] = `Bearer ${process.env.DEEPSEEK_KEY}`;
   const ctrl = new AbortController();

@@ -1,0 +1,10 @@
+{
+  "name": "openclaw-jchat-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Connects the jchat Venory helper to the owner's private OpenClaw gateway. The gateway token never leaves the machine running this bridge.",
+  "dependencies": {
+    "socket.io-client": "^4.8.1"
+  }
+}
