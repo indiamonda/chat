@@ -5,4 +5,4 @@ cd "$(dirname "$0")"
 if [ -f ./bridge.env ]; then
   . ./bridge.env
 fi
-exec node index.js
+exec /opt/homebrew/opt/node/bin/node index.js
