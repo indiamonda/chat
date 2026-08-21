@@ -803,6 +803,18 @@ export function canSeePrivateUser(viewer, targetId) {
   return viewer.id === 'jimmyqrg';
 }
 
+// Simple key/value store for server-wide flags (e.g. the owner's Venory
+// agent routing mode). Values are short strings; keys are namespaced by
+// convention (lower_snake_case).
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `);
+} catch (_) {}
+
 /** Standard 403 payload for blocked private-user access. Routes should use
  *  `res.status(403).json(PRIVATE_USER_BLOCKED)` to keep the message
  *  identical everywhere. */

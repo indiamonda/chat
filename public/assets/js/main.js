@@ -108,6 +108,9 @@ let state = {
   // Venory helper: owner's persisted model/effort + live per-room run state.
   agentModel: typeof localStorage !== 'undefined' ? (localStorage.getItem('agent_model') || 'deepseek/deepseek-v4-pro') : 'deepseek/deepseek-v4-pro',
   agentEffort: typeof localStorage !== 'undefined' ? (localStorage.getItem('agent_effort') || 'high') : 'high',
+  agentMode: 'openclaw', // 'openclaw' (full assistant) | 'basic' (DeepSeek helper) — server-persisted
+  agentBridgeOnline: true,
+  agentBridgeEnabled: true,
   helperRuns: {}, // roomKey -> { busy, working, done, tools: [{id,name,title,status,meta}] }
 };
 
@@ -2849,7 +2852,7 @@ function connectSocket() {
   s.on('permissions:changed', () => {
     // Re-pull the user profile so new timeout/permission state is picked up
     // without a full reload. Used for timeouts and perm-grant/revoke.
-    loadMe().then(() => render()).catch(() => {});
+    loadMe().then(() => { render(); loadAgentMode(); }).catch(() => {});
     try { loadMyTimeouts?.().then(() => render()); } catch (_) {}
   });
   s.on('message:pinned', ({ room_type, room_id, pinned }) => {
@@ -5719,8 +5722,42 @@ function agentOptsForSend() {
     : {};
 }
 
+// Load (or refresh) the owner's Venory routing mode from the server. Called
+// once on connect and again after a mode switch. Non-owner users never call it.
+async function loadAgentMode() {
+  if (!isOwner()) return;
+  try {
+    const data = await apiGet('/api/agent-mode');
+    state.agentMode = data?.mode === 'basic' ? 'basic' : 'openclaw';
+    state.agentBridgeOnline = !!data?.bridgeOnline;
+    state.agentBridgeEnabled = !!data?.bridgeEnabled;
+  } catch (_) {
+    // Keep current state on failure (e.g. bridge/session hiccup).
+  }
+  updateHelperUiInPlace();
+}
+
+// Persist a mode switch to the server and refresh local state from the reply.
+async function setAgentMode(mode) {
+  if (mode !== 'openclaw' && mode !== 'basic') return;
+  const prev = state.agentMode;
+  state.agentMode = mode; // optimistic — reflect the click immediately
+  updateHelperUiInPlace();
+  try {
+    const data = await apiPost('/api/agent-mode', { mode });
+    state.agentMode = data?.mode === 'basic' ? 'basic' : 'openclaw';
+    state.agentBridgeOnline = !!data?.bridgeOnline;
+    state.agentBridgeEnabled = !!data?.bridgeEnabled;
+  } catch (_) {
+    state.agentMode = prev; // revert on failure
+  }
+  updateHelperUiInPlace();
+}
+
 function renderHelperControlBar() {
   const run = helperRun();
+  const mode = state.agentMode === 'basic' ? 'basic' : 'openclaw';
+  const bridgeOnline = state.agentBridgeOnline;
   const modelOptions = OPENCLAW_MODELS.map((m) =>
     `<option value="${m.id}" ${state.agentModel === m.id ? 'selected' : ''}>${escapeHtml(m.label)}</option>`
   ).join('');
@@ -5737,8 +5774,9 @@ function renderHelperControlBar() {
         `<span class="hc-tool ${t.status === 'running' ? 'hc-tool-running' : 'hc-tool-done'}" title="${escapeHtml(t.title || '')}">${escapeHtml(t.name || 'tool')}</span>`
       ).join('')
     : (busy ? '<span class="hc-tool hc-tool-none">thinking…</span>' : '');
-  return `
-    <div class="helper-control-bar" id="helper-control-bar">
+
+  // Model/effort + live agent status only apply to the full assistant.
+  const openclawRow = mode === 'openclaw' ? `
       <div class="hc-row">
         <label class="hc-label">Model
           <select id="agent-model-select" class="hc-select">${modelOptions}</select>
@@ -5748,7 +5786,22 @@ function renderHelperControlBar() {
         </label>
         <span class="hc-status ${statusClass}" id="helper-status-badge"><span class="hc-status-dot" aria-hidden="true"></span>${escapeHtml(statusLabel)}</span>
       </div>
-      <div class="hc-tools" id="helper-tools-list">${toolsHtml}</div>
+      <div class="hc-tools" id="helper-tools-list">${toolsHtml}</div>` : '';
+
+  const bridgeBadge = state.agentBridgeEnabled
+    ? `<span class="hc-bridge ${bridgeOnline ? '' : 'hc-bridge-off'}" id="helper-bridge-badge">${bridgeOnline ? 'bridge online' : 'bridge offline'}</span>`
+    : '';
+
+  return `
+    <div class="helper-control-bar" id="helper-control-bar">
+      <div class="hc-row">
+        <span class="hc-label">Venory</span>
+        <div class="hc-mode-toggle" id="agent-mode-toggle" role="radiogroup" aria-label="Venory mode">
+          <button type="button" class="hc-mode-opt ${mode === 'openclaw' ? 'is-active' : ''}" data-mode="openclaw">OpenClaw</button>
+          <button type="button" class="hc-mode-opt ${mode === 'basic' ? 'is-active' : ''}" data-mode="basic">basic</button>
+        </div>
+        ${bridgeBadge}
+      </div>${openclawRow}
     </div>
   `;
 }
@@ -5805,6 +5858,14 @@ if (typeof document !== 'undefined') {
       state.agentEffort = t.value;
       try { localStorage.setItem('agent_effort', t.value); } catch (_) {}
     }
+  });
+  // Owner's Venory mode switch (OpenClaw ↔ basic). Delegated click handler.
+  document.addEventListener('click', (e) => {
+    const opt = e.target && e.target.closest ? e.target.closest('.hc-mode-opt') : null;
+    if (!opt || !opt.dataset?.mode) return;
+    const mode = opt.dataset.mode;
+    if (mode === state.agentMode) return;
+    setAgentMode(mode);
   });
 }
 
@@ -11475,6 +11536,7 @@ async function init() {
     await loadMyTimeouts();
     if (state.user?.is_allowed) loadReportCounts().catch(() => {});
   connectSocket();
+    loadAgentMode();
     apiGet('/api/voice/participants').then(({ participants }) => {
       state._voiceParticipantCount = (participants || []).length;
     }).catch(() => {});

@@ -367,9 +367,38 @@ const OPENCLAW_OWNER_ID = process.env.OPENCLAW_OWNER_ID || 'jimmyqrg';
 const OPENCLAW_HELPER_TOKEN = process.env.OPENCLAW_HELPER_TOKEN || '';
 const OPENCLAW_BRIDGE_SECRET = process.env.OPENCLAW_BRIDGE_SECRET || '';
 const OPENCLAW_BRIDGE_TIMEOUT_MS = Number(process.env.OPENCLAW_BRIDGE_TIMEOUT_MS || 10 * 60 * 1000);
-const OPENCLAW_BRIDGE_FALLBACK = (process.env.OPENCLAW_BRIDGE_FALLBACK || 'deepseek') === 'offline-note' ? 'offline-note' : 'deepseek';
 const OPENCLAW_BRIDGE_ENABLED = !!(OPENCLAW_HELPER_TOKEN && OPENCLAW_BRIDGE_SECRET);
 const openclawBridgeTasks = new Map(); // taskId -> { resolve, timer, convId }
+
+// Agent routing mode for the owner's DMs to Venory. 'openclaw' routes
+// through the private OpenClaw bridge (full assistant); 'basic' uses the
+// normal DeepSeek helper. Persisted in the settings table so it survives
+// restarts, and switchable live from the owner's DM UI.
+const AGENT_MODES = new Set(['openclaw', 'basic']);
+const AGENT_MODE_DEFAULT = 'openclaw';
+function getAgentMode() {
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'agent_mode'").get();
+    return AGENT_MODES.has(row?.value) ? row.value : AGENT_MODE_DEFAULT;
+  } catch {
+    return AGENT_MODE_DEFAULT;
+  }
+}
+function setAgentMode(mode) {
+  if (!AGENT_MODES.has(mode)) return getAgentMode();
+  try {
+    db.prepare(`INSERT INTO settings (key, value) VALUES ('agent_mode', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(mode);
+  } catch (err) {
+    console.error('[agent-mode] failed to persist mode:', err?.message || err);
+  }
+  return getAgentMode();
+}
+function isBridgeOnline() {
+  const io = app.get('io');
+  const room = io?.sockets?.adapter?.rooms?.get('bridge:openclaw');
+  return !!(room && room.size > 0);
+}
 
 // Model + effort (thinking) options the owner can pick in the DM UI. These
 // are mirrored in the frontend (main.js) and the bridge; the server only
@@ -1046,18 +1075,25 @@ async function helperReply(triggerMsgId, content, roomType, roomId, userId, agen
   io?.to(roomKey).emit('helper:busy', { status: 'start', taskId: triggerMsgId, roomType, roomId });
   try {
     // ── OpenClaw bridge: the owner's private full assistant (DM only) ──
-    if (OPENCLAW_BRIDGE_ENABLED && roomType === 'dm' && userId === OPENCLAW_OWNER_ID) {
+    // The owner's routing mode controls which "Venory" answers: 'openclaw'
+    // (full assistant via the bridge, no silent fallback) or 'basic'
+    // (the normal DeepSeek helper below).
+    if (OPENCLAW_BRIDGE_ENABLED && roomType === 'dm' && userId === OPENCLAW_OWNER_ID && getAgentMode() === 'openclaw') {
       active.kind = 'bridge';
       const result = await routeViaOpenClawBridge(triggerMsgId, content, roomId, agentOpts, active);
       // Full assistant answered, the bridge reported an explicit error, or the
       // user stopped the response — the turn is done, no DeepSeek fallback.
       if (result.status === 'replied' || result.status === 'error' || result.status === 'stopped') return;
-      // Bridge not connected → offline note (or DeepSeek fallback below).
-      if (result.status === 'offline' && OPENCLAW_BRIDGE_FALLBACK === 'offline-note') {
-        insertHelperReply(triggerMsgId, 'My full assistant is offline right now (the OpenClaw bridge is not connected). I will be right back once it reconnects.', roomType, roomId);
+      // Bridge not connected → surface a clear note instead of silently
+      // switching to the basic helper (that silent switch was the confusing
+      // "sometimes basic Venory" behavior).
+      if (result.status === 'offline') {
+        insertHelperReply(triggerMsgId, 'OpenClaw mode is on, but the bridge is offline right now. You can switch to basic Venory for a quick reply, or wait for it to reconnect.', roomType, roomId);
         return;
       }
-      // Timeout / empty reply / route error → fall back to the normal DeepSeek helper below.
+      // Timeout / empty reply / route error → clear note, no silent fallback.
+      insertHelperReply(triggerMsgId, 'OpenClaw mode is on, but the full assistant did not finish this time. Switch to basic Venory for a fast reply, or try again.', roomType, roomId);
+      return;
     }
     if (!DEEPSEEK_API) {
       console.warn('[helper-bot] no DeepSeek endpoint configured; helper AI disabled');
@@ -1613,6 +1649,25 @@ app.get('/api/jokes/random', requireAuth, (req, res) => {
   let joke = lines[Math.floor(Math.random() * lines.length)];
   if (joke.length > 1000) joke = joke.slice(0, 1000);
   res.json({ joke });
+});
+
+// Owner-only: read the Venory agent routing mode ('openclaw' full assistant
+// vs 'basic' DeepSeek helper). Also reports whether the OpenClaw bridge is
+// currently connected so the UI can show a live offline hint.
+app.get('/api/agent-mode', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  if (user.id !== OPENCLAW_OWNER_ID) return res.status(403).json({ error: 'Not authorized' });
+  res.json({ mode: getAgentMode(), bridgeOnline: isBridgeOnline(), bridgeEnabled: OPENCLAW_BRIDGE_ENABLED });
+});
+
+// Owner-only: switch the Venory agent routing mode. Persisted server-side so
+// it survives restarts and applies to every owner DM regardless of device.
+app.post('/api/agent-mode', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  if (user.id !== OPENCLAW_OWNER_ID) return res.status(403).json({ error: 'Not authorized' });
+  const mode = typeof req.body?.mode === 'string' ? req.body.mode.trim() : '';
+  if (!AGENT_MODES.has(mode)) return res.status(400).json({ error: 'Invalid mode', mode });
+  res.json({ mode: setAgentMode(mode), bridgeOnline: isBridgeOnline(), bridgeEnabled: OPENCLAW_BRIDGE_ENABLED });
 });
 
 // Collections: saved messages per user

@@ -3387,6 +3387,43 @@ select:focus {
 .hc-status-done { color: #34d399; }
 .hc-status-done .hc-status-dot { background: #34d399; }
 .hc-status-idle { color: var(--text-muted); }
+/* Venory mode switch (OpenClaw ↔ basic) — segmented control */
+.hc-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.15rem;
+  background: var(--bg-main);
+  border: var(--border-width) solid var(--border);
+  border-radius: 8px;
+}
+.hc-mode-opt {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.hc-mode-opt:hover {
+  color: var(--text);
+}
+.hc-mode-opt.is-active {
+  background: var(--purple-bright);
+  color: #fff;
+}
+.hc-bridge {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #34d399;
+}
+.hc-bridge-off {
+  color: #f59e0b;
+}
 .hc-tools {
   display: flex;
   flex-wrap: wrap;
