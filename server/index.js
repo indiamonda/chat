@@ -1016,13 +1016,16 @@ async function helperReply(triggerMsgId, content, roomType, roomId, userId) {
   try {
     // ── OpenClaw bridge: the owner's private full assistant (DM only) ──
     if (OPENCLAW_BRIDGE_ENABLED && roomType === 'dm' && userId === OPENCLAW_OWNER_ID) {
-      const routed = await routeViaOpenClawBridge(triggerMsgId, content, roomId);
-      if (routed) return;
-      if (OPENCLAW_BRIDGE_FALLBACK === 'offline-note') {
+      const result = await routeViaOpenClawBridge(triggerMsgId, content, roomId);
+      // Full assistant answered, or the bridge reported an explicit error that
+      // we surfaced as the reply — either way the turn is done.
+      if (result.status === 'replied' || result.status === 'error') return;
+      // Bridge not connected → offline note (or DeepSeek fallback below).
+      if (result.status === 'offline' && OPENCLAW_BRIDGE_FALLBACK === 'offline-note') {
         insertHelperReply(triggerMsgId, 'My full assistant is offline right now (the OpenClaw bridge is not connected). I will be right back once it reconnects.', roomType, roomId);
         return;
       }
-      // Otherwise fall back to the normal DeepSeek helper below.
+      // Timeout / empty reply / route error → fall back to the normal DeepSeek helper below.
     }
     if (!DEEPSEEK_API) {
       console.warn('[helper-bot] no DeepSeek endpoint configured; helper AI disabled');
@@ -1121,11 +1124,16 @@ function registerBridgeSocket(socket) {
 }
 
 /** Emit a helper:task to the bridge room and wait for the bridge's reply.
- *  Returns true when a reply was inserted, false on timeout/error/no bridge. */
+ *  Returns { status: 'replied' | 'error' | 'offline' | 'timeout' | 'failed' }.
+ *  - 'replied': the full assistant answered and the reply was inserted.
+ *  - 'error': the bridge was connected but reported an error (message inserted).
+ *  - 'offline': no bridge socket is connected.
+ *  - 'timeout': the bridge did not answer within the configured timeout.
+ *  - 'failed': empty reply or an unexpected routing error. */
 async function routeViaOpenClawBridge(triggerMsgId, content, convId) {
   const io = app.get('io');
   const bridgeRoom = io?.sockets?.adapter?.rooms?.get('bridge:openclaw');
-  if (!bridgeRoom || bridgeRoom.size === 0) return false;
+  if (!bridgeRoom || bridgeRoom.size === 0) return { status: 'offline' };
 
   const taskId = randomUUID();
   let resolveTask;
@@ -1148,14 +1156,22 @@ async function routeViaOpenClawBridge(triggerMsgId, content, convId) {
     const result = await taskPromise;
     if (result.kind === 'reply' && result.text && result.text.trim()) {
       insertHelperReply(triggerMsgId, result.text.trim(), 'dm', convId);
-      return true;
+      return { status: 'replied' };
     }
-    return false;
+    if (result.kind === 'error') {
+      const text = (typeof result.message === 'string' && result.message.trim())
+        ? result.message.trim()
+        : 'My full assistant hit an error.';
+      insertHelperReply(triggerMsgId, text, 'dm', convId);
+      return { status: 'error' };
+    }
+    if (result.kind === 'timeout') return { status: 'timeout' };
+    return { status: 'failed' };
   } catch (err) {
     clearTimeout(timer);
     openclawBridgeTasks.delete(taskId);
     console.error('[openclaw-bridge] route error:', err);
-    return false;
+    return { status: 'failed' };
   }
 }
 

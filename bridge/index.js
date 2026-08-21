@@ -72,7 +72,21 @@ const socket = io(JCHAT_URL, {
 });
 
 // --- gateway call -----------------------------------------------------------
-async function runAgent(task) {
+const GATEWAY_MAX_ATTEMPTS = 3; // 1 initial + 2 retries on transient network errors
+const GATEWAY_RETRY_DELAY_MS = 1500;
+
+/** True for transient, connection-level failures worth retrying on a fresh
+ *  connection. HTTP error statuses and empty replies are NOT retried. */
+function isTransientFetchError(err) {
+  const msg = String(err?.message || '');
+  const code = String(err?.cause?.code || '');
+  if (/fetch failed/i.test(msg)) return true;
+  return ['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT', 'EAI_AGAIN',
+    'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT',
+    'UND_ERR_BODY_TIMEOUT'].includes(code);
+}
+
+async function runAgentOnce(task) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -103,6 +117,23 @@ async function runAgent(task) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function runAgent(task) {
+  let lastErr;
+  for (let attempt = 0; attempt < GATEWAY_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      log('gateway retry', attempt + 1, '/', GATEWAY_MAX_ATTEMPTS, 'after', lastErr?.message || lastErr);
+      await new Promise((r) => setTimeout(r, GATEWAY_RETRY_DELAY_MS));
+    }
+    try {
+      return await runAgentOnce(task);
+    } catch (err) {
+      lastErr = err;
+      if (!isTransientFetchError(err) || attempt >= GATEWAY_MAX_ATTEMPTS - 1) throw err;
+    }
+  }
+  throw lastErr;
 }
 
 // --- task handling (serialized per DM, typing indicator) ---------------------
