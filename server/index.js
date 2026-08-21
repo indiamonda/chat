@@ -369,7 +369,32 @@ const OPENCLAW_BRIDGE_SECRET = process.env.OPENCLAW_BRIDGE_SECRET || '';
 const OPENCLAW_BRIDGE_TIMEOUT_MS = Number(process.env.OPENCLAW_BRIDGE_TIMEOUT_MS || 10 * 60 * 1000);
 const OPENCLAW_BRIDGE_FALLBACK = (process.env.OPENCLAW_BRIDGE_FALLBACK || 'deepseek') === 'offline-note' ? 'offline-note' : 'deepseek';
 const OPENCLAW_BRIDGE_ENABLED = !!(OPENCLAW_HELPER_TOKEN && OPENCLAW_BRIDGE_SECRET);
-const openclawBridgeTasks = new Map(); // taskId -> { resolve, timer }
+const openclawBridgeTasks = new Map(); // taskId -> { resolve, timer, convId }
+
+// Model + effort (thinking) options the owner can pick in the DM UI. These
+// are mirrored in the frontend (main.js) and the bridge; the server only
+// validates/relays them so a bad value can't reach the bridge.
+const OPENCLAW_MODELS = new Set([
+  'deepseek/deepseek-v4-pro',
+  'deepseek/deepseek-v4-flash',
+  'claude-cli/claude-opus-4-8',
+]);
+const OPENCLAW_EFFORTS = new Set(['off', 'low', 'medium', 'high', 'max']);
+
+// In-flight helper responses, keyed by room key (dm:<id> / group:<id>). Used
+// to (a) broadcast "Venory is responding" so every account can show the stop
+// button, and (b) abort a DeepSeek/bridge helper response on stop.
+const helperActiveByRoom = new Map(); // roomKey -> { kind, taskId, controller }
+
+/** Normalize owner-supplied model/effort into a sanitized object (or undefined). */
+function sanitizeAgentOpts(payload) {
+  const model = typeof payload?.agent_model === 'string' ? payload.agent_model.trim() : '';
+  const effort = typeof payload?.agent_effort === 'string' ? payload.agent_effort.trim() : '';
+  const out = {};
+  if (model && OPENCLAW_MODELS.has(model)) out.model = model;
+  if (effort && OPENCLAW_EFFORTS.has(effort)) out.effort = effort;
+  return (out.model || out.effort) ? out : undefined;
+}
 const DEEPSEEK_API = process.env.DEEPSEEK_KEY
   ? 'https://api.deepseek.com/v1/chat/completions'
   : (process.env.DEEPSEEK_API_URL || ''); // No public fallback: without a key, AI is disabled (deployers bring their own key).
@@ -1012,14 +1037,21 @@ function ackOrHttp(res, ack, status, body) {
   return ack?.({ status, ...body });
 }
 
-async function helperReply(triggerMsgId, content, roomType, roomId, userId) {
+async function helperReply(triggerMsgId, content, roomType, roomId, userId, agentOpts) {
+  const io = app.get('io');
+  const roomKey = presenceRoomKeyForRoom(roomType, roomId);
+  const controller = new AbortController();
+  const active = { kind: 'deepseek', taskId: triggerMsgId, controller };
+  helperActiveByRoom.set(roomKey, active);
+  io?.to(roomKey).emit('helper:busy', { status: 'start', taskId: triggerMsgId, roomType, roomId });
   try {
     // ── OpenClaw bridge: the owner's private full assistant (DM only) ──
     if (OPENCLAW_BRIDGE_ENABLED && roomType === 'dm' && userId === OPENCLAW_OWNER_ID) {
-      const result = await routeViaOpenClawBridge(triggerMsgId, content, roomId);
-      // Full assistant answered, or the bridge reported an explicit error that
-      // we surfaced as the reply — either way the turn is done.
-      if (result.status === 'replied' || result.status === 'error') return;
+      active.kind = 'bridge';
+      const result = await routeViaOpenClawBridge(triggerMsgId, content, roomId, agentOpts, active);
+      // Full assistant answered, the bridge reported an explicit error, or the
+      // user stopped the response — the turn is done, no DeepSeek fallback.
+      if (result.status === 'replied' || result.status === 'error' || result.status === 'stopped') return;
       // Bridge not connected → offline note (or DeepSeek fallback below).
       if (result.status === 'offline' && OPENCLAW_BRIDGE_FALLBACK === 'offline-note') {
         insertHelperReply(triggerMsgId, 'My full assistant is offline right now (the OpenClaw bridge is not connected). I will be right back once it reconnects.', roomType, roomId);
@@ -1046,9 +1078,11 @@ async function helperReply(triggerMsgId, content, roomType, roomId, userId) {
 
     let reply = '';
     for (let attempt = 0; attempt < 3; attempt++) {
+      if (controller.signal.aborted) break;
       const resp = await fetch(DEEPSEEK_API, {
         method: 'POST',
         headers,
+        signal: controller.signal,
         body: JSON.stringify({
           model: 'deepseek-chat',
           messages,
@@ -1079,7 +1113,14 @@ async function helperReply(triggerMsgId, content, roomType, roomId, userId) {
 
     insertHelperReply(triggerMsgId, reply.trim(), roomType, roomId);
   } catch (err) {
-    console.error('[helper-bot] Error:', err);
+    if (err?.name === 'AbortError' || controller.signal.aborted) {
+      console.log('[helper-bot] response stopped by user');
+    } else {
+      console.error('[helper-bot] Error:', err);
+    }
+  } finally {
+    if (helperActiveByRoom.get(roomKey) === active) helperActiveByRoom.delete(roomKey);
+    io?.to(roomKey).emit('helper:busy', { status: 'end', taskId: triggerMsgId, roomType, roomId });
   }
 }
 
@@ -1103,9 +1144,10 @@ function insertHelperReply(triggerMsgId, text, roomType, roomId) {
   io?.to(emitRoom).emit('message', msg);
 }
 
-/** Register helper:reply / helper:error handlers for an authenticated bridge
- *  socket. Replies are only accepted from bridge sockets, and only for
- *  pending tasks, so no regular client can inject helper messages. */
+/** Register helper:reply / helper:error / helper:status / helper:stopped
+ *  handlers for an authenticated bridge socket. Replies are only accepted
+ *  from bridge sockets, and only for pending tasks, so no regular client can
+ *  inject helper messages or status events. */
 function registerBridgeSocket(socket) {
   socket.on('helper:reply', (p) => {
     const task = openclawBridgeTasks.get(p?.taskId);
@@ -1121,28 +1163,56 @@ function registerBridgeSocket(socket) {
     clearTimeout(task.timer);
     task.resolve({ kind: 'error', message: typeof p?.message === 'string' ? p.message : 'bridge error' });
   });
+  // Live agent status (working/done + tools being used). Relayed verbatim to
+  // the DM room so the owner's UI can render it. Only valid for pending tasks.
+  socket.on('helper:status', (p) => {
+    const task = openclawBridgeTasks.get(p?.taskId);
+    if (!task) return;
+    const io = app.get('io');
+    io?.to(`dm:${task.convId}`).emit('helper:status', {
+      taskId: p.taskId,
+      roomType: 'dm',
+      roomId: task.convId,
+      id: typeof p?.id === 'string' ? p.id : undefined,
+      kind: typeof p?.kind === 'string' ? p.kind : 'status',
+      status: typeof p?.status === 'string' ? p.status : undefined,
+      name: typeof p?.name === 'string' ? p.name : undefined,
+      title: typeof p?.title === 'string' ? p.title : undefined,
+      meta: typeof p?.meta === 'string' ? p.meta : undefined,
+    });
+  });
+  // Bridge confirms it aborted a stopped task.
+  socket.on('helper:stopped', (p) => {
+    const task = openclawBridgeTasks.get(p?.taskId);
+    if (!task) return;
+    openclawBridgeTasks.delete(p.taskId);
+    clearTimeout(task.timer);
+    task.resolve({ kind: 'stopped' });
+  });
 }
 
 /** Emit a helper:task to the bridge room and wait for the bridge's reply.
- *  Returns { status: 'replied' | 'error' | 'offline' | 'timeout' | 'failed' }.
+ *  Returns { status: 'replied' | 'error' | 'offline' | 'timeout' | 'failed' | 'stopped' }.
  *  - 'replied': the full assistant answered and the reply was inserted.
  *  - 'error': the bridge was connected but reported an error (message inserted).
  *  - 'offline': no bridge socket is connected.
  *  - 'timeout': the bridge did not answer within the configured timeout.
- *  - 'failed': empty reply or an unexpected routing error. */
-async function routeViaOpenClawBridge(triggerMsgId, content, convId) {
+ *  - 'failed': empty reply or an unexpected routing error.
+ *  - 'stopped': the user stopped the in-flight response. */
+async function routeViaOpenClawBridge(triggerMsgId, content, convId, agentOpts, active) {
   const io = app.get('io');
   const bridgeRoom = io?.sockets?.adapter?.rooms?.get('bridge:openclaw');
   if (!bridgeRoom || bridgeRoom.size === 0) return { status: 'offline' };
 
   const taskId = randomUUID();
+  if (active) active.taskId = taskId;
   let resolveTask;
   const taskPromise = new Promise((resolve) => { resolveTask = resolve; });
   const timer = setTimeout(() => {
     openclawBridgeTasks.delete(taskId);
     resolveTask({ kind: 'timeout' });
   }, OPENCLAW_BRIDGE_TIMEOUT_MS);
-  openclawBridgeTasks.set(taskId, { resolve: resolveTask, timer });
+  openclawBridgeTasks.set(taskId, { resolve: resolveTask, timer, convId });
 
   try {
     io.to('bridge:openclaw').emit('helper:task', {
@@ -1152,6 +1222,8 @@ async function routeViaOpenClawBridge(triggerMsgId, content, convId) {
       triggerMsgId,
       content: String(content),
       ownerId: OPENCLAW_OWNER_ID,
+      model: agentOpts?.model || undefined,
+      effort: agentOpts?.effort || undefined,
     });
     const result = await taskPromise;
     if (result.kind === 'reply' && result.text && result.text.trim()) {
@@ -1165,6 +1237,7 @@ async function routeViaOpenClawBridge(triggerMsgId, content, convId) {
       insertHelperReply(triggerMsgId, text, 'dm', convId);
       return { status: 'error' };
     }
+    if (result.kind === 'stopped') return { status: 'stopped' };
     if (result.kind === 'timeout') return { status: 'timeout' };
     return { status: 'failed' };
   } catch (err) {
@@ -2182,7 +2255,7 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   const msg = { ...row, likes: 0, reactions: [], edit_history: null };
   io.to(`dm:${req.params.convId}`).emit('message', msg);
   if (otherId === HELPER_USER_ID && user.id !== HELPER_USER_ID) {
-    helperReply(id, finalContent, 'dm', req.params.convId, user.id);
+    helperReply(id, finalContent, 'dm', req.params.convId, user.id, sanitizeAgentOpts(req.body));
   }
   res.status(201).json({ message: msg });
 });
@@ -3173,6 +3246,31 @@ io.on('connection', (socket) => {
     setTyping(socket.userId, presenceRoomKeyForRoom(roomType, roomId), false);
   });
 
+  // Stop the in-flight helper response for a room (all accounts). Resolves the
+  // pending bridge task immediately and best-effort aborts the DeepSeek fetch
+  // or tells the bridge to abort its gateway call.
+  socket.on('helper:stop', (payload) => {
+    const { roomType, roomId } = payload || {};
+    if (!roomType || !roomId) return;
+    const roomKey = presenceRoomKeyForRoom(roomType, roomId);
+    const active = helperActiveByRoom.get(roomKey);
+    if (!active) return;
+    if (active.kind === 'bridge' && active.taskId) {
+      const task = openclawBridgeTasks.get(active.taskId);
+      if (task) {
+        openclawBridgeTasks.delete(active.taskId);
+        clearTimeout(task.timer);
+        // Best-effort: tell the bridge to abort its in-flight gateway call.
+        io.to('bridge:openclaw').emit('helper:stop', { taskId: active.taskId });
+        // Resolve now so the user gets their send button back immediately,
+        // even if the bridge is slow to acknowledge.
+        task.resolve({ kind: 'stopped' });
+      }
+    } else if (active.kind === 'deepseek') {
+      active.controller.abort();
+    }
+  });
+
   socket.on('dm:join', (convId, ack) => {
     const conv = db.prepare('SELECT id, user1_id, user2_id FROM conversations WHERE id = ?').get(convId);
     if (!conv || (conv.user1_id !== socket.userId && conv.user2_id !== socket.userId)) return ack?.({ error: 'Forbidden' });
@@ -3305,7 +3403,7 @@ io.on('connection', (socket) => {
       io.to(`dm:${roomId}`).emit('message', msg);
       setTyping(socket.userId, presenceRoomKeyForRoom('dm', roomId), false);
       if (otherId === HELPER_USER_ID && socket.userId !== HELPER_USER_ID) {
-        helperReply(id, content, 'dm', roomId, socket.userId);
+        helperReply(id, content, 'dm', roomId, socket.userId, sanitizeAgentOpts(payload));
       }
       return ack?.({ message: msg });
     }

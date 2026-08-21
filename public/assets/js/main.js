@@ -105,6 +105,10 @@ let state = {
   _exportRunning: null,
   _mentionAutocomplete: null,
   _attachmentsPending: [],
+  // Venory helper: owner's persisted model/effort + live per-room run state.
+  agentModel: typeof localStorage !== 'undefined' ? (localStorage.getItem('agent_model') || 'deepseek/deepseek-v4-pro') : 'deepseek/deepseek-v4-pro',
+  agentEffort: typeof localStorage !== 'undefined' ? (localStorage.getItem('agent_effort') || 'high') : 'high',
+  helperRuns: {}, // roomKey -> { busy, working, done, tools: [{id,name,title,status,meta}] }
 };
 
 if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
@@ -2599,7 +2603,7 @@ function isFriendRequestPending(userId) {
  *  - Resolves with `{ message }` on success or `{ error }` on server rejection.
  *  - Rejects only on transport / network failures.
  */
-async function sendMessageResilient({ roomType, roomId, text, reply_to_id, ackTimeoutMs = 12000 }) {
+async function sendMessageResilient({ roomType, roomId, text, reply_to_id, ackTimeoutMs = 12000, agent_model, agent_effort }) {
   const socket = state.socket;
   const socketReady = socket && socket.connected;
   // AI moderation can take a couple of seconds, especially on cold starts or
@@ -2609,7 +2613,10 @@ async function sendMessageResilient({ roomType, roomId, text, reply_to_id, ackTi
     try {
       const res = await new Promise((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('timeout')), ackTimeoutMs);
-        socket.emit('message:send', { roomType, roomId, content: text, reply_to_id }, (r) => {
+        const payload = { roomType, roomId, content: text, reply_to_id };
+        if (agent_model) payload.agent_model = agent_model;
+        if (agent_effort) payload.agent_effort = agent_effort;
+        socket.emit('message:send', payload, (r) => {
           clearTimeout(timer);
           resolve(r);
         });
@@ -2628,6 +2635,8 @@ async function sendMessageResilient({ roomType, roomId, text, reply_to_id, ackTi
     : `/api/rooms/${roomType}/${roomId}/messages`;
   const body = { content: text };
   if (reply_to_id) body.reply_to_id = reply_to_id;
+  if (agent_model) body.agent_model = agent_model;
+  if (agent_effort) body.agent_effort = agent_effort;
   try {
     const data = await apiPost(httpPath, body);
     return data && data.message ? { message: data.message } : (data || {});
@@ -2900,6 +2909,39 @@ function connectSocket() {
   s.on('timeouts:changed', async () => {
     await loadMyTimeouts();
     render();
+  });
+  // ── Venory helper: live busy + agent status events ──
+  s.on('helper:busy', ({ status, taskId, roomType, roomId }) => {
+    const key = roomType && roomId ? roomKey(roomType, roomId) : null;
+    if (!key) return;
+    const run = state.helperRuns[key] || { busy: false, working: false, done: false, tools: [] };
+    if (status === 'start') {
+      run.busy = true; run.working = true; run.done = false; run.tools = [];
+    } else {
+      run.busy = false;
+    }
+    state.helperRuns[key] = run;
+    updateHelperUiInPlace(key);
+  });
+  s.on('helper:status', ({ taskId, kind, status, name, title, meta, id, roomType, roomId }) => {
+    const key = roomType && roomId ? roomKey(roomType, roomId) : helperDmKey();
+    if (!key) return;
+    const run = state.helperRuns[key] || { busy: true, working: true, done: false, tools: [] };
+    if (kind === 'lifecycle') {
+      if (status === 'working') { run.working = true; run.done = false; }
+      else if (status === 'done') { run.working = false; run.done = true; }
+    } else if (kind === 'tool') {
+      const i = run.tools.findIndex((t) => id && t.id === id);
+      if (status === 'running') {
+        const tool = { id, name, title, status: 'running', meta };
+        if (i >= 0) run.tools[i] = tool;
+        else run.tools.push(tool);
+      } else {
+        if (i >= 0) run.tools[i] = { ...run.tools[i], status: status || 'completed' };
+      }
+    }
+    state.helperRuns[key] = run;
+    updateHelperUiInPlace(key);
   });
   state.socket = s;
   voiceSetupSignalListeners();
@@ -5285,6 +5327,26 @@ const ICON_X_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16
 const ICON_EDIT_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>';
 const ICON_CHAT_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
 const ICON_SEND_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
+const ICON_STOP = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+
+// ── Venory (helper) owner-only controls + live status ───────────────────────
+// Owner id matches the server's OPENCLAW_OWNER_ID. The helper bot is the
+// "Venory" assistant user. Model/effort lists mirror server/index.js
+// (OPENCLAW_MODELS / OPENCLAW_EFFORTS) for the picker.
+const OPENCLAW_OWNER_ID = 'jimmyqrg';
+const HELPER_BOT_ID = 'helper';
+const OPENCLAW_MODELS = [
+  { id: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+  { id: 'deepseek/deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
+  { id: 'claude-cli/claude-opus-4-8', label: 'Claude Opus 4.8' },
+];
+const OPENCLAW_EFFORTS = [
+  { id: 'off', label: 'Off' },
+  { id: 'low', label: 'Low' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'high', label: 'High' },
+  { id: 'max', label: 'Max' },
+];
 const ICON_USER_PLUS_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>';
 const ICON_BAN_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>';
 const ICON_KEY_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.3 9.3"/><path d="m18.5 5.5 3 3"/></svg>';
@@ -5634,6 +5696,118 @@ function renderDmVoiceModals() {
   return '';
 }
 
+// ── Venory (helper) owner controls + live status helpers ─────────────────────
+function isOwner() {
+  return state.user?.id === OPENCLAW_OWNER_ID;
+}
+function isHelperDm() {
+  return state.dmUserId === HELPER_BOT_ID;
+}
+function helperDmKey() {
+  return isHelperDm() && state.convId ? roomKey('dm', state.convId) : null;
+}
+function helperRun() {
+  const key = helperDmKey();
+  return key ? (state.helperRuns[key] || null) : null;
+}
+function isHelperBusy() {
+  return !!(helperRun()?.busy);
+}
+function agentOptsForSend() {
+  return (isOwner() && isHelperDm())
+    ? { agent_model: state.agentModel, agent_effort: state.agentEffort }
+    : {};
+}
+
+function renderHelperControlBar() {
+  const run = helperRun();
+  const modelOptions = OPENCLAW_MODELS.map((m) =>
+    `<option value="${m.id}" ${state.agentModel === m.id ? 'selected' : ''}>${escapeHtml(m.label)}</option>`
+  ).join('');
+  const effortOptions = OPENCLAW_EFFORTS.map((e) =>
+    `<option value="${e.id}" ${state.agentEffort === e.id ? 'selected' : ''}>${escapeHtml(e.label)}</option>`
+  ).join('');
+  const tools = run?.tools || [];
+  const busy = !!run?.busy;
+  const done = !!run?.done;
+  const statusLabel = busy ? (done ? 'Done' : 'Working…') : 'Idle';
+  const statusClass = busy ? (done ? 'hc-status-done' : 'hc-status-working') : 'hc-status-idle';
+  const toolsHtml = tools.length
+    ? tools.map((t) =>
+        `<span class="hc-tool ${t.status === 'running' ? 'hc-tool-running' : 'hc-tool-done'}" title="${escapeHtml(t.title || '')}">${escapeHtml(t.name || 'tool')}</span>`
+      ).join('')
+    : (busy ? '<span class="hc-tool hc-tool-none">thinking…</span>' : '');
+  return `
+    <div class="helper-control-bar" id="helper-control-bar">
+      <div class="hc-row">
+        <label class="hc-label">Model
+          <select id="agent-model-select" class="hc-select">${modelOptions}</select>
+        </label>
+        <label class="hc-label">Effort
+          <select id="agent-effort-select" class="hc-select">${effortOptions}</select>
+        </label>
+        <span class="hc-status ${statusClass}" id="helper-status-badge"><span class="hc-status-dot" aria-hidden="true"></span>${escapeHtml(statusLabel)}</span>
+      </div>
+      <div class="hc-tools" id="helper-tools-list">${toolsHtml}</div>
+    </div>
+  `;
+}
+
+function renderSendButton() {
+  const busy = isHelperBusy();
+  if (busy) {
+    return `<button type="button" class="composer-send composer-stop" id="send-btn" title="Stop" aria-label="Stop"><span class="icon" aria-hidden="true">${ICON_STOP}</span></button>`;
+  }
+  const disabled = (state._spamBlockedUntil && Date.now() < state._spamBlockedUntil) ? 'disabled' : '';
+  return `<button type="button" class="composer-send" id="send-btn" title="${t('send')}" ${disabled}><span class="icon" aria-hidden="true">${ICON_SEND}</span></button>`;
+}
+
+/** Lightweight in-place update of the helper control bar + send button so
+ *  live `helper:busy` / `helper:status` events don't trigger a full render
+ *  (which would steal focus and break in-progress typing). Mutates the
+ *  existing send button (keeps its click listener) instead of replacing it. */
+function updateHelperUiInPlace(key) {
+  const cur = helperDmKey();
+  if (!cur || (key && key !== cur)) return;
+  if (isOwner() && isHelperDm()) {
+    const bar = document.getElementById('helper-control-bar');
+    if (bar) bar.outerHTML = renderHelperControlBar();
+  }
+  const btn = document.getElementById('send-btn');
+  if (btn) {
+    const busy = isHelperBusy();
+    const isStop = btn.classList.contains('composer-stop');
+    if (isStop !== busy) {
+      btn.classList.toggle('composer-stop', busy);
+      btn.title = busy ? 'Stop' : t('send');
+      btn.setAttribute('aria-label', busy ? 'Stop' : t('send'));
+      btn.innerHTML = `<span class="icon" aria-hidden="true">${busy ? ICON_STOP : ICON_SEND}</span>`;
+      if (busy) {
+        btn.removeAttribute('disabled');
+      } else if (state._spamBlockedUntil && Date.now() < state._spamBlockedUntil) {
+        btn.setAttribute('disabled', '');
+      } else {
+        btn.removeAttribute('disabled');
+      }
+    }
+  }
+}
+
+// Persist owner's model/effort picks (delegated so it survives the in-place
+// control-bar re-render above).
+if (typeof document !== 'undefined') {
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t && t.id === 'agent-model-select') {
+      state.agentModel = t.value;
+      try { localStorage.setItem('agent_model', t.value); } catch (_) {}
+    } else if (t && t.id === 'agent-effort-select') {
+      state.agentEffort = t.value;
+      try { localStorage.setItem('agent_effort', t.value); } catch (_) {}
+    }
+  });
+}
+
 function renderChatArea() {
   const route = parseRoute();
   const isProfileView = route.dmUserId && route.view === 'profile';
@@ -5655,7 +5829,7 @@ function renderChatArea() {
             <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
           </div>
         </div>
-        <button type="button" class="composer-send" id="send-btn" title="${t('send')}" ${state._spamBlockedUntil && Date.now() < state._spamBlockedUntil ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_SEND}</span></button>
+        ${renderSendButton()}
       </div>
     </div>
     `}
@@ -5780,6 +5954,7 @@ function renderChatArea() {
         </div>
         ` : ''}
         ${!accessDenied && ((roomType === 'group' && (state.panel === 'free_chat' || state.panel === 'support')) || roomType === 'dm') ? `
+        ${isOwner() && isHelperDm() ? renderHelperControlBar() : ''}
         <div class="composer composer-safe-area ${roomType === 'dm' && !isFriend(state.dmUserId) ? 'composer-no-files' : ''}" id="composer-drop-zone" data-can-send-files="${roomType === 'dm' ? isFriend(state.dmUserId) : true}">
           ${replyPreview ? `
             <div class="composer-reply">
@@ -5816,7 +5991,7 @@ function renderChatArea() {
                 <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
               </div>
             </div>
-            <button type="button" class="composer-send" id="send-btn" title="${t('send')}" ${state._spamBlockedUntil && Date.now() < state._spamBlockedUntil ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_SEND}</span></button>
+            ${renderSendButton()}
           </div>
         </div>
         ` : ''}
@@ -8631,6 +8806,9 @@ function bindMain() {
   if (sendBtn && input) {
     const send = async () => {
       if (state._sendingMessage) return;
+      // Venory is responding: the send button is a stop button right now, so
+      // block normal sends until the current response is stopped.
+      if (isHelperBusy()) return;
       const text = input.value.trim();
       if (!text && !state._pendingFile) return;
       const roomType = state.dmUserId ? 'dm' : 'group';
@@ -8644,7 +8822,7 @@ function bindMain() {
       if (hasPlaintextLine(text)) {
         const reply_to_id = state.replyTo?.id || null;
         state._sendingMessage = true;
-        sendMessageResilient({ roomType, roomId, text, reply_to_id })
+        sendMessageResilient({ roomType, roomId, text, reply_to_id, ...agentOptsForSend() })
           .then((res) => {
             state._sendingMessage = false;
             if (res?.error) {
@@ -8876,7 +9054,7 @@ function bindMain() {
         });
         return;
       }
-      sendMessageResilient({ roomType, roomId, text, reply_to_id })
+      sendMessageResilient({ roomType, roomId, text, reply_to_id, ...agentOptsForSend() })
         .then((res) => {
           done();
           if (res?.error) {
@@ -8908,6 +9086,11 @@ function bindMain() {
     sendBtn.addEventListener('click', () => {
       const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;
+      // Stop instead of send while Venory is responding.
+      if (isHelperBusy()) {
+        state.socket?.emit('helper:stop', { roomType, roomId });
+        return;
+      }
       emitTypingStop(roomType, roomId);
       send();
     });
@@ -8921,6 +9104,8 @@ function bindMain() {
       if (e.key === 'Enter' && !e.shiftKey) {
         if (isMobile()) return;
         e.preventDefault();
+        // Block Enter-send while Venory is responding (must stop first).
+        if (isHelperBusy()) return;
         const roomType = state.dmUserId ? 'dm' : 'group';
         const roomId = state.dmUserId ? state.convId : state.panel;
         emitTypingStop(roomType, roomId);

@@ -3323,6 +3323,98 @@ select:focus {
   transform: scale(0.98);
 }
 
+/* Venory helper: stop button while responding (all accounts) */
+.composer-send.composer-stop {
+  background: #ef4444;
+}
+.composer-send.composer-stop:hover {
+  background: #dc2626;
+  box-shadow: 0 2px 12px rgba(239, 68, 68, 0.4);
+}
+
+/* Venory helper: owner control bar (model/effort + live status + tools) */
+.helper-control-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0 0.75rem 0.4rem;
+  background: var(--bg-panel);
+  border: var(--border-width) solid var(--border);
+  border-radius: 10px;
+}
+.hc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.hc-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.hc-select {
+  background: var(--bg-main);
+  color: var(--text);
+  border: var(--border-width) solid var(--border);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.hc-status {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.hc-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.hc-status-working { color: var(--purple-bright); }
+.hc-status-working .hc-status-dot {
+  background: var(--purple-bright);
+  animation: hc-pulse 1s ease-in-out infinite;
+}
+.hc-status-done { color: #34d399; }
+.hc-status-done .hc-status-dot { background: #34d399; }
+.hc-status-idle { color: var(--text-muted); }
+.hc-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.hc-tool {
+  font-size: 0.72rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.hc-tool-running {
+  color: var(--purple-bright);
+  border-color: var(--purple-dim);
+  background: var(--glow);
+}
+.hc-tool-done { color: #34d399; }
+.hc-tool-none {
+  font-style: italic;
+  border-style: dashed;
+}
+@keyframes hc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
 /* Doc panels (Problem Solving, Rules) */
 .doc-panel {
   flex: 1;
