@@ -108,6 +108,8 @@ let state = {
   // Venory helper: owner's persisted model/effort + live per-room run state.
   agentModel: typeof localStorage !== 'undefined' ? (localStorage.getItem('agent_model') || 'deepseek/deepseek-v4-pro') : 'deepseek/deepseek-v4-pro',
   agentEffort: typeof localStorage !== 'undefined' ? (localStorage.getItem('agent_effort') || 'high') : 'high',
+  agentSessions: [],
+  agentSession: '',
   agentMode: 'openclaw', // 'openclaw' (full assistant) | 'basic' (DeepSeek helper) — server-persisted
   agentBridgeOnline: true,
   agentBridgeEnabled: true,
@@ -2852,7 +2854,7 @@ function connectSocket() {
   s.on('permissions:changed', () => {
     // Re-pull the user profile so new timeout/permission state is picked up
     // without a full reload. Used for timeouts and perm-grant/revoke.
-    loadMe().then(() => { render(); loadAgentMode(); }).catch(() => {});
+    loadMe().then(() => { render(); loadAgentMode(); loadAgentSessions(); }).catch(() => {});
     try { loadMyTimeouts?.().then(() => render()); } catch (_) {}
   });
   s.on('message:pinned', ({ room_type, room_id, pinned }) => {
@@ -2945,6 +2947,18 @@ function connectSocket() {
     }
     state.helperRuns[key] = run;
     updateHelperUiInPlace(key);
+  });
+  // OpenClaw session picker: the bridge pushes a fresh list whenever the
+  // gateway session index changes, so the owner's picker stays live without
+  // a request round-trip.
+  s.on('agent:sessions:update', ({ sessions } = {}) => {
+    if (!isOwner()) return;
+    if (Array.isArray(sessions)) {
+      state.agentSessions = sessions;
+      updateHelperUiInPlace();
+    } else {
+      loadAgentSessions();
+    }
   });
   state.socket = s;
   voiceSetupSignalListeners();
@@ -5754,6 +5768,34 @@ async function setAgentMode(mode) {
   updateHelperUiInPlace();
 }
 
+// Load (or refresh) the OpenClaw session list + current selection. Owner-only.
+async function loadAgentSessions() {
+  if (!isOwner()) return;
+  try {
+    const data = await apiGet('/api/agent-sessions');
+    state.agentSessions = Array.isArray(data?.sessions) ? data.sessions : [];
+    state.agentSession = typeof data?.current === 'string' ? data.current : '';
+  } catch (_) {
+    // Keep current state on failure (bridge/session hiccup).
+  }
+  updateHelperUiInPlace();
+}
+
+// Persist a session switch to the server and refresh local state from the reply.
+async function setAgentSession(sessionKey) {
+  const key = typeof sessionKey === 'string' ? sessionKey : '';
+  const prev = state.agentSession;
+  state.agentSession = key; // optimistic
+  updateHelperUiInPlace();
+  try {
+    const data = await apiPost('/api/agent-session', { sessionKey: key });
+    state.agentSession = typeof data?.current === 'string' ? data.current : '';
+  } catch (_) {
+    state.agentSession = prev; // revert on failure
+  }
+  updateHelperUiInPlace();
+}
+
 function renderHelperControlBar() {
   const run = helperRun();
   const mode = state.agentMode === 'basic' ? 'basic' : 'openclaw';
@@ -5776,6 +5818,10 @@ function renderHelperControlBar() {
     : (busy ? '<span class="hc-tool hc-tool-none">thinking…</span>' : '');
 
   // Model/effort + live agent status only apply to the full assistant.
+  const sessionOptions = `<option value="" ${!state.agentSession ? 'selected' : ''}>This DM (jchat)</option>`
+    + state.agentSessions.map((s) =>
+        `<option value="${escapeHtml(s.key)}" ${state.agentSession === s.key ? 'selected' : ''} title="${escapeHtml(s.preview || s.key)}">${escapeHtml(s.label || s.key)}${s.hasActiveRun ? ' ●' : ''}</option>`
+      ).join('');
   const openclawRow = mode === 'openclaw' ? `
       <div class="hc-row">
         <label class="hc-label">Model
@@ -5785,6 +5831,12 @@ function renderHelperControlBar() {
           <select id="agent-effort-select" class="hc-select">${effortOptions}</select>
         </label>
         <span class="hc-status ${statusClass}" id="helper-status-badge"><span class="hc-status-dot" aria-hidden="true"></span>${escapeHtml(statusLabel)}</span>
+      </div>
+      <div class="hc-row">
+        <label class="hc-label">Session
+          <select id="agent-session-select" class="hc-select hc-session-select">${sessionOptions}</select>
+        </label>
+        ${state.agentSession ? `<span class="hc-note">DMs go to <b>${escapeHtml(state.agentSession.split(':').pop())}</b>; its activity is relayed here</span>` : ''}
       </div>
       <div class="hc-tools" id="helper-tools-list">${toolsHtml}</div>` : '';
 
@@ -5857,6 +5909,8 @@ if (typeof document !== 'undefined') {
     } else if (t && t.id === 'agent-effort-select') {
       state.agentEffort = t.value;
       try { localStorage.setItem('agent_effort', t.value); } catch (_) {}
+    } else if (t && t.id === 'agent-session-select') {
+      setAgentSession(t.value);
     }
   });
   // Owner's Venory mode switch (OpenClaw ↔ basic). Delegated click handler.
@@ -11537,6 +11591,7 @@ async function init() {
     if (state.user?.is_allowed) loadReportCounts().catch(() => {});
   connectSocket();
     loadAgentMode();
+    loadAgentSessions();
     apiGet('/api/voice/participants').then(({ participants }) => {
       state._voiceParticipantCount = (participants || []).length;
     }).catch(() => {});

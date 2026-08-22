@@ -3365,6 +3365,18 @@ select:focus {
   font-size: 0.8rem;
   cursor: pointer;
 }
+.hc-session-select {
+  max-width: 240px;
+}
+.hc-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.hc-note b {
+  color: var(--purple-bright, #a78bfa);
+  font-style: normal;
+}
 .hc-status {
   margin-left: auto;
   display: inline-flex;

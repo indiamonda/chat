@@ -148,9 +148,19 @@ function handleGatewayMessage(raw) {
     if (m.ok) {
       gwReady = true;
       log('gateway ws connected (operator)');
+      gwRpc('sessions.subscribe', {}, 8000)
+        .then(() => log('subscribed to gateway session index changes'))
+        .catch((err) => log('sessions.subscribe failed:', err.message));
+      scheduleListPush();
     } else {
       log('gateway ws connect rejected:', JSON.stringify(m.error || m).slice(0, 300));
     }
+  } else if (m.type === 'res' && rpcWaiters.has(m.id)) {
+    rpcWaiters.get(m.id)(m);
+  } else if (m.event === 'sessions.changed') {
+    scheduleListPush();
+  } else if (m.event === 'session.message') {
+    handleSessionMessage(m.payload);
   } else if (m.event === 'agent') {
     handleAgentEvent(m.payload);
   }
@@ -165,10 +175,14 @@ function convIdFromSessionKey(sessionKey) {
 
 function handleAgentEvent(p) {
   if (!p || !p.sessionKey) return;
-  const convId = convIdFromSessionKey(p.sessionKey);
-  if (!convId) return;
-  const taskId = activeByConv.get(convId);
-  if (!taskId) return; // no in-flight task for this DM
+  // Session-switched tasks surface agent events under the switched session
+  // key; DM tasks surface them under the derived DM session key.
+  let taskId = activeBySession.get(p.sessionKey);
+  if (!taskId) {
+    const convId = convIdFromSessionKey(p.sessionKey);
+    if (convId) taskId = activeByConv.get(convId);
+  }
+  if (!taskId) return; // no in-flight task for this session
   const status = mapAgentEvent(p);
   if (!status) return;
   socket.emit('helper:status', { taskId, ...status });
@@ -276,14 +290,22 @@ async function runAgentOnce(task, controller) {
     // message and applies the requested reasoning effort for this session.
     content = `/think:${task.effort}\n\n${content}`;
   }
-  const json = JSON.stringify({
+  const sessionKey = resolveTaskSessionKey(task);
+  const payload = {
     model: MODEL,
-    // Stable per-DM session key: the OpenClaw agent keeps its own
-    // conversation memory across messages in the same DM.
-    user: `jchat:dm:${task.convId}`,
     messages: [{ role: 'user', content }],
     stream: false,
-  });
+  };
+  if (sessionKey === dmSessionKey(task.convId)) {
+    // Default: stable per-DM session key — the OpenClaw agent keeps its own
+    // conversation memory across messages in the same DM.
+    payload.user = `jchat:dm:${task.convId}`;
+  } else {
+    // Session switch: explicit routing to the owner-selected session.
+    headers['x-openclaw-session-key'] = sessionKey;
+  }
+  recordSent(sessionKey, content);
+  const json = JSON.stringify(payload);
   headers['Content-Length'] = Buffer.byteLength(json);
   const { status, body } = await gatewayRequestJson(
     `${OPENCLAW_GATEWAY_URL}/chat/completions`, headers, json, controller
@@ -320,7 +342,207 @@ async function runAgent(task, controller) {
 const chains = new Map();         // convId -> Promise (per-DM serialization)
 const typingOn = new Map();       // convId -> number of queued tasks
 const activeByConv = new Map();   // convId -> taskId (running task, for agent events)
+const activeBySession = new Map(); // gateway sessionKey -> taskId (session-switched tasks)
 const controllers = new Map();    // taskId -> AbortController (for helper:stop)
+
+// --- gateway session awareness (session switching + live relay) ---------------
+let rpcSeq = 1;
+const rpcWaiters = new Map();     // rpc id -> resolver
+let currentSessionKey = '';       // '' = owner's DM session (default)
+let dmConvId = '';                // owner's DM conv id (from server sync; relay target)
+let relaySubKey = null;           // gateway session key subscribed for message events
+let listPushTimer = null;
+const recentSent = new Map();     // sessionKey -> { text, at } (user msgs we sent via tasks)
+const recentReplies = new Map();  // sessionKey -> { text, at } (assistant replies we delivered)
+const relayRate = new Map();      // sessionKey -> [timestamps]
+const RELAY_WINDOW_MS = 60 * 1000;
+const RELAY_MAX_PER_WINDOW = 20;
+const SESSION_LIST_MAX = 30;
+
+/** Call an RPC on the gateway WS (request/response pair). */
+function gwRpc(method, params = {}, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    if (!gw || gw.readyState !== WebSocket.OPEN) {
+      return reject(new Error('gateway ws not open'));
+    }
+    const id = `br-${rpcSeq++}`;
+    const timer = setTimeout(() => {
+      rpcWaiters.delete(id);
+      reject(new Error(`${method} rpc timed out`));
+    }, timeoutMs);
+    rpcWaiters.set(id, (res) => {
+      clearTimeout(timer);
+      rpcWaiters.delete(id);
+      if (res.ok) resolve(res.payload);
+      else reject(Object.assign(new Error(res?.error?.message || `${method} failed`), { rpcError: res?.error }));
+    });
+    try {
+      gw.send(JSON.stringify({ type: 'req', id, method, params }));
+    } catch (err) {
+      clearTimeout(timer);
+      rpcWaiters.delete(id);
+      reject(err);
+    }
+  });
+}
+
+function dmSessionKey(convId) {
+  return convId ? `agent:main:openai-user:jchat:dm:${convId}` : '';
+}
+
+function isReservedSessionKey(key) {
+  return /^(subagent|cron|acp):/.test(key) || /:(subagent|cron|acp):/.test(key);
+}
+
+function isRoutableSessionKey(key) {
+  if (typeof key !== 'string' || !key) return false;
+  if (!/^agent:main(:|$)/.test(key)) return false;
+  if (isReservedSessionKey(key)) return false;
+  return true;
+}
+
+function shortSessionLabel(key) {
+  const m = String(key || '').match(/^agent:main:(.+)$/);
+  const base = m ? m[1] : String(key || '');
+  return base.length > 28 ? `${base.slice(0, 25)}…` : base;
+}
+
+function resolveTaskSessionKey(task) {
+  const s = typeof task?.agentSession === 'string' ? task.agentSession.trim() : '';
+  if (s && !isReservedSessionKey(s)) return s;
+  return dmSessionKey(task?.convId);
+}
+
+/** Curated session list for the owner UI: routable rows + previews, most
+ *  recently active first, excluding the owner's DM session itself. */
+async function buildSessionList() {
+  const payload = await gwRpc('sessions.list', {}, 20000);
+  const rows = Array.isArray(payload?.sessions) ? payload.sessions : [];
+  let sessions = rows
+    .filter((s) => isRoutableSessionKey(s.key))
+    .map((s) => ({
+      key: s.key,
+      label: (typeof s.displayName === 'string' && s.displayName) ? s.displayName : shortSessionLabel(s.key),
+      updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : (typeof s.lastActivityAt === 'number' ? s.lastActivityAt : 0),
+      status: s.status || (s.hasActiveRun ? 'running' : 'done'),
+      hasActiveRun: !!s.hasActiveRun,
+      model: typeof s.model === 'string' ? s.model : '',
+    }))
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, SESSION_LIST_MAX);
+  const dmKey = dmSessionKey(dmConvId);
+  if (dmKey) sessions = sessions.filter((s) => s.key !== dmKey);
+  // One-shot previews (first user/assistant text item per session).
+  try {
+    const keys = sessions.slice(0, 20).map((s) => s.key);
+    if (keys.length) {
+      const prev = await gwRpc('sessions.preview', { keys, limit: 4, maxChars: 160 }, 20000);
+      const byKey = new Map((prev?.previews || []).map((p) => [p.key, p]));
+      for (const s of sessions) {
+        const items = byKey.get(s.key)?.items || [];
+        const hit = items.find((it) => (it.role === 'user' || it.role === 'assistant') && it.text);
+        if (hit) s.preview = String(hit.text).replace(/\s+/g, ' ').trim().slice(0, 160);
+      }
+    }
+  } catch (err) {
+    log('session preview fetch failed:', err.message);
+  }
+  return sessions;
+}
+
+/** Debounced push of the fresh session list to the jchat server (drives the
+ *  owner's picker + "updates when activity happens" requirement). */
+function scheduleListPush() {
+  if (listPushTimer) return;
+  listPushTimer = setTimeout(async () => {
+    listPushTimer = null;
+    if (!socket.connected || !gwReady) return;
+    try {
+      const sessions = await buildSessionList();
+      socket.emit('helper:sessions:update', { sessions });
+    } catch (err) {
+      log('session list push failed:', err.message);
+    }
+  }, 1500);
+}
+
+/** Apply the server's authoritative session selection (from helper:session:sync
+ *  or the agentSession field on tasks) and re-subscribe message events. */
+function applySessionSync(p) {
+  const raw = typeof p?.sessionKey === 'string' ? p.sessionKey.trim() : '';
+  currentSessionKey = (raw && !isReservedSessionKey(raw)) ? raw : '';
+  if (typeof p?.dmConvId === 'string' && p.dmConvId) dmConvId = p.dmConvId;
+  const want = (currentSessionKey && currentSessionKey !== dmSessionKey(dmConvId)) ? currentSessionKey : null;
+  if (want === relaySubKey) return;
+  if (relaySubKey) {
+    gwRpc('sessions.messages.unsubscribe', { key: relaySubKey }).catch(() => {});
+  }
+  relaySubKey = null;
+  if (want) {
+    gwRpc('sessions.messages.subscribe', { key: want })
+      .then(() => {
+        relaySubKey = want;
+        log('relay subscribed to:', want);
+      })
+      .catch((err) => log('relay subscribe failed:', err.message));
+  }
+}
+
+function recordSent(sessionKey, content) {
+  const norm = String(content).replace(/^\s*\/think:[a-z]+\s*\n*\s*/i, '').trim();
+  recentSent.set(sessionKey, { text: norm, at: Date.now() });
+  if (recentSent.size > 64) {
+    const now = Date.now();
+    for (const [k, v] of recentSent) if (now - v.at > 10 * 60 * 1000) recentSent.delete(k);
+  }
+}
+
+function recordReply(sessionKey, text) {
+  recentReplies.set(sessionKey, { text: String(text).trim(), at: Date.now() });
+  if (recentReplies.size > 64) {
+    const now = Date.now();
+    for (const [k, v] of recentReplies) if (now - v.at > 10 * 60 * 1000) recentReplies.delete(k);
+  }
+}
+
+/** Relay activity from the *switched* gateway session into the owner's DM as
+ *  Venory messages, so the chat app stays in sync with that session. Own
+ *  bridge tasks are deduped (the DM already shows those). */
+async function handleSessionMessage(p) {
+  if (!p?.sessionKey || !p?.message) return;
+  if (!currentSessionKey || p.sessionKey !== currentSessionKey) return; // stale subscription
+  if (p.sessionKey === dmSessionKey(dmConvId)) return; // the DM is that session's UI
+  const msg = p.message || {};
+  const role = msg.role;
+  if (role !== 'user' && role !== 'assistant') return;
+  const text = typeof msg.content === 'string' ? msg.content : (typeof msg.text === 'string' ? msg.text : '');
+  if (!text || !text.trim()) return;
+  const now = Date.now();
+  const clean = text.replace(/\s+/g, ' ').trim();
+  const norm = clean.replace(/^\/think:[a-z]+\s*/i, '').trim();
+  if (role === 'user') {
+    const sent = recentSent.get(p.sessionKey);
+    if (sent && now - sent.at < 5 * 60 * 1000 && sent.text === norm) return; // our own task
+  } else {
+    const activeTaskId = activeBySession.get(p.sessionKey);
+    if (activeTaskId && controllers.has(activeTaskId)) return; // reply path handles it
+    const rep = recentReplies.get(p.sessionKey);
+    if (rep && now - rep.at < 3 * 60 * 1000 && rep.text === clean) return; // just delivered
+  }
+  if (!dmConvId) return;
+  // Per-session rate cap so a busy session can't flood the DM.
+  const stamps = (relayRate.get(p.sessionKey) || []).filter((t) => now - t < RELAY_WINDOW_MS);
+  if (stamps.length >= RELAY_MAX_PER_WINDOW) {
+    relayRate.set(p.sessionKey, stamps);
+    log('relay rate cap hit for', p.sessionKey);
+    return;
+  }
+  stamps.push(now);
+  relayRate.set(p.sessionKey, stamps);
+  const label = shortSessionLabel(p.sessionKey);
+  const prefix = role === 'user' ? `📡 [${label}] you: ` : `📡 [${label}] `;
+  socket.emit('helper:session:msg', { convId: dmConvId, text: prefix + clean.slice(0, 400) });
+}
 
 async function handleTask(task) {
   if (!task || !secretsEqual(task.secret, OPENCLAW_BRIDGE_SECRET)) {
@@ -333,6 +555,15 @@ async function handleTask(task) {
   const controller = new AbortController();
   controllers.set(taskId, controller);
 
+  const sessionKey = resolveTaskSessionKey(task);
+  if (typeof task?.agentSession === 'string') {
+    // Server-authoritative session selection; apply immediately so live
+    // agent events for this session map to this task, and so the relay
+    // subscription self-heals if the connect-time sync was missed.
+    currentSessionKey = task.agentSession;
+    applySessionSync({ sessionKey: task.agentSession, dmConvId: task.convId });
+  }
+
   const pending = (typingOn.get(convId) || 0) + 1;
   typingOn.set(convId, pending);
   if (pending === 1) socket.emit('typing:start', { roomType: 'dm', roomId: convId });
@@ -342,9 +573,13 @@ async function handleTask(task) {
     .catch(() => {})
     .then(() => {
       activeByConv.set(convId, taskId);
+      activeBySession.set(sessionKey, taskId);
       return runAgent(task, controller);
     })
-    .then((text) => socket.emit('helper:reply', { taskId, text }))
+    .then((text) => {
+      recordReply(sessionKey, text);
+      socket.emit('helper:reply', { taskId, text });
+    })
     .catch((err) => {
       if (controller.signal.aborted) {
         log('task stopped:', taskId);
@@ -360,6 +595,7 @@ async function handleTask(task) {
     .finally(() => {
       controllers.delete(taskId);
       if (activeByConv.get(convId) === taskId) activeByConv.delete(convId);
+      if (activeBySession.get(sessionKey) === taskId) activeBySession.delete(sessionKey);
     });
   chains.set(convId, run);
 
@@ -385,6 +621,24 @@ socket.on('helper:stop', (p) => {
   const controller = controllers.get(p?.taskId);
   if (controller) controller.abort();
 });
+// Owner session picker: server asks the bridge to build the session list.
+socket.on('helper:sessions:get', async (p) => {
+  const reqId = p?.reqId;
+  if (!reqId) return;
+  if (!gwReady) {
+    socket.emit('helper:sessions:result', { reqId, ok: false, error: 'gateway offline' });
+    return;
+  }
+  try {
+    const sessions = await buildSessionList();
+    socket.emit('helper:sessions:result', { reqId, ok: true, sessions });
+  } catch (err) {
+    socket.emit('helper:sessions:result', { reqId, ok: false, error: err.message });
+  }
+});
+// Server pushes the persisted session selection (on bridge connect and on
+// change) so routing + relay subscriptions stay in sync.
+socket.on('helper:session:sync', (p) => applySessionSync(p));
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => {

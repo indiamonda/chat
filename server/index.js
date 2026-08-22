@@ -400,6 +400,67 @@ function isBridgeOnline() {
   return !!(room && room.size > 0);
 }
 
+// Owner session selection: which OpenClaw session the owner's DM talks to.
+// '' means the DM's own session (default); anything else is an explicit
+// session key routed via `x-openclaw-session-key` (reserved namespaces like
+// subagent:/cron:/acp: are rejected by the gateway, so we block them here).
+const AGENT_SESSION_MAX = 200;
+const AGENT_SESSION_RESERVED = /^(subagent|cron|acp):|:(subagent|cron|acp):/;
+function getAgentSession() {
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'agent_session'").get();
+    const v = row?.value;
+    return (typeof v === 'string' && v && v.length <= AGENT_SESSION_MAX && !AGENT_SESSION_RESERVED.test(v)) ? v : '';
+  } catch {
+    return '';
+  }
+}
+function setAgentSession(key) {
+  const v = typeof key === 'string' ? key.trim() : '';
+  if (v && (v.length > AGENT_SESSION_MAX || AGENT_SESSION_RESERVED.test(v))) return getAgentSession();
+  try {
+    db.prepare(`INSERT INTO settings (key, value) VALUES ('agent_session', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(v);
+  } catch (err) {
+    console.error('[agent-session] failed to persist:', err?.message || err);
+  }
+  return v;
+}
+
+// Pending bridge RPC round-trips (server → bridge → server) and the cached
+// session list the bridge pushes on `sessions.changed`.
+const bridgeReqWaiters = new Map(); // reqId -> { resolve, timer }
+let bridgeReqSeq = 0;
+let lastAgentSessions = { sessions: [], ts: 0 };
+function bridgeRequest(event, payload, timeoutMs = 6000) {
+  return new Promise((resolve) => {
+    const io = app.get('io');
+    const bridgeRoom = io?.sockets?.adapter?.rooms?.get('bridge:openclaw');
+    if (!bridgeRoom || bridgeRoom.size === 0) return resolve(null);
+    const reqId = `req-${++bridgeReqSeq}`;
+    const timer = setTimeout(() => {
+      bridgeReqWaiters.delete(reqId);
+      resolve(null);
+    }, timeoutMs);
+    bridgeReqWaiters.set(reqId, { resolve, timer });
+    io.to('bridge:openclaw').emit(event, { ...payload, reqId });
+  });
+}
+
+/** The owner's DM conversation id with the helper (relay target for session
+ *  activity). Resolved on the fly so it survives DM re-creation. */
+function getHelperDmConvId() {
+  try {
+    const row = db.prepare(`SELECT id FROM conversations
+      WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)
+      LIMIT 1`)
+      .get(OPENCLAW_OWNER_ID, HELPER_USER_ID, HELPER_USER_ID, OPENCLAW_OWNER_ID);
+    return row?.id || '';
+  } catch {
+    return '';
+  }
+}
+
 // Model + effort (thinking) options the owner can pick in the DM UI. These
 // are mirrored in the frontend (main.js) and the bridge; the server only
 // validates/relays them so a bad value can't reach the bridge.
@@ -1225,6 +1286,30 @@ function registerBridgeSocket(socket) {
     clearTimeout(task.timer);
     task.resolve({ kind: 'stopped' });
   });
+  // Session picker: bridge answers the server's sessions.list request.
+  socket.on('helper:sessions:result', (p) => {
+    const w = bridgeReqWaiters.get(p?.reqId);
+    if (!w) return;
+    clearTimeout(w.timer);
+    bridgeReqWaiters.delete(p.reqId);
+    w.resolve(p);
+  });
+  // Bridge pushes a fresh session list (on connect, on change, on request).
+  // Cache it and nudge the owner's UI so the picker stays live.
+  socket.on('helper:sessions:update', (p) => {
+    if (!Array.isArray(p?.sessions)) return;
+    lastAgentSessions = { sessions: p.sessions.slice(0, 40), ts: Date.now() };
+    const io = app.get('io');
+    io?.to(`user:${OPENCLAW_OWNER_ID}`).emit('agent:sessions:update', { sessions: lastAgentSessions.sessions });
+  });
+  // Relayed activity from a switched gateway session → owner's DM as a
+  // Venory message. Only bridge sockets can reach this handler.
+  socket.on('helper:session:msg', (p) => {
+    const convId = typeof p?.convId === 'string' ? p.convId.trim() : '';
+    const text = typeof p?.text === 'string' ? p.text.trim() : '';
+    if (!convId || !text || text.length > 2000) return;
+    insertHelperReply(null, text, 'dm', convId);
+  });
 }
 
 /** Emit a helper:task to the bridge room and wait for the bridge's reply.
@@ -1260,6 +1345,7 @@ async function routeViaOpenClawBridge(triggerMsgId, content, convId, agentOpts, 
       ownerId: OPENCLAW_OWNER_ID,
       model: agentOpts?.model || undefined,
       effort: agentOpts?.effort || undefined,
+      agentSession: getAgentSession() || undefined,
     });
     const result = await taskPromise;
     if (result.kind === 'reply' && result.text && result.text.trim()) {
@@ -1668,6 +1754,38 @@ app.post('/api/agent-mode', requireAuth, (req, res) => {
   const mode = typeof req.body?.mode === 'string' ? req.body.mode.trim() : '';
   if (!AGENT_MODES.has(mode)) return res.status(400).json({ error: 'Invalid mode', mode });
   res.json({ mode: setAgentMode(mode), bridgeOnline: isBridgeOnline(), bridgeEnabled: OPENCLAW_BRIDGE_ENABLED });
+});
+
+// Owner-only: OpenClaw session picker. Lists the gateway sessions (via the
+// bridge) and the currently selected one, so the owner can see every session
+// and switch which one their DM talks to. The list refreshes live whenever
+// the bridge pushes a session change.
+app.get('/api/agent-sessions', requireAuth, async (req, res) => {
+  const user = getCurrentUser(req);
+  if (user.id !== OPENCLAW_OWNER_ID) return res.status(403).json({ error: 'Not authorized' });
+  const bridgeOnline = isBridgeOnline();
+  let sessions = lastAgentSessions.sessions || [];
+  if (bridgeOnline) {
+    const result = await bridgeRequest('helper:sessions:get', {}, 8000);
+    if (result?.ok && Array.isArray(result.sessions)) {
+      sessions = result.sessions.slice(0, 40);
+      lastAgentSessions = { sessions, ts: Date.now() };
+    }
+  }
+  res.json({ sessions, current: getAgentSession(), bridgeOnline, bridgeEnabled: OPENCLAW_BRIDGE_ENABLED });
+});
+
+// Owner-only: switch which OpenClaw session the owner's DM talks to.
+// Persisted server-side; the bridge is told immediately so routing and the
+// live relay subscription switch without waiting for the next message.
+app.post('/api/agent-session', requireAuth, (req, res) => {
+  const user = getCurrentUser(req);
+  if (user.id !== OPENCLAW_OWNER_ID) return res.status(403).json({ error: 'Not authorized' });
+  const key = typeof req.body?.sessionKey === 'string' ? req.body.sessionKey.trim() : '';
+  const current = setAgentSession(key);
+  const io = app.get('io');
+  io.to('bridge:openclaw').emit('helper:session:sync', { sessionKey: current, dmConvId: getHelperDmConvId() });
+  res.json({ current, bridgeOnline: isBridgeOnline(), bridgeEnabled: OPENCLAW_BRIDGE_ENABLED });
 });
 
 // Collections: saved messages per user
@@ -3268,6 +3386,9 @@ io.on('connection', (socket) => {
   if (socket.isBridge) {
     socket.join('bridge:openclaw');
     registerBridgeSocket(socket);
+    // Push the persisted session selection + relay target so the bridge
+    // routes DMs and subscribes to the right session immediately.
+    socket.emit('helper:session:sync', { sessionKey: getAgentSession(), dmConvId: getHelperDmConvId() });
   }
   socket.join(`user:${socket.userId}`);
   if (!isBlacklisted(socket.userId)) {
