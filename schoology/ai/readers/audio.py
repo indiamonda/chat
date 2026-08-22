@@ -47,13 +47,23 @@ def read(path: Path, model_size: str = "tiny") -> dict:
     except Exception as exc:
         out["error"] = f"audio decode failed: {exc}"
         return out
-    # Transcription via Whisper. Skip on memory-constrained machines if
-    # it fails to import.
+    # Transcription via Whisper. The package lives in a runtime-installed
+    # venv on the /data volume (scripts/setup-whisper.sh) so the deploy image
+    # stays under Fly's size limit; add its site-packages lazily and degrade
+    # gracefully until the background install finishes on first boot.
     try:
+        import os
+        import sys
+        import glob
+        _sites = glob.glob("/data/whisper-venv/lib/python*/site-packages")
+        if _sites and _sites[0] not in sys.path:
+            sys.path.insert(0, _sites[0])
         import whisper
         global _whisper_model, _whisper_size
         if _whisper_model is None or _whisper_size != model_size:
-            _whisper_model = whisper.load_model(model_size)
+            _whisper_model = whisper.load_model(
+                model_size, download_root="/data/whisper-models"
+            )
             _whisper_size = model_size
         result = _whisper_model.transcribe(str(path), fp16=False)
         out["transcript"] = (result.get("text") or "").strip()

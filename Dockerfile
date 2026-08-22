@@ -23,7 +23,7 @@ ENV APP_VERSION=2026-05-24.1
 RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs nodejs
 # Install python3 BEFORE copying venvs so symlinks resolve correctly
 # tesseract-ocr + ffmpeg are needed by AI Assistant file readers (OCR, audio analysis, video).
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip tesseract-ocr ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip python3-venv tesseract-ocr ffmpeg && rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/.schoology-venv /app/.schoology-venv
 COPY . .
@@ -46,4 +46,4 @@ ENV SCHOOLOGY_STORAGE_STATE=/data/schoology_storage.json
 # AI tool env (optional): JUDGE0_KEY enables [RUN:lang code] for C/C++/Rust/Go/Java/etc.
 # ENV JUDGE0_KEY=
 # ENV JUDGE0_URL=https://judge0-ce.p.rapidapi.com
-CMD ["sh", "-c", "cd /app/schoology; /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 1 --threads 8 -c /app/schoology/gunicorn.conf.py server:app & node /app/server/index.js"]
+CMD ["sh", "-c", "cd /app/schoology; nohup sh /app/scripts/setup-whisper.sh > /data/whisper-setup.log 2>&1 & /app/.schoology-venv/bin/gunicorn -b 0.0.0.0:8081 --workers 1 --threads 8 -c /app/schoology/gunicorn.conf.py server:app & node /app/server/index.js"]
