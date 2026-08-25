@@ -522,20 +522,26 @@ function resolveTaskSessionKey(task) {
 async function buildSessionList() {
   const payload = await gwRpc('sessions.list', { agentId: 'main' }, 20000);
   const rows = Array.isArray(payload?.sessions) ? payload.sessions : [];
+  const dmKey = dmSessionKey(dmConvId);
   let sessions = rows
     .filter((s) => isRoutableSessionKey(s.key))
-    .map((s) => ({
-      key: s.key,
-      label: (typeof s.displayName === 'string' && s.displayName) ? s.displayName : shortSessionLabel(s.key),
-      updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : (typeof s.lastActivityAt === 'number' ? s.lastActivityAt : 0),
-      status: s.status || (s.hasActiveRun ? 'running' : 'done'),
-      hasActiveRun: !!s.hasActiveRun,
-      model: typeof s.model === 'string' ? s.model : '',
-    }))
+    .map((s) => {
+      const isDm = dmKey ? s.key === dmKey : false;
+      return {
+        key: s.key,
+        // The owner's own DM session is the jchat conversation itself; give
+        // it the same label the picker uses so the entry's live state
+        // (activity dot, preview, updatedAt) shows up there too.
+        label: isDm ? 'This DM (jchat)' : ((typeof s.displayName === 'string' && s.displayName) ? s.displayName : shortSessionLabel(s.key)),
+        isDm,
+        updatedAt: typeof s.updatedAt === 'number' ? s.updatedAt : (typeof s.lastActivityAt === 'number' ? s.lastActivityAt : 0),
+        status: s.status || (s.hasActiveRun ? 'running' : 'done'),
+        hasActiveRun: !!s.hasActiveRun,
+        model: typeof s.model === 'string' ? s.model : '',
+      };
+    })
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, SESSION_LIST_MAX);
-  const dmKey = dmSessionKey(dmConvId);
-  if (dmKey) sessions = sessions.filter((s) => s.key !== dmKey);
   // One-shot previews (first user/assistant text item per session).
   try {
     const keys = sessions.slice(0, 20).map((s) => s.key);
@@ -625,6 +631,7 @@ async function handleSessionMessage(p) {
   const now = Date.now();
   const clean = text.replace(/\s+/g, ' ').trim();
   const norm = clean.replace(/^\/think:[a-z]+\s*/i, '').trim();
+  log('session msg:', p.sessionKey, role, norm.slice(0, 60));
   // Per-session rate cap so a busy session can't flood the DM or live view.
   const stamps = (relayRate.get(p.sessionKey) || []).filter((t) => now - t < RELAY_WINDOW_MS);
   if (stamps.length >= RELAY_MAX_PER_WINDOW) {

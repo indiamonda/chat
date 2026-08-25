@@ -2958,12 +2958,20 @@ function connectSocket() {
     if (Array.isArray(sessions)) {
       state.agentSessions = sessions;
       updateHelperUiInPlace();
-      // Keep the viewed session's label fresh (live session index changes).
-      if (state.agentSessionView?.key) {
-        const fresh = sessions.find((x) => x.key === state.agentSessionView.key);
-        if (fresh?.label && fresh.label !== state.agentSessionView.label) {
+      const view = state.agentSessionView;
+      if (view?.key) {
+        const fresh = sessions.find((x) => x.key === view.key);
+        if (fresh?.label && fresh.label !== view.label) {
           state.agentSessionView.label = fresh.label;
           render();
+        }
+        // updatedAt moved → something changed in the viewed session; the live
+        // stream covers immediacy, this schedules a catch-up refetch so the
+        // page always ends up at the most current state.
+        const freshUpdatedAt = typeof fresh?.updatedAt === 'number' ? fresh.updatedAt : 0;
+        if (freshUpdatedAt > (view.updatedAt || 0)) {
+          state.agentSessionView._pendingUpdatedAt = Math.max(freshUpdatedAt, view._pendingUpdatedAt || 0);
+          scheduleAgentHistoryRefresh();
         }
       }
     } else {
@@ -5843,7 +5851,7 @@ async function setAgentSession(sessionKey) {
     state.agentSession = prev; // revert on failure
   }
   updateHelperUiInPlace();
-  syncSessionView();
+  syncSessionView(true);
 }
 
 // ── OpenClaw session view (page replacement) ────────────────────────────────
@@ -5859,48 +5867,157 @@ function sessionLabelForKey(key) {
   return base.length > 28 ? `${base.slice(0, 25)}…` : base;
 }
 
+/** The gateway session key of the owner's own DM (the jchat conversation).
+ *  It's the default "This DM (jchat)" target — shown as the DM view, not a
+ *  separate session view. */
+function dmSessionKeyFor() {
+  return state.convId ? `agent:main:openai-user:jchat:dm:${state.convId}` : '';
+}
+
+function isDmSessionKey(key) {
+  const dm = dmSessionKeyFor();
+  return !!dm && key === dm;
+}
+
 /** Keep the page in sync with the selected session: load its history when a
- *  session is selected (replacing the DM view), clear the view otherwise. */
-function syncSessionView() {
+ *  session is selected (replacing the DM view), clear the view otherwise.
+ *  The DM session itself always stays on the normal DM view. force=true
+ *  always refetches (picker change, even re-selecting the same session). */
+function syncSessionView(force) {
   const key = state.agentSession || '';
   const viewing = state.agentSessionView?.key || '';
-  if (key && key !== viewing) {
-    loadAgentSessionHistory(key);
-  } else if (!key && viewing) {
+  if (key && !isDmSessionKey(key)) {
+    if (force || key !== viewing || !state.agentSessionView?.loadedAt) {
+      loadAgentSessionHistory(key);
+    }
+  } else if (viewing) {
     state.agentSessionView = null;
     render();
   }
 }
 
+let _agentHistoryFetchKey = null;   // in-flight history fetch (key)
+let _agentHistoryRefetchTimer = null; // debounced catch-up refetch
+
 async function loadAgentSessionHistory(key) {
   if (!key || !isOwner()) return;
-  const prevKey = state.agentSessionView?.key;
-  state.agentSessionView = { key, label: sessionLabelForKey(key), messages: [], loading: true, error: '', loadedAt: 0 };
-  if (prevKey !== key) render();
+  if (_agentHistoryFetchKey === key) return; // already fetching this session
+  const view = state.agentSessionView;
+  const isRefresh = view?.key === key && !!view?.loadedAt;
+  state.agentSessionView = {
+    key,
+    label: view?.key === key ? (view.label || sessionLabelForKey(key)) : sessionLabelForKey(key),
+    messages: isRefresh ? (view.messages || []) : [],
+    loading: !isRefresh,
+    refreshing: isRefresh,
+    error: '',
+    loadedAt: view?.key === key ? view.loadedAt : 0,
+    updatedAt: view?.key === key ? (view.updatedAt || 0) : 0,
+    _pendingUpdatedAt: view?.key === key ? (view._pendingUpdatedAt || 0) : 0,
+    _fetchStartedAt: Date.now(),
+  };
+  if (!isRefresh) render();
+  _agentHistoryFetchKey = key;
   try {
     const data = await apiGet(`/api/agent-session-history?key=${encodeURIComponent(key)}`);
     if (!data?.ok) throw new Error(data?.error || 'Failed to load history');
     if (state.agentSession !== key) return; // switched away meanwhile
+    const cur = state.agentSessionView;
+    const fetched = normalizeSessionHistory(data.messages || []);
+    const fetchStart = cur?._fetchStartedAt || 0;
+    // Live messages that arrived after the fetch started may not be in the
+    // snapshot — keep them (deduped against the fetched history).
+    const pendingLive = (cur?.messages || []).filter((m) => m._live && (m.created_at || 0) > fetchStart);
     state.agentSessionView = {
       key,
       label: sessionLabelForKey(key),
-      messages: normalizeSessionHistory(data.messages || []),
+      messages: mergeSessionMessages(fetched, pendingLive),
       loading: false,
+      refreshing: false,
       error: '',
       loadedAt: Date.now(),
+      updatedAt: Math.max(cur?.updatedAt || 0, cur?._pendingUpdatedAt || 0),
+      _pendingUpdatedAt: 0,
+      _fetchStartedAt: 0,
     };
   } catch (err) {
     if (state.agentSession !== key) return;
     state.agentSessionView = {
+      ...(state.agentSessionView || {}),
       key,
-      label: sessionLabelForKey(key),
-      messages: [],
       loading: false,
+      refreshing: false,
       error: err?.message || 'Failed to load history',
-      loadedAt: 0,
     };
+  } finally {
+    if (_agentHistoryFetchKey === key) _agentHistoryFetchKey = null;
   }
+  renderKeepingScroll();
+}
+
+/** Merge a fresh history snapshot with recently-arrived live messages that
+ *  might not be in it yet. Live messages already present in the snapshot
+ *  (same role+text within a minute) are dropped. */
+function mergeSessionMessages(fetched, pendingLive) {
+  if (!pendingLive.length) return fetched;
+  const kept = [];
+  for (const m of pendingLive) {
+    const dup = fetched.some((f) =>
+      f._role === m._role && f.content === m.content && Math.abs((f.created_at || 0) - (m.created_at || 0)) < 60000
+    );
+    if (dup) continue;
+    kept.push(m);
+  }
+  if (!kept.length) return fetched;
+  return [...fetched, ...kept].sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+}
+
+/** Debounced catch-up refetch of the viewed session's history. The live
+ *  stream covers immediacy; this re-syncs after gaps (bridge reconnects,
+ *  subscription races). Keeps re-arming while a fetch would be throttled. */
+function scheduleAgentHistoryRefresh() {
+  if (_agentHistoryRefetchTimer) clearTimeout(_agentHistoryRefetchTimer);
+  const tryRefresh = () => {
+    _agentHistoryRefetchTimer = null;
+    const view = state.agentSessionView;
+    if (!view?.key || view.loading || view.refreshing) return;
+    const pending = view._pendingUpdatedAt || 0;
+    if (pending <= (view.updatedAt || 0)) return;
+    if (view.loadedAt && Date.now() - view.loadedAt < 8000) {
+      _agentHistoryRefetchTimer = setTimeout(tryRefresh, 10000); // retry after the throttle window
+      return;
+    }
+    state.agentSessionView._pendingUpdatedAt = 0;
+    loadAgentSessionHistory(view.key);
+  };
+  _agentHistoryRefetchTimer = setTimeout(tryRefresh, 1500);
+}
+
+/** Re-render without yanking the user's scroll position (used for live
+ *  appends / background refreshes while the user is reading history). */
+function renderKeepingScroll() {
+  const wrap = document.querySelector('.messages-wrap[data-agent-session-view="1"]');
+  if (!wrap) { render(); return; }
+  const nearBottom = wrap.scrollHeight - wrap.scrollTop - wrap.clientHeight < 80;
+  if (nearBottom) { render(); return; }
+  const prevHeight = wrap.scrollHeight;
+  const prevTop = wrap.scrollTop;
   render();
+  requestAnimationFrame(() => {
+    const w = document.querySelector('.messages-wrap[data-agent-session-view="1"]');
+    if (w) w.scrollTop = prevTop + (w.scrollHeight - prevHeight);
+  });
+}
+
+/** Mirror the owner's own DM text message into the viewed session view
+ *  immediately (the gateway echo arrives via the live ring and is deduped). */
+function mirrorOwnDmToSessionView(msg) {
+  if (!msg || msg.room_type !== 'dm' || msg.msg_type !== 'text') return;
+  if (!isOwner() || !isHelperDm()) return;
+  if (!state.agentSessionView?.key) return;
+  const content = typeof msg.content === 'string' ? msg.content.trim() : '';
+  if (!content) return;
+  appendAgentSessionLive({ role: 'user', text: content }, { optimistic: true });
 }
 
 /** Map gateway transcript messages (role/text/seq/at) to jchat-shaped
@@ -6010,14 +6127,14 @@ function renderAgentSessionMessages(list) {
 }
 
 const _agentSessionLiveDedup = []; // { role, text, at } — recent live msgs
-function appendAgentSessionLive({ role, text }) {
+function appendAgentSessionLive({ role, text }, opts = {}) {
   const view = state.agentSessionView;
   if (!view) return;
   const now = Date.now();
   const recent = _agentSessionLiveDedup.filter((x) => now - x.at < 10000);
   _agentSessionLiveDedup.length = 0;
   _agentSessionLiveDedup.push(...recent);
-  if (recent.some((x) => x.role === role && x.text === text)) return; // re-emit on reconnect
+  if (!opts.optimistic && recent.some((x) => x.role === role && x.text === text)) return; // re-emit on reconnect
   _agentSessionLiveDedup.push({ role, text, at: now });
   view.messages.push({
     id: `ags-live-${now}-${_agentSessionLiveDedup.length}`,
@@ -6028,9 +6145,11 @@ function appendAgentSessionLive({ role, text }) {
     created_at: now,
     msg_type: 'text',
     reactions: [],
+    _live: true,
+    _role: role,
   });
   if (view.messages.length > 500) view.messages.splice(0, view.messages.length - 500);
-  render();
+  renderKeepingScroll();
 }
 
 function renderHelperControlBar() {
@@ -6055,8 +6174,17 @@ function renderHelperControlBar() {
     : (busy ? '<span class="hc-tool hc-tool-none">thinking…</span>' : '');
 
   // Model/effort + live agent status only apply to the full assistant.
-  const sessionOptions = `<option value="" ${!state.agentSession ? 'selected' : ''}>This DM (jchat)</option>`
-    + state.agentSessions.map((s) =>
+  // "This DM (jchat)" is the owner's own DM session: the bridge now includes
+  // it in the live list, so the option shows the same live state (● when a
+  // run is active, preview tooltip) as every other session.
+  const dmKey = dmSessionKeyFor();
+  const dmEntry = dmKey ? (state.agentSessions || []).find((s) => s.key === dmKey) : null;
+  const dmActive = !!(dmEntry?.hasActiveRun);
+  const dmTitle = dmEntry?.preview ? ` title="${escapeHtml(dmEntry.preview)}"` : '';
+  const sessionOptions = `<option value="" ${!state.agentSession ? 'selected' : ''}${dmTitle}>This DM (jchat)${dmActive ? ' ●' : ''}</option>`
+    + state.agentSessions
+      .filter((s) => !(dmKey && s.key === dmKey))
+      .map((s) =>
         `<option value="${escapeHtml(s.key)}" ${state.agentSession === s.key ? 'selected' : ''} title="${escapeHtml(s.preview || s.key)}">${escapeHtml(s.label || s.key)}${s.hasActiveRun ? ' ●' : ''}</option>`
       ).join('');
   const openclawRow = mode === 'openclaw' ? `
@@ -6201,7 +6329,8 @@ function renderChatArea() {
   // Session view: when the owner has selected another OpenClaw session in
   // the picker, replace the DM page with that session's conversation
   // (fetched from the Mac gateway; the session keeps running untouched).
-  if (roomType === 'dm' && isHelperDm() && isOwner() && state.agentSession && state.agentSessionView?.key === state.agentSession) {
+  // The DM session itself always renders as the normal DM chat.
+  if (roomType === 'dm' && isHelperDm() && isOwner() && state.agentSession && !isDmSessionKey(state.agentSession) && state.agentSessionView?.key === state.agentSession) {
     return renderAgentSessionView();
   }
 
@@ -9199,6 +9328,7 @@ function bindMain() {
               return;
             }
             if (res?.message) addMessageLocal(res.message);
+            mirrorOwnDmToSessionView(res.message);
             clearDraft(roomType, roomId);
             input.value = '';
             resizeComposerInput();
@@ -9433,6 +9563,7 @@ function bindMain() {
             return;
           }
           if (res?.message) addMessageLocal(res.message);
+          mirrorOwnDmToSessionView(res.message);
           clearDraft(roomType, roomId);
           input.value = '';
           resizeComposerInput();
