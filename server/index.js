@@ -36,6 +36,11 @@ const spamBlockedUntil = new Map();
 const DEFAULT_MESSAGE_PAGE_SIZE = 30;
 const ALLOWED_REACTIONS = new Set(['👍', '❤️', '😂', '😮', '😢', '🔥']);
 
+// Stable per-deploy version: asset cache-busting (?v=) and the auto-update
+// poll both key off this. ASSET_VERSION (e.g. a git sha at deploy) wins;
+// otherwise the server boot time marks the deploy.
+const APP_VERSION = process.env.ASSET_VERSION || new Date().toISOString();
+
 function checkSpam(userId, roomType, roomId, content) {
   if (userId === 'jimmyqrg') return false;
   const now = Date.now();
@@ -1294,6 +1299,14 @@ function registerBridgeSocket(socket) {
     bridgeReqWaiters.delete(p.reqId);
     w.resolve(p);
   });
+  // Session history: bridge answers the server's sessions.get request.
+  socket.on('helper:sessions:history:result', (p) => {
+    const w = bridgeReqWaiters.get(p?.reqId);
+    if (!w) return;
+    clearTimeout(w.timer);
+    bridgeReqWaiters.delete(p.reqId);
+    w.resolve(p);
+  });
   // Bridge pushes a fresh session list (on connect, on change, on request).
   // Cache it and nudge the owner's UI so the picker stays live.
   socket.on('helper:sessions:update', (p) => {
@@ -1309,6 +1322,17 @@ function registerBridgeSocket(socket) {
     const text = typeof p?.text === 'string' ? p.text.trim() : '';
     if (!convId || !text || text.length > 2000) return;
     insertHelperReply(null, text, 'dm', convId);
+  });
+  // Live stream for the owner's session view: every user/assistant message
+  // on the switched session, forwarded to the owner's sockets so the page
+  // can show the session's transcript live while viewing it.
+  socket.on('helper:session:live', (p) => {
+    const sessionKey = typeof p?.sessionKey === 'string' ? p.sessionKey.trim() : '';
+    const role = p?.role === 'user' || p?.role === 'assistant' ? p.role : '';
+    const text = typeof p?.text === 'string' ? p.text.trim() : '';
+    if (!sessionKey || !role || !text || text.length > 2000) return;
+    const io = app.get('io');
+    io?.to(`user:${OPENCLAW_OWNER_ID}`).emit('agent:session:live', { sessionKey, role, text });
   });
 }
 
@@ -1623,6 +1647,13 @@ app.get('/game', (req, res) => {
   res.type('html').send(readFileSync(p, 'utf8'));
 });
 
+// Auto-update: clients poll this; a changed version means a new deploy, so
+// open tabs reload and pick up fresh assets.
+app.get('/api/version', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ version: APP_VERSION });
+});
+
 // Serve SPA HTML with cache-busting for all document routes (before static so "/" gets it too)
 /** Must include extensions for binary/static files (e.g. mp3, walls.png) or the SPA sends index.html and breaks audio/textures. */
 const SPA_SKIP_EXT = /\.(?:js|mjs|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|map|json|txt|xml|webmanifest|mp3|ogg|wav|m4a|aac|opus|webm|mp4|mov|mkv|zip|pdf)$/i;
@@ -1638,8 +1669,8 @@ app.use((req, res, next) => {
     res.set('Expires', '0');
     const frameAncestors = process.env.ALLOW_IFRAME === 'false' ? "'self'" : '*';
     res.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.google.com https://www.grecaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://www.gstatic.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; connect-src 'self' wss: https:; frame-src 'self' https://www.google.com https://www.recaptcha.net https://www.grecaptcha.com https://indiamonda.github.io; frame-ancestors ${frameAncestors};`);
-    const version = process.env.ASSET_VERSION || Date.now();
-    const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
+    const version = APP_VERSION;
+    const html = readFileSync(p, 'utf8').replace(/\?v=[^"'\s]*/g, `?v=${version}`);
     return res.type('html').send(html);
   } catch (err) {
     console.error('SPA serve error:', err);
@@ -1786,6 +1817,24 @@ app.post('/api/agent-session', requireAuth, (req, res) => {
   const io = app.get('io');
   io.to('bridge:openclaw').emit('helper:session:sync', { sessionKey: current, dmConvId: getHelperDmConvId() });
   res.json({ current, bridgeOnline: isBridgeOnline(), bridgeEnabled: OPENCLAW_BRIDGE_ENABLED });
+});
+
+// Owner-only: chat history of a selected OpenClaw session (via the bridge →
+// gateway sessions.get). Used to replace the DM page with the selected
+// session's conversation. Sessions live on the owner's Mac; this only reads
+// their transcripts — nothing is stopped or restarted.
+app.get('/api/agent-session-history', requireAuth, async (req, res) => {
+  const user = getCurrentUser(req);
+  if (user.id !== OPENCLAW_OWNER_ID) return res.status(403).json({ error: 'Not authorized' });
+  const key = typeof req.query?.key === 'string' ? req.query.key.trim() : '';
+  if (!key || key.length > AGENT_SESSION_MAX || AGENT_SESSION_RESERVED.test(key) || !/^agent:main:.+/.test(key)) {
+    return res.status(400).json({ error: 'Invalid session key' });
+  }
+  const limit = Math.min(500, Math.max(1, Number(req.query?.limit) || 300));
+  const result = await bridgeRequest('helper:sessions:history', { key, limit }, 10000);
+  if (!result) return res.json({ ok: false, error: 'bridge offline' });
+  if (!result.ok) return res.json({ ok: false, error: String(result.error || 'history fetch failed').slice(0, 200) });
+  res.json({ ok: true, key: result.key || key, messages: Array.isArray(result.messages) ? result.messages : [] });
 });
 
 // Collections: saved messages per user
@@ -2440,8 +2489,8 @@ app.get('*', (req, res) => {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
-    const version = process.env.ASSET_VERSION || Date.now();
-    const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
+    const version = APP_VERSION;
+    const html = readFileSync(p, 'utf8').replace(/\?v=[^"'\s]*/g, `?v=${version}`);
     return res.type('html').send(html);
   }
   res.status(404).send('Not found');
@@ -2461,8 +2510,8 @@ app.use((err, req, res, next) => {
       res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
       const frameAncestors = process.env.ALLOW_IFRAME === 'false' ? "'self'" : '*';
       res.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://www.google.com https://www.grecaptcha.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://www.gstatic.com; img-src 'self' data: blob: https:; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net; connect-src 'self' wss: https:; frame-src 'self' https://www.google.com https://www.recaptcha.net https://www.grecaptcha.com https://indiamonda.github.io; frame-ancestors ${frameAncestors};`);
-      const version = process.env.ASSET_VERSION || Date.now();
-      const html = readFileSync(p, 'utf8').replace(/\?v=\d+/g, `?v=${version}`);
+      const version = APP_VERSION;
+      const html = readFileSync(p, 'utf8').replace(/\?v=[^"'\s]*/g, `?v=${version}`);
       return res.status(200).type('html').send(html);
     }
   } catch (_) {}

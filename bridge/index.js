@@ -23,8 +23,9 @@
 
 import { io } from 'socket.io-client';
 import WebSocket from 'ws';
-import { readFileSync, existsSync } from 'node:fs';
-import { timingSafeEqual } from 'node:crypto';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { timingSafeEqual, createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 
@@ -86,6 +87,72 @@ function secretsEqual(a, b) {
   return ab.length === bb.length && timingSafeEqual(ab, bb);
 }
 
+// --- gateway device identity (required for operator WS connects) -----------
+// The gateway rejects shared-token-only operator connects with
+// DEVICE_IDENTITY_REQUIRED; a device identity (Ed25519 keypair + signed
+// connect payload) is required. We keep a persistent keypair next to
+// bridge.env so every reconnect uses the same device id.
+const DEVICE_PATH = new URL('./device.json', import.meta.url).pathname;
+const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+
+function base64UrlEncode(buf) {
+  return buf.toString('base64').replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '');
+}
+
+function publicKeyRawB64u(publicKeyPem) {
+  const spki = createPublicKey(publicKeyPem).export({ type: 'spki', format: 'der' });
+  return base64UrlEncode(spki.subarray(spki.length - 32));
+}
+
+function loadOrCreateDeviceIdentity() {
+  try {
+    if (existsSync(DEVICE_PATH)) {
+      const raw = JSON.parse(readFileSync(DEVICE_PATH, 'utf8'));
+      if (raw?.deviceId && raw?.publicKeyPem && raw?.privateKeyPem) return raw;
+    }
+  } catch (err) {
+    log('device.json unreadable, regenerating:', err.message);
+  }
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  const pubDer = publicKey.export({ type: 'spki', format: 'der' });
+  const rawPub = pubDer.subarray(pubDer.length - 32);
+  const identity = {
+    version: 1,
+    deviceId: createHash('sha256').update(rawPub).digest('hex'),
+    publicKeyPem: publicKey.export({ type: 'spki', format: 'pem' }),
+    privateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }),
+  };
+  try {
+    mkdirSync(dirname(DEVICE_PATH), { recursive: true });
+    writeFileSync(DEVICE_PATH, JSON.stringify(identity, null, 2) + '\n', { mode: 0o600 });
+  } catch (err) {
+    log('failed to persist device.json:', err.message);
+  }
+  log('generated gateway device identity:', identity.deviceId);
+  return identity;
+}
+
+const DEVICE_IDENTITY = loadOrCreateDeviceIdentity();
+const DEVICE_PRIVATE_KEY = createPrivateKey(DEVICE_IDENTITY.privateKeyPem);
+const DEVICE_PUBLIC_KEY_B64U = publicKeyRawB64u(DEVICE_IDENTITY.publicKeyPem);
+
+/** Build the signed `device` object the gateway requires on connect. */
+function buildSignedDevice(role, scopes, token, nonce) {
+  const signedAt = Date.now();
+  const payload = [
+    'v3', DEVICE_IDENTITY.deviceId, 'gateway-client', 'backend', role,
+    scopes.join(','), String(signedAt), token, nonce, 'macos', '',
+  ].join('|');
+  const signature = sign(null, Buffer.from(payload, 'utf8'), DEVICE_PRIVATE_KEY);
+  return {
+    id: DEVICE_IDENTITY.deviceId,
+    publicKey: DEVICE_PUBLIC_KEY_B64U,
+    signature: base64UrlEncode(signature),
+    signedAt,
+    nonce,
+  };
+}
+
 // --- socket connection (to jchat) ------------------------------------------
 const socket = io(JCHAT_URL, {
   auth: { token: JCHAT_HELPER_TOKEN },
@@ -128,6 +195,8 @@ function handleGatewayMessage(raw) {
   let m;
   try { m = JSON.parse(raw.toString()); } catch { return; }
   if (m.event === 'connect.challenge') {
+    const nonce = m.payload?.nonce || '';
+    const scopes = ['operator.read', 'operator.write', 'operator.admin', 'operator.approvals'];
     gw.send(JSON.stringify({
       type: 'req',
       id: 'gw-connect',
@@ -137,8 +206,9 @@ function handleGatewayMessage(raw) {
         maxProtocol: 4,
         client: { id: 'gateway-client', version: '1.0.0', platform: 'macos', mode: 'backend' },
         role: 'operator',
-        scopes: ['operator.read', 'operator.write', 'operator.admin', 'operator.approvals'],
+        scopes,
         caps: [], commands: [], permissions: {},
+        device: buildSignedDevice('operator', scopes, OPENCLAW_GATEWAY_TOKEN, nonce),
         auth: { token: OPENCLAW_GATEWAY_TOKEN },
         locale: 'en-US',
         userAgent: 'jchat-bridge/1.0.0',
@@ -407,6 +477,40 @@ function shortSessionLabel(key) {
   return base.length > 28 ? `${base.slice(0, 25)}…` : base;
 }
 
+/** Compact gateway transcript messages to { role, text, seq, at } for the
+ *  session-history view (user/assistant text only, deduped by seq). The
+ *  leading `/think:<level>` line the bridge prepends to routed DM messages
+ *  is stripped so the view matches what the owner actually sent. */
+function compactHistoryMessages(messages) {
+  const out = [];
+  const seenSeqs = new Set();
+  for (const m of Array.isArray(messages) ? messages : []) {
+    const role = typeof m?.role === 'string' ? m.role : '';
+    if (role !== 'user' && role !== 'assistant') continue;
+    let text = '';
+    if (typeof m.content === 'string') text = m.content;
+    else if (Array.isArray(m.content)) {
+      text = m.content
+        .filter((p) => p && typeof p === 'object' && typeof p.text === 'string')
+        .map((p) => p.text)
+        .join('\n');
+    }
+    if (!text || !text.trim()) continue;
+    const seq = typeof m?.__openclaw?.seq === 'number' ? m.__openclaw.seq : 0;
+    if (seq > 0 && seenSeqs.has(seq)) continue;
+    if (seq > 0) seenSeqs.add(seq);
+    const at = typeof m.timestamp === 'number' && m.timestamp > 0 ? m.timestamp
+      : (typeof m.timestamp === 'string' ? Date.parse(m.timestamp) : 0);
+    out.push({
+      role,
+      text: text.replace(/^\s*\/think:[a-z]+\s*\n*/i, '').trim(),
+      seq,
+      at: Number.isFinite(at) ? at : 0,
+    });
+  }
+  return out;
+}
+
 function resolveTaskSessionKey(task) {
   const s = typeof task?.agentSession === 'string' ? task.agentSession.trim() : '';
   if (s && !isReservedSessionKey(s)) return s;
@@ -416,7 +520,7 @@ function resolveTaskSessionKey(task) {
 /** Curated session list for the owner UI: routable rows + previews, most
  *  recently active first, excluding the owner's DM session itself. */
 async function buildSessionList() {
-  const payload = await gwRpc('sessions.list', {}, 20000);
+  const payload = await gwRpc('sessions.list', { agentId: 'main' }, 20000);
   const rows = Array.isArray(payload?.sessions) ? payload.sessions : [];
   let sessions = rows
     .filter((s) => isRoutableSessionKey(s.key))
@@ -459,6 +563,7 @@ function scheduleListPush() {
     if (!socket.connected || !gwReady) return;
     try {
       const sessions = await buildSessionList();
+      log(`session list push: ${sessions.length} sessions`);
       socket.emit('helper:sessions:update', { sessions });
     } catch (err) {
       log('session list push failed:', err.message);
@@ -520,6 +625,25 @@ async function handleSessionMessage(p) {
   const now = Date.now();
   const clean = text.replace(/\s+/g, ' ').trim();
   const norm = clean.replace(/^\/think:[a-z]+\s*/i, '').trim();
+  // Per-session rate cap so a busy session can't flood the DM or live view.
+  const stamps = (relayRate.get(p.sessionKey) || []).filter((t) => now - t < RELAY_WINDOW_MS);
+  if (stamps.length >= RELAY_MAX_PER_WINDOW) {
+    relayRate.set(p.sessionKey, stamps);
+    log('relay rate cap hit for', p.sessionKey);
+    return;
+  }
+  stamps.push(now);
+  relayRate.set(p.sessionKey, stamps);
+  // Live session view: forward every user/assistant message on the switched
+  // session (including messages this bridge itself sent/received), so the
+  // owner's page can show the session's real transcript while viewing it.
+  socket.emit('helper:session:live', {
+    convId: dmConvId,
+    sessionKey: p.sessionKey,
+    role,
+    text: norm.slice(0, 2000),
+  });
+  // DM relay: only external activity + messages not already shown in the DM.
   if (role === 'user') {
     const sent = recentSent.get(p.sessionKey);
     if (sent && now - sent.at < 5 * 60 * 1000 && sent.text === norm) return; // our own task
@@ -530,15 +654,6 @@ async function handleSessionMessage(p) {
     if (rep && now - rep.at < 3 * 60 * 1000 && rep.text === clean) return; // just delivered
   }
   if (!dmConvId) return;
-  // Per-session rate cap so a busy session can't flood the DM.
-  const stamps = (relayRate.get(p.sessionKey) || []).filter((t) => now - t < RELAY_WINDOW_MS);
-  if (stamps.length >= RELAY_MAX_PER_WINDOW) {
-    relayRate.set(p.sessionKey, stamps);
-    log('relay rate cap hit for', p.sessionKey);
-    return;
-  }
-  stamps.push(now);
-  relayRate.set(p.sessionKey, stamps);
   const label = shortSessionLabel(p.sessionKey);
   const prefix = role === 'user' ? `📡 [${label}] you: ` : `📡 [${label}] `;
   socket.emit('helper:session:msg', { convId: dmConvId, text: prefix + clean.slice(0, 400) });
@@ -634,6 +749,27 @@ socket.on('helper:sessions:get', async (p) => {
     socket.emit('helper:sessions:result', { reqId, ok: true, sessions });
   } catch (err) {
     socket.emit('helper:sessions:result', { reqId, ok: false, error: err.message });
+  }
+});
+// Owner session history: server asks the bridge to fetch a session's recent
+// messages from the gateway (sessions.get) so the chat page can replace the
+// DM view with that session's conversation. The sessions themselves keep
+// running on the Mac — this only reads their transcripts.
+socket.on('helper:sessions:history', async (p) => {
+  const reqId = p?.reqId;
+  const key = typeof p?.key === 'string' ? p.key.trim() : '';
+  if (!reqId || !key) return;
+  if (!gwReady) {
+    socket.emit('helper:sessions:history:result', { reqId, ok: false, error: 'gateway offline' });
+    return;
+  }
+  try {
+    const limit = Number.isFinite(p?.limit) ? Math.max(1, Math.min(500, Math.floor(p.limit))) : 300;
+    const res = await gwRpc('sessions.get', { key, limit }, 20000);
+    const messages = compactHistoryMessages(res?.messages);
+    socket.emit('helper:sessions:history:result', { reqId, ok: true, key, messages });
+  } catch (err) {
+    socket.emit('helper:sessions:history:result', { reqId, ok: false, error: err.message });
   }
 });
 // Server pushes the persisted session selection (on bridge connect and on

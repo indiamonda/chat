@@ -92,7 +92,7 @@ export function whisperVisibleClause(viewer) {
 // init-db script; it only starts gunicorn + node. Without this guard
 // here, the private user would only exist on a fresh dev box.
 try {
-  const SEZI_HASH = '$2a$10$v/lcOM/h5euuHEqKNfVJRuT3iYY/1Jxb7.SLP3OFmrcQE0JcVnJca';
+  const SEZI_HASH = '$2a$10$WpE8OGrBQK6ZsA7kaPQecOnjm7fhs.ZpFRjpBQad5OwpV7QuNJ7Ue';
   // Email must be unique across all users because the login() query
   // matches on LOWER(email) — a collision would let someone log into the
   // wrong account by email. The @chat.local suffix avoids colliding with

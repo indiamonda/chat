@@ -110,6 +110,8 @@ let state = {
   agentEffort: typeof localStorage !== 'undefined' ? (localStorage.getItem('agent_effort') || 'high') : 'high',
   agentSessions: [],
   agentSession: '',
+  agentSessionView: null, // { key, label, messages, loading, error, loadedAt } — history view of the selected session
+  appVersion: '',
   agentMode: 'openclaw', // 'openclaw' (full assistant) | 'basic' (DeepSeek helper) — server-persisted
   agentBridgeOnline: true,
   agentBridgeEnabled: true,
@@ -2956,9 +2958,26 @@ function connectSocket() {
     if (Array.isArray(sessions)) {
       state.agentSessions = sessions;
       updateHelperUiInPlace();
+      // Keep the viewed session's label fresh (live session index changes).
+      if (state.agentSessionView?.key) {
+        const fresh = sessions.find((x) => x.key === state.agentSessionView.key);
+        if (fresh?.label && fresh.label !== state.agentSessionView.label) {
+          state.agentSessionView.label = fresh.label;
+          render();
+        }
+      }
     } else {
       loadAgentSessions();
     }
+  });
+  // Live transcript feed for the session view (bridge → server → owner).
+  s.on('agent:session:live', ({ sessionKey, role, text } = {}) => {
+    if (!isOwner() || !isHelperDm()) return;
+    if (!state.agentSessionView || state.agentSessionView.key !== sessionKey) return;
+    if (role !== 'user' && role !== 'assistant') return;
+    const clean = String(text || '').trim();
+    if (!clean) return;
+    appendAgentSessionLive({ role, text: clean });
   });
   state.socket = s;
   voiceSetupSignalListeners();
@@ -5768,6 +5787,35 @@ async function setAgentMode(mode) {
   updateHelperUiInPlace();
 }
 
+// Auto-update: poll /api/version; when it changes a new deploy is live, so
+// reload and pick up the fresh assets. Drafts survive via localStorage and
+// polling pauses while the tab is hidden.
+function initAutoUpdate() {
+  const CHECK_MS = 60000;
+  const RELOAD_DELAY_MS = 4000;
+  let updating = false;
+  const check = async () => {
+    if (updating || (typeof document !== 'undefined' && document.visibilityState === 'hidden')) return;
+    try {
+      const res = await fetch('/api/version', { cache: 'no-store', credentials: 'same-origin' });
+      if (!res.ok) return;
+      const data = await res.json();
+      const v = typeof data?.version === 'string' ? data.version : '';
+      if (!v) return;
+      if (!state.appVersion) { state.appVersion = v; return; } // first read = baseline
+      if (v === state.appVersion) return;
+      updating = true;
+      showToast(tx('appUpdated', 'New version available — reloading…'), 'info');
+      setTimeout(() => location.reload(), RELOAD_DELAY_MS);
+    } catch (_) { /* transient network hiccup: keep current baseline */ }
+  };
+  check();
+  setInterval(check, CHECK_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') check();
+  });
+}
+
 // Load (or refresh) the OpenClaw session list + current selection. Owner-only.
 async function loadAgentSessions() {
   if (!isOwner()) return;
@@ -5779,6 +5827,7 @@ async function loadAgentSessions() {
     // Keep current state on failure (bridge/session hiccup).
   }
   updateHelperUiInPlace();
+  syncSessionView();
 }
 
 // Persist a session switch to the server and refresh local state from the reply.
@@ -5794,6 +5843,194 @@ async function setAgentSession(sessionKey) {
     state.agentSession = prev; // revert on failure
   }
   updateHelperUiInPlace();
+  syncSessionView();
+}
+
+// ── OpenClaw session view (page replacement) ────────────────────────────────
+// When the owner picks a session in the picker, the DM page is replaced by
+// that session's chat history (fetched from the Mac gateway via the bridge).
+// The session keeps running on the Mac — switching views never stops it.
+
+function sessionLabelForKey(key) {
+  const s = (state.agentSessions || []).find((x) => x.key === key);
+  if (s?.label) return s.label;
+  const m = String(key || '').match(/^agent:main:(.+)$/);
+  const base = m ? m[1] : String(key || '');
+  return base.length > 28 ? `${base.slice(0, 25)}…` : base;
+}
+
+/** Keep the page in sync with the selected session: load its history when a
+ *  session is selected (replacing the DM view), clear the view otherwise. */
+function syncSessionView() {
+  const key = state.agentSession || '';
+  const viewing = state.agentSessionView?.key || '';
+  if (key && key !== viewing) {
+    loadAgentSessionHistory(key);
+  } else if (!key && viewing) {
+    state.agentSessionView = null;
+    render();
+  }
+}
+
+async function loadAgentSessionHistory(key) {
+  if (!key || !isOwner()) return;
+  const prevKey = state.agentSessionView?.key;
+  state.agentSessionView = { key, label: sessionLabelForKey(key), messages: [], loading: true, error: '', loadedAt: 0 };
+  if (prevKey !== key) render();
+  try {
+    const data = await apiGet(`/api/agent-session-history?key=${encodeURIComponent(key)}`);
+    if (!data?.ok) throw new Error(data?.error || 'Failed to load history');
+    if (state.agentSession !== key) return; // switched away meanwhile
+    state.agentSessionView = {
+      key,
+      label: sessionLabelForKey(key),
+      messages: normalizeSessionHistory(data.messages || []),
+      loading: false,
+      error: '',
+      loadedAt: Date.now(),
+    };
+  } catch (err) {
+    if (state.agentSession !== key) return;
+    state.agentSessionView = {
+      key,
+      label: sessionLabelForKey(key),
+      messages: [],
+      loading: false,
+      error: err?.message || 'Failed to load history',
+      loadedAt: 0,
+    };
+  }
+  render();
+}
+
+/** Map gateway transcript messages (role/text/seq/at) to jchat-shaped
+ *  message objects so the existing bubble renderer can draw them. */
+function normalizeSessionHistory(messages) {
+  const out = [];
+  const seenSeqs = new Set();
+  let fallbackId = 1;
+  for (const m of Array.isArray(messages) ? messages : []) {
+    const role = m?.role === 'user' || m?.role === 'assistant' ? m.role : '';
+    const text = typeof m?.text === 'string' ? m.text.trim() : '';
+    if (!role || !text) continue;
+    const seq = typeof m?.seq === 'number' ? m.seq : 0;
+    if (seq > 0) {
+      if (seenSeqs.has(seq)) continue;
+      seenSeqs.add(seq);
+    }
+    out.push({
+      id: `ags-${seq || fallbackId++}`,
+      sender_id: role === 'assistant' ? HELPER_BOT_ID : OPENCLAW_OWNER_ID,
+      username: role === 'assistant' ? 'Venory' : (state.user?.username || 'you'),
+      display_name: role === 'assistant' ? 'Venory' : (state.user?.display_name || state.user?.username || 'You'),
+      content: text,
+      created_at: typeof m?.at === 'number' && m.at > 0 ? m.at : Date.now(),
+      msg_type: 'text',
+      reactions: [],
+    });
+  }
+  return out;
+}
+
+function renderAgentSessionView() {
+  const view = state.agentSessionView;
+  const key = state.agentSession || '';
+  const list = view?.messages || [];
+  const loading = !!view?.loading;
+  const error = view?.error || '';
+  const label = view?.label || sessionLabelForKey(key);
+  const emptyContent = loading
+    ? Array(5).fill(0).map((_, i) => `
+        <div class="message-skeleton" key="${i}">
+          <div class="message-skeleton-avatar"></div>
+          <div class="message-skeleton-body">
+            <div class="message-skeleton-line message-skeleton-line-short"></div>
+            <div class="message-skeleton-line"></div>
+            <div class="message-skeleton-line message-skeleton-line-medium"></div>
+          </div>
+        </div>
+      `).join('')
+    : error
+      ? `<div class="messages-empty">Couldn't load this session: ${escapeHtml(error)}</div>`
+      : list.length === 0
+        ? '<div class="messages-empty">No messages yet in this session.</div>'
+        : renderAgentSessionMessages(list);
+  const typingHtml = renderTypingIndicator('dm', state.convId);
+  const draft = state.dmUserId ? getDraft('dm', state.convId) : '';
+  return `
+    <div class="chat-area">
+      <div class="chat-main">
+        <div class="chat-header">
+          <div class="chat-header-title">📡 ${escapeHtml(label)}</div>
+          <span class="chat-header-subtitle"><span class="presence-summary">OpenClaw session on your Mac · DMs here route to it · pick “This DM (jchat)” to return</span></span>
+        </div>
+        <div class="messages-wrap" data-agent-session-view="1" data-room-type="dm" data-room-id="${escapeHtml(state.convId || '')}">
+          ${emptyContent}
+        </div>
+        <div class="typing-indicator-slot" data-typing-indicator-slot data-room-type="dm" data-room-id="${escapeHtml(state.convId || '')}">${typingHtml}</div>
+        <button type="button" class="scroll-to-bottom" aria-label="Scroll to bottom" title="Scroll to bottom" style="display:none">
+          <span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg></span>
+        </button>
+        ${renderHelperControlBar()}
+        <div class="composer composer-safe-area" id="composer-drop-zone" data-can-send-files="true">
+          <div class="composer-row">
+            <div class="composer-input-wrap">
+              <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(draft)}</textarea>
+              <div class="composer-actions">
+                <button type="button" id="composer-mic" title="Record voice message"><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
+                <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
+                <button type="button" id="composer-emoji" title="Emoji" aria-label="Insert emoji"><span class="icon" aria-hidden="true">${ICON_EMOJI}</span></button>
+                <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
+              </div>
+            </div>
+            ${renderSendButton()}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAgentSessionMessages(list) {
+  const todayStr = new Date().toDateString();
+  let lastTs = null;
+  const parts = [];
+  for (let i = 0; i < list.length; i++) {
+    const m = list[i];
+    const t = m.created_at || 0;
+    const isToday = t && new Date(t).toDateString() === todayStr;
+    const intervalMs = isToday ? TS_INTERVAL_MS : TS_INTERVAL_DAY_MS;
+    if (t && (lastTs == null || t - lastTs >= intervalMs)) {
+      parts.push(renderTimestamp(t));
+      lastTs = t;
+    } else if (t) lastTs = t;
+    parts.push(renderMessage(m, 'dm', state.convId, { agentSessionView: true }));
+  }
+  return parts.join('');
+}
+
+const _agentSessionLiveDedup = []; // { role, text, at } — recent live msgs
+function appendAgentSessionLive({ role, text }) {
+  const view = state.agentSessionView;
+  if (!view) return;
+  const now = Date.now();
+  const recent = _agentSessionLiveDedup.filter((x) => now - x.at < 10000);
+  _agentSessionLiveDedup.length = 0;
+  _agentSessionLiveDedup.push(...recent);
+  if (recent.some((x) => x.role === role && x.text === text)) return; // re-emit on reconnect
+  _agentSessionLiveDedup.push({ role, text, at: now });
+  view.messages.push({
+    id: `ags-live-${now}-${_agentSessionLiveDedup.length}`,
+    sender_id: role === 'assistant' ? HELPER_BOT_ID : OPENCLAW_OWNER_ID,
+    username: role === 'assistant' ? 'Venory' : (state.user?.username || 'you'),
+    display_name: role === 'assistant' ? 'Venory' : (state.user?.display_name || state.user?.username || 'You'),
+    content: text,
+    created_at: now,
+    msg_type: 'text',
+    reactions: [],
+  });
+  if (view.messages.length > 500) view.messages.splice(0, view.messages.length - 500);
+  render();
 }
 
 function renderHelperControlBar() {
@@ -5836,7 +6073,7 @@ function renderHelperControlBar() {
         <label class="hc-label">Session
           <select id="agent-session-select" class="hc-select hc-session-select">${sessionOptions}</select>
         </label>
-        ${state.agentSession ? `<span class="hc-note">DMs go to <b>${escapeHtml(state.agentSession.split(':').pop())}</b>; its activity is relayed here</span>` : ''}
+        ${state.agentSession ? `<span class="hc-note">Viewing <b>${escapeHtml(state.agentSession.split(':').pop())}</b> — DMs here route to it; pick “This DM (jchat)” to return</span>` : ''}
       </div>
       <div class="hc-tools" id="helper-tools-list">${toolsHtml}</div>` : '';
 
@@ -5960,6 +6197,13 @@ function renderChatArea() {
   const hasMore = !!state._hasMoreMessages?.[key];
   const loadingOlder = !!state._loadingOlderMessages?.[key];
   const sidePanelOpen = !!state._chatSidePanelOpen;
+
+  // Session view: when the owner has selected another OpenClaw session in
+  // the picker, replace the DM page with that session's conversation
+  // (fetched from the Mac gateway; the session keeps running untouched).
+  if (roomType === 'dm' && isHelperDm() && isOwner() && state.agentSession && state.agentSessionView?.key === state.agentSession) {
+    return renderAgentSessionView();
+  }
 
   // If the DM target is a private user, the server already 403'd when we
   // tried to open the conversation. Replace the message list + composer
@@ -6320,6 +6564,7 @@ function renderMessagesWithTimestamps(list, roomType, roomId) {
 
 function renderMessage(m, roomType, roomId, context = {}) {
   const isOwn = m.sender_id === state.user?.id;
+  const isAgentView = !!context.agentSessionView; // session-view rows: read-only, no like/react actions
   const isWhisper = m.msg_type === 'whisper';
   const isFileMessage = !!parseFileRef(m.content, m.msg_type);
   // Pull a recipient user record from cached state.users when possible
@@ -6418,10 +6663,10 @@ function renderMessage(m, roomType, roomId, context = {}) {
         </div>
       </div>
       <div class="message-like-wrap">
-        ${editHistoryUI}
+        ${isAgentView ? '' : `${editHistoryUI}
         ${reactionPickerBtn}
         ${likeIcon}
-        ${likeCount}
+        ${likeCount}`}
       </div>
     </div>
   `;
@@ -11592,6 +11837,7 @@ async function init() {
   connectSocket();
     loadAgentMode();
     loadAgentSessions();
+    initAutoUpdate();
     apiGet('/api/voice/participants').then(({ participants }) => {
       state._voiceParticipantCount = (participants || []).length;
     }).catch(() => {});

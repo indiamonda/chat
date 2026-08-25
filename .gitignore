@@ -3,3 +3,4 @@ __pycache__/
 bridge/node_modules/
 bridge/bridge.env
 data/
+device.json
