@@ -371,7 +371,7 @@ const HELPER_RE = /(^|\s)@(?:helper|venory)\b/i;
 const OPENCLAW_OWNER_ID = process.env.OPENCLAW_OWNER_ID || 'jimmyqrg';
 const OPENCLAW_HELPER_TOKEN = process.env.OPENCLAW_HELPER_TOKEN || '';
 const OPENCLAW_BRIDGE_SECRET = process.env.OPENCLAW_BRIDGE_SECRET || '';
-const OPENCLAW_BRIDGE_TIMEOUT_MS = Number(process.env.OPENCLAW_BRIDGE_TIMEOUT_MS || 10 * 60 * 1000);
+const OPENCLAW_BRIDGE_TIMEOUT_MS = Number(process.env.OPENCLAW_BRIDGE_TIMEOUT_MS || 36 * 60 * 60 * 1000 + 10 * 60 * 1000); // 36h10m, must outlive bridge FETCH_TIMEOUT (36h)
 const OPENCLAW_BRIDGE_ENABLED = !!(OPENCLAW_HELPER_TOKEN && OPENCLAW_BRIDGE_SECRET);
 const openclawBridgeTasks = new Map(); // taskId -> { resolve, timer, convId }
 
