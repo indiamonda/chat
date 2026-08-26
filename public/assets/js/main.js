@@ -116,6 +116,7 @@ let state = {
   agentBridgeOnline: true,
   agentBridgeEnabled: true,
   helperRuns: {}, // roomKey -> { busy, working, done, tools: [{id,name,title,status,meta}] }
+  sessionRuns: {}, // gateway sessionKey -> { busy, working, done, tools: [...] } (per-session live state)
 };
 
 if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
@@ -2918,19 +2919,25 @@ function connectSocket() {
     render();
   });
   // ── Venory helper: live busy + agent status events ──
-  s.on('helper:busy', ({ status, taskId, roomType, roomId }) => {
+  s.on('helper:busy', ({ status, taskId, roomType, roomId, sessionKey }) => {
     const key = roomType && roomId ? roomKey(roomType, roomId) : null;
-    if (!key) return;
-    const run = state.helperRuns[key] || { busy: false, working: false, done: false, tools: [] };
+    const run = key ? (state.helperRuns[key] || { busy: false, working: false, done: false, tools: [] }) : null;
+    // Also track per-gateway-session state so viewing another session shows
+    // THAT session's working/stop state, never the DM's.
+    const sk = (typeof sessionKey === 'string' && sessionKey) ? sessionKey
+      : (state.convId ? `agent:main:openai-user:jchat:dm:${state.convId}` : '');
+    const srun = sk ? (state.sessionRuns[sk] || { busy: false, working: false, done: false, tools: [] }) : null;
     if (status === 'start') {
-      run.busy = true; run.working = true; run.done = false; run.tools = [];
+      if (run) { run.busy = true; run.working = true; run.done = false; run.tools = []; state.helperRuns[key] = run; }
+      if (srun) { srun.busy = true; srun.working = true; srun.done = false; srun.tools = []; state.sessionRuns[sk] = srun; }
     } else {
-      run.busy = false;
+      if (run) { run.busy = false; state.helperRuns[key] = run; }
+      if (srun) { srun.busy = false; srun.working = false; state.sessionRuns[sk] = srun; }
     }
-    state.helperRuns[key] = run;
-    updateHelperUiInPlace(key);
+    if (key) updateHelperUiInPlace(key);
+    else updateHelperUiInPlace();
   });
-  s.on('helper:status', ({ taskId, kind, status, name, title, meta, id, roomType, roomId }) => {
+  s.on('helper:status', ({ taskId, kind, status, name, title, meta, id, roomType, roomId, sessionKey }) => {
     const key = roomType && roomId ? roomKey(roomType, roomId) : helperDmKey();
     if (!key) return;
     const run = state.helperRuns[key] || { busy: true, working: true, done: false, tools: [] };
@@ -2948,6 +2955,14 @@ function connectSocket() {
       }
     }
     state.helperRuns[key] = run;
+    // Mirror into the per-session run so the viewed session's bar shows its own tools.
+    const sk = (typeof sessionKey === 'string' && sessionKey) ? sessionKey
+      : (state.convId ? `agent:main:openai-user:jchat:dm:${state.convId}` : '');
+    if (sk) {
+      const srun = state.sessionRuns[sk] || { busy: true, working: true, done: false, tools: [] };
+      srun.working = run.working; srun.done = run.done; srun.tools = run.tools.slice();
+      state.sessionRuns[sk] = srun;
+    }
     updateHelperUiInPlace(key);
   });
   // OpenClaw session picker: the bridge pushes a fresh list whenever the
@@ -2979,13 +2994,14 @@ function connectSocket() {
     }
   });
   // Live transcript feed for the session view (bridge → server → owner).
-  s.on('agent:session:live', ({ sessionKey, role, text } = {}) => {
+  s.on('agent:session:live', ({ sessionKey, role, text, fileRef, msgType } = {}) => {
     if (!isOwner() || !isHelperDm()) return;
     if (!state.agentSessionView || state.agentSessionView.key !== sessionKey) return;
     if (role !== 'user' && role !== 'assistant') return;
+    const cleanRef = (typeof fileRef === 'string' && fileRef.trim().startsWith('/file ')) ? fileRef.trim() : '';
     const clean = String(text || '').trim();
-    if (!clean) return;
-    appendAgentSessionLive({ role, text: clean });
+    if (!cleanRef && !clean) return;
+    appendAgentSessionLive({ role, text: clean, fileRef: cleanRef, msgType });
   });
   state.socket = s;
   voiceSetupSignalListeners();
@@ -5751,6 +5767,19 @@ function helperDmKey() {
   return isHelperDm() && state.convId ? roomKey('dm', state.convId) : null;
 }
 function helperRun() {
+  // Session view: show the run state of the session being VIEWED, never the DM's.
+  const viewKey = state.agentSessionView?.key;
+  if (viewKey) {
+    const srun = state.sessionRuns[viewKey];
+    const entry = (state.agentSessions || []).find((s) => s.key === viewKey);
+    const active = !!(entry?.hasActiveRun);
+    return {
+      busy: active || !!(srun?.busy),
+      working: active || !!(srun?.working),
+      done: !active && !!(srun?.done),
+      tools: (srun?.tools || []).slice(),
+    };
+  }
   const key = helperDmKey();
   return key ? (state.helperRuns[key] || null) : null;
 }
@@ -6012,37 +6041,63 @@ function renderKeepingScroll() {
 /** Mirror the owner's own DM text message into the viewed session view
  *  immediately (the gateway echo arrives via the live ring and is deduped). */
 function mirrorOwnDmToSessionView(msg) {
-  if (!msg || msg.room_type !== 'dm' || msg.msg_type !== 'text') return;
+  if (!msg || msg.room_type !== 'dm') return;
   if (!isOwner() || !isHelperDm()) return;
   if (!state.agentSessionView?.key) return;
   const content = typeof msg.content === 'string' ? msg.content.trim() : '';
   if (!content) return;
+  // File/image messages mirror as the file itself so the viewed session
+  // shows the real attachment, not a text placeholder.
+  if (content.startsWith('/file ') && ['image', 'video', 'audio', 'file'].includes(msg.msg_type)) {
+    appendAgentSessionLive({ role: 'user', text: '', fileRef: content, msgType: msg.msg_type }, { optimistic: true });
+    return;
+  }
+  if (msg.msg_type !== 'text') return;
   appendAgentSessionLive({ role: 'user', text: content }, { optimistic: true });
 }
 
 /** Map gateway transcript messages (role/text/seq/at) to jchat-shaped
  *  message objects so the existing bubble renderer can draw them. */
+function helperAvatarUrl() {
+  const helperUser = (state.users || []).find((u) => u.id === HELPER_BOT_ID);
+  const avatar = (helperUser?.avatar_url && String(helperUser.avatar_url).trim())
+    ? helperUser.avatar_url : null;
+  if (!avatar) {
+    // fallback: any delivered helper DM message carries the joined avatar_url
+    const dmKey = state.convId ? roomKey('dm', state.convId) : '';
+    const msgs = dmKey ? (state.messages?.[dmKey] || []) : [];
+    const hit = [...msgs].reverse().find((m) => m?.sender_id === HELPER_BOT_ID && m?.avatar_url);
+    return hit?.avatar_url || '';
+  }
+  return avatar;
+}
+
 function normalizeSessionHistory(messages) {
   const out = [];
   const seenSeqs = new Set();
   let fallbackId = 1;
+  const venoryAvatar = helperAvatarUrl();
+  const ownAvatar = state.user?.avatar_url || '';
   for (const m of Array.isArray(messages) ? messages : []) {
     const role = m?.role === 'user' || m?.role === 'assistant' ? m.role : '';
     const text = typeof m?.text === 'string' ? m.text.trim() : '';
-    if (!role || !text) continue;
+    const fileRef = (typeof m?.fileRef === 'string' && m.fileRef.trim().startsWith('/file ')) ? m.fileRef.trim() : '';
+    if (!role || (!text && !fileRef)) continue;
     const seq = typeof m?.seq === 'number' ? m.seq : 0;
     if (seq > 0) {
       if (seenSeqs.has(seq)) continue;
       seenSeqs.add(seq);
     }
+    const isAssistant = role === 'assistant';
     out.push({
       id: `ags-${seq || fallbackId++}`,
-      sender_id: role === 'assistant' ? HELPER_BOT_ID : OPENCLAW_OWNER_ID,
-      username: role === 'assistant' ? 'Venory' : (state.user?.username || 'you'),
-      display_name: role === 'assistant' ? 'Venory' : (state.user?.display_name || state.user?.username || 'You'),
-      content: text,
+      sender_id: isAssistant ? HELPER_BOT_ID : OPENCLAW_OWNER_ID,
+      username: isAssistant ? 'Venory' : (state.user?.username || 'you'),
+      display_name: isAssistant ? 'Venory' : (state.user?.display_name || state.user?.username || 'You'),
+      avatar_url: isAssistant ? venoryAvatar : ownAvatar,
+      content: fileRef || text,
       created_at: typeof m?.at === 'number' && m.at > 0 ? m.at : Date.now(),
-      msg_type: 'text',
+      msg_type: fileRef ? (['image', 'video', 'audio', 'file'].includes(m?.msgType) ? m.msgType : 'file') : 'text',
       reactions: [],
     });
   }
@@ -6127,23 +6182,26 @@ function renderAgentSessionMessages(list) {
 }
 
 const _agentSessionLiveDedup = []; // { role, text, at } — recent live msgs
-function appendAgentSessionLive({ role, text }, opts = {}) {
+function appendAgentSessionLive({ role, text, fileRef, msgType }, opts = {}) {
   const view = state.agentSessionView;
   if (!view) return;
   const now = Date.now();
   const recent = _agentSessionLiveDedup.filter((x) => now - x.at < 10000);
   _agentSessionLiveDedup.length = 0;
   _agentSessionLiveDedup.push(...recent);
-  if (!opts.optimistic && recent.some((x) => x.role === role && x.text === text)) return; // re-emit on reconnect
-  _agentSessionLiveDedup.push({ role, text, at: now });
+  const key = fileRef || text;
+  if (!opts.optimistic && recent.some((x) => x.role === role && x.key === key)) return; // re-emit on reconnect
+  _agentSessionLiveDedup.push({ role, key, at: now });
+  const isAssistant = role === 'assistant';
   view.messages.push({
     id: `ags-live-${now}-${_agentSessionLiveDedup.length}`,
-    sender_id: role === 'assistant' ? HELPER_BOT_ID : OPENCLAW_OWNER_ID,
-    username: role === 'assistant' ? 'Venory' : (state.user?.username || 'you'),
-    display_name: role === 'assistant' ? 'Venory' : (state.user?.display_name || state.user?.username || 'You'),
-    content: text,
+    sender_id: isAssistant ? HELPER_BOT_ID : OPENCLAW_OWNER_ID,
+    username: isAssistant ? 'Venory' : (state.user?.username || 'you'),
+    display_name: isAssistant ? 'Venory' : (state.user?.display_name || state.user?.username || 'You'),
+    avatar_url: isAssistant ? helperAvatarUrl() : (state.user?.avatar_url || ''),
+    content: fileRef || text,
     created_at: now,
-    msg_type: 'text',
+    msg_type: fileRef ? (['image', 'video', 'audio', 'file'].includes(msgType) ? msgType : 'file') : 'text',
     reactions: [],
     _live: true,
     _role: role,
@@ -9579,7 +9637,10 @@ function bindMain() {
       const roomId = state.dmUserId ? state.convId : state.panel;
       // Stop instead of send while Venory is responding.
       if (isHelperBusy()) {
-        state.socket?.emit('helper:stop', { roomType, roomId });
+        const stopPayload = { roomType, roomId };
+        const viewKey = state.agentSessionView?.key;
+        if (viewKey) stopPayload.sessionKey = viewKey;
+        state.socket?.emit('helper:stop', stopPayload);
         return;
       }
       emitTypingStop(roomType, roomId);

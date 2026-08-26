@@ -259,7 +259,7 @@ function handleAgentEvent(p) {
   if (!taskId) return; // no in-flight task for this session
   const status = mapAgentEvent(p);
   if (!status) return;
-  socket.emit('helper:status', { taskId, ...status });
+  socket.emit('helper:status', { taskId, sessionKey: p.sessionKey, ...status });
 }
 
 /** Map a raw `agent` event to a compact `helper:status` payload.
@@ -501,7 +501,21 @@ function compactHistoryMessages(messages) {
         .map((p) => p.text)
         .join('\n');
     }
-    if (!text || !text.trim()) continue;
+    // Media sent through the Control UI lives on the Mac (MediaPaths) with a
+    // placeholder text content. Keep both: text (if a real caption) + media
+    // file list so the DM/session views can render the actual file.
+    const paths = Array.isArray(m?.MediaPaths) ? m.MediaPaths
+      : (typeof m?.MediaPath === 'string' ? [m.MediaPath] : []);
+    const types = Array.isArray(m?.MediaTypes) ? m.MediaTypes
+      : (typeof m?.MediaType === 'string' ? [m.MediaType] : []);
+    const media = paths.map((p, i) => ({
+      path: String(p),
+      mime: String(types[i] || 'application/octet-stream'),
+      name: String(p).split('/').pop() || 'file',
+    })).filter((x) => x.path);
+    const isPlaceholder = media.length > 0 && /^\[.*(media|user sent).*\]$/i.test(text.trim());
+    const finalText = isPlaceholder ? '' : text.replace(/^\s*\/think:[a-z]+\s*\n*/i, '').trim();
+    if (!finalText && !media.length) continue;
     const seq = typeof m?.__openclaw?.seq === 'number' ? m.__openclaw.seq : 0;
     if (seq > 0 && seenSeqs.has(seq)) continue;
     if (seq > 0) seenSeqs.add(seq);
@@ -509,9 +523,10 @@ function compactHistoryMessages(messages) {
       : (typeof m.timestamp === 'string' ? Date.parse(m.timestamp) : 0);
     out.push({
       role,
-      text: text.replace(/^\s*\/think:[a-z]+\s*\n*/i, '').trim(),
+      text: finalText,
       seq,
       at: Number.isFinite(at) ? at : 0,
+      media: media.length ? media : undefined,
     });
   }
   return out;
@@ -665,8 +680,33 @@ async function handleSessionMessage(p) {
     // (the bridge prepends it) and are already in the jchat DB; mirror only
     // Control-UI-originated messages (no prefix) + assistant texts.
     if (role === 'user' && /^\/think:[a-z]+\s*/i.test(text)) return;
+    const mediaPaths = Array.isArray(msg?.MediaPaths) ? msg.MediaPaths
+      : (typeof msg?.MediaPath === 'string' ? [msg.MediaPath] : []);
+    const mediaTypes = Array.isArray(msg?.MediaTypes) ? msg.MediaTypes
+      : (typeof msg?.MediaType === 'string' ? [msg.MediaType] : []);
+    const isPlaceholder = mediaPaths.length > 0 && /^\[.*(media|user sent).*\]$/i.test(text.trim());
     const raw = text.replace(/^\/think:[a-z]+\s*\n*\s*/i, '').trim(); // full text, no prefix
-    if (!raw) return;
+    if (!raw && !mediaPaths.length) return;
+    const at = typeof msg.timestamp === 'number' && msg.timestamp > 0 ? msg.timestamp : now;
+    if (mediaPaths.length) {
+      const mime = String(mediaTypes[0] || 'application/octet-stream');
+      const name = String(mediaPaths[0]).split('/').pop() || 'file';
+      const up = await uploadMediaToJchat(mediaPaths[0], name, mime);
+      const items = [];
+      if (up) {
+        items.push({ role, fileRef: up.fileRef, msgType: up.msgType, at });
+        if (raw && !isPlaceholder) items.push({ role, text: raw.slice(0, 4000), at });
+      } else if (!isPlaceholder && raw) {
+        items.push({ role, text: raw.slice(0, 4000), at });
+      } else {
+        items.push({ role, text: `📎 [${name}]`, at });
+      }
+      if (items.length) {
+        log('dm mirror media:', role, name, up ? 'uploaded' : 'note');
+        socket.emit('helper:dm:sync', { convId: dmConvId, messages: items });
+      }
+      return;
+    }
     if (role === 'user') {
       const sent = recentSent.get(dmKey);
       if (sent && now - sent.at < 10 * 60 * 1000 && sent.text === raw) return; // our own task
@@ -682,7 +722,7 @@ async function handleSessionMessage(p) {
       messages: [{
         role,
         text: raw.slice(0, 4000),
-        at: typeof msg.timestamp === 'number' && msg.timestamp > 0 ? msg.timestamp : now,
+        at,
       }],
     });
     return;
@@ -703,12 +743,24 @@ async function handleSessionMessage(p) {
   // Live session view: forward every user/assistant message on the switched
   // session (including messages this bridge itself sent/received), so the
   // owner's page can show the session's real transcript while viewing it.
-  socket.emit('helper:session:live', {
+  const livePayload = {
     convId: dmConvId,
     sessionKey: p.sessionKey,
     role,
     text: norm.slice(0, 2000),
-  });
+  };
+  const liveMediaPaths = Array.isArray(msg?.MediaPaths) ? msg.MediaPaths
+    : (typeof msg?.MediaPath === 'string' ? [msg.MediaPath] : []);
+  if (liveMediaPaths.length) {
+    const mime = String((Array.isArray(msg?.MediaTypes) ? msg.MediaTypes[0] : msg?.MediaType) || 'application/octet-stream');
+    const up = await uploadMediaToJchat(liveMediaPaths[0], liveMediaPaths[0].split('/').pop() || 'file', mime);
+    if (up) {
+      livePayload.fileRef = up.fileRef;
+      livePayload.msgType = up.msgType;
+      if (/^\[.*(media|user sent).*\]$/i.test(norm)) livePayload.text = '';
+    }
+  }
+  socket.emit('helper:session:live', livePayload);
   // DM relay: only external activity + messages not already shown in the DM.
   if (role === 'user') {
     const sent = recentSent.get(p.sessionKey);
@@ -723,6 +775,94 @@ async function handleSessionMessage(p) {
   const label = shortSessionLabel(p.sessionKey);
   const prefix = role === 'user' ? `📡 [${label}] you: ` : `📡 [${label}] `;
   socket.emit('helper:session:msg', { convId: dmConvId, text: prefix + clean.slice(0, 400) });
+}
+
+/** Media files from the Mac (Control-UI uploads) are uploaded to the jchat
+ *  server on demand so chat clients can render them. Cached per Mac path so
+ *  the 60s reconcile doesn't re-upload the same file every tick. The cache
+ *  persists to disk so a bridge restart maps the same Mac path → same fileRef
+ *  (server dedupes by content+time window). */
+const MEDIA_CACHE_PATH = new URL('./media-cache.json', import.meta.url).pathname;
+const mediaUploadCache = new Map(); // mediaPath -> { fileRef, msgType, mime }
+
+try {
+  if (existsSync(MEDIA_CACHE_PATH)) {
+    const raw = JSON.parse(readFileSync(MEDIA_CACHE_PATH, 'utf8'));
+    for (const [k, v] of Object.entries(raw || {})) {
+      if (v?.fileRef) mediaUploadCache.set(k, v);
+    }
+    log('media cache loaded:', mediaUploadCache.size, 'entries');
+  }
+} catch (err) {
+  log('media cache load failed:', err.message);
+}
+
+function persistMediaCache() {
+  try {
+    writeFileSync(MEDIA_CACHE_PATH, JSON.stringify(Object.fromEntries(mediaUploadCache)));
+  } catch (err) {
+    log('media cache persist failed:', err.message);
+  }
+}
+
+async function uploadMediaToJchat(mediaPath, name, mime) {
+  const cached = mediaUploadCache.get(mediaPath);
+  if (cached) return cached;
+  let data;
+  try {
+    data = readFileSync(mediaPath);
+  } catch (err) {
+    log('media read failed:', mediaPath, err.message);
+    return null;
+  }
+  if (!data.length || data.length > 50 * 1024 * 1024) return null;
+  const res = await new Promise((resolve) => {
+    let done = false;
+    const timer = setTimeout(() => { if (!done) { done = true; resolve(null); } }, 20000);
+    try {
+      socket.emit('helper:media:upload', { convId: dmConvId, name, mime, data }, (r) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(r || null);
+      });
+    } catch {
+      clearTimeout(timer);
+      done = true;
+      resolve(null);
+    }
+  });
+  if (res?.ok && res.fileRef) {
+    const msgType = mime.startsWith('image/') ? 'image' : mime.startsWith('video/') ? 'video' : mime.startsWith('audio/') ? 'audio' : 'file';
+    const entry = { fileRef: res.fileRef, msgType, mime };
+    mediaUploadCache.set(mediaPath, entry);
+    persistMediaCache();
+    log('media uploaded:', name, '->', res.fileRef);
+    return entry;
+  }
+  return null;
+}
+
+/** Turn compacted transcript entries into helper:dm:sync payload items,
+ *  uploading any Mac-side media files first. */
+async function enrichForDmSync(entries) {
+  const out = [];
+  for (const m of entries) {
+    if (m.media?.length) {
+      const up = await uploadMediaToJchat(m.media[0].path, m.media[0].name, m.media[0].mime);
+      if (up) {
+        out.push({ role: m.role, fileRef: up.fileRef, msgType: up.msgType, at: m.at });
+        if (m.text) out.push({ role: m.role, text: m.text, at: m.at }); // caption as separate text row
+        continue;
+      }
+      // upload failed → fall back to a readable note instead of the placeholder
+      if (!m.text) out.push({ role: m.role, text: `📎 [${m.media[0].name}]`, at: m.at });
+      else out.push({ role: m.role, text: m.text, at: m.at });
+      continue;
+    }
+    out.push({ role: m.role, text: m.text, at: m.at });
+  }
+  return out;
 }
 
 /** Periodic reconcile: fetch the DM session transcript from the gateway and
@@ -743,7 +883,8 @@ async function syncDmFromGateway() {
       : messages;
     if (!fresh.length) return;
     const maxSeq = Math.max(...fresh.map((m) => m.seq || 0));
-    socket.emit('helper:dm:sync', { convId: dmConvId, messages: fresh.slice(-200) });
+    const items = await enrichForDmSync(fresh);
+    socket.emit('helper:dm:sync', { convId: dmConvId, messages: items });
     if (maxSeq > lastDmSyncedSeq) lastDmSyncedSeq = maxSeq;
     log(`dm sync reconcile: ${fresh.length} new candidate message(s)`);
   } catch (err) {
@@ -836,6 +977,14 @@ socket.on('helper:task', (task) => {
 socket.on('helper:stop', (p) => {
   const controller = controllers.get(p?.taskId);
   if (controller) controller.abort();
+  // Session-scoped stop: abort the gateway run for a viewed session even
+  // when it wasn't started through a jchat DM task.
+  const sk = typeof p?.sessionKey === 'string' ? p.sessionKey.trim() : '';
+  if (sk && !controller) {
+    gwRpc('sessions.abort', { key: sk }, 8000)
+      .then(() => log('session abort requested for', sk))
+      .catch((err) => log('session abort failed:', err.message));
+  }
 });
 // Owner session picker: server asks the bridge to build the session list.
 socket.on('helper:sessions:get', async (p) => {
@@ -868,7 +1017,15 @@ socket.on('helper:sessions:history', async (p) => {
     const limit = Number.isFinite(p?.limit) ? Math.max(1, Math.min(500, Math.floor(p.limit))) : 300;
     const res = await gwRpc('sessions.get', { key, limit }, 20000);
     const messages = compactHistoryMessages(res?.messages);
-    socket.emit('helper:sessions:history:result', { reqId, ok: true, key, messages });
+    // Upload any Mac-side media so the session view can render the real files.
+    const enriched = await Promise.all(messages.slice(-100).map(async (m) => {
+      if (!m.media?.length) return m;
+      const up = await uploadMediaToJchat(m.media[0].path, m.media[0].name, m.media[0].mime);
+      if (up) return { role: m.role, text: m.text, seq: m.seq, at: m.at, fileRef: up.fileRef, msgType: up.msgType };
+      if (m.text) return { role: m.role, text: m.text, seq: m.seq, at: m.at };
+      return { role: m.role, text: `📎 [${m.media[0].name}]`, seq: m.seq, at: m.at };
+    }));
+    socket.emit('helper:sessions:history:result', { reqId, ok: true, key, messages: enriched });
   } catch (err) {
     socket.emit('helper:sessions:history:result', { reqId, ok: false, error: err.message });
   }

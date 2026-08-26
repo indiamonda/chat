@@ -1,7 +1,7 @@
 import http, { createServer } from 'http';
 import { Readable } from 'stream';
 import { parse as urlParse } from 'url';
-import { readFileSync, existsSync, readdirSync, rmSync as fsRm } from 'fs';
+import { readFileSync, existsSync, readdirSync, writeFileSync, rmSync as fsRm } from 'fs';
 import { join, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
@@ -1136,9 +1136,9 @@ async function helperReply(triggerMsgId, content, roomType, roomId, userId, agen
   const io = app.get('io');
   const roomKey = presenceRoomKeyForRoom(roomType, roomId);
   const controller = new AbortController();
-  const active = { kind: 'deepseek', taskId: triggerMsgId, controller };
+  const active = { kind: 'deepseek', taskId: triggerMsgId, controller, sessionKey: getAgentSession() || '' };
   helperActiveByRoom.set(roomKey, active);
-  io?.to(roomKey).emit('helper:busy', { status: 'start', taskId: triggerMsgId, roomType, roomId });
+  io?.to(roomKey).emit('helper:busy', { status: 'start', taskId: triggerMsgId, roomType, roomId, sessionKey: active.sessionKey });
   try {
     // ── OpenClaw bridge: the owner's private full assistant (DM only) ──
     // The owner's routing mode controls which "Venory" answers: 'openclaw'
@@ -1222,7 +1222,7 @@ async function helperReply(triggerMsgId, content, roomType, roomId, userId, agen
     }
   } finally {
     if (helperActiveByRoom.get(roomKey) === active) helperActiveByRoom.delete(roomKey);
-    io?.to(roomKey).emit('helper:busy', { status: 'end', taskId: triggerMsgId, roomType, roomId });
+    io?.to(roomKey).emit('helper:busy', { status: 'end', taskId: triggerMsgId, roomType, roomId, sessionKey: active.sessionKey || '' });
   }
 }
 
@@ -1275,6 +1275,7 @@ function registerBridgeSocket(socket) {
       taskId: p.taskId,
       roomType: 'dm',
       roomId: task.convId,
+      sessionKey: typeof p?.sessionKey === 'string' ? p.sessionKey : undefined,
       id: typeof p?.id === 'string' ? p.id : undefined,
       kind: typeof p?.kind === 'string' ? p.kind : 'status',
       status: typeof p?.status === 'string' ? p.status : undefined,
@@ -1330,9 +1331,11 @@ function registerBridgeSocket(socket) {
     const sessionKey = typeof p?.sessionKey === 'string' ? p.sessionKey.trim() : '';
     const role = p?.role === 'user' || p?.role === 'assistant' ? p.role : '';
     const text = typeof p?.text === 'string' ? p.text.trim() : '';
-    if (!sessionKey || !role || !text || text.length > 2000) return;
+    const fileRef = (typeof p?.fileRef === 'string' && p.fileRef.trim().startsWith('/file ')) ? p.fileRef.trim().slice(0, 500) : '';
+    const msgType = fileRef && ['image', 'video', 'audio', 'file'].includes(p?.msgType) ? p.msgType : undefined;
+    if (!sessionKey || !role || (!text && !fileRef) || text.length > 2000) return;
     const io = app.get('io');
-    io?.to(`user:${OPENCLAW_OWNER_ID}`).emit('agent:session:live', { sessionKey, role, text });
+    io?.to(`user:${OPENCLAW_OWNER_ID}`).emit('agent:session:live', { sessionKey, role, text, fileRef: fileRef || undefined, msgType });
   });
   // Full two-way history sync for the owner's helper DM: the bridge mirrors
   // the gateway session transcript (Control-UI webchat messages + assistant
@@ -1340,8 +1343,30 @@ function registerBridgeSocket(socket) {
   // pushes messages it knows are missing; the server dedupes against the
   // current DM rows (same sender + same content) so nothing duplicates, then
   // inserts with the gateway's original timestamps and emits live.
-  socket.on('helper:dm:sync', (p) => {
+  // Media upload for mirrored transcript messages: the bridge sends file
+  // bytes for media messages (which live on the Mac, not the chat server),
+  // the server stores them in the uploads dir and returns a fileRef.
+  socket.on('helper:media:upload', (p, ack) => {
     const convId = typeof p?.convId === 'string' ? p.convId.trim() : '';
+    const name = typeof p?.name === 'string' ? p.name.slice(0, 200) : 'file';
+    const mime = typeof p?.mime === 'string' ? p.mime.slice(0, 100) : 'application/octet-stream';
+    const data = p?.data;
+    const reply = (obj) => (typeof ack === 'function' ? ack(obj) : null);
+    if (!convId || convId !== getHelperDmConvId()) return reply({ ok: false, error: 'bad conv' });
+    if (!Buffer.isBuffer(data) || data.length === 0 || data.length > 50 * 1024 * 1024) {
+      return reply({ ok: false, error: 'bad data' });
+    }
+    try {
+      const ext = (name.includes('.') && name.slice(name.lastIndexOf('.')).length <= 16)
+        ? name.slice(name.lastIndexOf('.')) : '';
+      const filename = `${randomUUID()}${ext}`;
+      writeFileSync(join(uploadsDir, filename), data);
+      reply({ ok: true, fileRef: getFileRef(filename), filename, mime });
+    } catch (err) {
+      reply({ ok: false, error: String(err?.message || err) });
+    }
+  });
+  socket.on('helper:dm:sync', (p) => {    const convId = typeof p?.convId === 'string' ? p.convId.trim() : '';
     if (!convId || convId !== getHelperDmConvId()) return; // owner's helper DM only
     const list = Array.isArray(p?.messages) ? p.messages.slice(0, 500) : [];
     if (!list.length) return;
@@ -1350,10 +1375,6 @@ function registerBridgeSocket(socket) {
     // already exists *around the same time* is a mirror of the same message
     // (skip); the same text sent at a clearly different time is a new message.
     const sel = db.prepare(`SELECT 1 FROM messages WHERE room_type='dm' AND room_id=? AND sender_id=? AND content=? AND ABS(created_at - ?) < 300000 LIMIT 1`);
-    const ins = db.prepare(`
-      INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, created_at, updated_at)
-      VALUES (?, 'dm', ?, ?, ?, 'text', ?, ?)
-    `);
     const fetchRow = db.prepare(`
       SELECT m.*, u.username, u.display_name, u.avatar_url, u.chatbox_style
       FROM messages m LEFT JOIN users u ON u.id = m.sender_id WHERE m.id = ?
@@ -1362,13 +1383,21 @@ function registerBridgeSocket(socket) {
       let added = 0;
       for (const item of items) {
         const role = item?.role === 'user' || item?.role === 'assistant' ? item.role : '';
-        const text = typeof item?.text === 'string' ? item.text.trim() : '';
+        const fileRef = typeof item?.fileRef === 'string' && item.fileRef.trim().startsWith('/file ')
+          ? item.fileRef.trim().slice(0, 500) : '';
+        const msgType = fileRef
+          ? (['image', 'video', 'audio', 'file'].includes(item?.msgType) ? item.msgType : 'file')
+          : 'text';
+        const text = fileRef || (typeof item?.text === 'string' ? item.text.trim() : '');
         if (!role || !text || text.length > 4000) continue;
         const at = Number.isFinite(item?.at) && item.at > 0 ? Math.floor(item.at) : Date.now();
         const sender = role === 'assistant' ? HELPER_USER_ID : OPENCLAW_OWNER_ID;
         if (sel.get(convId, sender, text, at)) continue; // already present (same sender+text+time window)
         const id = randomUUID();
-        ins.run(id, convId, sender, text, at, at);
+        db.prepare(`
+          INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, created_at, updated_at)
+          VALUES (?, 'dm', ?, ?, ?, ?, ?, ?)
+        `).run(id, convId, sender, text, msgType, at, at);
         const row = fetchRow.get(id);
         if (row) {
           io?.to(`dm:${convId}`).emit('message', { ...row, likes: 0, edit_history: null });
@@ -3521,8 +3550,13 @@ io.on('connection', (socket) => {
   // pending bridge task immediately and best-effort aborts the DeepSeek fetch
   // or tells the bridge to abort its gateway call.
   socket.on('helper:stop', (payload) => {
-    const { roomType, roomId } = payload || {};
+    const { roomType, roomId, sessionKey } = payload || {};
     if (!roomType || !roomId) return;
+    // Session-scoped stop (owner viewing another session): ask the bridge to
+    // abort the gateway run for that session directly.
+    if (typeof sessionKey === 'string' && sessionKey) {
+      io.to('bridge:openclaw').emit('helper:stop', { sessionKey });
+    }
     const roomKey = presenceRoomKeyForRoom(roomType, roomId);
     const active = helperActiveByRoom.get(roomKey);
     if (!active) return;
