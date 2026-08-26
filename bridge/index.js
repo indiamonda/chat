@@ -218,6 +218,10 @@ function handleGatewayMessage(raw) {
     if (m.ok) {
       gwReady = true;
       log('gateway ws connected (operator)');
+      // Fresh gateway connection: subscriptions are gone and the DM
+      // transcript watermark may be stale → full idempotent reconcile.
+      lastDmSyncedSeq = 0;
+      syncDmFromGateway();
       gwRpc('sessions.subscribe', {}, 8000)
         .then(() => log('subscribed to gateway session index changes'))
         .catch((err) => log('sessions.subscribe failed:', err.message));
@@ -817,7 +821,13 @@ async function handleTask(task) {
 }
 
 // --- socket lifecycle --------------------------------------------------------
-socket.on('connect', () => log('connected to', JCHAT_URL, 'as helper bridge'));
+socket.on('connect', () => {
+  log('connected to', JCHAT_URL, 'as helper bridge');
+  // Server may have restarted (deploy) and dropped our helper:dm:sync
+  // messages; a fresh full reconcile is idempotent (server dedupes).
+  lastDmSyncedSeq = 0;
+  syncDmFromGateway();
+});
 socket.on('disconnect', (reason) => log('disconnected:', reason));
 socket.on('connect_error', (err) => log('connect error:', err.message));
 socket.on('helper:task', (task) => {
