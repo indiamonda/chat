@@ -27,6 +27,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/.schoology-venv /app/.schoology-venv
 COPY . .
+# schoology/ files can carry unreadable local modes (600/700 from AI editors) which
+# Docker COPY preserves; nodejs user then can't read them (e.g. /schoology/ served
+# the chat SPA fallback instead of the dashboard, 2026-08-25). Normalize at build.
+RUN chmod -R a+rX /app/schoology
 # Socket.IO browser bundle for game.html (/socket.io.min.js); file may be untracked in git
 RUN cp -f node_modules/socket.io/client-dist/socket.io.min.js public/socket.io.min.js
 RUN mkdir -p /data && chown -R nodejs:nodejs /data
