@@ -421,6 +421,8 @@ const rpcWaiters = new Map();     // rpc id -> resolver
 let currentSessionKey = '';       // '' = owner's DM session (default)
 let dmConvId = '';                // owner's DM conv id (from server sync; relay target)
 let relaySubKey = null;           // gateway session key subscribed for message events
+let dmRelaySubKey = null;         // DM session key subscribed for mirror events
+let dmSyncTimer = null;           // periodic DM transcript reconcile timer
 let listPushTimer = null;
 const recentSent = new Map();     // sessionKey -> { text, at } (user msgs we sent via tasks)
 const recentReplies = new Map();  // sessionKey -> { text, at } (assistant replies we delivered)
@@ -583,7 +585,25 @@ function applySessionSync(p) {
   const raw = typeof p?.sessionKey === 'string' ? p.sessionKey.trim() : '';
   currentSessionKey = (raw && !isReservedSessionKey(raw)) ? raw : '';
   if (typeof p?.dmConvId === 'string' && p.dmConvId) dmConvId = p.dmConvId;
-  const want = (currentSessionKey && currentSessionKey !== dmSessionKey(dmConvId)) ? currentSessionKey : null;
+  // Two subscriptions now: the owner's DM session itself (so Control-UI
+  // webchat messages + assistant replies on that session get mirrored into
+  // the jchat DM), plus the switched session if one is selected.
+  const dmKey = dmSessionKey(dmConvId);
+  const want = (currentSessionKey && currentSessionKey !== dmKey) ? currentSessionKey : null;
+  if (dmKey !== dmRelaySubKey) {
+    if (dmRelaySubKey) {
+      gwRpc('sessions.messages.unsubscribe', { key: dmRelaySubKey }).catch(() => {});
+    }
+    dmRelaySubKey = null;
+    if (dmKey) {
+      gwRpc('sessions.messages.subscribe', { key: dmKey })
+        .then(() => {
+          dmRelaySubKey = dmKey;
+          log('dm relay subscribed to:', dmKey);
+        })
+        .catch((err) => log('dm relay subscribe failed:', err.message));
+    }
+  }
   if (want === relaySubKey) return;
   if (relaySubKey) {
     gwRpc('sessions.messages.unsubscribe', { key: relaySubKey }).catch(() => {});
@@ -621,8 +641,6 @@ function recordReply(sessionKey, text) {
  *  bridge tasks are deduped (the DM already shows those). */
 async function handleSessionMessage(p) {
   if (!p?.sessionKey || !p?.message) return;
-  if (!currentSessionKey || p.sessionKey !== currentSessionKey) return; // stale subscription
-  if (p.sessionKey === dmSessionKey(dmConvId)) return; // the DM is that session's UI
   const msg = p.message || {};
   const role = msg.role;
   if (role !== 'user' && role !== 'assistant') return;
@@ -631,6 +649,43 @@ async function handleSessionMessage(p) {
   const now = Date.now();
   const clean = text.replace(/\s+/g, ' ').trim();
   const norm = clean.replace(/^\/think:[a-z]+\s*/i, '').trim();
+  const dmKey = dmSessionKey(dmConvId);
+  const isDmSession = !!dmKey && p.sessionKey === dmKey;
+
+  // Mirror the owner's DM gateway session into the jchat DM: this covers
+  // Control-UI webchat messages + assistant replies/narrations that never
+  // went through the jchat task path. Own bridge traffic (task user
+  // messages, delivered replies) is skipped — those already exist in jchat.
+  if (isDmSession) {
+    // User messages that carry a /think: prefix came from a bridge task
+    // (the bridge prepends it) and are already in the jchat DB; mirror only
+    // Control-UI-originated messages (no prefix) + assistant texts.
+    if (role === 'user' && /^\/think:[a-z]+\s*/i.test(text)) return;
+    const raw = text.replace(/^\/think:[a-z]+\s*\n*\s*/i, '').trim(); // full text, no prefix
+    if (!raw) return;
+    if (role === 'user') {
+      const sent = recentSent.get(dmKey);
+      if (sent && now - sent.at < 10 * 60 * 1000 && sent.text === raw) return; // our own task
+    } else {
+      const activeTaskId = activeBySession.get(dmKey);
+      if (activeTaskId && controllers.has(activeTaskId)) return; // reply path handles it
+      const rep = recentReplies.get(dmKey);
+      if (rep && now - rep.at < 10 * 60 * 1000 && rep.text === raw) return; // just delivered
+    }
+    log('dm mirror:', role, norm.slice(0, 60));
+    socket.emit('helper:dm:sync', {
+      convId: dmConvId,
+      messages: [{
+        role,
+        text: raw.slice(0, 4000),
+        at: typeof msg.timestamp === 'number' && msg.timestamp > 0 ? msg.timestamp : now,
+      }],
+    });
+    return;
+  }
+
+  // Switched-session relay (unchanged): only for the selected session.
+  if (!currentSessionKey || p.sessionKey !== currentSessionKey) return; // stale subscription
   log('session msg:', p.sessionKey, role, norm.slice(0, 60));
   // Per-session rate cap so a busy session can't flood the DM or live view.
   const stamps = (relayRate.get(p.sessionKey) || []).filter((t) => now - t < RELAY_WINDOW_MS);
@@ -665,6 +720,35 @@ async function handleSessionMessage(p) {
   const prefix = role === 'user' ? `📡 [${label}] you: ` : `📡 [${label}] `;
   socket.emit('helper:session:msg', { convId: dmConvId, text: prefix + clean.slice(0, 400) });
 }
+
+/** Periodic reconcile: fetch the DM session transcript from the gateway and
+ *  push any messages missing from the jchat DM (self-heals gaps from
+ *  reconnects, missed live events, Control-UI-only messages). Idempotent:
+ *  the server dedupes by sender+content. */
+let lastDmSyncedSeq = 0; // highest __openclaw.seq already pushed to the server
+async function syncDmFromGateway() {
+  if (!gwReady || !socket.connected || !dmConvId) return;
+  const dmKey = dmSessionKey(dmConvId);
+  if (!dmKey) return;
+  try {
+    const res = await gwRpc('sessions.get', { key: dmKey, limit: 300 }, 20000);
+    const messages = compactHistoryMessages(res?.messages);
+    if (!messages.length) return;
+    const fresh = lastDmSyncedSeq > 0
+      ? messages.filter((m) => m.seq > lastDmSyncedSeq)
+      : messages;
+    if (!fresh.length) return;
+    const maxSeq = Math.max(...fresh.map((m) => m.seq || 0));
+    socket.emit('helper:dm:sync', { convId: dmConvId, messages: fresh.slice(-200) });
+    if (maxSeq > lastDmSyncedSeq) lastDmSyncedSeq = maxSeq;
+    log(`dm sync reconcile: ${fresh.length} new candidate message(s)`);
+  } catch (err) {
+    log('dm sync reconcile failed:', err.message);
+  }
+}
+
+// Reconcile every 60s (covers live gaps; the server dedupes).
+setInterval(syncDmFromGateway, 60000);
 
 async function handleTask(task) {
   if (!task || !secretsEqual(task.secret, OPENCLAW_BRIDGE_SECRET)) {

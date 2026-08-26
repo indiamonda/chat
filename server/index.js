@@ -1334,6 +1334,52 @@ function registerBridgeSocket(socket) {
     const io = app.get('io');
     io?.to(`user:${OPENCLAW_OWNER_ID}`).emit('agent:session:live', { sessionKey, role, text });
   });
+  // Full two-way history sync for the owner's helper DM: the bridge mirrors
+  // the gateway session transcript (Control-UI webchat messages + assistant
+  // replies) into the jchat DM so both surfaces stay identical. The bridge
+  // pushes messages it knows are missing; the server dedupes against the
+  // current DM rows (same sender + same content) so nothing duplicates, then
+  // inserts with the gateway's original timestamps and emits live.
+  socket.on('helper:dm:sync', (p) => {
+    const convId = typeof p?.convId === 'string' ? p.convId.trim() : '';
+    if (!convId || convId !== getHelperDmConvId()) return; // owner's helper DM only
+    const list = Array.isArray(p?.messages) ? p.messages.slice(0, 500) : [];
+    if (!list.length) return;
+    const io = app.get('io');
+    // Dedupe within a time window: identical text from the same sender that
+    // already exists *around the same time* is a mirror of the same message
+    // (skip); the same text sent at a clearly different time is a new message.
+    const sel = db.prepare(`SELECT 1 FROM messages WHERE room_type='dm' AND room_id=? AND sender_id=? AND content=? AND ABS(created_at - ?) < 300000 LIMIT 1`);
+    const ins = db.prepare(`
+      INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, created_at, updated_at)
+      VALUES (?, 'dm', ?, ?, ?, 'text', ?, ?)
+    `);
+    const fetchRow = db.prepare(`
+      SELECT m.*, u.username, u.display_name, u.avatar_url, u.chatbox_style
+      FROM messages m LEFT JOIN users u ON u.id = m.sender_id WHERE m.id = ?
+    `);
+    const tx = db.transaction((items) => {
+      let added = 0;
+      for (const item of items) {
+        const role = item?.role === 'user' || item?.role === 'assistant' ? item.role : '';
+        const text = typeof item?.text === 'string' ? item.text.trim() : '';
+        if (!role || !text || text.length > 4000) continue;
+        const at = Number.isFinite(item?.at) && item.at > 0 ? Math.floor(item.at) : Date.now();
+        const sender = role === 'assistant' ? HELPER_USER_ID : OPENCLAW_OWNER_ID;
+        if (sel.get(convId, sender, text, at)) continue; // already present (same sender+text+time window)
+        const id = randomUUID();
+        ins.run(id, convId, sender, text, at, at);
+        const row = fetchRow.get(id);
+        if (row) {
+          io?.to(`dm:${convId}`).emit('message', { ...row, likes: 0, edit_history: null });
+        }
+        added++;
+      }
+      return added;
+    });
+    const added = tx(list);
+    if (added > 0) console.log(`[dm-sync] inserted ${added} mirrored message(s)`);
+  });
 }
 
 /** Emit a helper:task to the bridge room and wait for the bridge's reply.
