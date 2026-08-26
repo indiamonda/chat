@@ -64,7 +64,7 @@ const VALID_MODELS = new Set([
   'deepseek/deepseek-v4-flash',
   'claude-cli/claude-opus-4-8',
 ]);
-const VALID_EFFORTS = new Set(['off', 'low', 'medium', 'high', 'max']);
+const VALID_EFFORTS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max', 'ultra']);
 
 function log(...args) {
   console.log(new Date().toISOString(), '[bridge]', ...args);

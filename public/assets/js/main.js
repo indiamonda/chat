@@ -49,6 +49,7 @@ let state = {
   _recordingChunks: [],
   commandMode: true, // commands are always on; toggle UI removed.
   uiAnimations: typeof localStorage !== 'undefined' ? localStorage.getItem('uiAnimations') !== '0' : true,
+  enterToSend: typeof localStorage !== 'undefined' ? localStorage.getItem('enter_to_send') === '1' : false,
   notificationPrefs: null,
   drafts: {},
   collections: [],
@@ -5402,10 +5403,14 @@ const OPENCLAW_MODELS = [
 ];
 const OPENCLAW_EFFORTS = [
   { id: 'off', label: 'Off' },
+  { id: 'minimal', label: 'Minimal' },
   { id: 'low', label: 'Low' },
   { id: 'medium', label: 'Medium' },
   { id: 'high', label: 'High' },
+  { id: 'xhigh', label: 'Extra High' },
+  { id: 'adaptive', label: 'Adaptive' },
   { id: 'max', label: 'Max' },
+  { id: 'ultra', label: 'Ultra' },
 ];
 const ICON_USER_PLUS_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>';
 const ICON_BAN_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>';
@@ -6128,7 +6133,7 @@ function renderAgentSessionView() {
         ? '<div class="messages-empty">No messages yet in this session.</div>'
         : renderAgentSessionMessages(list);
   const typingHtml = renderTypingIndicator('dm', state.convId);
-  const draft = state.dmUserId ? getDraft('dm', state.convId) : '';
+  const draft = state.dmUserId ? getDraft('dm', state.dmUserId) : '';
   return `
     <div class="chat-area">
       <div class="chat-main">
@@ -6377,6 +6382,7 @@ function renderChatArea() {
 
   const roomType = state.dmUserId ? 'dm' : 'group';
   const roomId = state.dmUserId ? state.convId : state.panel;
+  const draftRoomId = state.dmUserId || state.panel;
   const key = roomKey(roomType, state.dmUserId ? state.convId : state.panel);
   const list = state.messages[key] || [];
   const replyPreview = state.replyTo ? getReplyPreview(state.replyTo) : null;
@@ -6528,7 +6534,7 @@ function renderChatArea() {
           </div>
           <div class="composer-row">
             <div class="composer-input-wrap">
-              <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(getDraft(roomType, roomId))}</textarea>
+              <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(getDraft(roomType, draftRoomId))}</textarea>
               <div class="composer-actions">
                 ${'' /* command-mode toggle removed — commands are always on */}
                 <button type="button" id="composer-mic" title="Record voice message" ${(roomType === 'dm' && !isFriend(state.dmUserId)) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
@@ -9360,6 +9366,7 @@ function bindMain() {
       if (!text && !state._pendingFile) return;
       const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;
+      const draftRoomId = state.dmUserId || state.panel;
 
       // /plaintext has the highest priority: a "/plaintext" line makes
       // everything below it plain text and skips ALL slash-command
@@ -9387,7 +9394,7 @@ function bindMain() {
             }
             if (res?.message) addMessageLocal(res.message);
             mirrorOwnDmToSessionView(res.message);
-            clearDraft(roomType, roomId);
+            clearDraft(roomType, draftRoomId);
             input.value = '';
             resizeComposerInput();
             setState({ replyTo: null });
@@ -9580,7 +9587,7 @@ function bindMain() {
           }
           if (data?.message) addMessageLocal(data.message);
           state._pendingFile = null;
-          clearDraft(roomType, roomId);
+          clearDraft(roomType, draftRoomId);
           input.value = '';
           resizeComposerInput();
           setState({ replyTo: null });
@@ -9622,7 +9629,7 @@ function bindMain() {
           }
           if (res?.message) addMessageLocal(res.message);
           mirrorOwnDmToSessionView(res.message);
-          clearDraft(roomType, roomId);
+          clearDraft(roomType, draftRoomId);
           input.value = '';
           resizeComposerInput();
           setState({ replyTo: null });
@@ -9654,7 +9661,9 @@ function bindMain() {
         return;
       }
       if (e.key === 'Enter' && !e.shiftKey) {
-        if (isMobile()) return;
+        // On phones Enter adds a new line by default (send via the Send
+        // button); enable "Enter key sends" in Settings to send with Enter.
+        if (isMobile() && !state.enterToSend) return;
         e.preventDefault();
         // Block Enter-send while Venory is responding (must stop first).
         if (isHelperBusy()) return;
@@ -9668,7 +9677,8 @@ function bindMain() {
       resizeComposerInput();
       const roomType = state.dmUserId ? 'dm' : 'group';
       const roomId = state.dmUserId ? state.convId : state.panel;
-      saveDraft(roomType, roomId, input.value);
+      const draftRoomId = state.dmUserId || state.panel;
+      saveDraft(roomType, draftRoomId, input.value);
       emitTypingActivity(roomType, roomId);
       maybeOpenMentionAutocomplete(input);
     });
@@ -11094,6 +11104,12 @@ function renderSettingsContent() {
           <input type="checkbox" id="settings-ui-animations" ${state.uiAnimations ? 'checked' : ''} />
           <span>${tx('enableUiAnimation', 'Enable UI animation')}</span>
         </label>
+        <h3 class="settings-section-title">${tx('enterToSendTitle', 'Enter Key')}</h3>
+        <p class="settings-account-desc">${tx('enterToSendDesc', 'On phones, the Enter key adds a new line so you can send multi-line messages. Turn this on to send with Enter instead.')}</p>
+        <label class="settings-checkbox-label">
+          <input type="checkbox" id="settings-enter-to-send" ${state.enterToSend ? 'checked' : ''} />
+          <span>${tx('enterToSendLabel', 'Enter key sends message')}</span>
+        </label>
           </div>
       ` : ''}
       ${tab === 'profile' ? `
@@ -12220,6 +12236,10 @@ function bindSettings() {
     state.uiAnimations = !!e.target.checked;
     if (typeof localStorage !== 'undefined') localStorage.setItem('uiAnimations', state.uiAnimations ? '1' : '0');
     document.documentElement.classList.toggle('no-animations', !state.uiAnimations);
+  });
+  document.getElementById('settings-enter-to-send')?.addEventListener('change', (e) => {
+    state.enterToSend = !!e.target.checked;
+    if (typeof localStorage !== 'undefined') localStorage.setItem('enter_to_send', state.enterToSend ? '1' : '0');
   });
   document.getElementById('notif-enabled')?.addEventListener('change', async (e) => {
     const enabled = !!e.target.checked;

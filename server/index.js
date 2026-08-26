@@ -474,7 +474,7 @@ const OPENCLAW_MODELS = new Set([
   'deepseek/deepseek-v4-flash',
   'claude-cli/claude-opus-4-8',
 ]);
-const OPENCLAW_EFFORTS = new Set(['off', 'low', 'medium', 'high', 'max']);
+const OPENCLAW_EFFORTS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max', 'ultra']);
 
 // In-flight helper responses, keyed by room key (dm:<id> / group:<id>). Used
 // to (a) broadcast "Venory is responding" so every account can show the stop
@@ -557,14 +557,39 @@ function helperSystemPrompt(roomType) {
     'ABOUT THE CHAT APP:',
     '- This is JimmyQrg Chat, a community chat by JimmyQrg.',
     '- Hosted at chat.jimmyqrg.com and jchat.fly.dev (server on Fly.io).',
-    '- One group space "JimmyQrg" with panels: free_chat, support,',
-    '  voice_chat (for messages), plus document panels: announcements,',
-    '  problem_solving, rules (admin-editable).',
-    '- Users are unable to create group chats on the app, JimmyQrg is not planning to add this feature.',
-    '- DMs, friend system, file uploads, reactions, mentions, search,',
-    '  collections, voice chat with WebRTC.',
-    '- Users sign up with username/password. Same account works on the',
-    '  main site indiamonda.github.io for cloud saves.',
+    '- Users sign up with a username + password. The same account also works',
+    '  on the main site indiamonda.github.io for cloud saves.',
+    '',
+    'GROUP SPACE:',
+    '- One shared group space "JimmyQrg" with these panels:',
+    '  * free_chat — general discussion',
+    '  * support — help requests / support conversations',
+    '  * voice_chat — text messages tied to voice chat',
+    '  * announcements — admin-posted announcements',
+    '  * problem_solving — shared editable page for solutions',
+    '  * rules — shared editable page for group rules',
+    '- Users cannot create their own group chats; there is only the one.',
+    '',
+    'DIRECT MESSAGES (DMs):',
+    '- One-to-one private chats between users.',
+    '- Text works without a friendship; sharing files requires being friends',
+    '  (non-friends get a short head-start before the other side replies).',
+    '',
+    'FEATURES (what users can do):',
+    '- Send messages, reply to messages, and @mention other users (including',
+    '  @helper / @venory to reach you).',
+    '- Edit or recall your own recent messages; permanently delete them.',
+    '- Upload files and images; record voice messages; react with emoji.',
+    '- Full-text search across messages with filters (from:, before/after',
+    '  dates, attachment types).',
+    '- Inbox: mentions, replies, admin messages, and support updates.',
+    '- Collections: save important messages and reopen them later.',
+    '- Friends system, link previews, desktop notifications, do-not-disturb.',
+    '- Voice chat: group voice (WebRTC) and 1:1 DM voice calls.',
+    '- Profiles: display name, avatar, chat bubble style, website, description.',
+    '- Admin/moderation: permissions, group timeouts, message deletion,',
+    '  admin inbox + broadcasts, marking support requests as solved,',
+    '  anti-spam, and private "whisper" messages.',
     '',
     'ABOUT THE MAIN SITE (indiamonda.github.io):',
     '- Personal website by JimmyQrg with an embedded games library.',
@@ -586,14 +611,41 @@ function helperSystemPrompt(roomType) {
     'You have tools. To use one, output on its own line:',
     '<<<TOOL:name({"key":"value"})>>>',
     '',
-    'Available: weather(location), clock(timezone), calculate(expression),',
-    'define(word), translate(text,to), wikipedia(query), unitconvert(value,from,to),',
-    'randomnumber(min,max,count), joke(), trivia().',
+    'GENERAL TOOLS:',
+    'weather(location), clock(timezone), calculate(expression),',
+    'define(word), translate(text,to), wikipedia(query),',
+    'unitconvert(value,from,to), randomnumber(min,max,count), joke(), trivia().',
+    '',
+    'CHAT-APP TOOLS (look up live data about this chat app):',
+    '- group_messages(panel, limit) — read recent messages from a group panel.',
+    '  panel is one of: free_chat, support, voice_chat, announcements,',
+    '  problem_solving, rules. Use it when a user asks what people have been',
+    '  talking about — you do NOT need it for every question.',
+    '- search_messages(query, panel?, limit?) — search group messages for a',
+    '  word or phrase (optional panel to limit the scope).',
+    '- list_users() — list all users (username, display name, email).',
+    '- search_user(query) — find a user by username, display name, or email.',
     '',
     'Examples:',
     '<<<TOOL:weather({"location":"London"})>>>',
-    '<<<TOOL:clock({"timezone":"Asia/Tokyo"})>>>',
-    '<<<TOOL:calculate({"expression":"sqrt(144) + 3^2"})>>>',
+    '<<<TOOL:group_messages({"panel":"free_chat","limit":15})>>>',
+    '<<<TOOL:search_messages({"query":"homework"})>>>',
+    '<<<TOOL:list_users({})>>>',
+    '<<<TOOL:search_user({"query":"jimmy"})>>>',
+    '',
+    '═══════════════════════════════════════════════════',
+    'USER DATA & PRIVACY (IMPORTANT)',
+    '═══════════════════════════════════════════════════',
+    '',
+    '- Your user tools can see each user\'s username, display name, and',
+    '  email address.',
+    '- NEVER reveal a user\'s email address to another user. Emails are',
+    '  private. If someone asks "what is X\'s email?", politely refuse and',
+    '  say you can\'t share other people\'s email addresses.',
+    '- You may confirm a user\'s OWN email only when they ask in a private',
+    '  DM about their own account. In group chat, never share any email.',
+    '- Some accounts are "private" and hidden from other users. Your user',
+    '  tools already exclude them, so don\'t claim to see them.',
     '',
     'OUTPUT STYLE:',
     '- Use Markdown: headers (##), **bold**, *italic*, bullet lists,',
@@ -956,6 +1008,99 @@ const serverTools = {
       const answers = [...q.incorrect_answers.map(decode), decode(q.correct_answer)].sort(() => Math.random()-0.5);
       return `TRIVIA (${decode(q.category)}, ${q.difficulty}):\n${decode(q.question)}\nOptions: ${answers.join(' | ')}\n||Answer: ${decode(q.correct_answer)}||`;
     } catch { return 'Trivia service unavailable.'; }
+  },
+  // ── Chat-app lookup tools: basic Venory can read group messages, search,
+  //    and look up users. Private users (is_private=1) are always excluded —
+  //    only jimmyqrg can see those, and the helper is not jimmyqrg. ──────
+  async group_messages(args) {
+    const valid = new Set([...PANELS, 'voice_chat']);
+    const panel = String(args.panel || args.room || 'free_chat').trim();
+    if (!valid.has(panel)) return `Unknown panel "${panel}". Valid panels: ${[...valid].join(', ')}.`;
+    const limit = Math.max(1, Math.min(50, parseInt(args.limit, 10) || 20));
+    const rows = db.prepare(`
+      SELECT m.content, m.msg_type, m.sender_id, u.username, u.display_name
+      FROM messages m LEFT JOIN users u ON u.id = m.sender_id
+      WHERE m.room_type = 'group' AND m.room_id = ?
+        AND m.deleted_by_admin = 0 AND m.recalled_at IS NULL
+        AND (m.msg_type IS NULL OR m.msg_type != 'whisper')
+      ORDER BY m.created_at DESC LIMIT ?
+    `).all(panel, limit);
+    if (!rows.length) return `No messages in "${panel}".`;
+    rows.reverse();
+    return `RECENT MESSAGES IN "${panel}":\n` + rows.map(r => {
+      const name = r.display_name || r.username || 'User';
+      return `[${name}] ${formatMessageForLLM(r)}`;
+    }).join('\n');
+  },
+  async search_messages(args) {
+    const q = String(args.query || args.q || args.text || '').trim();
+    if (!q) return 'search_messages requires a "query" argument.';
+    const limit = Math.max(1, Math.min(50, parseInt(args.limit, 10) || 15));
+    const panels = [...PANELS, 'voice_chat'];
+    const panel = args.panel ? String(args.panel).trim() : '';
+    let rows;
+    if (panel) {
+      if (!panels.includes(panel)) return `Unknown panel "${panel}". Valid panels: ${panels.join(', ')}.`;
+      rows = db.prepare(`
+        SELECT m.content, m.msg_type, m.room_id, m.sender_id, u.username, u.display_name
+        FROM messages m LEFT JOIN users u ON u.id = m.sender_id
+        WHERE m.room_type = 'group' AND m.room_id = ?
+          AND m.deleted_by_admin = 0 AND m.recalled_at IS NULL
+          AND (m.msg_type IS NULL OR m.msg_type != 'whisper')
+        ORDER BY m.created_at DESC LIMIT 1000
+      `).all(panel);
+    } else {
+      rows = db.prepare(`
+        SELECT m.content, m.msg_type, m.room_id, m.sender_id, u.username, u.display_name
+        FROM messages m LEFT JOIN users u ON u.id = m.sender_id
+        WHERE m.room_type = 'group' AND m.room_id IN (${panels.map(() => '?').join(',')})
+          AND m.deleted_by_admin = 0 AND m.recalled_at IS NULL
+          AND (m.msg_type IS NULL OR m.msg_type != 'whisper')
+        ORDER BY m.created_at DESC LIMIT 1000
+      `).all(...panels);
+    }
+    const lowered = q.toLowerCase();
+    const matches = rows.filter(r =>
+      String(r.content || '').toLowerCase().includes(lowered) ||
+      String(r.username || '').toLowerCase().includes(lowered) ||
+      String(r.display_name || '').toLowerCase().includes(lowered)
+    ).slice(0, limit);
+    if (!matches.length) return `No messages match "${q}".`;
+    matches.reverse();
+    return `SEARCH RESULTS FOR "${q}" (${matches.length}):\n` + matches.map(r => {
+      const name = r.display_name || r.username || 'User';
+      return `[${name} · ${r.room_id}] ${formatMessageForLLM(r)}`;
+    }).join('\n');
+  },
+  async list_users(args) {
+    const limit = Math.max(1, Math.min(200, parseInt(args.limit, 10) || 100));
+    const rows = db.prepare(`
+      SELECT username, display_name, email FROM users
+      WHERE is_private = 0 AND deleted_at IS NULL
+      ORDER BY username LIMIT ?
+    `).all(limit);
+    if (!rows.length) return 'No users found.';
+    return `USERS (${rows.length}):\n` + rows.map(u =>
+      `${u.username}${u.display_name && u.display_name !== u.username ? ` (${u.display_name})` : ''}${u.email ? ` · ${u.email}` : ''}`
+    ).join('\n');
+  },
+  async search_user(args) {
+    const q = String(args.query || args.q || args.username || args.name || '').trim().toLowerCase();
+    if (!q) return 'search_user requires a "query" argument.';
+    const rows = db.prepare(`
+      SELECT username, display_name, email FROM users
+      WHERE is_private = 0 AND deleted_at IS NULL
+      ORDER BY username
+    `).all();
+    const matches = rows.filter(u =>
+      String(u.username || '').toLowerCase().includes(q) ||
+      String(u.display_name || '').toLowerCase().includes(q) ||
+      String(u.email || '').toLowerCase().includes(q)
+    ).slice(0, 20);
+    if (!matches.length) return `No users match "${q}".`;
+    return `USERS MATCHING "${q}":\n` + matches.map(u =>
+      `${u.username}${u.display_name && u.display_name !== u.username ? ` (${u.display_name})` : ''}${u.email ? ` · ${u.email}` : ''}`
+    ).join('\n');
   }
 };
 
