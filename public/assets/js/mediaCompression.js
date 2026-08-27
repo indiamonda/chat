@@ -301,9 +301,31 @@ async function compressVideo(file, targetBytes, onProgress) {
     }
     draw();
 
-    const ended = new Promise((res) => { video.onended = res; });
+    let endedNormally = false;
+    const ended = new Promise((res) => {
+      video.onended = () => { endedNormally = true; res(); };
+      // Watchdog: if the video stalls (autoplay blocked, codec hiccup) 'ended'
+      // may never fire. Give up after the duration + a buffer instead of
+      // leaving the compressing overlay blocking the composer forever.
+      const watchMs = Math.max(15000, Math.min(900000, (duration + 20) * 1000));
+      setTimeout(res, watchMs);
+    });
     recorder.start();
-    try { await video.play(); } catch (_) { /* autoplay may be blocked; recording still proceeds */ }
+    let playFailed = false;
+    try { await video.play(); } catch (_) { playFailed = true; }
+
+    if (playFailed) {
+      // Autoplay was blocked — the video will never reach 'ended'. Fall back
+      // to the original file instead of hanging the composer.
+      drawing = false;
+      recorder.stop();
+      await stopped;
+      canvasStream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
+      if (videoCaptureStream) {
+        videoCaptureStream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
+      }
+      return file;
+    }
 
     // Progress driver based on currentTime.
     const tickProgress = setInterval(() => {
@@ -323,6 +345,9 @@ async function compressVideo(file, targetBytes, onProgress) {
     canvasStream.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
 
     onProgress(1);
+    // If the watchdog fired (video never ended), the recording is partial —
+    // send the original instead of a truncated clip.
+    if (!endedNormally) return file;
     const blob = new Blob(chunks, { type: 'video/webm' });
     if (!blob.size) return file;
     return new File([blob], renameExt(file.name, 'webm'), { type: 'video/webm', lastModified: Date.now() });

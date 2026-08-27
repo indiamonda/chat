@@ -411,6 +411,12 @@ function isBridgeOnline() {
 // subagent:/cron:/acp: are rejected by the gateway, so we block them here).
 const AGENT_SESSION_MAX = 200;
 const AGENT_SESSION_RESERVED = /^(subagent|cron|acp):|:(subagent|cron|acp):/;
+
+/** The gateway session key that owns a helper DM conversation. */
+function dmSessionKey(convId) {
+  return convId ? `agent:main:openai-user:jchat:dm:${convId}` : '';
+}
+
 function getAgentSession() {
   try {
     const row = db.prepare("SELECT value FROM settings WHERE key = 'agent_session'").get();
@@ -1571,6 +1577,11 @@ async function routeViaOpenClawBridge(triggerMsgId, content, convId, agentOpts, 
 
   const taskId = randomUUID();
   if (active) active.taskId = taskId;
+  // Capture the routing target at task-creation time: if the owner switches
+  // back to the DM while the task runs, the reply must still follow the
+  // session it was sent to (and must not be inserted into the DM).
+  const taskAgentSession = getAgentSession() || undefined;
+  const taskSessionRouted = !!taskAgentSession && taskAgentSession !== dmSessionKey(convId);
   let resolveTask;
   const taskPromise = new Promise((resolve) => { resolveTask = resolve; });
   const timer = setTimeout(() => {
@@ -1589,11 +1600,14 @@ async function routeViaOpenClawBridge(triggerMsgId, content, convId, agentOpts, 
       ownerId: OPENCLAW_OWNER_ID,
       model: agentOpts?.model || undefined,
       effort: agentOpts?.effort || undefined,
-      agentSession: getAgentSession() || undefined,
+      agentSession: taskAgentSession,
     });
     const result = await taskPromise;
     if (result.kind === 'reply' && result.text && result.text.trim()) {
-      insertHelperReply(triggerMsgId, result.text.trim(), 'dm', convId);
+      // Session-switched tasks: the reply belongs to that session's transcript
+      // (relayed to the session view live) — don't also write it into the DM
+      // conversation, or "This DM (jchat)" accumulates every session's traffic.
+      if (!taskSessionRouted) insertHelperReply(triggerMsgId, result.text.trim(), 'dm', convId);
       return { status: 'replied' };
     }
     if (result.kind === 'error') {
@@ -2663,6 +2677,16 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
         severity: modResult.severity ?? 0,
       });
     }
+  }
+  // Session-switched sends (HTTP fallback): mirror the socket path — route
+  // to the selected session without persisting into this DM conversation.
+  const routedSession = getAgentSession();
+  const sessionRouted = otherId === HELPER_USER_ID && user.id !== HELPER_USER_ID
+    && !!routedSession && routedSession !== dmSessionKey(req.params.convId)
+    && !req.file && (!msgType || msgType === 'text');
+  if (sessionRouted) {
+    helperReply(randomUUID(), finalContent, 'dm', req.params.convId, user.id, sanitizeAgentOpts(req.body));
+    return res.status(201).json({ ok: true, routed: true });
   }
   const id = randomUUID();
   const now = Date.now();
@@ -3838,6 +3862,21 @@ io.on('connection', (socket) => {
             severity: modResult.severity ?? 0,
           });
         }
+      }
+      // Session-switched sends: the owner is viewing another OpenClaw session
+      // (session picker). Route the message to that session WITHOUT persisting
+      // it into this DM conversation — the other session's gateway transcript
+      // is its home and the session view shows it live. Otherwise the DM
+      // ("This DM (jchat)") permanently accumulates traffic from every other
+      // session. Files keep the normal path (they need a persisted reference).
+      const routedSession = getAgentSession();
+      const sessionRouted = otherId === HELPER_USER_ID && socket.userId !== HELPER_USER_ID
+        && !!routedSession && routedSession !== dmSessionKey(roomId)
+        && (!msg_type || msg_type === 'text');
+      if (sessionRouted) {
+        setTyping(socket.userId, presenceRoomKeyForRoom('dm', roomId), false);
+        helperReply(randomUUID(), content || '', 'dm', roomId, socket.userId, sanitizeAgentOpts(payload));
+        return ack?.({ ok: true, routed: true });
       }
       const id = randomUUID();
       const now = Date.now();

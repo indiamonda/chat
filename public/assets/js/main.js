@@ -513,15 +513,15 @@ async function prepareFileForUpload(file) {
     try {
       const originalBytes = file.size;
       const compressed = await compressMedia(file, { targetMB: MEDIA_TARGET_MB, onProgress: (p) => ui.update(p) });
-      ui.close();
       if (!compressed || !Number.isFinite(compressed.size) || compressed.size <= 0) {
+        ui.close();
         const sendOriginal = await showCompressionFallbackModal(file, kind);
         if (!sendOriginal) return null;
         showToast((t('fileCompressFallbackUsingOriginal') || 'Sending original file ({size}).').replace('{size}', formatBytes(file.size)), 'info');
         return file;
       }
       if (compressed.size >= originalBytes) {
-        showToast((t('fileCompressNoGain') || 'Compression did not reduce size. Sending original {size}.').replace('{size}', formatBytes(file.size)), 'info');
+        showToast((t('fileCompressNoGain') || 'Compression did not reduce the size — the original {size} is attached. Press Send to upload it.').replace('{size}', formatBytes(file.size)), 'info');
         return file;
       }
       const typeLabel = t('fileCompressBodyType_' + kind) || kind;
@@ -538,6 +538,10 @@ async function prepareFileForUpload(file) {
       if (!sendOriginal) return null;
       showToast((t('fileCompressFallbackUsingOriginal') || 'Sending original file ({size}).').replace('{size}', formatBytes(file.size)), 'info');
       return file;
+    } finally {
+      // Always release the blocking overlay. If compression throws or stalls,
+      // a stuck overlay would make the composer's file button look dead.
+      ui.close();
     }
   }
 
@@ -6153,12 +6157,12 @@ function renderAgentSessionView() {
           <div class="composer-row">
             <div class="composer-input-wrap">
               <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(draft)}</textarea>
-              <div class="composer-actions">
-                <button type="button" id="composer-mic" title="Record voice message"><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
-                <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
-                <button type="button" id="composer-emoji" title="Emoji" aria-label="Insert emoji"><span class="icon" aria-hidden="true">${ICON_EMOJI}</span></button>
-                <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
-              </div>
+            </div>
+            <div class="composer-actions">
+              <button type="button" id="composer-mic" title="Record voice message"><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
+              <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
+              <button type="button" id="composer-emoji" title="Emoji" aria-label="Insert emoji"><span class="icon" aria-hidden="true">${ICON_EMOJI}</span></button>
+              <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
             </div>
             ${renderSendButton()}
           </div>
@@ -6366,11 +6370,11 @@ function renderChatArea() {
       <div class="composer-row">
         <div class="composer-input-wrap">
           <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(getDraft('dm', route.dmUserId))}</textarea>
-          <div class="composer-actions">
-            <button type="button" id="composer-mic" title="Record voice message" ${!isFriend(route.dmUserId) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
-            <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
-            <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
-          </div>
+        </div>
+        <div class="composer-actions">
+          <button type="button" id="composer-mic" title="Record voice message" ${!isFriend(route.dmUserId) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
+          <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
+          <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
         </div>
         ${renderSendButton()}
       </div>
@@ -6535,13 +6539,13 @@ function renderChatArea() {
           <div class="composer-row">
             <div class="composer-input-wrap">
               <textarea id="composer-input" placeholder="Message…" rows="1">${escapeHtml(getDraft(roomType, draftRoomId))}</textarea>
-              <div class="composer-actions">
-                ${'' /* command-mode toggle removed — commands are always on */}
-                <button type="button" id="composer-mic" title="Record voice message" ${(roomType === 'dm' && !isFriend(state.dmUserId)) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
-                <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
-                <button type="button" id="composer-emoji" title="Emoji" aria-label="Insert emoji"><span class="icon" aria-hidden="true">${ICON_EMOJI}</span></button>
-                <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
-              </div>
+            </div>
+            <div class="composer-actions">
+              ${'' /* command-mode toggle removed — commands are always on */}
+              <button type="button" id="composer-mic" title="Record voice message" ${(roomType === 'dm' && !isFriend(state.dmUserId)) ? 'disabled' : ''}><span class="icon" aria-hidden="true">${ICON_MIC}</span></button>
+              <button type="button" id="attach-file" title="Attach file"><span class="icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span></button>
+              <button type="button" id="composer-emoji" title="Emoji" aria-label="Insert emoji"><span class="icon" aria-hidden="true">${ICON_EMOJI}</span></button>
+              <input type="file" id="file-input" class="hidden-input" accept="image/*,video/*,audio/*,*/*" />
             </div>
             ${renderSendButton()}
           </div>
