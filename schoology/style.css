@@ -3481,3 +3481,189 @@
       max-height: 320px;
       overflow-y: auto;
     }
+
+/* ====================================================================
+   Phone UI (mobile-first, 2026-08-27)
+   Bottom navigation in the thumb zone, compact header, single-column
+   content, 44px+ touch targets, safe-area insets.
+   Applied below 768px (phones + small tablets).
+   ==================================================================== */
+@media (max-width: 767px) {
+  html, body { overflow-x: hidden; }
+  body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+
+  /* ── Compact header ─────────────────────────────────────────────── */
+  .dashboard-header {
+    padding: 10px 14px 8px !important;
+    position: sticky;
+    top: 0;
+    z-index: 40;
+  }
+  .header-top { gap: 8px; }
+  .header-brand { min-width: 0; }
+  .header-logo { width: 30px; height: 30px; }
+  .header-title-group h1 { font-size: 1.05rem; }
+  .header-title-group .subtitle,
+  .header-title-group .subtitle-holiday { display: none; }
+  .header-status { display: none !important; }
+  .student-info { font-size: 0.8rem; padding: 2px 14px 6px; }
+
+  /* ── Bottom navigation (thumb zone) ─────────────────────────────── */
+  /* The header's inline tab strip becomes a fixed bottom bar with
+     icon-over-label layout, 64px tall + safe-area. */
+  .nav-tabs-container {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 60;
+    padding: 0 !important;
+    background: var(--surface-elevated);
+    border-top: 1px solid var(--border);
+    border-bottom: none;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.35);
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+  .nav-tabs {
+    display: flex;
+    justify-content: space-around;
+    gap: 0;
+    padding: 4px 4px 2px;
+  }
+  .nav-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 2px 6px !important;
+    flex-direction: column;
+    gap: 3px !important;
+    font-size: 0.62rem !important;
+    border-radius: 10px !important;
+    white-space: normal;
+    text-align: center;
+    min-height: 52px; /* ≥44px touch target */
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .nav-tab-icon { width: 22px !important; height: 22px !important; }
+  .nav-tab.active {
+    color: var(--primary) !important;
+    background: var(--primary-dim);
+    -webkit-text-fill-color: currentColor;
+  }
+  .nav-tab.active::after { display: none; }
+
+  /* ── Content: single column, comfortable spacing ───────────────── */
+  .tab-content {
+    padding: 16px 14px 24px !important;
+  }
+  .section { margin-bottom: 14px; }
+  .section-card, .grade-card, .assignment-item, .activity-item {
+    border-radius: 14px;
+    margin-bottom: 10px;
+  }
+
+  /* ── Overview stats: 2-col grid on phones ───────────────────────── */
+  .stats-grid { grid-template-columns: 1fr 1fr !important; gap: 10px; }
+  .stat-card { padding: 14px 12px; }
+  .stat-value { font-size: 1.4rem; }
+
+  /* ── AI chat: full-height, input above bottom nav ───────────────── */
+  #tab-ai {
+    height: calc(100dvh - 118px) !important;
+    padding-bottom: 0 !important;
+  }
+  .ai-container {
+    margin: 0 !important;
+    height: 100%;
+    flex-direction: column;
+  }
+  /* Chat sidebar becomes a bottom sheet-style panel (taller than the
+     old 40vh so a handful of chats are reachable without scrolling). */
+  .chat-sidebar {
+    width: 100% !important;
+    max-height: 34vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0 0 14px 14px;
+    flex-shrink: 0;
+  }
+  .chat-sidebar.active-chat-open { max-height: 34vh; }
+  .ai-chat-wrapper {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: 0 !important;
+  }
+  .chat-messages {
+    flex: 1;
+    min-height: 0;
+    padding: 12px 12px 8px;
+    overflow-y: auto;
+  }
+  .chat-input-area {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    border-radius: 0;
+  }
+  .chat-input-row textarea {
+    min-height: 46px;
+    font-size: 16px; /* ≥16px prevents iOS zoom-on-focus */
+    padding: 11px 16px;
+  }
+  .chat-send-btn {
+    width: 46px !important;
+    height: 46px !important;
+  }
+  .chat-send-btn svg { width: 20px; height: 20px; }
+  .emoji-btn svg { width: 24px; height: 24px; }
+
+  /* Chat bubbles: wider, easier to read */
+  .chat-message { max-width: 92% !important; }
+  .chat-message .markdown-content { font-size: 0.95rem; }
+
+  /* ── Assignments / posts / grades lists ─────────────────────────── */
+  .assignment-meta { gap: 8px; }
+  .assignment-item, .activity-item {
+    padding: 12px 14px;
+  }
+  .grade-card { padding: 14px; }
+
+  /* ── Settings / notification rows: bigger toggles ───────────────── */
+  .settings-row, .notif-row {
+    padding: 14px 6px;
+    min-height: 48px;
+  }
+  .toggle-track { width: 52px; height: 30px; }
+  .toggle-thumb { width: 24px; height: 24px; }
+  input[type="checkbox"], input[type="radio"] { min-width: 22px; min-height: 22px; }
+
+  /* ── Modals: near-full-width sheets ─────────────────────────────── */
+  .modal-overlay { padding: 12px; align-items: flex-end; }
+  .modal, .confirm-modal {
+    max-width: 100%;
+    border-radius: 20px 20px 12px 12px;
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+    max-height: 88dvh;
+    overflow-y: auto;
+  }
+
+  /* ── Emoji picker stays reachable above the bottom nav ──────────── */
+  .emoji-picker {
+    bottom: calc(100% + 8px);
+    max-width: 280px;
+  }
+
+  /* ── Misc touch targets ─────────────────────────────────────────── */
+  .btn-primary, .btn-secondary, .section-retry-btn {
+    min-height: 44px;
+    font-size: 0.95rem;
+  }
+  a, button, .nav-tab, .grade-card { -webkit-tap-highlight-color: transparent; }
+  .grade-card:hover { transform: none; }
+}
+
+/* Very small phones (<380px): single-column stats, tighter chrome */
+@media (max-width: 380px) {
+  .stats-grid { grid-template-columns: 1fr !important; }
+  .nav-tab { font-size: 0.58rem !important; }
+  .nav-tab-icon { width: 20px !important; height: 20px !important; }
+  .header-title-group h1 { font-size: 0.95rem; }
+}
