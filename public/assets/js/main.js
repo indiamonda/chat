@@ -5496,12 +5496,15 @@ const ICON_CHEVRON_DOWN_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16"
 const ICON_SEARCH = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>';
 const ICON_MIC = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>';
 const ICON_COMMAND = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/></svg>';
+// Google Material Symbols (filled, 24dp) for the media popup controls.
 const ICON_PLAY = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-const ICON_PAUSE = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>';
-const ICON_PREV = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/><path d="M9 18V6"/></svg>';
-const ICON_NEXT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/><path d="M15 6v12"/></svg>';
-const ICON_REWIND = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
-const ICON_FORWARD = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>';
+const ICON_PAUSE = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+const ICON_PREV = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>';
+const ICON_NEXT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>';
+const ICON_REWIND = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>';
+const ICON_FORWARD = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="transform:scaleX(-1)"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>';
+const ICON_FULLSCREEN = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>';
+const ICON_FULLSCREEN_EXIT = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>';
 const ICON_CLOSE = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
 const ICON_ELLIPSIS_V = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>';
 const ICON_USERS = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
@@ -7574,10 +7577,14 @@ function showWordleModal() {
   document.body.appendChild(overlay);
 }
 
+/** Seek step (seconds) for the media popup, based on video duration:
+ *  <1 min → 5s, 1–3 min → 10s, 3 min–1 h → 15s, >1 h → 20s. */
 function getStepOptions(durationSeconds) {
-  if (durationSeconds <= 60) return [5];
-  if (durationSeconds <= 180) return [5, 10];
-  return [5, 10, 15];
+  const d = Number.isFinite(durationSeconds) ? durationSeconds : 0;
+  if (d < 60) return 5;
+  if (d < 180) return 10;
+  if (d <= 3600) return 15;
+  return 20;
 }
 
 function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
@@ -7614,6 +7621,9 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
     controlsEl.style.opacity = '';
     if (popupEl) popupEl.classList.toggle('media-popup--video', k === 'video');
     if (imageOverlayEl) imageOverlayEl.style.display = k === 'video' ? 'none' : '';
+    // Fullscreen targets the whole popup (keeps custom controls visible);
+    // the video branch overrides this to the <video> element.
+    overlay._fsTarget = popupEl || overlay.querySelector('.media-popup');
 
     const statusEl = document.createElement('div');
     statusEl.className = 'media-popup-status';
@@ -7635,21 +7645,25 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
     };
 
     if (k === 'video') {
-      const steps = [5, 10, 15];
-      const stepBtns = steps.map(s => `<button type="button" class="media-popup-step" data-sec="${s}" title="Back ${s}s" aria-label="Back ${s}s"><span class="icon icon-sm">${ICON_REWIND}</span><span class="media-popup-step-sec">${s}</span></button>`).join('');
-      const stepFwd = steps.map(s => `<button type="button" class="media-popup-step-fwd" data-sec="${s}" title="Forward ${s}s" aria-label="Forward ${s}s"><span class="icon icon-sm">${ICON_FORWARD}</span><span class="media-popup-step-sec">${s}</span></button>`).join('');
+      const stepBtn = (dir, sec) => dir === 'back'
+        ? `<button type="button" class="media-popup-step" data-sec="${sec}" title="Back ${sec}s" aria-label="Back ${sec}s"><span class="icon icon-sm">${ICON_REWIND}</span><span class="media-popup-step-sec">${sec}</span></button>`
+        : `<button type="button" class="media-popup-step-fwd" data-sec="${sec}" title="Forward ${sec}s" aria-label="Forward ${sec}s"><span class="icon icon-sm">${ICON_FORWARD}</span><span class="media-popup-step-sec">${sec}</span></button>`;
+      // Duration-based step: 5s (<1 min) / 10s (1–3 min) / 15s (3 min–1 h) / 20s (>1 h).
+      const defaultStep = getStepOptions(NaN);
       const vid = document.createElement('video');
       vid.className = 'media-popup-video';
       vid.src = u;
       vid.controls = false;
       vid.playsInline = true;
       contentEl.appendChild(vid);
+      // Fullscreen target stays on the popup element (custom controls remain
+      // visible; the <video> has controls=false).
       controlsEl.innerHTML = `
         <div class="media-popup-controls-row">
           <button type="button" class="media-popup-prev" ${!prevId ? 'disabled' : ''} data-msg-id="${prevId}" title="Previous" aria-label="Previous"><span class="icon icon-sm">${ICON_PREV}</span></button>
-          <span class="media-popup-step-group">${stepBtns}</span>
+          ${stepBtn('back', defaultStep)}
           <button type="button" class="media-popup-play" title="Play (K)" aria-label="Play"><span class="icon icon-sm media-popup-play-icon">${ICON_PLAY}</span></button>
-          <span class="media-popup-step-group">${stepFwd}</span>
+          ${stepBtn('fwd', defaultStep)}
           <button type="button" class="media-popup-next" ${!nextId ? 'disabled' : ''} data-msg-id="${nextId}" title="Next" aria-label="Next"><span class="icon icon-sm">${ICON_NEXT}</span></button>
           <a href="${safeUrl(u)}" download class="media-popup-download" title="Download" aria-label="Download"><span class="icon icon-sm">${ICON_DOWNLOAD}</span></a>
           <span class="media-popup-kb-hint">${escapeHtml(t('mediaKbHintVideo'))}</span>
@@ -7658,19 +7672,25 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
       overlay.querySelector('.media-popup-prev')?.addEventListener('click', () => { if (prev) setMedia(prev); });
       overlay.querySelector('.media-popup-next')?.addEventListener('click', () => { if (next) setMedia(next); });
       overlay.querySelector('.media-popup-play')?.addEventListener('click', () => { vid.paused ? vid.play() : vid.pause(); });
-      overlay.querySelectorAll('.media-popup-step').forEach(btn => btn.addEventListener('click', () => { vid.currentTime = Math.max(0, vid.currentTime - parseInt(btn.dataset.sec, 10)); }));
-      overlay.querySelectorAll('.media-popup-step-fwd').forEach(btn => btn.addEventListener('click', () => { vid.currentTime = Math.min(vid.duration, vid.currentTime + parseInt(btn.dataset.sec, 10)); }));
+      const bindStep = (sel, dir) => {
+        overlay.querySelector(sel)?.addEventListener('click', () => {
+          const sec = parseInt(overlay.querySelector(sel)?.dataset.sec || '5', 10);
+          if (dir === 'back') vid.currentTime = Math.max(0, vid.currentTime - sec);
+          else vid.currentTime = Math.min(vid.duration || 0, vid.currentTime + sec);
+        });
+      };
+      bindStep('.media-popup-step', 'back');
+      bindStep('.media-popup-step-fwd', 'fwd');
       vid.addEventListener('loadedmetadata', () => {
-        const dur = vid.duration;
-        const opts = getStepOptions(dur);
-        const row = controlsEl.querySelector('.media-popup-controls-row');
-        if (row) {
-          const backGroup = row.querySelector('.media-popup-step-group');
-          const fwdGroup = row.querySelectorAll('.media-popup-step-group')[1];
-          if (backGroup) backGroup.innerHTML = opts.map(s => `<button type="button" class="media-popup-step" data-sec="${s}" title="Back ${s}s" aria-label="Back ${s}s"><span class="icon icon-sm">${ICON_REWIND}</span><span class="media-popup-step-sec">${s}</span></button>`).join('');
-          if (fwdGroup) fwdGroup.innerHTML = opts.map(s => `<button type="button" class="media-popup-step-fwd" data-sec="${s}" title="Forward ${s}s" aria-label="Forward ${s}s"><span class="icon icon-sm">${ICON_FORWARD}</span><span class="media-popup-step-sec">${s}</span></button>`).join('');
-          [...(row.querySelectorAll('.media-popup-step'))].forEach(btn => btn.addEventListener('click', () => { vid.currentTime = Math.max(0, vid.currentTime - parseInt(btn.dataset.sec, 10)); }));
-          [...(row.querySelectorAll('.media-popup-step-fwd'))].forEach(btn => btn.addEventListener('click', () => { vid.currentTime = Math.min(vid.duration, vid.currentTime + parseInt(btn.dataset.sec, 10)); }));
+        const sec = getStepOptions(vid.duration);
+        for (const [sel, dir] of [['.media-popup-step', 'Back'], ['.media-popup-step-fwd', 'Forward']]) {
+          const btn = overlay.querySelector(sel);
+          if (!btn) continue;
+          btn.dataset.sec = sec;
+          btn.title = `${dir} ${sec}s`;
+          btn.setAttribute('aria-label', `${dir} ${sec}s`);
+          const label = btn.querySelector('.media-popup-step-sec');
+          if (label) label.textContent = sec;
         }
       });
       vid.addEventListener('loadeddata', () => setStatus(''));
@@ -7848,18 +7868,48 @@ function openMediaPopup(msgId, url, kind, prevId, nextId, roomType, roomId) {
 
   const initialMsg = list.find(m => m.id === msgId) || { content: url, msg_type: kind === 'video' ? 'video' : 'image' };
   const isVideo = kind === 'video';
+  const fsSupported = !!(document.documentElement?.requestFullscreen || document.documentElement?.webkitRequestFullscreen);
   overlay.innerHTML = `
     <div class="media-popup">
       <button type="button" class="media-popup-close" aria-label="Close"><span class="icon" aria-hidden="true">${ICON_CLOSE}</span></button>
+      ${fsSupported ? `<button type="button" class="media-popup-fullscreen" aria-label="Fullscreen" title="Fullscreen"><span class="icon" aria-hidden="true">${ICON_FULLSCREEN}</span></button>` : ''}
       <div class="media-popup-content"></div>
       <div class="media-popup-image-overlay"></div>
       <div class="media-popup-controls"></div>
     </div>
   `;
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const requestFs = (el) => {
+    const r = el?.requestFullscreen || el?.webkitRequestFullscreen;
+    if (r) { try { r.call(el); } catch (_) {} }
+  };
+  const exitFs = () => {
+    const x = document.exitFullscreen || document.webkitExitFullscreen;
+    if (x) { try { x.call(document); } catch (_) {} }
+  };
+  const updateFsIcon = () => {
+    const b = overlay.querySelector('.media-popup-fullscreen');
+    const ic = b?.querySelector('.icon');
+    if (b && ic) {
+      const inFs = !!fsElement();
+      ic.innerHTML = inFs ? ICON_FULLSCREEN_EXIT : ICON_FULLSCREEN;
+      b.setAttribute('aria-label', inFs ? 'Exit fullscreen' : 'Fullscreen');
+      b.title = inFs ? 'Exit fullscreen' : 'Fullscreen';
+    }
+  };
+  const onFsChange = () => updateFsIcon();
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
+  overlay.querySelector('.media-popup-fullscreen')?.addEventListener('click', () => {
+    if (fsElement()) exitFs();
+    else requestFs(overlay._fsTarget || overlay.querySelector('.media-popup'));
+  });
   const close = () => {
     overlay.querySelector('.media-popup-video')?.pause();
     overlay.remove();
     document.removeEventListener('keydown', onKey);
+    document.removeEventListener('fullscreenchange', onFsChange);
+    document.removeEventListener('webkitfullscreenchange', onFsChange);
   };
   const isTypingInEditable = () => {
     const ae = document.activeElement;
