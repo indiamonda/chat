@@ -279,6 +279,21 @@ try {
   `);
 } catch (_) {}
 try { db.exec('ALTER TABLE user_notification_prefs ADD COLUMN dnd_at_night INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE user_notification_prefs ADD COLUMN dnd_timezone TEXT'); } catch (_) {}
+
+// Web Push subscriptions: one row per browser/device PushManager subscription.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      user_id TEXT NOT NULL,
+      endpoint TEXT PRIMARY KEY,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+} catch (_) {}
 
 // Blacklist: blacklisted user cannot access group chat, only DM with jimmyqrg or allowed users
 try {

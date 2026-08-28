@@ -1497,6 +1497,88 @@
       // Re-tick immediately so a change in offsets / times takes effect
       // without waiting up to 60s.
       try { tickNotificationScheduler(); } catch (_) {}
+      // Push the prefs to the server so the server-side scheduler (which
+      // fires real push notifications when the tab is closed) uses the
+      // same rules.
+      try { syncNotifPrefsToServer(); } catch (_) {}
+    }
+
+    // ── Web Push (server-side scheduler delivery) ─────────────────────
+    // The in-app scheduler above only runs while the dashboard tab is
+    // open. To get notifications when the app is closed we also register
+    // a service worker + PushManager subscription and store it server-side;
+    // the Flask scheduler then fires OS notifications via the Node app's
+    // push infrastructure.
+    async function syncNotifPrefsToServer() {
+      const u = (state && state.username) || '';
+      if (!u) return;
+      const res = await _apiFetch('/api/notifications/prefs', { method: 'POST', body: JSON.stringify(getNotifPrefs()) });
+      void res;
+    }
+
+    async function ensurePushSubscription() {
+      try {
+        const prefs = getNotifPrefs();
+        if (!prefs.enabled) return;
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'denied') return;
+        if (Notification.permission === 'default') {
+          try { await Notification.requestPermission(); } catch (_) {}
+          if (Notification.permission !== 'granted') return;
+        }
+        // Register the same SW the chat app uses (scope / so it covers /schoology/).
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          const { key } = await _apiFetch('/api/notifications/vapid-public-key');
+          if (!key) return;
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(key),
+          });
+        }
+        await _apiFetch('/api/notifications/subscribe', {
+          method: 'POST',
+          body: JSON.stringify(JSON.parse(JSON.stringify(sub))),
+        });
+      } catch (_) {}
+    }
+
+    function urlBase64ToUint8Array(base64) {
+      const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+      const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const raw = atob(b64);
+      const arr = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+      return arr;
+    }
+
+    function reportActiveSchoologyRoom() {
+      // Tell the SW we're looking at the dashboard so it suppresses push
+      // notifications for the room we're actively viewing (the in-app
+      // toast + live data already cover it).
+      try {
+        if (!('serviceWorker' in navigator)) return;
+        navigator.serviceWorker.getRegistration('/sw.js').then((reg) => {
+          if (reg && reg.active) {
+            reg.active.postMessage({ type: 'jchat:active-room', roomType: 'schoology', roomId: 'dashboard' });
+          }
+        }).catch(() => {});
+      } catch (_) {}
+    }
+
+    function bindNotifPushLifecycle() {
+      try {
+        if (!('serviceWorker' in navigator)) return;
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reportActiveSchoologyRoom();
+        });
+        // The SW starts after registration; re-post once it's live so the
+        // active-room map isn't empty when the first push arrives.
+        navigator.serviceWorker.ready.then(() => reportActiveSchoologyRoom()).catch(() => {});
+      } catch (_) {}
     }
 
     // Sync the settings tab UI to the current prefs. Safe to call before
@@ -1967,6 +2049,15 @@
       renderChatMessages();
       renderChatSidebar();
       syncAiBusyForCurrentChat();
+      // If this chat is mid data-collection (a send that needed
+      // dashboard data, with the user having navigated away before it
+      // finished), re-attach the loader bubble so the wait stays
+      // visible (2026-08-25 fix).
+      if (state._dataLoaderContexts && state._dataLoaderContexts[state.currentChatId] && !state._dataLoaderContexts[state.currentChatId].cancelled) {
+        const dlc = state._dataLoaderContexts[state.currentChatId];
+        const lb = addChatMessage('assistant', '', { skipHistory: true, renderMarkdown: false, customContent: renderDataLoaderBubble(dlc.sections) });
+        if (lb) dlc.bubble = lb;
+      }
       // If this chat has a generation in flight (navigated away and
       // came back, or reloaded mid-generation), re-attach the poller.
       ensureChatPolling(state.currentChatId);
@@ -2790,6 +2881,14 @@
         console.error('[DEBUG] notif prefs init error:', e);
       }
 
+      // Web Push lifecycle: register the SW + report active room so
+      // server-side notifications arrive when the tab is closed.
+      try {
+        bindNotifPushLifecycle();
+      } catch (e) {
+        console.error('[DEBUG] bindNotifPushLifecycle error:', e);
+      }
+
       // Hide landing page, show loading
       const landingPage = document.getElementById('landingPage');
       const appLoading = document.getElementById('appLoading');
@@ -3382,6 +3481,10 @@
         // upcoming items to track. Safe to call repeatedly -- it clears
         // any prior timer first.
         try { startNotificationScheduler(); } catch (_) {}
+        // Register for Web Push so the server-side scheduler can notify
+        // even when this tab is closed.
+        try { ensurePushSubscription(); } catch (_) {}
+        try { reportActiveSchoologyRoom(); } catch (_) {}
       } else if (name === 'posts') {
         normalized = Array.isArray(data) ? data : (data.posts || []);
         state.posts = normalized.map(normalizePostItem);
@@ -3789,9 +3892,9 @@
       // whatever data has already arrived.
       const stopBtn = e.target.closest && e.target.closest('.data-loader-stop');
       if (stopBtn) {
-        if (state._dataLoaderContext) {
-          state._dataLoaderContext.cancelled = true;
-        }
+        const ctxs = state._dataLoaderContexts || {};
+        const ctx = ctxs[state.currentChatId];
+        if (ctx) ctx.cancelled = true;
       }
     }, true);
     document.addEventListener('keydown', (e) => {
@@ -5067,6 +5170,23 @@
       state.currentMessages.push({ role: 'user', content: fullMessage });
       scheduleSaveCurrentChat();
 
+      // Persist the user message server-side IMMEDIATELY, before any
+      // dashboard-data wait. The AI request itself is deferred until the
+      // data lands, but the message must survive chat switches and
+      // reloads -- otherwise it vanishes if the user navigates away
+      // while data is still collecting (2026-08-25 fix).
+      const sendChatId = state.currentChatId;
+      let preAppended = false;
+      if (!state.demoMode && sendChatId && fullMessage.length <= 120000) {
+        try {
+          const appendRes = await _apiFetch('/api/chats/' + encodeURIComponent(sendChatId) + '/append', {
+            method: 'POST',
+            body: JSON.stringify({ role: 'user', content: fullMessage }),
+          });
+          preAppended = !!(appendRes && appendRes.ok);
+        } catch (_) { preAppended = false; }
+      }
+
       // Heuristic "remember" detection -- if the user clearly asked the
       // AI to remember something, persist it on their account so it's
       // injected into every chat's context. Fire-and-forget; failure
@@ -5111,7 +5231,7 @@
       if (needs.length > 0) {
         const missing = needs.filter((n) => state.sectionStatus[n] !== 'ready');
         if (missing.length > 0) {
-          const dataMsg = await waitForDashboardData(missing, { autoNameWith: message });
+          const dataMsg = await waitForDashboardData(missing, { autoNameWith: message, chatId: sendChatId, skipAppend: preAppended });
           if (dataMsg) {
             // waitForDashboardData returns the assistant bubble
             // with the loader already attached, and the AI call
@@ -5121,7 +5241,7 @@
         }
       }
 
-      await _requestAssistantReply(fullMessage, { autoNameWith: message });
+      await _requestAssistantReply(fullMessage, { autoNameWith: message, chatId: sendChatId, skipAppend: preAppended });
     }
 
     // Heuristic: which dashboard sections does this user message need?
@@ -5160,6 +5280,10 @@
     // (or the user hits stop).
     async function waitForDashboardData(sections, opts) {
       opts = opts || {};
+      // The chat that initiated this send -- data collection is async,
+      // so the user may switch chats (or send in another chat) before
+      // it finishes. Everything below must stay bound to THIS chat.
+      const chatId = opts.chatId || state.currentChatId;
       // Show a placeholder assistant message with the data-loader.
       const loaderMsg = addChatMessage('assistant', '', {
         skipHistory: true,
@@ -5168,10 +5292,14 @@
       });
       // Stash the user message + reply context for when the loader
       // finishes. We need this so we can fire the AI request
-      // after the data lands.
-      state._dataLoaderContext = {
+      // after the data lands. Per-chat map: a send in another chat
+      // must not clobber this one's context (2026-08-25 fix).
+      state._dataLoaderContexts = state._dataLoaderContexts || {};
+      state._dataLoaderContexts[chatId] = {
         bubble: loaderMsg,
         sections,
+        chatId,
+        skipAppend: !!opts.skipAppend,
         userFullMessage: state.currentMessages[state.currentMessages.length - 1]?.content || '',
         autoNameWith: opts.autoNameWith,
         startedAt: Date.now(),
@@ -5193,7 +5321,8 @@
       // they return.
       await new Promise((resolve) => {
         const tick = () => {
-          if (state._dataLoaderContext.cancelled) { resolve(); return; }
+          const cur = state._dataLoaderContexts && state._dataLoaderContexts[chatId];
+          if (!cur || cur.cancelled) { resolve(); return; }
           const stillMissing = sections.filter((n) => state.sectionStatus[n] !== 'ready');
           if (stillMissing.length === 0) { resolve(); return; }
           setTimeout(tick, 250);
@@ -5201,8 +5330,19 @@
         tick();
       });
 
-      const ctx = state._dataLoaderContext;
-      state._dataLoaderContext = null;
+      const ctx = state._dataLoaderContexts && state._dataLoaderContexts[chatId];
+      if (ctx) delete state._dataLoaderContexts[chatId];
+      // If the user navigated to another chat while data was loading,
+      // skip ALL loader-bubble DOM surgery -- the fallback selector
+      // would hit the other chat's messages -- and just fire the AI
+      // request for the originating chat.
+      const isOriginCurrent = (chatId === state.currentChatId);
+      if (!isOriginCurrent) {
+        if (ctx) {
+          await _requestAssistantReply(ctx.userFullMessage, { chatId, skipAppend: ctx.skipAppend, autoNameWith: ctx.cancelled ? null : ctx.autoNameWith });
+        }
+        return loaderMsg;
+      }
       // Re-find the bubble -- the original ref might be stale if the
       // DOM was re-rendered. Prefer the saved DOM ref from the
       // context (captured at the time the loader was created), and
@@ -5221,7 +5361,7 @@
         }
         state.currentMessages.push({ role: 'assistant', content: '_Stopped loading data. Answering with what I have._' });
         _persistLocalNote('_Stopped loading data. Answering with what I have._');
-        await _requestAssistantReply(ctx.userFullMessage, { autoNameWith: null });
+        await _requestAssistantReply(ctx.userFullMessage, { chatId, skipAppend: ctx.skipAppend, autoNameWith: null });
         return loaderMsg;
       }
       // Data is ready. Hide the loader, fire the AI request, append the reply.
@@ -5230,7 +5370,7 @@
         el.classList.add('hidden-by-data-loader');
         el.style.display = 'none';
       }
-      await _requestAssistantReply(ctx.userFullMessage, { autoNameWith: ctx.autoNameWith });
+      await _requestAssistantReply(ctx.userFullMessage, { chatId, skipAppend: ctx.skipAppend, autoNameWith: ctx.autoNameWith });
       return loaderMsg;
     }
 
@@ -5264,10 +5404,15 @@
     // already has a name).
     async function _requestAssistantReply(userFullMessage, opts) {
       opts = opts || {};
+      // The chat that initiated this request. Sends can outlive a chat
+      // switch (data collection + job submission are async), so never
+      // read state.currentChatId here -- it may have moved on
+      // (2026-08-25 fix).
+      const chatId = opts.chatId || state.currentChatId;
       // Pull cross-chat summaries + memory for context injection. The
       // /api/chats/context call excludes the current chat from the
       // "other chats" list automatically.
-      const extras = await fetchChatContextExtras(state.currentChatId);
+      const extras = await fetchChatContextExtras(chatId);
 
       // ── DEMO MODE: synchronous, unchanged ────────────────────────
       if (state.demoMode) {
@@ -5291,20 +5436,42 @@
       // We poll GET /api/chats/<id>/status until the reply lands, so
       // generation survives switching chats / menus and multiple
       // chats can generate at the same time.
-      const chatId = state.currentChatId;
       if (!chatId) {
         addChatMessage('error', 'No chat open. Start or pick a chat first.');
         return;
       }
+      const isOriginCurrent = (chatId === state.currentChatId);
 
       // Build the prior-messages slice to send to the server. Use the
       // bracket-stripped copy for assistant messages so the model
       // doesn't see its own internal scaffolding.
-      const priorForServer = (state.currentMessages || []).map(m => ({
-        role: m.role,
-        content: (m.role === 'assistant' && m.display !== undefined
-          ? m.display : m.content) || '',
-      }));
+      let priorForServer;
+      if (isOriginCurrent) {
+        priorForServer = (state.currentMessages || []).map(m => ({
+          role: m.role,
+          content: (m.role === 'assistant' && m.display !== undefined
+            ? m.display : m.content) || '',
+        }));
+      } else {
+        // The originating chat isn't open: build prior from the
+        // server's authoritative copy (the local buffer now holds a
+        // different chat's messages). If the user message hasn't been
+        // pre-persisted yet (append failed), add it so prior stays
+        // consistent with the open-chat path.
+        let stored = [];
+        try {
+          const chatRes = await _apiFetch('/api/chats/' + encodeURIComponent(chatId));
+          if (chatRes && chatRes.ok && Array.isArray(chatRes.body.messages)) stored = chatRes.body.messages;
+        } catch (_) { /* fall back to empty prior */ }
+        priorForServer = stored.map(m => ({
+          role: m.role,
+          content: (m.role === 'assistant' && m.display !== undefined
+            ? m.display : m.content) || '',
+        }));
+        if (!opts.skipAppend) {
+          priorForServer.push({ role: 'user', content: userFullMessage });
+        }
+      }
 
       const body = {
         message: userFullMessage,
@@ -5315,6 +5482,9 @@
         posts: state.posts || [],
         extras,
         grade_level: state._gateGrade || null,
+        // The user message was already persisted via /append before any
+        // data wait; don't let the submit re-append it (2026-08-25).
+        skip_append: !!opts.skipAppend,
       };
 
       let submit;
@@ -5331,27 +5501,38 @@
         if (submit.status === 409) {
           // A job is already generating in this chat (e.g. another tab).
           // Un-push the local user message so we stay in sync with the
-          // server's copy.
-          if (state.currentMessages.length) state.currentMessages.pop();
-          renderChatMessages();
+          // server's copy -- but only when this chat is open and the
+          // message wasn't pre-persisted (then the server copy is
+          // already correct and visible).
+          if (isOriginCurrent) {
+            if (!opts.skipAppend && state.currentMessages.length) state.currentMessages.pop();
+            renderChatMessages();
+          }
           showNotification('A reply is already being generated in this chat.', 'error');
           return;
         }
-        addChatMessage('error', `Couldn't reach the assistant: ${submit.status}`);
+        if (isOriginCurrent) {
+          addChatMessage('error', `Couldn't reach the assistant: ${submit.status}`);
+        } else {
+          console.warn('[chat] submit failed for non-current chat', chatId, submit.status);
+        }
         return;
       }
 
-      // Thinking placeholder until the job lands.
-      const bubble = addChatMessage('assistant', '', {
-        skipHistory: true,
-        renderMarkdown: false,
-      });
-      const contentEl = bubble ? bubble.querySelector('.markdown-content') : null;
-      if (contentEl) contentEl.innerHTML = renderThinkingPlaceholder();
-      const chatScrollEl = document.getElementById('chatMessages');
-      if (chatScrollEl) chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
-
-      setAiBusy(true);
+      // Thinking placeholder until the job lands. Only touches the DOM
+      // when the originating chat is actually the one on screen.
+      let bubble = null;
+      if (isOriginCurrent) {
+        bubble = addChatMessage('assistant', '', {
+          skipHistory: true,
+          renderMarkdown: false,
+        });
+        const contentEl = bubble ? bubble.querySelector('.markdown-content') : null;
+        if (contentEl) contentEl.innerHTML = renderThinkingPlaceholder();
+        const chatScrollEl = document.getElementById('chatMessages');
+        if (chatScrollEl) chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
+        setAiBusy(true);
+      }
       startChatPolling(chatId, { bubble, autoNameWith: opts.autoNameWith });
     }
     // ── Chat generation polling ───────────────────────────────────
@@ -5401,10 +5582,30 @@
       const messages = Array.isArray(res.body.messages) ? res.body.messages : [];
       const job = res.body.pendingJob || null;
       const isCurrent = (chatId === state.currentChatId) && !state.demoMode;
+      const status = job ? job.status : 'done';
 
-      if (isCurrent) {
+      // Only re-render when the stored messages actually changed. The
+      // poller ticks every 1.5s while a job is in flight; rebuilding
+      // the whole list every tick replayed every message's entrance
+      // animation and wiped short-lived bubbles (2026-08-25 fix).
+      const sig = JSON.stringify(messages.map(m => [m.role, m.content, m.display || null]));
+      const changed = (sig !== p.lastSig);
+      p.lastSig = sig;
+
+      if (isCurrent && changed) {
         state.currentMessages = messages;
         renderChatMessages();
+        // renderChatMessages rebuilds the list without short-lived
+        // bubbles; re-attach the thinking placeholder while the job
+        // is still running so the user keeps a generation indicator.
+        if (status === 'queued' || status === 'running') {
+          const tb = addChatMessage('assistant', '', { skipHistory: true, renderMarkdown: false });
+          if (tb) {
+            const ce = tb.querySelector('.markdown-content');
+            if (ce) ce.innerHTML = renderThinkingPlaceholder();
+            p.bubble = tb; // keep the ref fresh for terminal-state handling
+          }
+        }
         // Dispatch tools for newly-arrived assistant replies (once each).
         const handled = state._toolHandled[chatId] || (state._toolHandled[chatId] = new Set());
         messages.forEach((m, i) => {
@@ -5414,16 +5615,17 @@
           }
         });
       }
-      // Sidebar meta refresh for this chat.
-      const chatMeta = state.chats.find(c => c.id === chatId);
-      if (chatMeta) {
-        chatMeta.messageCount = messages.length;
-        if (res.body.updatedAt) chatMeta.updatedAt = res.body.updatedAt;
-        state.chats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-        renderChatSidebar();
+      // Sidebar meta refresh for this chat (only when something changed).
+      if (changed) {
+        const chatMeta = state.chats.find(c => c.id === chatId);
+        if (chatMeta) {
+          chatMeta.messageCount = messages.length;
+          if (res.body.updatedAt) chatMeta.updatedAt = res.body.updatedAt;
+          state.chats.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+          renderChatSidebar();
+        }
       }
 
-      const status = job ? job.status : 'done';
       if (status === 'queued' || status === 'running') {
         p.timer = setTimeout(() => _chatPollTick(chatId), CHAT_POLL_INTERVAL_MS);
         return;

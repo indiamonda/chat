@@ -63,7 +63,9 @@ from .system_prompt import (
 # With a DEEPSEEK_KEY we call DeepSeek directly; without it we fall back to
 # the public proxy worker, mirroring server/index.js and ai-moderation.js.
 DEEPSEEK_API_DIRECT = 'https://api.deepseek.com/v1/chat/completions'
-DEEPSEEK_API_PROXY = 'https://deepseek-proxy.ikunbeautiful.workers.dev/v1/chat'
+# Overridable via env for parity with the chat app (which uses
+# DEEPSEEK_API_URL); defaults to the shared Cloudflare proxy.
+DEEPSEEK_API_PROXY = os.environ.get('DEEPSEEK_API_URL') or 'https://deepseek-proxy.ikunbeautiful.workers.dev/v1/chat'
 DEEPSEEK_MODEL = os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat')
 DEEPSEEK_TIMEOUT = int(os.environ.get('LAYER_TIMEOUT', '60'))
 

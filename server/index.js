@@ -21,6 +21,7 @@ import adminRoutes from './routes/admin.js';
 import friendsRoutes, { areFriends } from './routes/friends.js';
 import blocksRoutes, { isBlocked } from './routes/blocks.js';
 import notificationsRoutes, { getPrefs as getNotificationPrefs } from './routes/notifications.js';
+import { maybePushForMessage, maybePushForMention, sendRawPush } from './webpush.js';
 import savesRoutes from './routes/saves.js';
 import reportsRoutes from './routes/reports.js';
 import { recordAuditLog } from './audit.js';
@@ -339,6 +340,10 @@ function createInboxForNewMessage(messageId, content, replyToId, senderId, roomT
     try {
       const io = app.get('io');
       io?.to(`user:${uid}`).emit('inbox:item', { id: randomUUID(), type: 'mention', title: 'New mention', body: (content || '').slice(0, 200), related_id: messageId, related_extra: { roomType, roomId }, created_at: now });
+    } catch (_) {}
+    try {
+      const sender = db.prepare('SELECT display_name, username FROM users WHERE id = ?').get(senderId);
+      maybePushForMention(uid, sender?.display_name || sender?.username || 'Someone', content, roomType, roomId, messageId);
     } catch (_) {}
   });
   if (replyToId) {
@@ -1265,6 +1270,7 @@ async function handleWhisperSend(io, caller, payload, ack, httpRes) {
     `).get(id);
     const msg = { ...row, likes: 0, reactions: [], edit_history: null };
     emitToWhisperAudience(io, 'message', msg, sender.id, audienceIds);
+    maybePushForMessage(msg);
     return ackOrHttp(httpRes, ack, 201, { message: msg });
   } catch (err) {
     console.error('[whisper] send error:', err);
@@ -1395,6 +1401,7 @@ function insertHelperReply(triggerMsgId, text, roomType, roomId) {
   const io = app.get('io');
   const emitRoom = roomType === 'dm' ? `dm:${roomId}` : `group:${GROUP_ID}`;
   io?.to(emitRoom).emit('message', msg);
+  maybePushForMessage(msg);
 }
 
 /** Register helper:reply / helper:error / helper:status / helper:stopped
@@ -2133,6 +2140,28 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/friends', friendsRoutes);
 app.use('/api/blocks', blocksRoutes);
 app.use('/api/notifications', notificationsRoutes);
+
+// Internal endpoint for the Schoology Flask app (same machine, port 8081):
+// lets it send Web Push through this app's VAPID keys + subscription store.
+// Guarded by a shared secret (SCHOOLOGY_PUSH_SECRET) — localhost-only by
+// default, but the secret check is what actually authorizes it.
+const SCHOOLOGY_PUSH_SECRET = process.env.SCHOOLOGY_PUSH_SECRET || '';
+app.post('/internal/send-push', express.json({ limit: '64kb' }), (req, res) => {
+  const auth = req.get('x-push-secret') || '';
+  if (!SCHOOLOGY_PUSH_SECRET || auth !== SCHOOLOGY_PUSH_SECRET) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  const { subscription, payload } = req.body || {};
+  if (!subscription || !payload) {
+    return res.status(400).json({ error: 'subscription and payload required' });
+  }
+  sendRawPush(subscription, payload)
+    .then((result) => res.json(result))
+    .catch((err) => {
+      console.error('[internal/send-push] error:', err);
+      res.status(500).json({ ok: false, error: err.message });
+    });
+});
 app.use('/api/saves', savesRoutes);
 app.use('/api/reports', reportsRoutes);
 
@@ -2399,6 +2428,7 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
   `).get(id);
   const msg = { ...row, likes: 0, reactions: [], edit_history: null };
   io.to(`group:${GROUP_ID}`).emit('message', msg);
+  maybePushForMessage(msg);
   if (user.id !== HELPER_USER_ID && HELPER_RE.test(finalContent || '')) {
     helperReply(id, finalContent, roomType, roomId);
   }
@@ -2720,6 +2750,7 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   `).get(id);
   const msg = { ...row, likes: 0, reactions: [], edit_history: null };
   io.to(`dm:${req.params.convId}`).emit('message', msg);
+  maybePushForMessage(msg);
   if (otherId === HELPER_USER_ID && user.id !== HELPER_USER_ID) {
     helperReply(id, finalContent, 'dm', req.params.convId, user.id, sanitizeAgentOpts(req.body));
   }
@@ -3890,6 +3921,7 @@ io.on('connection', (socket) => {
       `).get(id);
       const msg = { ...row, likes: 0, edit_history: null };
       io.to(`dm:${roomId}`).emit('message', msg);
+      maybePushForMessage(msg);
       setTyping(socket.userId, presenceRoomKeyForRoom('dm', roomId), false);
       if (otherId === HELPER_USER_ID && socket.userId !== HELPER_USER_ID) {
         helperReply(id, content, 'dm', roomId, socket.userId, sanitizeAgentOpts(payload));
@@ -3938,6 +3970,7 @@ io.on('connection', (socket) => {
     `).get(id);
     const msg = { ...row, likes: 0, edit_history: null };
     io.to(`group:${GROUP_ID}`).emit('message', msg);
+    maybePushForMessage(msg);
     setTyping(socket.userId, presenceRoomKeyForRoom(roomType, roomId), false);
     if (socket.userId !== HELPER_USER_ID && HELPER_RE.test(content || '')) {
       helperReply(id, content, roomType, roomId, socket.userId);

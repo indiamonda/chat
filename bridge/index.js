@@ -66,6 +66,13 @@ const VALID_MODELS = new Set([
 ]);
 const VALID_EFFORTS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max', 'ultra']);
 
+// --- message source note ------------------------------------------------------
+// Every task that reaches this bridge arrives as a jchat DM from the owner
+// (the server only emits helper:task for OPENCLAW_OWNER_ID DMs). The agent is
+// told WHERE the message came from (the source channel) — deliberately NOT
+// what app the user is currently on (no presence tracking is shared).
+const MESSAGE_SOURCE_NOTE = 'Message source: jchat — this message came from jimmyqrg in a private DM to the helper bot on the jchat school chat app.';
+
 function log(...args) {
   console.log(new Date().toISOString(), '[bridge]', ...args);
 }
@@ -289,10 +296,13 @@ const GATEWAY_MAX_ATTEMPTS = 3; // 1 initial + 2 retries on transient network er
 const GATEWAY_RETRY_DELAY_MS = 1500;
 
 /** True for transient, connection-level failures worth retrying on a fresh
- *  connection. HTTP error statuses and empty replies are NOT retried. */
+ *  connection. Also retries gateway upstream blips (502/503/504/429 — e.g.
+ *  "upstream provider timeout", which usually succeeds on a fresh attempt).
+ *  Other HTTP error statuses and empty replies are NOT retried. */
 function isTransientFetchError(err) {
   const msg = String(err?.message || '');
   const code = String(err?.code || err?.cause?.code || '');
+  if (err?.status === 502 || err?.status === 503 || err?.status === 504 || err?.status === 429) return true;
   if (/fetch failed/i.test(msg)) return true;
   return ['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT', 'EAI_AGAIN',
     'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT',
@@ -367,7 +377,12 @@ async function runAgentOnce(task, controller) {
   const sessionKey = resolveTaskSessionKey(task);
   const payload = {
     model: MODEL,
-    messages: [{ role: 'user', content }],
+    // System message → merged into the agent's system prompt by the gateway,
+    // invisible in the user-visible chat/session history.
+    messages: [
+      { role: 'system', content: MESSAGE_SOURCE_NOTE },
+      { role: 'user', content },
+    ],
     stream: false,
   };
   if (sessionKey === dmSessionKey(task.convId)) {
@@ -385,7 +400,7 @@ async function runAgentOnce(task, controller) {
     `${OPENCLAW_GATEWAY_URL}/chat/completions`, headers, json, controller
   );
   if (status < 200 || status >= 300) {
-    throw new Error(`gateway ${status}: ${body.slice(0, 300)}`);
+    throw Object.assign(new Error(`gateway ${status}: ${body.slice(0, 300)}`), { status });
   }
   let data;
   try { data = JSON.parse(body); } catch { throw new Error('gateway returned a non-JSON reply'); }

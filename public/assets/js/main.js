@@ -51,6 +51,7 @@ let state = {
   uiAnimations: typeof localStorage !== 'undefined' ? localStorage.getItem('uiAnimations') !== '0' : true,
   enterToSend: typeof localStorage !== 'undefined' ? localStorage.getItem('enter_to_send') === '1' : false,
   notificationPrefs: null,
+  pushActive: false,
   drafts: {},
   collections: [],
   _hasMoreMessages: {},
@@ -1852,6 +1853,18 @@ function currentRoomKey() {
   return roomId ? roomKey(roomType, roomId) : null;
 }
 
+/** Tell the service worker which room we're viewing so it suppresses pushes for it. */
+function postActiveRoomToPush() {
+  if (!('serviceWorker' in navigator)) return;
+  const roomType = state.dmUserId ? 'dm' : 'group';
+  const roomId = state.dmUserId ? state.convId : state.panel;
+  navigator.serviceWorker.getRegistration('/sw.js').then((reg) => {
+    if (reg?.active) {
+      reg.active.postMessage({ type: 'jchat:active-room', roomType, roomId: roomId || null });
+    }
+  }).catch(() => {});
+}
+
 function getCurrentRoomContext() {
   const roomType = state.dmUserId ? 'dm' : 'group';
   const roomId = state.dmUserId ? state.convId : state.panel;
@@ -2098,6 +2111,7 @@ function navigateTo(path) {
     window.history.pushState({}, '', pathname + search);
   }
   applyRoute(parseRoute());
+  postActiveRoomToPush();
 }
 
 export function getState() {
@@ -2424,6 +2438,95 @@ export async function loadNotificationPrefs() {
   }
 }
 
+// ── Web Push (service worker) ────────────────────────────────────────────
+// The old notification system was browser-tab-only: it fired only while a
+// chat tab sat open in the background. Web Push keeps working when the tab
+// is closed or the phone is locked. state.pushActive = subscription is live
+// (server will push); in-page desktop notifications are suppressed then so
+// we don't double-notify.
+
+async function registerPushServiceWorker() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+  try {
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    return !!reg.active;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function syncPushSubscription() {
+  try {
+    const canPush = 'serviceWorker' in navigator && 'PushManager' in window &&
+      'Notification' in window && Notification.permission === 'granted';
+    const wantPush = canPush && state.notificationPrefs?.enabled;
+    const reg = wantPush ? await registerPushServiceWorker() : null;
+
+    if (!wantPush || !reg) {
+      // Disabled or unsupported: drop any existing subscription.
+      try {
+        const existing = await navigator.serviceWorker?.getRegistration('/sw.js');
+        const sub = existing ? await existing.pushManager.getSubscription() : null;
+        if (sub) {
+          await apiPost('/api/notifications/unsubscribe', { endpoint: sub.endpoint }).catch(() => {});
+          await sub.unsubscribe();
+        }
+      } catch (_) {}
+      state.pushActive = false;
+      return;
+    }
+
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      const { key } = await apiGet('/api/notifications/vapid-public-key');
+      if (!key) {
+        state.pushActive = false;
+        return;
+      }
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(key),
+      });
+    }
+    await apiPost('/api/notifications/subscribe', JSON.parse(JSON.stringify(sub)));
+    state.pushActive = true;
+  } catch (err) {
+    console.error('[push] sync failed:', err);
+    state.pushActive = false;
+  }
+}
+
+/** Convert a base64url VAPID key (string) to a Uint8Array for subscribe(). */
+function urlBase64ToUint8Array(base64) {
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(b64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+function bindPushLifecycle() {
+  if (!('serviceWorker' in navigator)) return;
+  // Re-sync on subscription changes (e.g. browser rotates keys).
+  navigator.serviceWorker.addEventListener('controllerchange', () => syncPushSubscription());
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    const msg = event.data;
+    if (msg?.type === 'jchat:push-click' && msg.url) {
+      navigateTo(msg.url);
+    }
+  });
+  // If the browser swaps keys while we're away, re-register.
+  if ('pushManager' in window) {
+    navigator.serviceWorker.getRegistration('/sw.js').then((reg) => {
+      reg?.pushManager?.getSubscription().then((sub) => {
+        if (sub) syncPushSubscription();
+      }).catch(() => {});
+    }).catch(() => {});
+  }
+}
+
 function showNotificationPermissionModal() {
   if (!('Notification' in window) || Notification.permission !== 'default') return;
   const asked = localStorage.getItem('notification_asked');
@@ -2454,6 +2557,7 @@ function showNotificationPermissionModal() {
       if (perm === 'granted') {
         apiPatch('/api/notifications/prefs', { enabled: true }).then(() => {
           state.notificationPrefs = { ...(state.notificationPrefs || {}), enabled: true };
+          syncPushSubscription().catch(() => {});
         }).catch(() => {});
       }
     });
@@ -2571,6 +2675,7 @@ function shouldShowNotification(trigger, fromUserId) {
 
 function showDesktopNotification(title, body) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  if (state.pushActive) return; // service worker push handles it (tab closed/background)
   try {
     new Notification(title || 'JimmyQrg Chat', { body: body || '', icon: '/assets/favicon.ico' });
   } catch (_) {}
@@ -4161,6 +4266,7 @@ function renderAuth(isSignup = false, initialError = '', redirect = null) {
               <input name="email_code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000" />
               <button type="button" id="auth-resend-code" class="auth-resend-btn" disabled>Resend code (<span id="auth-resend-timer">60</span>s)</button>
             </div>
+            <div id="auth-verify-skip" class="auth-verify-info auth-verify-skip" style="display:none">Good news — email verification isn&rsquo;t required for your email address. You can create your account right away.</div>
             <button type="button" id="auth-send-code" class="auth-send-code-btn" style="display:none">Send verification code</button>
             <label class="auth-ani-21">${t('password')}</label>
             <input class="auth-ani-22" name="reg_password" type="password" autocomplete="new-password" placeholder="${t('password')}" />
@@ -4601,6 +4707,7 @@ function showRecoveryModal() {
           send.disabled = false; send.textContent = 'Send code to my email';
           return;
         }
+        if (d.skipped) { stepFullReset('Your organization blocks external emails, so we\u2019ve skipped email verification. Set a new password below.'); return; }
         stepHalfEnterCode(email);
       } catch (e) {
         err.textContent = 'Network error.';
@@ -4749,10 +4856,10 @@ function showRecoveryModal() {
   }
 
   // Step 3 (full): just set new password
-  function stepFullReset() {
+  function stepFullReset(msg) {
     clearBox();
     addH('Set a new password');
-    addP('Your <strong>payment key</strong> is verified. Set a new password and we will sign you in immediately.' + (frozen ? ' This will also <strong>unfreeze</strong> the account.' : ''));
+    addP(msg || 'Your <strong>payment key</strong> is verified. Set a new password and we will sign you in immediately.' + (frozen ? ' This will also <strong>unfreeze</strong> the account.' : ''));
     const pwIn = addInput({ type: 'password', placeholder: 'New password (6+ chars)' });
     const err = addErr();
     const submit = addBtn(frozen ? 'Unfreeze & sign in' : 'Sign in', true);
@@ -4986,6 +5093,7 @@ function bindAuth(isSignup) {
   if (!form) return;
   let recaptchaWidgetId = null;
   let emailCodeSent = false;
+  let emailSkipped = false;
   let resendInterval = null;
   if (isRegister) {
     loadConfig().then((config) => {
@@ -4997,14 +5105,17 @@ function bindAuth(isSignup) {
     const emailInput = form.querySelector('input[name="email"]');
     const sendCodeBtn = document.getElementById('auth-send-code');
     const verifyRow = document.getElementById('auth-verify-row');
+    const skipNotice = document.getElementById('auth-verify-skip');
     const resendBtn = document.getElementById('auth-resend-code');
     const timerSpan = document.getElementById('auth-resend-timer');
     if (emailInput && sendCodeBtn) {
       sendCodeBtn.style.display = 'block';
       emailInput.addEventListener('input', () => {
-        if (emailCodeSent) {
+        if (emailCodeSent || emailSkipped) {
           emailCodeSent = false;
+          emailSkipped = false;
           if (verifyRow) verifyRow.style.display = 'none';
+          if (skipNotice) skipNotice.style.display = 'none';
           sendCodeBtn.style.display = 'block';
           if (resendInterval) { clearInterval(resendInterval); resendInterval = null; }
         }
@@ -5020,12 +5131,20 @@ function bindAuth(isSignup) {
         sendCodeBtn.disabled = true;
         sendCodeBtn.textContent = 'Sending…';
         try {
-          await _sendVerifyCode(email, errEl);
-          emailCodeSent = true;
-          sendCodeBtn.style.display = 'none';
-          if (verifyRow) verifyRow.style.display = 'block';
-          if (resendBtn && timerSpan) {
-            resendInterval = _startResendTimer(resendBtn, timerSpan);
+          const data = await _sendVerifyCode(email, errEl);
+          if (data && data.skipped) {
+            emailSkipped = true;
+            emailCodeSent = false;
+            sendCodeBtn.style.display = 'none';
+            if (verifyRow) verifyRow.style.display = 'none';
+            if (skipNotice) skipNotice.style.display = 'block';
+          } else {
+            emailCodeSent = true;
+            sendCodeBtn.style.display = 'none';
+            if (verifyRow) verifyRow.style.display = 'block';
+            if (resendBtn && timerSpan) {
+              resendInterval = _startResendTimer(resendBtn, timerSpan);
+            }
           }
         } catch (err) {
           errEl.textContent = err.message || 'Failed to send code';
@@ -5067,8 +5186,10 @@ function bindAuth(isSignup) {
       if (!display_name) { errEl.textContent = 'Display name is required'; return; }
       if (!username) { errEl.textContent = 'Username is required'; return; }
       if (!email) { errEl.textContent = 'Email is required'; return; }
-      if (!emailCodeSent) { errEl.textContent = 'Please send and enter the email verification code first.'; return; }
-      if (!email_code || email_code.length !== 6) { errEl.textContent = 'Please enter the 6-digit verification code.'; return; }
+      if (!emailSkipped) {
+        if (!emailCodeSent) { errEl.textContent = 'Please send and enter the email verification code first.'; return; }
+        if (!email_code || email_code.length !== 6) { errEl.textContent = 'Please enter the 6-digit verification code.'; return; }
+      }
       if (!password) { errEl.textContent = t('passwordRequired'); return; }
       if (password !== confirm) { errEl.textContent = t('passwordsDoNotMatch'); return; }
       let recaptchaToken = null;
@@ -5082,7 +5203,8 @@ function bindAuth(isSignup) {
         return;
       }
       try {
-        const body = { username, email, password, display_name, email_code };
+        const body = { username, email, password, display_name };
+        if (!emailSkipped) body.email_code = email_code;
         if (recaptchaToken != null) body.recaptcha_token = recaptchaToken;
         const data = await doLogin(true, body);
         if (data.user) {
@@ -12044,6 +12166,8 @@ async function init() {
     await loadFriends();
     await loadPendingFriendRequests();
     await loadNotificationPrefs();
+    bindPushLifecycle();
+    syncPushSubscription().catch(() => {});
     await loadMyTimeouts();
     if (state.user?.is_allowed) loadReportCounts().catch(() => {});
   connectSocket();
@@ -12072,6 +12196,7 @@ async function init() {
     return;
   }
   applyRoute(route);
+  postActiveRoomToPush();
   } catch (err) {
     if (err?.status === 401 && typeof window !== 'undefined' && window.self !== window.top) {
       state.user = null;
@@ -12255,6 +12380,7 @@ function bindSettings() {
       document.getElementById('notif-dnd')?.style.setProperty('opacity', enabled ? '1' : '0.5');
       document.getElementById('notif-dnd')?.style.setProperty('pointer-events', enabled ? 'auto' : 'none');
       if (enabled) Notification.requestPermission();
+      syncPushSubscription().catch(() => {});
     } catch (_) {}
   });
   document.getElementById('notif-mails')?.addEventListener('change', async (e) => {

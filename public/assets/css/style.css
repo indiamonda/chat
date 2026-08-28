@@ -572,6 +572,14 @@ select:focus {
 .auth-verify-info strong {
   color: var(--text-primary, #e0e0e8);
 }
+.auth-verify-info.auth-verify-skip {
+  color: #34d399;
+  border-left-color: #34d399;
+  background: rgba(52, 211, 153, 0.08);
+}
+.auth-verify-info.auth-verify-skip strong {
+  color: #6ee7b7;
+}
 .auth-verify-row label {
   display: block;
   font-size: 0.82rem;

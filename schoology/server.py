@@ -350,11 +350,12 @@ class DaemonClient:
         #
         # Cold-start budget: the FIRST successful call (per daemon
         # lifetime) gets a much longer timeout because Chromium +
-        # ClassLink login can take 3-6 min on 512MB Fly. Subsequent
-        # warm calls use the normal per-call budget (200s). This
-        # gives the user 1 slow call + 3 fast ones instead of 4
-        # all timing out at 200s.
-        effective_timeout = 600 if not self._warmed else timeout_seconds
+        # ClassLink login can take 1-3 min on small Fly machines.
+        # Subsequent warm calls use the normal per-call budget (120s).
+        # This gives the user 1 slow call + 3 fast ones instead of 4
+        # all timing out. 300s cap keeps a stuck cold start from
+        # holding request threads hostage for 10+ minutes.
+        effective_timeout = 300 if not self._warmed else timeout_seconds
         try:
             result = future.result(timeout=effective_timeout)
             self._warmed = True  # mark warm for the next call
@@ -553,11 +554,13 @@ def _call_mcp_tool_via_daemon(tool_name, username, password, timeout_seconds, ar
         if tried is not None:
             _kill_daemon_object(tried)
 
-    # Retry once on a fresh daemon for the same user.
+    # Retry once on a fresh daemon for the same user. Retry budget is
+    # capped at 60s -- if the first attempt didn't make it, a second
+    # 200s wait just doubles the thread-hostage window for little gain.
     tried = None
     try:
         tried = _get_daemon(username, password)
-        result = tried.call(request, timeout_seconds)
+        result = tried.call(request, min(timeout_seconds, 60))
         _daemon_total_calls += 1
         return result
     except Exception as exc:  # noqa: BLE001
@@ -710,7 +713,7 @@ def get_mock_data():
     }
 
 
-def get_data_from_mcp_or_mock(tool_name, username=None, password=None, timeout_seconds=200, priority=10, arguments=None):
+def get_data_from_mcp_or_mock(tool_name, username=None, password=None, timeout_seconds=120, priority=10, arguments=None):
     """Try MCP first, fall back to error response (no mock data).
 
     Args:
@@ -850,7 +853,61 @@ def get_assignments():
     """Get upcoming assignments."""
     username, password = decode_auth_header()
     data = get_data_from_mcp_or_mock('get_upcoming_assignments', username, password, priority=_priority_from_request())
+    # Cache for the server-side notification scheduler (so it can fire
+    # pushes without spawning its own Chromium).
+    if username and isinstance(data, dict) and isinstance(data.get('assignments'), list):
+        try:
+            store = _notif_store_for(username)
+            _atomic_write_json(store.dir / 'assignments_cache.json', data['assignments'])
+        except Exception as exc:
+            print(f'[notif] cache write failed: {exc}', file=sys.stderr)
     return jsonify(data)
+
+
+@app.route('/api/notifications/prefs', methods=['GET', 'POST'])
+def notif_prefs():
+    """Get or set notification prefs for the current user."""
+    username, _ = decode_auth_header()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    store = _notif_store_for(username)
+    if request.method == 'GET':
+        return jsonify(store.get_prefs())
+    body = request.get_json(silent=True) or {}
+    store.set_prefs(body)
+    return jsonify(store.get_prefs())
+
+
+@app.route('/api/notifications/subscribe', methods=['POST'])
+def notif_subscribe():
+    """Store a Web Push subscription for the current user."""
+    username, _ = decode_auth_header()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    sub = request.get_json(silent=True) or {}
+    store = _notif_store_for(username)
+    if not store.add_sub(sub):
+        return jsonify({'error': 'invalid subscription'}), 400
+    return jsonify({'ok': True})
+
+
+@app.route('/api/notifications/unsubscribe', methods=['POST'])
+def notif_unsubscribe():
+    """Remove a Web Push subscription for the current user."""
+    username, _ = decode_auth_header()
+    if not username:
+        return jsonify({'error': 'auth_required'}), 401
+    endpoint = (request.get_json(silent=True) or {}).get('endpoint')
+    if endpoint:
+        _notif_store_for(username).remove_sub(endpoint)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/notifications/vapid-public-key')
+def notif_vapid_key():
+    """VAPID public key for PushManager.subscribe(). Mirrors the Node app's
+    env var so both apps use the same key pair."""
+    return jsonify({'key': os.environ.get('VAPID_PUBLIC_KEY', 'BLA_IdhXG4ry1CLcojk33JtlXohMOy40o88pY-wMQ16wenYAg4HUhrvr45DjjcRbEa2UZmPn2vcxbeHDK4n8ljw')})
 
 
 @app.route('/api/posts')
@@ -1066,6 +1123,255 @@ def _read_json(path: Path, default):
 
 def _chat_path(username: str, chat_id: str) -> Path:
     return _chat_user_dir(username) / f'{chat_id}.json'
+
+
+# ---------------------------------------------------------------------------
+# Schoology notification state (server-side scheduler + Web Push)
+#
+# The dashboard's original scheduler ran 100% in the browser tab: it could
+# only show in-app toasts while the tab was open, so closing the tab meant
+# zero notifications. This server-side store keeps per-user prefs, push
+# subscriptions and fired-dedup keys under <DATA_DIR>/schoology_notif/ so a
+# background thread can fire real Web Push notifications even when the app
+# is closed.
+# ---------------------------------------------------------------------------
+NOTIF_DIR = Path(os.environ.get('DATA_DIR', '/data')) / 'schoology_notif'
+NOTIF_DEDUP_DAYS = 14
+
+
+class NotifStore:
+    """Per-user notification state: prefs, push subscriptions, fired keys."""
+
+    def __init__(self, username: str):
+        self.username = username
+        self.dir = NOTIF_DIR / _safe_username(username)
+        self.dir.mkdir(parents=True, exist_ok=True)
+        self.prefs_path = self.dir / 'prefs.json'
+        self.subs_path = self.dir / 'subs.json'
+        self.fired_path = self.dir / 'fired.json'
+
+    def _read(self, path: Path, default):
+        return _read_json(path, default)
+
+    def _write(self, path: Path, obj) -> None:
+        _atomic_write_json(path, obj)
+
+    # ── prefs ────────────────────────────────────────────────────────
+    DEFAULT_PREFS = {
+        'enabled': True,
+        'events': {'enabled': True, 'offsets': [60, 30, 15]},
+        'dueTomorrow': {'enabled': True, 'startHour': 16, 'spacingHours': 1},
+        'missing': {'enabled': True, 'hour': 16, 'minute': 30},
+    }
+
+    def get_prefs(self):
+        p = self._read(self.prefs_path, None)
+        if not p:
+            return json.loads(json.dumps(self.DEFAULT_PREFS))
+        # Backfill missing fields
+        base = json.loads(json.dumps(self.DEFAULT_PREFS))
+        base.update({k: v for k, v in p.items() if k in base})
+        if isinstance(p.get('events'), dict):
+            base['events'].update(p['events'])
+        if isinstance(p.get('dueTomorrow'), dict):
+            base['dueTomorrow'].update(p['dueTomorrow'])
+        if isinstance(p.get('missing'), dict):
+            base['missing'].update(p['missing'])
+        return base
+
+    def set_prefs(self, prefs: dict):
+        self._write(self.prefs_path, prefs)
+
+    # ── push subscriptions ───────────────────────────────────────────
+    def get_subs(self):
+        return self._read(self.subs_path, [])
+
+    def add_sub(self, sub: dict) -> bool:
+        if not sub or not sub.get('endpoint') or not sub.get('keys'):
+            return False
+        subs = [s for s in self.get_subs() if s.get('endpoint') != sub.get('endpoint')]
+        subs.append(sub)
+        self._write(self.subs_path, subs)
+        return True
+
+    def remove_sub(self, endpoint: str) -> None:
+        subs = [s for s in self.get_subs() if s.get('endpoint') != endpoint]
+        self._write(self.subs_path, subs)
+
+    # ── dedup keys (per rule per day) ────────────────────────────────
+    def get_fired(self):
+        return self._read(self.fired_path, {})
+
+    def mark_fired(self, key: str) -> None:
+        fired = self.get_fired()
+        fired[key] = int(time.time() * 1000)
+        # Prune old keys
+        cutoff = int(time.time() * 1000) - NOTIF_DEDUP_DAYS * 24 * 60 * 60 * 1000
+        fired = {k: v for k, v in fired.items() if v >= cutoff}
+        self._write(self.fired_path, fired)
+
+    def has_fired(self, key: str) -> bool:
+        return key in self.get_fired()
+
+
+def _notif_store_for(username: str) -> NotifStore:
+    return NotifStore(username)
+
+
+def _push_to_user(username: str, title: str, body: str, url: str = '/schoology/', tag: str = None) -> None:
+    """Send a push to every subscription of a user via the Node app's
+    internal endpoint (same machine, port 8080). Fire-and-forget."""
+    store = _notif_store_for(username)
+    subs = store.get_subs()
+    if not subs:
+        return
+    secret = os.environ.get('SCHOOLOGY_PUSH_SECRET', '')
+    if not secret:
+        return
+    for sub in subs:
+        try:
+            req = urllib.request.Request(
+                'http://127.0.0.1:8080/internal/send-push',
+                data=json.dumps({
+                    'subscription': sub,
+                    'payload': {'title': title, 'body': body, 'url': url, 'tag': tag, 'data': {'roomType': 'schoology', 'roomId': 'dashboard'}},
+                }).encode('utf-8'),
+                headers={'Content-Type': 'application/json', 'x-push-secret': secret},
+                method='POST',
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                pass
+        except Exception as exc:
+            print(f'[notif] push to {username} failed: {exc}', file=sys.stderr)
+
+
+def _notif_dedup_key(username: str, item_id: str, rule: str, date_str: str) -> str:
+    return f'{_safe_username(username)}:{item_id}:{rule}:{date_str}'
+
+
+def _notif_parse_due(item) -> float | None:
+    """Best-effort due timestamp (epoch ms) from upstream item data."""
+    if not item:
+        return None
+    for key in ('dueDate', 'due_iso', 'due'):
+        val = item.get(key)
+        if val:
+            try:
+                return datetime.fromisoformat(str(val).replace('Z', '+00:00')).timestamp() * 1000
+            except (ValueError, TypeError):
+                continue
+    return None
+
+
+def _notif_item_type(item) -> str:
+    url = (item and item.get('url')) or ''
+    return 'event' if '/event/' in url else 'assignment'
+
+
+def _notif_item_id(item) -> str:
+    return (item and (item.get('url') or item.get('title'))) or 'unknown'
+
+
+def _notif_same_local_day(a_ms: float, b_dt: datetime) -> bool:
+    a = datetime.fromtimestamp(a_ms / 1000)
+    return (a.year, a.month, a.day) == (b_dt.year, b_dt.month, b_dt.day)
+
+
+def _notif_scheduler_tick() -> None:
+    """One sweep over every user with notification state. Mirrors the old
+    client-side rules: event offsets, due-tomorrow hourly, missing daily.
+    Uses cached assignments (fetched by /api/assignments on dashboard load),
+    so it never spawns a Chromium itself."""
+    if not NOTIF_DIR.exists():
+        return
+    now = datetime.now()
+    today_str = now.strftime('%Y-%m-%d')
+    tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    from datetime import timedelta
+    tomorrow = tomorrow + timedelta(days=1)
+
+    for user_dir in NOTIF_DIR.iterdir():
+        if not user_dir.is_dir():
+            continue
+        username = user_dir.name
+        store = _notif_store_for(username)
+        prefs = store.get_prefs()
+        if not prefs.get('enabled'):
+            continue
+        subs = store.get_subs()
+        if not subs:
+            continue
+        items = _read_json(user_dir / 'assignments_cache.json', [])
+        if not isinstance(items, list) or not items:
+            continue
+
+        event_offsets = sorted(
+            [int(x) for x in (prefs.get('events', {}).get('offsets') or []) if x in (5, 10, 15, 30, 45, 60, 90, 120)],
+            reverse=True,
+        )
+        due_tomorrow = prefs.get('dueTomorrow', {})
+        missing = prefs.get('missing', {})
+
+        for item in items:
+            due_ms = _notif_parse_due(item)
+            if not due_ms:
+                continue
+            item_type = _notif_item_type(item)
+            item_id = _notif_item_id(item)
+            title = item.get('title') or 'Untitled'
+            course = item.get('courseName') or item.get('course_name') or ''
+
+            if item_type == 'event' and event_offsets:
+                ms_until = due_ms - time.time() * 1000
+                if ms_until < 0:
+                    continue
+                minutes = int(ms_until // 60000)
+                for threshold in event_offsets:
+                    if threshold - 1 < minutes <= threshold:
+                        key = _notif_dedup_key(username, item_id, f'event-{threshold}m', today_str)
+                        if not store.has_fired(key):
+                            label = f'{threshold // 60}h' if threshold >= 60 else f'{threshold}m'
+                            _push_to_user(username, f'📅 {label} until "{title}"', f'{course}'.strip())
+                            store.mark_fired(key)
+                        break
+                continue
+
+            # Assignments
+            if due_tomorrow.get('enabled') and _notif_same_local_day(due_ms, tomorrow):
+                start_hour = int(due_tomorrow.get('startHour') or 16)
+                hour = now.hour
+                if hour >= start_hour:
+                    hour_key = f'{hour:02d}'
+                    key = _notif_dedup_key(username, item_id, f'due-tmrw-{hour_key}', today_str)
+                    if not store.has_fired(key):
+                        _push_to_user(username, f'📝 "{title}" due tomorrow', course.strip())
+                        store.mark_fired(key)
+
+            if missing.get('enabled') and due_ms > time.time() * 1000:
+                m_hour = int(missing.get('hour') or 16)
+                m_min = int(missing.get('minute') or 30)
+                if now.hour == m_hour:
+                    if m_min == 0:
+                        fire = True
+                    else:
+                        fire = m_min <= now.minute < m_min + 1
+                    if fire:
+                        key = _notif_dedup_key(username, item_id, 'missing-daily', today_str)
+                        if not store.has_fired(key):
+                            due_txt = item.get('dueDate') or item.get('due') or ''
+                            _push_to_user(username, f'📌 Missing assignment: "{title}"', f'{course} — due {due_txt}'.strip())
+                            store.mark_fired(key)
+
+
+def _notif_scheduler_loop() -> None:
+    """Background thread: sweep every 60s. Started once at import; the
+    gunicorn master forks one worker, so a module-level thread survives."""
+    while True:
+        try:
+            _notif_scheduler_tick()
+        except Exception as exc:
+            print(f'[notif] scheduler error: {exc}', file=sys.stderr)
+        time.sleep(60)
 
 
 def _summarize_chat(messages) -> str:
@@ -1649,6 +1955,12 @@ def chat_submit_message(chat_id):
     message = (body.get('message') or '').strip()
     if not message:
         return jsonify({'error': 'message required'}), 400
+    # The client pre-persists the user message via POST /append
+    # (role 'user') before any dashboard-data wait, so the message
+    # survives chat switches/reloads mid-collection. When the AI
+    # request is finally submitted, it passes skip_append=true so we
+    # don't duplicate the stored message -- we only queue the job.
+    skip_append = bool(body.get('skip_append'))
 
     lock = _chat_file_lock(username, chat_id)
     path = _chat_path(username, chat_id)
@@ -1679,10 +1991,12 @@ def chat_submit_message(chat_id):
             for m in (body.get('prior_messages') or [])
             if isinstance(m, dict)
         ]
-        chat['messages'] = (chat.get('messages') or []) + [
-            {'role': 'user', 'content': message}
-        ]
-        chat['messages'] = chat['messages'][-MAX_MESSAGES_PER_CHAT:]
+        chat['messages'] = (chat.get('messages') or [])
+        if not skip_append:
+            chat['messages'] = chat['messages'] + [
+                {'role': 'user', 'content': message}
+            ]
+            chat['messages'] = chat['messages'][-MAX_MESSAGES_PER_CHAT:]
         chat['pendingJob'] = {
             'status': 'queued',
             'createdAt': int(time.time() * 1000),
@@ -1834,9 +2148,14 @@ def chat_append(chat_id):
         return jsonify({'error': 'auth_required'}), 401
     body = request.get_json(silent=True) or {}
     role = (body.get('role') or '').strip()
-    if role not in ('assistant', 'tool'):
-        return jsonify({'error': 'role must be assistant or tool'}), 400
-    content = str(body.get('content') or '').strip()[:8000]
+    if role not in ('assistant', 'tool', 'user'):
+        return jsonify({'error': 'role must be assistant, tool, or user'}), 400
+    content = str(body.get('content') or '').strip()
+    # User-role appends carry the full message (possibly with attached
+    # file context); keep a generous cap so pre-persist never truncates
+    # what POST /messages would have stored whole.
+    cap = 120000 if role == 'user' else 8000
+    content = content[:cap]
     if not content:
         return jsonify({'error': 'content is required'}), 400
 
@@ -1846,6 +2165,13 @@ def chat_append(chat_id):
         chat = _read_json(path, None)
         if not chat:
             return jsonify({'error': 'not_found'}), 404
+        # Pre-persisting a user message while a generation is already
+        # running would leave it stored without a job (and no reply).
+        # 409 so the client falls back to the submit path's own busy
+        # handling instead of creating a dangling message.
+        pj = chat.get('pendingJob')
+        if role == 'user' and pj and pj.get('status') in ('queued', 'running'):
+            return jsonify({'error': 'busy'}), 409
         msg = {'role': role, 'content': content}
         name = (body.get('name') or '').strip()[:40]
         if role == 'tool' and name:
@@ -1858,6 +2184,12 @@ def chat_append(chat_id):
 
 
 _fail_stale_chat_jobs()
+
+
+# Server-side notification scheduler: starts once per process, sweeps every
+# 60s for due-event / due-tomorrow / missing-assignment pushes. Only touches
+# cached assignments — no Chromium launches from the scheduler itself.
+threading.Thread(target=_notif_scheduler_loop, daemon=True, name='schoology-notif-scheduler').start()
 
 
 if __name__ == '__main__':

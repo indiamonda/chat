@@ -71,23 +71,66 @@ function generateVerifyCode() {
   return String(n).padStart(6, '0');
 }
 
-const BLOCKED_EMAIL_DOMAINS = ['student.auhsd.us'];
-function isEmailBlocked(email) {
-  const domain = String(email || '').split('@')[1]?.toLowerCase();
-  return domain && BLOCKED_EMAIL_DOMAINS.includes(domain);
-}
+/** Email addresses the owner allow-listed to skip verification (exact match). */
+const EMAIL_VERIFY_SKIP_EMAILS = ['jlsniperelite4@outlook.com'];
 
-/** Domains where email verification is skipped (school-issued addresses). */
-const EMAIL_VERIFY_BYPASS_DOMAINS = [
-  's.acsdsc.org',
-  'forsythk12.org',
-  'sstrojans.org',
+/**
+ * Email domains where verification is skipped. Two cases are combined here:
+ *  - the organization blocks external mail, so a code could never be delivered;
+ *  - the owner has allow-listed the domain to skip verification entirely.
+ * Keep this in sync with the games-site signup UI (`js/jqrg-auth-ui.js`
+ * `BLOCKED_DOMAINS` + `VERIFY_SKIP_DOMAINS`).
+ */
+const EMAIL_VERIFY_SKIP_DOMAINS = [
+  'student.auhsd.us',
+  'chehalisschools.org',
+  'kcusd.net',
+  'sidmouthcollege.devon.sch.uk',
+  'sjacstudent.qld.edu.au',
+  'abpat.qld.edu.au',
+  'student.cms.k12.nc.us',
+  'panthers.pequannock.org',
+  'pickettk12.net',
   'student.sfx.vic.edu.au',
+  'go.tahomasd.us',
+  'student.medwayschools.org',
+  'arcatasd.org',
+  'indyde.org',
+  'jcpsnj.org',
+  'forsythk12.org',
+  'seattleschools.org',
+  'students.lindenps.org',
+  'student.acsssd.net',
+  'thegodsofpika.com',
+  'glencoveschools.org',
+  'theslender.org',
+  'educ.dpcdsb.org',
+  'students.cnusd.k12.ca.us',
+  'student.minaret.vic.edu.au',
+  'churchie.com.au',
+  'pausd.us',
+  'asdk12.net',
+  'denipl.com',
+  'schools.sfx.vic.edu.au',
+  'student.mfis.nsw.edu.au',
+  'judd.kent.sch.uk',
+  'proton.me',
+  'ddsbstudent.ca',
+  'fommie.com',
+  'arker.college',
+  'ggusd.net',
+  'student.hampton.k12.va.us',
+  'student.bmg.vic.edu.au',
+  'nsseo.org',
+  'comsewogue.k12.ny.us',
+  'palmdalesd.org',
+  'perrytonisd.com',
+  's.acsdsc.org',
+  'sstrojans.org',
   'cross.edu.pl',
   'lompocschools.org',
   'acsd.org.com',
   'lwsd.org',
-  'go.tahomasd.us',
   'student.vic.sfx.edu.au',
   'ahschools.us',
   'stratfordschools.net',
@@ -95,9 +138,13 @@ const EMAIL_VERIFY_BYPASS_DOMAINS = [
   'my.cuhsd.org',
   'agustibarbera.cat',
 ];
-function emailVerifyBypassed(email) {
-  const domain = String(email || '').split('@')[1]?.toLowerCase();
-  return domain && EMAIL_VERIFY_BYPASS_DOMAINS.includes(domain);
+
+function emailVerifySkipped(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (EMAIL_VERIFY_SKIP_EMAILS.includes(normalized)) return true;
+  const domain = normalized.split('@')[1];
+  return !!domain && EMAIL_VERIFY_SKIP_DOMAINS.includes(domain);
 }
 
 router.post('/send-code', async (req, res) => {
@@ -111,7 +158,7 @@ router.post('/send-code', async (req, res) => {
     if (isEmailBanned(normalized)) {
       return res.status(403).json({ error: 'This email address has been permanently banned.' });
     }
-    if (isEmailBlocked(normalized)) {
+    if (emailVerifySkipped(normalized)) {
       return res.json({ ok: true, skipped: true, reason: 'blocked_domain' });
     }
     const existingUser = db.prepare(
@@ -189,7 +236,7 @@ router.post('/register', async (req, res, next) => {
     }
 
     const normalized = String(email).trim().toLowerCase();
-    if (!isEmailBlocked(normalized) && !emailVerifyBypassed(normalized)) {
+    if (!emailVerifySkipped(normalized)) {
       if (!email_code) return res.status(400).json({ error: 'Verification code is required' });
       const codeRow = db.prepare(
         'SELECT rowid, code, expires_at, used FROM email_verification_codes WHERE LOWER(email) = ? ORDER BY created_at DESC LIMIT 1'
@@ -745,7 +792,7 @@ router.post('/recover/send-code', async (req, res) => {
       return res.status(400).json({ error: 'That email does not match the address on file. If your email was changed or is inaccessible, use the payment key option below.' });
     }
 
-    if (isEmailBlocked(user.email)) {
+    if (emailVerifySkipped(user.email)) {
       db.prepare("UPDATE recovery_sessions SET recognition = 'full' WHERE token = ?").run(session.token);
       return res.json({ ok: true, skipped: true, reason: 'blocked_domain' });
     }
