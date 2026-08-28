@@ -12,7 +12,7 @@ import { sessionMiddleware, touchSession, getCurrentUser, requireAuth, canRecall
 import { db, GROUP_ID, PANELS, HELPER_USER_ID, isBlacklisted, isUserDeleted, canSeePrivateUser, PRIVATE_USER_BLOCKED, whisperVisibleClause } from './db.js';
 import { moderateMessage } from './ai-moderation.js';
 import { upload } from './upload.js';
-import { getUploadUrl, getFileRef } from './upload.js';
+import { getUploadUrl, getFileRef, ensurePlayableVideo } from './upload.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import docsRoutes, { syncAnnouncementsFromPortal } from './routes/docs.js';
@@ -1504,7 +1504,7 @@ function registerBridgeSocket(socket) {
   // Media upload for mirrored transcript messages: the bridge sends file
   // bytes for media messages (which live on the Mac, not the chat server),
   // the server stores them in the uploads dir and returns a fileRef.
-  socket.on('helper:media:upload', (p, ack) => {
+  socket.on('helper:media:upload', async (p, ack) => {
     const convId = typeof p?.convId === 'string' ? p.convId.trim() : '';
     const name = typeof p?.name === 'string' ? p.name.slice(0, 200) : 'file';
     const mime = typeof p?.mime === 'string' ? p.mime.slice(0, 100) : 'application/octet-stream';
@@ -1519,6 +1519,9 @@ function registerBridgeSocket(socket) {
         ? name.slice(name.lastIndexOf('.')) : '';
       const filename = `${randomUUID()}${ext}`;
       writeFileSync(join(uploadsDir, filename), data);
+      // HEVC safety net: mirror the HTTP upload path so bridge-mirrored
+      // media is playable everywhere too.
+      await ensurePlayableVideo({ path: join(uploadsDir, filename), mimetype: mime, size: data.length });
       reply({ ok: true, fileRef: getFileRef(filename), filename, mime });
     } catch (err) {
       reply({ ok: false, error: String(err?.message || err) });
@@ -2363,6 +2366,9 @@ app.post('/api/rooms/:roomType/:roomId/messages', requireAuth, upload.single('fi
   let finalContent = typeof content === 'string' ? content : '';
   let msgType = (msg_type || 'text').slice(0, 32);
   if (req.file) {
+    // HEVC safety net: transcode unplayable codecs (e.g. iPhone HEVC) to H.264
+    // in place so every browser can play the result.
+    await ensurePlayableVideo(req.file);
     finalContent = getFileRef(req.file.filename);
     if (!msgType || msgType === 'text') {
       const mt = req.file.mimetype || '';
@@ -2668,6 +2674,9 @@ app.post('/api/conversations/:convId/messages', requireAuth, upload.single('file
   let finalContent = typeof content === 'string' ? content : '';
   let msgType = (msg_type || 'text').slice(0, 32);
   if (req.file) {
+    // HEVC safety net: transcode unplayable codecs (e.g. iPhone HEVC) to H.264
+    // in place so every browser can play the result.
+    await ensurePlayableVideo(req.file);
     finalContent = getFileRef(req.file.filename);
     if (!msgType || msgType === 'text') {
       const mt = req.file.mimetype || '';
