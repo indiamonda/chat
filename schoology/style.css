@@ -3494,16 +3494,36 @@
 
   /* ── Compact header ─────────────────────────────────────────────── */
   .dashboard-header {
-    padding: 10px 14px 8px !important;
+    padding: 12px 14px 10px !important;
     position: sticky;
     top: 0;
     z-index: 40;
+    /* backdrop-filter creates a containing block that traps the fixed
+       bottom nav inside the header (tabs rendered crushed at top, 2026-08-28).
+       Remove it on mobile so the nav escapes to the viewport. */
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
-  .header-top { gap: 8px; }
-  .header-brand { min-width: 0; }
-  .header-logo { width: 30px; height: 30px; }
-  .header-title-group h1 { font-size: 1.05rem; }
-  .header-title-group .subtitle,
+  .header-top { gap: 12px; margin-bottom: 4px; }
+  .header-brand { min-width: 0; gap: 12px; }
+  .header-logo { width: 34px; height: 34px; }
+  .header-title-group { min-width: 0; }
+  .header-title-group h1 {
+    font-size: 1.1rem;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .header-title-group .subtitle {
+    display: block;
+    font-size: 0.7rem;
+    margin-top: 3px;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .header-title-group .subtitle-holiday { display: none; }
   .header-status { display: none !important; }
   .student-info { font-size: 0.8rem; padding: 2px 14px 6px; }
@@ -3566,8 +3586,14 @@
   .stat-value { font-size: 1.4rem; }
 
   /* ── AI chat: full-height, input above bottom nav ───────────────── */
+  /* The bottom nav is position:fixed (overlay), so reserve its space
+     with container padding instead of a hard-coded tab height. */
+  .app-container {
+    padding-bottom: calc(61px + env(safe-area-inset-bottom, 0px));
+  }
   #tab-ai {
-    height: calc(100dvh - 118px) !important;
+    height: auto !important;
+    flex: 1 1 auto;
     padding-bottom: 0 !important;
   }
   .ai-container {
