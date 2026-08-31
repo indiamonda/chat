@@ -3072,15 +3072,13 @@ function connectSocket() {
       }
     };
     if (isThisDmRun) {
-      const run = state.helperRuns[key] || { busy: true, working: true, done: false, tools: [] };
-      applyEvent(run);
-      state.helperRuns[key] = run;
+      const run = state.helperRuns[key];
+      if (run) { applyEvent(run); state.helperRuns[key] = run; }
     }
     // Mirror into the per-session run so the VIEWED session's bar shows its own tools.
     if (sk) {
-      const srun = state.sessionRuns[sk] || { busy: true, working: true, done: false, tools: [] };
-      applyEvent(srun);
-      state.sessionRuns[sk] = srun;
+      const srun = state.sessionRuns[sk];
+      if (srun) { applyEvent(srun); state.sessionRuns[sk] = srun; }
     }
     updateHelperUiInPlace(key);
   });
@@ -6379,18 +6377,17 @@ function renderHelperControlBar() {
     : (busy ? '<span class="hc-tool hc-tool-none">thinking…</span>' : '');
 
   // Model/effort + live agent status only apply to the full assistant.
-  // "This DM (jchat)" is the owner's own DM session: the bridge now includes
-  // it in the live list, so the option shows the same live state (● when a
-  // run is active, preview tooltip) as every other session.
+  // "This DM (jchat)" is the owner's own DM session, included in the live
+  // list like any other session. Active-run ● dots were removed from the
+  // options (stale run state made them misleading).
   const dmKey = dmSessionKeyFor();
   const dmEntry = dmKey ? (state.agentSessions || []).find((s) => s.key === dmKey) : null;
-  const dmActive = !!(dmEntry?.hasActiveRun);
   const dmTitle = dmEntry?.preview ? ` title="${escapeHtml(dmEntry.preview)}"` : '';
-  const sessionOptions = `<option value="" ${!state.agentSession ? 'selected' : ''}${dmTitle}>This DM (jchat)${dmActive ? ' ●' : ''}</option>`
+  const sessionOptions = `<option value="" ${!state.agentSession ? 'selected' : ''}${dmTitle}>This DM (jchat)</option>`
     + state.agentSessions
       .filter((s) => !(dmKey && s.key === dmKey))
       .map((s) =>
-        `<option value="${escapeHtml(s.key)}" ${state.agentSession === s.key ? 'selected' : ''} title="${escapeHtml(s.preview || s.key)}">${escapeHtml(s.label || s.key)}${s.hasActiveRun ? ' ●' : ''}</option>`
+        `<option value="${escapeHtml(s.key)}" ${state.agentSession === s.key ? 'selected' : ''} title="${escapeHtml(s.preview || s.key)}">${escapeHtml(s.label || s.key)}</option>`
       ).join('');
   const openclawRow = mode === 'openclaw' ? `
       <div class="hc-row">
@@ -9838,6 +9835,9 @@ function bindMain() {
         const viewKey = state.agentSessionView?.key;
         const stopPayload = { roomType, roomId, sessionKey: viewKey || dmSessionKeyFor() };
         state.socket?.emit('helper:stop', stopPayload);
+        // The busy state may come from the sessions list (hasActiveRun), which
+        // can be stale after an abort; refresh it so the stop lands visibly.
+        loadAgentSessions();
         return;
       }
       emitTypingStop(roomType, roomId);

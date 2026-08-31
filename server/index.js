@@ -1292,6 +1292,14 @@ function ackOrHttp(res, ack, status, body) {
 async function helperReply(triggerMsgId, content, roomType, roomId, userId, agentOpts) {
   const io = app.get('io');
   const roomKey = presenceRoomKeyForRoom(roomType, roomId);
+  // Never start a second response for a room that already has one in flight:
+  // the gateway errors on concurrent runs for the same session and the UI
+  // gets stuck showing a run that will never finish. The user can stop the
+  // current run and retry.
+  if (helperActiveByRoom.has(roomKey)) {
+    insertHelperReply(triggerMsgId, 'I\u2019m still working on your previous message in this chat. Press stop, then send this again.', roomType, roomId);
+    return;
+  }
   const controller = new AbortController();
   const active = { kind: 'deepseek', taskId: triggerMsgId, controller, sessionKey: getAgentSession() || '' };
   helperActiveByRoom.set(roomKey, active);
@@ -3768,20 +3776,39 @@ io.on('connection', (socket) => {
     }
     const roomKey = presenceRoomKeyForRoom(roomType, roomId);
     const active = helperActiveByRoom.get(roomKey);
-    if (!active) return;
-    if (active.kind === 'bridge' && active.taskId) {
-      const task = openclawBridgeTasks.get(active.taskId);
-      if (task) {
-        openclawBridgeTasks.delete(active.taskId);
-        clearTimeout(task.timer);
-        // Best-effort: tell the bridge to abort its in-flight gateway call.
-        io.to('bridge:openclaw').emit('helper:stop', { taskId: active.taskId });
-        // Resolve now so the user gets their send button back immediately,
-        // even if the bridge is slow to acknowledge.
-        task.resolve({ kind: 'stopped' });
+    let stoppedTaskId;
+    if (active) {
+      if (active.kind === 'bridge' && active.taskId) {
+        const task = openclawBridgeTasks.get(active.taskId);
+        if (task) {
+          openclawBridgeTasks.delete(active.taskId);
+          clearTimeout(task.timer);
+          // Best-effort: tell the bridge to abort its in-flight gateway call.
+          io.to('bridge:openclaw').emit('helper:stop', { taskId: active.taskId });
+          // Resolve now so the user gets their send button back immediately,
+          // even if the bridge is slow to acknowledge.
+          task.resolve({ kind: 'stopped' });
+          stoppedTaskId = active.taskId;
+        }
+      } else if (active.kind === 'deepseek') {
+        active.controller.abort();
       }
-    } else if (active.kind === 'deepseek') {
-      active.controller.abort();
+    }
+    // Always clear the room's busy UI — even when there is no server-side
+    // task (stale/stuck client state from an earlier run must be recoverable).
+    // If a task was resolved above, helperReply's finally emits another end
+    // event; the client treats that as idempotent.
+    io.to(roomKey).emit('helper:busy', {
+      status: 'end',
+      taskId: stoppedTaskId,
+      roomType,
+      roomId,
+      sessionKey: sessionKey || active?.sessionKey || '',
+    });
+    // If the stop came from a session view (sessionKey = another session),
+    // also clear this DM's own slot so it can't stay stuck either.
+    if (sessionKey) {
+      io.to(roomKey).emit('helper:busy', { status: 'end', roomType, roomId, sessionKey: '' });
     }
   });
 
