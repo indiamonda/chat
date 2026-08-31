@@ -3031,11 +3031,14 @@ function connectSocket() {
   // ── Venory helper: live busy + agent status events ──
   s.on('helper:busy', ({ status, taskId, roomType, roomId, sessionKey }) => {
     const key = roomType && roomId ? roomKey(roomType, roomId) : null;
-    const run = key ? (state.helperRuns[key] || { busy: false, working: false, done: false, tools: [] }) : null;
-    // Also track per-gateway-session state so viewing another session shows
-    // THAT session's working/stop state, never the DM's.
-    const sk = (typeof sessionKey === 'string' && sessionKey) ? sessionKey
-      : (state.convId ? `agent:main:openai-user:jchat:dm:${state.convId}` : '');
+    // The event's roomId is the helper DM's conv, so the DM's gateway key is
+    // derivable even when the owner is currently viewing another room.
+    const evDmKey = (roomType === 'dm' && roomId) ? `agent:main:openai-user:jchat:dm:${roomId}` : '';
+    const sk = (typeof sessionKey === 'string' && sessionKey) ? sessionKey : evDmKey;
+    // Only runs belonging to THIS DM's own session may drive the DM's UI;
+    // routed runs (other sessions) update only their own session slot.
+    const isThisDmRun = !sessionKey || sk === evDmKey;
+    const run = (key && isThisDmRun) ? (state.helperRuns[key] || { busy: false, working: false, done: false, tools: [] }) : null;
     const srun = sk ? (state.sessionRuns[sk] || { busy: false, working: false, done: false, tools: [] }) : null;
     if (status === 'start') {
       if (run) { run.busy = true; run.working = true; run.done = false; run.tools = []; state.helperRuns[key] = run; }
@@ -3050,27 +3053,33 @@ function connectSocket() {
   s.on('helper:status', ({ taskId, kind, status, name, title, meta, id, roomType, roomId, sessionKey }) => {
     const key = roomType && roomId ? roomKey(roomType, roomId) : helperDmKey();
     if (!key) return;
-    const run = state.helperRuns[key] || { busy: true, working: true, done: false, tools: [] };
-    if (kind === 'lifecycle') {
-      if (status === 'working') { run.working = true; run.done = false; }
-      else if (status === 'done') { run.working = false; run.done = true; }
-    } else if (kind === 'tool') {
-      const i = run.tools.findIndex((t) => id && t.id === id);
-      if (status === 'running') {
-        const tool = { id, name, title, status: 'running', meta };
-        if (i >= 0) run.tools[i] = tool;
-        else run.tools.push(tool);
-      } else {
-        if (i >= 0) run.tools[i] = { ...run.tools[i], status: status || 'completed' };
+    const evDmKey = (roomType === 'dm' && roomId) ? `agent:main:openai-user:jchat:dm:${roomId}` : '';
+    const sk = (typeof sessionKey === 'string' && sessionKey) ? sessionKey : evDmKey;
+    const isThisDmRun = !sessionKey || sk === evDmKey;
+    const applyEvent = (run) => {
+      if (kind === 'lifecycle') {
+        if (status === 'working') { run.working = true; run.done = false; }
+        else if (status === 'done') { run.working = false; run.done = true; }
+      } else if (kind === 'tool') {
+        const i = run.tools.findIndex((t) => id && t.id === id);
+        if (status === 'running') {
+          const tool = { id, name, title, status: 'running', meta };
+          if (i >= 0) run.tools[i] = tool;
+          else run.tools.push(tool);
+        } else if (i >= 0) {
+          run.tools[i] = { ...run.tools[i], status: status || 'completed' };
+        }
       }
+    };
+    if (isThisDmRun) {
+      const run = state.helperRuns[key] || { busy: true, working: true, done: false, tools: [] };
+      applyEvent(run);
+      state.helperRuns[key] = run;
     }
-    state.helperRuns[key] = run;
-    // Mirror into the per-session run so the viewed session's bar shows its own tools.
-    const sk = (typeof sessionKey === 'string' && sessionKey) ? sessionKey
-      : (state.convId ? `agent:main:openai-user:jchat:dm:${state.convId}` : '');
+    // Mirror into the per-session run so the VIEWED session's bar shows its own tools.
     if (sk) {
       const srun = state.sessionRuns[sk] || { busy: true, working: true, done: false, tools: [] };
-      srun.working = run.working; srun.done = run.done; srun.tools = run.tools.slice();
+      applyEvent(srun);
       state.sessionRuns[sk] = srun;
     }
     updateHelperUiInPlace(key);
@@ -5901,6 +5910,10 @@ function helperDmKey() {
   return isHelperDm() && state.convId ? roomKey('dm', state.convId) : null;
 }
 function helperRun() {
+  // Helper run state must never paint UIs outside the owner's helper DM
+  // (group chats, other DMs, profile views) — even when a session view or
+  // picker selection is still set in state.
+  if (!isOwner() || !isHelperDm()) return null;
   // Session view: show the run state of the session being VIEWED, never the DM's.
   const viewKey = state.agentSessionView?.key;
   if (viewKey) {
@@ -9820,9 +9833,10 @@ function bindMain() {
       const roomId = state.dmUserId ? state.convId : state.panel;
       // Stop instead of send while Venory is responding.
       if (isHelperBusy()) {
-        const stopPayload = { roomType, roomId };
+        // Always name the session whose run is visible so the bridge can
+        // abort the actual gateway run, not just the in-flight HTTP request.
         const viewKey = state.agentSessionView?.key;
-        if (viewKey) stopPayload.sessionKey = viewKey;
+        const stopPayload = { roomType, roomId, sessionKey: viewKey || dmSessionKeyFor() };
         state.socket?.emit('helper:stop', stopPayload);
         return;
       }

@@ -432,7 +432,8 @@ const chains = new Map();         // convId -> Promise (per-DM serialization)
 const typingOn = new Map();       // convId -> number of queued tasks
 const activeByConv = new Map();   // convId -> taskId (running task, for agent events)
 const activeBySession = new Map(); // gateway sessionKey -> taskId (session-switched tasks)
-const controllers = new Map();    // taskId -> AbortController (for helper:stop)
+const controllers = new Map();        // taskId -> AbortController (for helper:stop)
+const taskSessionKeys = new Map();    // taskId -> gateway sessionKey (gateway-side abort)
 
 // --- gateway session awareness (session switching + live relay) ---------------
 let rpcSeq = 1;
@@ -940,6 +941,7 @@ async function handleTask(task) {
     .then(() => {
       activeByConv.set(convId, taskId);
       activeBySession.set(sessionKey, taskId);
+      taskSessionKeys.set(taskId, sessionKey);
       return runAgent(task, controller);
     })
     .then((text) => {
@@ -960,6 +962,7 @@ async function handleTask(task) {
     })
     .finally(() => {
       controllers.delete(taskId);
+      taskSessionKeys.delete(taskId);
       if (activeByConv.get(convId) === taskId) activeByConv.delete(convId);
       if (activeBySession.get(sessionKey) === taskId) activeBySession.delete(sessionKey);
     });
@@ -992,10 +995,12 @@ socket.on('helper:task', (task) => {
 socket.on('helper:stop', (p) => {
   const controller = controllers.get(p?.taskId);
   if (controller) controller.abort();
-  // Session-scoped stop: abort the gateway run for a viewed session even
-  // when it wasn't started through a jchat DM task.
-  const sk = typeof p?.sessionKey === 'string' ? p.sessionKey.trim() : '';
-  if (sk && !controller) {
+  // Also abort the gateway run itself (not just our HTTP request): a
+  // destroyed request alone doesn't reliably stop the agent turn, and a
+  // session-scoped stop for a viewed session has no local task at all.
+  let sk = typeof p?.sessionKey === 'string' ? p.sessionKey.trim() : '';
+  if (!sk && p?.taskId) sk = taskSessionKeys.get(p.taskId) || '';
+  if (sk) {
     gwRpc('sessions.abort', { key: sk }, 8000)
       .then(() => log('session abort requested for', sk))
       .catch((err) => log('session abort failed:', err.message));
