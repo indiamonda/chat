@@ -3259,8 +3259,15 @@ select:focus {
   stroke: currentColor;
   fill: none;
 }
+/* Google Material filled icons carry fill="currentColor" on the svg root
+   (stroke icons instead put fill="none" + stroke on the root). The stroke/fill
+   above is inherited, so filled icons must override both or they render as
+   thin outlines. */
+.icon svg[fill="currentColor"],
+.icon svg[fill="currentColor"] path,
 .icon svg [fill="currentColor"] {
   fill: currentColor;
+  stroke: none;
 }
 .icon.icon-sm {
   width: 1rem;
