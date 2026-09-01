@@ -5525,6 +5525,10 @@ const ICON_EDIT_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height=
 const ICON_CHAT_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
 const ICON_SEND_SM = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
 const ICON_STOP = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+// Active-run dot for the session picker (SVG so it renders crisply everywhere;
+// <option> can't contain markup, so the picker is a custom listbox now).
+const ICON_ACTIVE_DOT = '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8" fill="currentColor" aria-hidden="true"><circle cx="4" cy="4" r="4"/></svg>';
+const ICON_CHEVRON_DOWN = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 
 // ── Venory (helper) owner-only controls + live status ───────────────────────
 // Owner id matches the server's OPENCLAW_OWNER_ID. The helper bot is the
@@ -6278,7 +6282,7 @@ function renderAgentSessionView() {
     <div class="chat-area">
       <div class="chat-main">
         <div class="chat-header">
-          <div class="chat-header-title">📡 ${escapeHtml(label)}</div>
+          <div class="chat-header-title">${escapeHtml(label)}</div>
           <span class="chat-header-subtitle"><span class="presence-summary">OpenClaw session on your Mac · DMs here route to it · pick “This DM (jchat)” to return</span></span>
         </div>
         <div class="messages-wrap" data-agent-session-view="1" data-room-type="dm" data-room-id="${escapeHtml(state.convId || '')}">
@@ -6382,13 +6386,35 @@ function renderHelperControlBar() {
   // options (stale run state made them misleading).
   const dmKey = dmSessionKeyFor();
   const dmEntry = dmKey ? (state.agentSessions || []).find((s) => s.key === dmKey) : null;
-  const dmTitle = dmEntry?.preview ? ` title="${escapeHtml(dmEntry.preview)}"` : '';
-  const sessionOptions = `<option value="" ${!state.agentSession ? 'selected' : ''}${dmTitle}>This DM (jchat)</option>`
-    + state.agentSessions
+  const dmActive = !!(dmEntry?.hasActiveRun);
+  const sessionItems = [
+    { key: '', label: 'This DM (jchat)', active: dmActive, title: dmEntry?.preview || '' },
+    ...(state.agentSessions || [])
       .filter((s) => !(dmKey && s.key === dmKey))
-      .map((s) =>
-        `<option value="${escapeHtml(s.key)}" ${state.agentSession === s.key ? 'selected' : ''} title="${escapeHtml(s.preview || s.key)}">${escapeHtml(s.label || s.key)}</option>`
-      ).join('');
+      .map((s) => ({ key: s.key, label: s.label || s.key, active: !!s.hasActiveRun, title: s.preview || s.key })),
+  ];
+  const sessionItemsHtml = sessionItems.map((it) => {
+    const sel = state.agentSession === it.key;
+    return `
+        <button type="button" role="option" class="hc-session-opt${sel ? ' is-selected' : ''}" data-key="${escapeHtml(it.key)}" aria-selected="${sel ? 'true' : 'false'}"${it.title ? ` title="${escapeHtml(it.title)}"` : ''}>
+          <span class="hc-session-dot" aria-hidden="true">${it.active ? ICON_ACTIVE_DOT : ''}</span>
+          <span class="hc-session-opt-label">${escapeHtml(it.label)}</span>
+        </button>`;
+  }).join('');
+  const sessionCurrent = state.agentSession ? sessionLabelForKey(state.agentSession) : 'This DM (jchat)';
+  const sessionCurrentActive = !state.agentSession
+    ? dmActive
+    : !!((state.agentSessions || []).find((s) => s.key === state.agentSession)?.hasActiveRun);
+  const sessionPickerHtml = `
+        <span class="hc-session-picker">
+          <button type="button" class="hc-session-trigger" id="agent-session-trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Session" title="${escapeHtml(sessionCurrent)}">
+            <span class="hc-session-dot hc-session-dot-current" aria-hidden="true">${sessionCurrentActive ? ICON_ACTIVE_DOT : ''}</span>
+            <span class="hc-session-trigger-label">${escapeHtml(sessionCurrent)}</span>
+            <span class="icon icon-sm hc-session-caret" aria-hidden="true">${ICON_CHEVRON_DOWN}</span>
+          </button>
+          <span class="hc-session-menu" role="listbox" hidden>${sessionItemsHtml}
+          </span>
+        </span>`;
   const openclawRow = mode === 'openclaw' ? `
       <div class="hc-row">
         <label class="hc-label">Model
@@ -6400,9 +6426,8 @@ function renderHelperControlBar() {
         <span class="hc-status ${statusClass}" id="helper-status-badge"><span class="hc-status-dot" aria-hidden="true"></span>${escapeHtml(statusLabel)}</span>
       </div>
       <div class="hc-row">
-        <label class="hc-label">Session
-          <select id="agent-session-select" class="hc-select hc-session-select">${sessionOptions}</select>
-        </label>
+        <span class="hc-label">Session</span>
+        ${sessionPickerHtml}
         ${state.agentSession ? `<span class="hc-note">Viewing <b>${escapeHtml(state.agentSession.split(':').pop())}</b> — DMs here route to it; pick “This DM (jchat)” to return</span>` : ''}
       </div>
       <div class="hc-tools" id="helper-tools-list">${toolsHtml}</div>` : '';
@@ -6476,17 +6501,44 @@ if (typeof document !== 'undefined') {
     } else if (t && t.id === 'agent-effort-select') {
       state.agentEffort = t.value;
       try { localStorage.setItem('agent_effort', t.value); } catch (_) {}
-    } else if (t && t.id === 'agent-session-select') {
-      setAgentSession(t.value);
     }
   });
-  // Owner's Venory mode switch (OpenClaw ↔ basic). Delegated click handler.
+  // Owner's Venory mode switch (OpenClaw ↔ basic) + custom session picker
+  // (listbox: options can't contain SVG, so the session dot icon needs a
+  // custom dropdown). Delegated so both survive in-place re-renders.
+  const closeSessionMenus = () => {
+    document.querySelectorAll('.hc-session-menu').forEach((m) => { m.hidden = true; });
+    document.querySelectorAll('.hc-session-trigger').forEach((t) => t.setAttribute('aria-expanded', 'false'));
+  };
   document.addEventListener('click', (e) => {
-    const opt = e.target && e.target.closest ? e.target.closest('.hc-mode-opt') : null;
-    if (!opt || !opt.dataset?.mode) return;
-    const mode = opt.dataset.mode;
+    const target = e.target && e.target.closest ? e.target : null;
+    const picker = target && target.closest ? target.closest('.hc-session-picker') : null;
+    const opt = target && target.closest ? target.closest('.hc-session-opt') : null;
+    if (opt && picker) {
+      setAgentSession(opt.dataset.key || '');
+      closeSessionMenus();
+      return;
+    }
+    const trigger = target && target.closest ? target.closest('.hc-session-trigger') : null;
+    if (trigger && picker) {
+      const menu = picker.querySelector('.hc-session-menu');
+      const open = menu && !menu.hidden;
+      closeSessionMenus();
+      if (!open && menu) {
+        menu.hidden = false;
+        trigger.setAttribute('aria-expanded', 'true');
+      }
+      return;
+    }
+    if (!picker) closeSessionMenus();
+    const modeOpt = target && target.closest ? target.closest('.hc-mode-opt') : null;
+    if (!modeOpt || !modeOpt.dataset?.mode) return;
+    const mode = modeOpt.dataset.mode;
     if (mode === state.agentMode) return;
     setAgentMode(mode);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeSessionMenus();
   });
 }
 
