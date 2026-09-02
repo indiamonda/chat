@@ -1292,12 +1292,18 @@ function ackOrHttp(res, ack, status, body) {
 async function helperReply(triggerMsgId, content, roomType, roomId, userId, agentOpts) {
   const io = app.get('io');
   const roomKey = presenceRoomKeyForRoom(roomType, roomId);
-  // Never start a second response for a room that already has one in flight:
-  // the gateway errors on concurrent runs for the same session and the UI
-  // gets stuck showing a run that will never finish. The user can stop the
-  // current run and retry.
-  if (helperActiveByRoom.has(roomKey)) {
-    insertHelperReply(triggerMsgId, 'I\u2019m still working on your previous message in this chat. Press stop, then send this again.', roomType, roomId);
+  // Only guard runs that target THIS DM's own gateway session. Session-routed
+  // sends run in a different gateway session (and the bridge serializes per
+  // conversation anyway) — blocking them while a DM run is active made every
+  // routed send fail silently.
+  const routedSession = roomType === 'dm' ? getAgentSession() : '';
+  const sessionRouted = !!routedSession && routedSession !== dmSessionKey(roomId);
+  if (!sessionRouted && helperActiveByRoom.has(roomKey)) {
+    try {
+      insertHelperReply(triggerMsgId, 'I\u2019m still working on your previous message in this chat. Press stop, then send this again.', roomType, roomId);
+    } catch (err) {
+      console.error('[helper-bot] busy-note insert failed:', err);
+    }
     return;
   }
   const controller = new AbortController();
@@ -1396,10 +1402,19 @@ async function helperReply(triggerMsgId, content, roomType, roomId, userId, agen
 function insertHelperReply(triggerMsgId, text, roomType, roomId) {
   const id = randomUUID();
   const now = Date.now();
+  // reply_to_id has an FK to messages.id. Session-routed sends don't persist
+  // a trigger message (they pass a randomUUID), so linking it would blow up
+  // the insert with SQLITE_CONSTRAINT_FOREIGNKEY and kill the reply. Only
+  // link when the trigger row actually exists.
+  let replyToId = null;
+  if (typeof triggerMsgId === 'string' && triggerMsgId) {
+    const exists = db.prepare('SELECT 1 FROM messages WHERE id = ?').get(triggerMsgId);
+    if (exists) replyToId = triggerMsgId;
+  }
   db.prepare(`
     INSERT INTO messages (id, room_type, room_id, sender_id, content, msg_type, reply_to_id, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, 'text', ?, ?, ?)
-  `).run(id, roomType, roomId, HELPER_USER_ID, text, triggerMsgId, now, now);
+  `).run(id, roomType, roomId, HELPER_USER_ID, text, replyToId, now, now);
 
   const row = db.prepare(`
     SELECT m.*, u.username, u.display_name, u.avatar_url, u.chatbox_style
@@ -3286,6 +3301,16 @@ gameNsp.on('connection', (socket) => {
       yaw: +data.yaw || 0,
       name: typeof data.name === 'string' ? data.name.slice(0, 16) : undefined,
       weapon: Number.isFinite(+data.weapon) ? (+data.weapon | 0) : undefined,
+      // Zone No Light v19: forward the extra player-state fields the client
+      // already sends so remote players see pitch/ADS/reload/crouch/jet/achievement.
+      // Missing/old-client fields arrive as undefined and are dropped by JSON
+      // serialization; the receiver tolerates that (0 / false).
+      pitch: Number.isFinite(+data.pitch) ? +data.pitch : undefined,
+      ads: !!data.ads,
+      reloading: !!data.reloading,
+      crouch: Number.isFinite(+data.crouch) ? +data.crouch : undefined,
+      jet: Number.isFinite(+data.jet) ? (+data.jet | 0) : undefined,
+      achievement: typeof data.achievement === 'string' ? data.achievement : undefined,
     });
   });
 
@@ -3348,13 +3373,16 @@ gameNsp.on('connection', (socket) => {
     if (typeof target !== 'string') return;
     const targetSocket = gameNsp.sockets.get(target);
     if (!targetSocket) return;
-    const hk = data.hitKind === 'melee' ? 'melee' : 'bullet';
+    // Zone No Light v19: pass hitKind through verbatim (dartSlow/melee/bullet)
+    // instead of collapsing it to 'bullet', and pass damage verbatim so the
+    // victim-side armor calc sees the exact value. by/x/z are kept for the
+    // receiver's attacker/impact-direction lookup.
     targetSocket.emit('damaged', {
       by: socket.id,
-      damage: Math.min(200, Math.max(0, +data.damage || 0)),
+      damage: data.damage,
       x: +data.x || 0,
       z: +data.z || 0,
-      hitKind: hk,
+      hitKind: data.hitKind,
     });
   });
 

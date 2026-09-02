@@ -62,7 +62,6 @@ const GATEWAY_WS_URL = process.env.OPENCLAW_GATEWAY_WS_URL
 const VALID_MODELS = new Set([
   'deepseek/deepseek-v4-pro',
   'deepseek/deepseek-v4-flash',
-  'claude-cli/claude-opus-4-8',
 ]);
 const VALID_EFFORTS = new Set(['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'adaptive', 'max', 'ultra']);
 
@@ -302,7 +301,11 @@ const GATEWAY_RETRY_DELAY_MS = 1500;
 function isTransientFetchError(err) {
   const msg = String(err?.message || '');
   const code = String(err?.code || err?.cause?.code || '');
-  if (err?.status === 502 || err?.status === 503 || err?.status === 504 || err?.status === 429) return true;
+  // 5xx includes 500: the gateway answers "internal error" instantly when a
+  // run is already active in the target session (busy), which clears on its
+  // own — worth retrying. 429 may carry retryAfter.
+  if (err?.status >= 500 && err?.status < 600) return true;
+  if (err?.status === 429) return true;
   if (/fetch failed/i.test(msg)) return true;
   return ['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT', 'EAI_AGAIN',
     'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT',
@@ -414,8 +417,12 @@ async function runAgent(task, controller) {
   for (let attempt = 0; attempt < GATEWAY_MAX_ATTEMPTS; attempt++) {
     if (controller.signal.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
     if (attempt > 0) {
-      log('gateway retry', attempt + 1, '/', GATEWAY_MAX_ATTEMPTS, 'after', lastErr?.message || lastErr);
-      await new Promise((r) => setTimeout(r, GATEWAY_RETRY_DELAY_MS));
+      // Escalating backoff: a busy session (gateway 500) usually frees up in
+      // seconds-to-minutes; retrying with growing delays catches the short
+      // cases without stalling forever on long runs.
+      const delay = GATEWAY_RETRY_DELAY_MS * Math.pow(3, attempt - 1);
+      log('gateway retry', attempt + 1, '/', GATEWAY_MAX_ATTEMPTS, 'in', delay, 'ms after', lastErr?.message || lastErr);
+      await new Promise((r) => setTimeout(r, delay));
     }
     try {
       return await runAgentOnce(task, controller);

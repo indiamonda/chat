@@ -5539,7 +5539,8 @@ const HELPER_BOT_ID = 'helper';
 const OPENCLAW_MODELS = [
   { id: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
   { id: 'deepseek/deepseek-v4-flash', label: 'DeepSeek V4 Flash' },
-  { id: 'claude-cli/claude-opus-4-8', label: 'Claude Opus 4.8' },
+  // claude-cli/claude-opus-4-8 removed: the gateway rejects it for agent
+  // 'main' ("not allowed"), so selecting it broke every send with a 400.
 ];
 const OPENCLAW_EFFORTS = [
   { id: 'off', label: 'Off' },
