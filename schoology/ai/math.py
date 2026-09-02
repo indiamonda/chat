@@ -88,11 +88,32 @@ def _to_result(value, max_chars: int = 4000) -> dict:
 # ---------------------------------------------------------------------------
 
 def _math_eval(payload: dict) -> dict:
-    """Evaluate a math expression and return result + LaTeX."""
+    """Evaluate a math expression and return result + LaTeX.
+
+    Basic calculations only: arithmetic, roots, powers, trig, log/exp,
+    constants. Symbolic operations (integration, differentiation, limits,
+    equation solving, simplification, series, sums/products, linear
+    algebra) are rejected so CALC can't be used as a math problem solver.
+    """
     from sympy import sstr, latex
     expr_str = (payload.get("expr") or "").strip()
     if not expr_str:
         return {"_error": True, "message": "expr is required"}
+    # Reject symbolic operation keywords (word-boundary match on function
+    # names; catches integrate(...), diff(...), solve(...), limit(...),
+    # simplify(...), factor(...), expand(...), series(...), Sum/Product,
+    # Matrix ops, etc.). Plain identifiers like "x" are still fine for
+    # simple algebraic evaluation (e.g. 2*x + 1), but symbolic calculus /
+    # equation solving is out.
+    _SYMBOLIC_OPS = re.compile(
+        r"\b(integrate|diff|Derivative|Integral|limit|solve|solveset|roots|"
+        r"simplify|factor|expand|together|apart|series|nsolve|dsolve|"
+        r"Sum|Product|Matrix|det|inv|eigen|dot|cross|norm|simpl|trigsimp)"
+        r"\s*\(",
+        re.IGNORECASE,
+    )
+    if _SYMBOLIC_OPS.search(expr_str):
+        return {"_error": True, "message": "symbolic math operations are disabled (basic calculations only)"}
     try:
         value = _parse(expr_str)
     except Exception as exc:

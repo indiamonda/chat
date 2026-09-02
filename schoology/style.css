@@ -3490,7 +3490,12 @@
    ==================================================================== */
 @media (max-width: 767px) {
   html, body { overflow-x: hidden; }
-  body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+  /* The fixed bottom nav reserves its own space inside .app-container
+     (padding-bottom below), so the BODY must NOT also add bottom padding:
+     app-container is exactly 100dvh, and body padding on top of that made
+     the page always ~64px taller than the screen (scrollable gap under
+     the nav). Keep the body at the viewport height. */
+  body { padding-bottom: 0; }
 
   /* ── Compact header ─────────────────────────────────────────────── */
   .dashboard-header {
@@ -3587,9 +3592,21 @@
 
   /* ── AI chat: full-height, input above bottom nav ───────────────── */
   /* The bottom nav is position:fixed (overlay), so reserve its space
-     with container padding instead of a hard-coded tab height. */
+     with container padding instead of a hard-coded tab height.
+     The app container is a fixed viewport shell: it never grows past
+     100dvh, and long tabs scroll INSIDE (see .tab-content rule below)
+     instead of scrolling the page. */
   .app-container {
-    padding-bottom: calc(61px + env(safe-area-inset-bottom, 0px));
+    overflow: hidden;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+  /* Non-AI tabs scroll internally so the page itself never exceeds the
+     viewport height (bottom nav stays pinned, no body scroll). */
+  .tab-content:not(#tab-ai) {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   #tab-ai {
     height: auto !important;

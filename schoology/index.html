@@ -4554,129 +4554,6 @@
           }
         },
       },
-      SOLVE: {
-        name: 'SOLVE',
-        regex: /\[SOLVE:([^\]]+)\]/g,
-        captureIdx: 1,
-        userBlurb: 'solve equations',
-        executor: async (_match, eq) => {
-          try {
-            const res = await aiFetch('/api/math/solve', { method: 'POST', body: JSON.stringify({ equation: eq, variable: 'x' }) });
-            const data = await res.json();
-            if (data._error) return { display: null, history: `Solve of "${eq}" failed: ${data.message}` };
-            const sols = (data.solutions || []).map(s => s.result).join(', ') || '(no solutions)';
-            const display = `**Solving ${eq}**\n\nSolutions: ${sols}`;
-            return { display, history: `Solve ${eq}: [${sols}]` };
-          } catch (e) {
-            return { display: null, history: `Solve of "${eq}" failed: ${e.message}` };
-          }
-        },
-      },
-      DERIVATIVE: {
-        name: 'DERIVATIVE',
-        regex: /\[DERIVATIVE:([^\]]+)\]/g,
-        captureIdx: 1,
-        userBlurb: 'compute derivatives',
-        executor: async (_match, expr) => {
-          try {
-            const res = await aiFetch('/api/math/calculus', { method: 'POST', body: JSON.stringify({ op: 'diff', expr, var: 'x' }) });
-            const data = await res.json();
-            if (data._error) return { display: null, history: `Derivative of "${expr}" failed: ${data.message}` };
-            return { display: `**d/dx (${expr})** = ${data.result}\n\n$$${data.latex || data.result}$$`, history: `d/dx(${expr}) = ${data.result}` };
-          } catch (e) {
-            return { display: null, history: `Derivative of "${expr}" failed: ${e.message}` };
-          }
-        },
-      },
-      INTEGRAL: {
-        name: 'INTEGRAL',
-        regex: /\[INTEGRAL:([^\]]+)\]/g,
-        captureIdx: 1,
-        userBlurb: 'compute integrals',
-        executor: async (_match, expr) => {
-          try {
-            const res = await aiFetch('/api/math/calculus', { method: 'POST', body: JSON.stringify({ op: 'int', expr, var: 'x' }) });
-            const data = await res.json();
-            if (data._error) return { display: null, history: `Integral of "${expr}" failed: ${data.message}` };
-            return { display: `**∫ ${expr} dx** = ${data.result}\n\n$$${data.latex || data.result}$$`, history: `∫${expr} dx = ${data.result}` };
-          } catch (e) {
-            return { display: null, history: `Integral of "${expr}" failed: ${e.message}` };
-          }
-        },
-      },
-      LIMIT: {
-        name: 'LIMIT',
-        regex: /\[LIMIT:([^\]]+)\]/g,
-        captureIdx: 1,
-        userBlurb: 'compute limits',
-        executor: async (_match, exprWithPoint) => {
-          // Parse "expr at:point" -- the limit endpoint wants them separate.
-          const m = exprWithPoint.match(/^(.+?)\s+at:\s*(.+)$/);
-          if (!m) return { display: null, history: `Limit syntax: [LIMIT:expr at:point] (got "${exprWithPoint}")` };
-          const expr = m[1].trim();
-          const point = m[2].trim();
-          try {
-            const res = await aiFetch('/api/math/calculus', { method: 'POST', body: JSON.stringify({ op: 'limit', expr, var: 'x', point }) });
-            const data = await res.json();
-            if (data._error) return { display: null, history: `Limit of "${expr}" at ${point} failed: ${data.message}` };
-            return { display: `**lim(x→${point}) ${expr}** = ${data.result}\n\n$$${data.latex || data.result}$$`, history: `lim(x→${point}) ${expr} = ${data.result}` };
-          } catch (e) {
-            return { display: null, history: `Limit of "${expr}" at ${point} failed: ${e.message}` };
-          }
-        },
-      },
-      PERM: {
-        name: 'PERM',
-        regex: /\[PERM:(\d+)\s+(\d+)\]/g,
-        captureIdx: null,
-        userBlurb: 'compute permutations',
-        executor: async (_match, n, k) => {
-          try {
-            const res = await aiFetch('/api/math/combinatorics', { method: 'POST', body: JSON.stringify({ op: 'perm', n: parseInt(n), k: parseInt(k) }) });
-            const data = await res.json();
-            if (data._error) return { display: null, history: `P(${n},${k}) failed: ${data.message}` };
-            return { display: `**P(${n}, ${k})** = ${data.result}`, history: `P(${n},${k}) = ${data.result}` };
-          } catch (e) {
-            return { display: null, history: `P(${n},${k}) failed: ${e.message}` };
-          }
-        },
-      },
-      COMB: {
-        name: 'COMB',
-        regex: /\[COMB:(\d+)\s+(\d+)\]/g,
-        captureIdx: null,
-        userBlurb: 'compute combinations',
-        executor: async (_match, n, k) => {
-          try {
-            const res = await aiFetch('/api/math/combinatorics', { method: 'POST', body: JSON.stringify({ op: 'comb', n: parseInt(n), k: parseInt(k) }) });
-            const data = await res.json();
-            if (data._error) return { display: null, history: `C(${n},${k}) failed: ${data.message}` };
-            return { display: `**C(${n}, ${k})** = ${data.result}`, history: `C(${n},${k}) = ${data.result}` };
-          } catch (e) {
-            return { display: null, history: `C(${n},${k}) failed: ${e.message}` };
-          }
-        },
-      },
-      GRAPH: {
-        name: 'GRAPH',
-        regex: /\[GRAPH:([^\]]+)\]/g,
-        captureIdx: 1,
-        userBlurb: 'plot math functions',
-        executor: async (_match, exprWithRange) => {
-          const m = exprWithRange.match(/^(.+?)\s+from:\s*([-\d.eE]+)\s+to:\s*([-\d.eE]+)$/);
-          if (!m) return { display: null, history: `Graph syntax: [GRAPH:expr from:lo to:hi] (got "${exprWithRange}")` };
-          const expr = m[1].trim();
-          const x_range = [parseFloat(m[2]), parseFloat(m[3])];
-          try {
-            const res = await aiFetch('/api/math/graph', { method: 'POST', body: JSON.stringify({ expr, x_range }) });
-            const data = await res.json();
-            if (data._error) return { display: null, history: `Graph of "${expr}" failed: ${data.message}` };
-            return { display: `**Graph: y = ${expr}**\n\n![graph](data:image/png;base64,${data.png_base64})`, history: `Plotted y = ${expr} from ${x_range[0]} to ${x_range[1]}.` };
-          } catch (e) {
-            return { display: null, history: `Graph of "${expr}" failed: ${e.message}` };
-          }
-        },
-      },
       CONVERT: {
         name: 'CONVERT',
         regex: /\[CONVERT:([^\]]+)\]/g,
@@ -4696,27 +4573,6 @@
           } catch (e) {
             return { display: null, history: `Convert ${value} ${from} to ${to} failed: ${e.message}` };
           }
-        },
-      },
-      DESMOS: {
-        name: 'DESMOS',
-        regex: /\[DESMOS:([^\]]+)\]/g,
-        captureIdx: 1,
-        userBlurb: 'open Desmos graphing calculator',
-        executor: async (_match, expr) => {
-          const url = `${aiApiUrl()}/api/geometry/desmos?expr=${encodeURIComponent(expr)}`;
-          const display = `**Desmos: ${expr}**\n\n[Open in new tab](${url})`;
-          return { display, history: `Opened Desmos with expression: ${expr}` };
-        },
-      },
-      GEOGEBRA: {
-        name: 'GEOGEBRA',
-        regex: /\[GEOGEBRA:([^\]]+)\]/g,
-        captureIdx: 1,
-        userBlurb: 'open GeoGebra geometry',
-        executor: async (_match, cmd) => {
-          const url = `${aiApiUrl()}/api/geometry/geogebra?cmd=${encodeURIComponent(cmd)}`;
-          return { display: `**GeoGebra: ${cmd}**\n\n[Open in new tab](${url})`, history: `Opened GeoGebra with command: ${cmd}` };
         },
       },
       ELEMENT: {
@@ -5741,7 +5597,7 @@
       }
       const toolBlurbs = buildUserFacingToolList();
       if (lower.includes('help') || lower.includes('explain')) {
-        return `I'd be happy to help! Here are some things I can do:\n\n- **Math** $\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$ — try [CALC:integrate(sin(x),x)] or [GRAPH:sin(x) from:0 to:6.28]\n- **Code** — I can help debug or explain concepts\n- **Writing** — Essay structure, grammar tips\n- **General study** — Creating flashcards, summary notes\n\nI can also ${toolBlurbs.slice(0, 6).join(', ')}, and more.\n\nWhat would you like help with today? 📚`;
+        return `I'd be happy to help! Here are some things I can do:\n\n- **Math** $\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$ — try [CALC:sqrt(144) + 3^2] for quick calculations\n- **Code** — I can help debug or explain concepts\n- **Writing** — Essay structure, grammar tips\n- **General study** — Creating flashcards, summary notes\n\nI can also ${toolBlurbs.slice(0, 6).join(', ')}, and more.\n\nWhat would you like help with today? 📚`;
       }
       if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
         return `Hello! 👋 Great to see you. I'm your AI study assistant powered by DeepSeek.\n\nI have access to your current grades, assignments, and Schoology posts. I can also ${toolBlurbs.slice(0, 8).join(', ')}, and more.\n\nWhat would you like to work on today?`;
